@@ -1,0 +1,60 @@
+version: '3.9'
+
+services:
+  workoutchallenge:
+    container_name: workoutchallenge
+    build: .
+    ports:
+      - "80:80"
+      - "5555:5555" # Celery Flower task monitoring - do not open to public - only for local network for debugging
+      - "9001:9001" # Supervisord process monitoring - do not open to public - only for local network for debugging
+      - "8000:8000" # Django admin space - do not open to public - only for local network for debugging
+    volumes:
+      - django_data:/workout_challenge/src-backend/data
+    environment:
+      - POSTGRES_HOST=workoutchallenge-database
+      - POSTGRES_DB=workoutchallenge
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - MAIN_HOST=http://your-url.com
+      - HOSTS=http://your-url.com,http://localhost,http://127.0.0.1
+      - SECRET_KEY=<your_random_string_for_encryption>
+      - TIME_ZONE=Europe/London
+      - STRAVA_CLIENT_ID=000000
+      - STRAVA_CLIENT_SECRET=<secret_key>
+      - REACT_APP_SENTRY_DSN=https://<PUBLIC_KEY>@<HOST>/<PROJECT_ID>
+      - EMAIL_HOST=smtp.gmail.com
+      - EMAIL_PORT=465
+      - EMAIL_HOST_USER=competition@yourdomain.com
+      - EMAIL_HOST_PASSWORD=password
+      - EMAIL_USE_SSL=True
+      - EMAIL_USE_TLS=False
+      - EMAIL_FROM=competition@yourdomain.com
+      - EMAIL_REPLY_TO=support@yourdomain.com
+      - OPENAI_API_KEY=<secret_key>
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+
+  database:
+    image: postgres:15
+    container_name: workoutchallenge-database
+    environment:
+      - POSTGRES_DB=workoutchallenge
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  django_data:

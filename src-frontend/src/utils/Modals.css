@@ -1,0 +1,107 @@
+/* Workout Modal */
+.modal_sport_type {
+    width: 45%;
+}
+
+.modal_start_date {
+    width: 25%;
+}
+
+.modal_start_time {
+    width: 15%;
+}
+
+.modal_duration {
+    width: 15%;
+}
+
+.modal_intensity_category {
+    width: 60%;
+}
+
+.modal_kcal {
+    width: 20%;
+}
+
+.modal_distance {
+    width: 20%;
+}
+
+@media screen and (max-width: 600px) {
+    .modal_sport_type, .modal_start_date, .modal_start_time, .modal_duration, .modal_intensity_category, .modal_kcal, .modal_distance {
+        width: 100%;
+    }
+}
+
+
+
+/* Competition Modal */
+.modal_name {
+    width: 50%;
+}
+
+.modal_start_date {
+    width: 25%;
+}
+
+.modal_end_date {
+    width: 25%;
+}
+
+
+@media screen and (max-width: 600px) {
+    .modal_name, .modal_start_date, .modal_end_date {
+        width: 100%;
+    }
+}
+
+
+/* Personal Goals Modal */
+.modal_goal_active_days {
+    width: 33%;
+}
+
+.modal_goal_workout_minutes {
+    width: 33%;
+}
+
+.modal_goal_distance {
+    width: 33%;
+}
+
+
+@media screen and (max-width: 600px) {
+    .modal_goal_active_days, .modal_goal_workout_minutes, .modal_goal_distance {
+        width: 100%;
+    }
+}
+
+
+
+/* Settings Modal */
+.modal_email {
+    width: 50%;
+}
+
+.modal_username {
+    width: 33%;
+}
+
+.modal_first_name {
+    width: 33%;
+}
+
+.modal_last_name {
+    width: 33%;
+}
+
+.modal_gender {
+    width: 33%;
+}
+
+
+@media screen and (max-width: 600px) {
+    .modal_email, .modal_username, .modal_first_name, .modal_last_name, .modal_gender {
+        width: 100%;
+    }
+}
