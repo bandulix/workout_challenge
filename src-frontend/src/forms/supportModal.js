@@ -56,6 +56,13 @@ function AccordionMenu() {
             {items.map((item, index) => (
                 <AccordionItem key={index} {...item} />
             ))}
+            <div className="border-b py-4">
+                <div align="center">
+                    <p className="mb-1.5">If you like <b>Workout Challenge</b>, consider giving it a <b>star on Github</b> ⭐!</p>
+                    <p className="mb-3">Made with ❤️ in London</p>
+                    <a href='https://ko-fi.com/vanalmsick' target='_blank'><img height='36' style={{'border': '0px', 'height': '36px'}} src='https://storage.ko-fi.com/cdn/kofi1.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
+                </div>
+            </div>
         </div>
     );
 }

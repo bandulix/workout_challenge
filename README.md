@@ -23,9 +23,12 @@ Create your own competition or use a friend’s invitation link to join their co
 ### Your Personal Dashboard:
 ![Preview Dashboard](/docs/imgs/preview-myspace-light.png)
 
-### Competition Dashboards:*
+### Competition Dashboards:
 ![Preview Competition](/docs/imgs/preview-competition-both.png)
 
+
+### Automatic Strava Workout Import:
+![Preview Strava Import](/src-frontend/public/how_to_strava_sync.png)
 
 <div align="center">
 
