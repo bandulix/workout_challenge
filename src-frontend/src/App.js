@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from "react";
+import React, {useEffect, useState, Suspense, lazy} from "react";
 import {useSelector, useDispatch, Provider} from 'react-redux';
 import './App.css';
 import { store } from './utils/store';
@@ -14,8 +14,12 @@ import {
     NotFound,
     LogoutPage
 } from "./pages/Public";
-import MySpace from "./pages/MySpace";
-import Competition from "./pages/Competition";
+import BottomNav from "./utils/bottomNav";
+
+// Lazy-loaded heavy pages - keeps the initial bundle small on mobile.
+const MySpace = lazy(() => import("./pages/MySpace"));
+const Competition = lazy(() => import("./pages/Competition"));
+const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 import {InitStravaLink, ReturnStravaLink} from "./pages/StravaLink";
 
 
@@ -30,8 +34,16 @@ function App() {
                 <Route excat path="password" element={<ResetPasswordPage />} />
                 <Route excat path="password/reset/:id/:token" element={<SetNewPasswordPage />} />
 
-                <Route excat path="dashboard" element={<MySpace />} />
-                <Route path="competition/:id" element={<Competition />} />
+                <Route excat path="dashboard" element={
+                    <Suspense fallback={null}><MySpace/></Suspense>
+                } />
+                <Route path="competition/:id" element={
+                    <Suspense fallback={null}><Competition/></Suspense>
+                } />
+
+                <Route excat path="admin/site-settings" element={
+                    <Suspense fallback={null}><AdminSettings/></Suspense>
+                } />
 
                 <Route excat path="strava/link" element={<InitStravaLink />} />
                 <Route excat path="strava/return" element={<ReturnStravaLink />} />
@@ -39,6 +51,8 @@ function App() {
                 {/* Add the catch-all route last */}
                 <Route path="*" element={<NotFound />} />
             </Routes>
+
+            <BottomNav/>
         </Router>
     );
 }

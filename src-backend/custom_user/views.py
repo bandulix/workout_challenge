@@ -111,10 +111,12 @@ class LinkStravaView(APIView):
 
     def post(self, request, code):
         user = request.user
-        client_id = settings.STRAVA_CLIENT_ID
-        client_secret = settings.STRAVA_CLIENT_SECRET
+        from site_settings.models import resolve_strava_settings
+        strava_cfg = resolve_strava_settings()
+        client_id = strava_cfg["client_id"]
+        client_secret = strava_cfg["client_secret"]
 
-        if client_id == 1234321 or client_secret == "ReplaceWithClientSecret":
+        if not client_id or not client_secret:
             return Response({"message": "Sever configuration error - STRAVA_CLIENT_ID and/or STRAVA_CLIENT_SECRET are not set."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         response = requests.post(

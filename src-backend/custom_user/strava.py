@@ -85,8 +85,10 @@ def sync_strava(self, user__id, start_datetime=None):
     # refresh access token if expired
     if access_token is None:
         refresh_token = user.strava_refresh_token
-        client_id = settings.STRAVA_CLIENT_ID
-        client_secret = settings.STRAVA_CLIENT_SECRET
+        from site_settings.models import resolve_strava_settings
+        strava_cfg = resolve_strava_settings()
+        client_id = strava_cfg["client_id"]
+        client_secret = strava_cfg["client_secret"]
 
         response = requests.post(
             url='https://www.strava.com/oauth/token',

@@ -60,6 +60,9 @@ INSTALLED_APPS = [
     'competition',
     'workouts',
     'custom_user',
+    'drill_instructor',
+    'site_settings',
+    'push_notifications',
 ]
 
 MIDDLEWARE = [
@@ -82,6 +85,9 @@ MIGRATION_MODULES = {
     "competition": "data.db_migrations.competition",
     "workouts": "data.db_migrations.workouts",
     "custom_user": "data.db_migrations.custom_user",
+    "drill_instructor": "drill_instructor.migrations",
+    "site_settings": "site_settings.migrations",
+    "push_notifications": "push_notifications.migrations",
     # "django_celery_beat": "data.db_migrations.django_celery_beat",
     # "django_celery_beat_periodictask": "data.db_migrations.django_celery_beat_periodictask",
     # "sessions": "data.db_migrations.sessions",
@@ -284,3 +290,13 @@ LOGGING = {
 
 # OpenAI for AI quotes
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", None)
+# Any OpenAI-compatible provider can be used by setting LLM_BASE_URL
+# (e.g. https://openrouter.ai/api/v1, https://api.groq.com/openai/v1,
+# http://localhost:11434/v1 for Ollama). Leave unset to use OpenAI's
+# default endpoint.
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", None)
+# Default model for the Drill Instructor (short, persona-voiced comments).
+LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+# Model used for the weekly email AI fact. Slightly higher quality is
+# fine here because it runs once per user per week.
+LLM_EMAIL_MODEL = os.environ.get("LLM_EMAIL_MODEL", "gpt-4o")

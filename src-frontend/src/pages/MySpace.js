@@ -25,7 +25,8 @@ import {
     JoinButton,
     ModifyGoalsButton,
     SettingsButton, StravaButton,
-    SyncStravaButton
+    SyncStravaButton,
+    PersonaButton,
 } from "../forms/basicComponents";
 import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
 import {SectionLoader} from "../utils/loaders";
@@ -35,12 +36,14 @@ import {useLazySyncStravaQuery} from "../utils/reducers/linkSlice";
 import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
 import {feedApi} from "../utils/reducers/feedSlice";
 import {BeatLoader} from "react-spinners";
+import DrillInstructorPersonaModal from "../forms/drillInstructorPersonaModal";
 
 
 function WelcomeBox({user, workouts, setLinkStrava}) {
 
     const [showEditSettingsModal, setShowEditSettingsModal] = useState(false);
     const [showGoalEqualizerModal, setShowGoalEqualizerModal] = useState(false);
+    const [showPersonaModal, setShowPersonaModal] = useState(false);
     const [countTotal, setCountTotal] = useState(0);
     const [countGroups, setCountGroups] = useState({});
 
@@ -94,6 +97,8 @@ function WelcomeBox({user, workouts, setLinkStrava}) {
                                     onClick={() => setShowEditSettingsModal(true)}/>
                     <FairGoalsButton additionalClasses="mx-auto sm:ml-auto sm:mr-0 my-1"
                                      onClick={() => setShowGoalEqualizerModal(true)}/>
+                    <PersonaButton additionalClasses="mx-auto sm:ml-auto sm:mr-0 my-1"
+                                   onClick={() => setShowPersonaModal(true)}/>
                 </div>
 
                 {(showEditSettingsModal) && (
@@ -101,6 +106,9 @@ function WelcomeBox({user, workouts, setLinkStrava}) {
                 )}
                 {(showGoalEqualizerModal) && (
                     <GoalEqualizerForm user={user} setModalState={setShowGoalEqualizerModal}/>
+                )}
+                {(showPersonaModal) && (
+                    <DrillInstructorPersonaModal setModalState={setShowPersonaModal}/>
                 )}
 
             </div>

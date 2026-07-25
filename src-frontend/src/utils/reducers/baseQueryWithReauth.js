@@ -2,7 +2,13 @@ import {fetchBaseQuery} from '@reduxjs/toolkit/query/react';
 import * as Sentry from '@sentry/react';
 import {throwErrorWithCode} from '../miscellaneous';
 
-console.log('API URL:', process.env.REACT_APP_BACKEND_URL);
+if (process.env.NODE_ENV !== 'production') {
+    console.log('API URL:', process.env.REACT_APP_BACKEND_URL);
+}
+
+// Module-level cache so Sentry's per-error Resource Timing lookup
+// doesn't repeat the O(n) getEntriesByType scan on every 4xx/5xx.
+const requestTimings = new Map();
 
 const baseQuery = fetchBaseQuery({
     baseUrl: (process.env.REACT_APP_BACKEND_URL || '') + '/api/',
@@ -17,13 +23,35 @@ const baseQuery = fetchBaseQuery({
 });
 
 
+// Fields whose values must never leave the browser via Sentry.
+const REDACTED_FIELDS = new Set([
+    'password', 'current_password', 'new_password',
+    'llm_api_key', 'strava_client_secret', 'email_host_password',
+    'matrix_access_token', 'token', 'access_token', 'refresh_token',
+    'p256dh', 'auth',  // push subscription secrets
+]);
+
+
+function _redact(value) {
+    if (Array.isArray(value)) return value.map(_redact);
+    if (value && typeof value === 'object') {
+        const out = {};
+        for (const [k, v] of Object.entries(value)) {
+            out[k] = REDACTED_FIELDS.has(k) ? '[REDACTED]' : _redact(v);
+        }
+        return out;
+    }
+    return value;
+}
+
+
 export function sentryError({result, errorSource, endpointName = undefined, queryArgs = undefined}) {
     Sentry.withScope((scope) => {
-        // Add request query args
-        scope.setContext('Request', {
+        // Add request query args (with sensitive fields redacted).
+        scope.setContext('Request', _redact({
             ...queryArgs,
             endpointName,
-        });
+        }));
 
         // Add error message
         scope.setContext('Error', {
@@ -33,9 +61,15 @@ export function sentryError({result, errorSource, endpointName = undefined, quer
 
         // Add API request specific performance data
         const requestUrl = (process.env.REACT_APP_BACKEND_URL || '') + '/api/' + (queryArgs?.args?.url || '');
-        const resourceTimings = performance.getEntriesByType('resource')
-            .filter(entry => entry.name.includes(requestUrl))
-            .pop();
+        // Walk performance entries once - .getEntriesByType is O(n) per
+        // call so caching on a module-level Map keeps the hot path fast.
+        if (!requestTimings.has(requestUrl)) {
+            const entry = performance.getEntriesByType('resource')
+                .filter((e) => e.name.includes(requestUrl))
+                .pop();
+            if (entry) requestTimings.set(requestUrl, entry);
+        }
+        const resourceTimings = requestTimings.get(requestUrl);
         if (resourceTimings) {
             scope.setContext('Request Timing', {
                 duration: resourceTimings.duration,
