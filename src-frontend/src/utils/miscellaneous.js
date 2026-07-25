@@ -93,8 +93,11 @@ function ErrorBoxSection({errorMsg, additionalClasses = ''}) {
 }
 
 function PageWrapper({additionClasses = '', children}) {
+    // pb-[5rem] reserves space at the bottom so content isn't covered
+    // by the mobile bottom-nav (md:hidden). The safe-area-inset
+    // accounts for iPhone home indicator.
     return (
-        <div className={"min-h-screen bg-gray-100 dark:bg-gray-900 dark:text-white p-2 sm:p-6 " + additionClasses}>
+        <div className={"min-h-screen bg-gray-100 dark:bg-gray-900 dark:text-white p-2 sm:p-6 pb-24 md:pb-6 " + additionClasses}>
             {children}
         </div>
     )

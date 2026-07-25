@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Maskable icon: critical content stays inside the inner ~80% circle so launchers can mask freely. -->
+  <rect width="512" height="512" fill="#0c4a6e"/>
+  <g transform="translate(256 256)">
+    <g fill="none" stroke="#ffffff" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" transform="scale(1.7)">
+      <path d="M-72 0 L-72 0 M72 0 L72 0"/>
+      <path d="M-86 -28 L-86 28"/>
+      <path d="M86 -28 L86 28"/>
+      <path d="M-86 0 L-72 0"/>
+      <path d="M72 0 L86 0"/>
+      <path d="M-72 -15 L72 -15"/>
+      <path d="M-72 15 L72 15"/>
+    </g>
+  </g>
+</svg>

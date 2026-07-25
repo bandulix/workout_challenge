@@ -1,0 +1,104 @@
+"""Web Push sender and per-user push helpers.
+
+We deliberately keep this dependency-light: ``pywebpush`` handles the
+cryptography and VAPID signing; everything else is plain ``logging``.
+"""
+
+import json
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Iterable, Optional
+
+from django.utils import timezone
+
+from .models import PushSubscription
+from .vapid import get_vapid_private_key, get_vapid_public_key, get_vapid_subject
+
+logger = logging.getLogger(__name__)
+
+# Cap fan-out so a user with many devices doesn't stall the Celery worker.
+_PUSH_POOL_SIZE = 8
+
+
+def send_push_to_user(user, *, title: str, body: str, url: str = "/", ttl: int = 60) -> int:
+    """Send a push notification to every active subscription of ``user``.
+
+    Returns the number of notifications successfully delivered.
+    Sends in parallel via a small thread pool so multi-device users
+    don't stall the Celery worker.
+    """
+    payload = json.dumps({"title": title, "body": body, "url": url})
+    subscriptions = list(user.push_subscriptions.all())
+    if not subscriptions:
+        return 0
+
+    delivered = 0
+    with ThreadPoolExecutor(max_workers=min(_PUSH_POOL_SIZE, len(subscriptions))) as pool:
+        future_to_sub = {pool.submit(_send_one_safe, sub, payload, ttl): sub for sub in subscriptions}
+        for fut in as_completed(future_to_sub):
+            ok, error_kind, sub = fut.result()
+            if ok:
+                delivered += 1
+            elif error_kind == "gone":
+                sub.delete()
+            elif error_kind == "permanent":
+                logger.warning("Push to %s permanently failed", sub.id)
+                sub.delete()
+            # transient: log + keep subscription
+    return delivered
+
+
+def send_push_to_users(users: Iterable, *, title: str, body: str, url: str = "/") -> int:
+    total = 0
+    for u in users:
+        total += send_push_to_user(u, title=title, body=body, url=url)
+    return total
+
+
+def has_any_subscription(user) -> bool:
+    return user.push_subscriptions.exists()
+
+
+def _send_one_safe(sub, payload, ttl):
+    try:
+        _send_one(sub, payload, ttl=ttl)
+        return (True, None, sub)
+    except _GoneError:
+        return (False, "gone", sub)
+    except _PermanentPushError:
+        return (False, "permanent", sub)
+    except Exception:  # noqa: BLE001 - transient
+        logger.warning("Push to %s failed transiently", sub.id, exc_info=True)
+        return (False, "transient", sub)
+
+
+def _send_one(subscription: PushSubscription, payload: str, ttl: int = 60) -> None:
+    from pywebpush import webpush, WebPushException
+
+    info = {
+        "endpoint": subscription.endpoint,
+        "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
+    }
+    try:
+        webpush(
+            subscription_info=info,
+            data=payload,
+            vapid_private_key=get_vapid_private_key(),
+            vapid_claims={"sub": get_vapid_subject()},
+            ttl=ttl,
+        )
+    except WebPushException as exc:
+        status = getattr(exc, "response", None) and exc.response.status_code
+        if status in (404, 410):
+            raise _GoneError(str(exc))
+        if status and 400 <= status < 500:
+            raise _PermanentPushError(str(exc))
+        raise
+
+
+class _GoneError(Exception):
+    pass
+
+
+class _PermanentPushError(Exception):
+    pass

@@ -1,7 +1,11 @@
 import datetime
+import logging
+
 from django.apps import apps
 
 from custom_user.point_recalc import trigger_recalc_points
+
+logger = logging.getLogger(__name__)
 
 
 def _calculate_points_raw(goal, workout, user):
@@ -56,6 +60,15 @@ def trigger_workout_change(instance, new, changes):
                     points = _calculate_points_raw(goal=goal, workout=instance, user=instance.user)
                     Points(goal=goal, workout=instance, points_raw=points, points_capped=points).save()
                     RecalcRequest(user=instance.user, goal=goal, start_datetime=start_datetime).save()
+
+        # hand off to the AI Drill Instructor (no-op if no competition
+        # for this workout has it enabled). Imported lazily to avoid a
+        # circular import with apps.get_model at import time.
+        try:
+            from drill_instructor.tasks import post_workout_comment
+            post_workout_comment.delay(instance.pk)
+        except Exception:  # noqa: BLE001 - never block workout saves on instructor plumbing
+            print(f"Drill Instructor: failed to enqueue comment for workout {instance.pk}")
     else:
         # updated existing workout
         # check if relevant field was changed
@@ -77,7 +90,14 @@ def trigger_workout_change(instance, new, changes):
             recalc_points.save()
             RecalcRequest(user=instance.user, goal=recalc_goal, start_datetime=recalc_start_datetime).save()
 
-    print(f"Workout ({instance.pk}) update triggered point cap recalc - {'NEW ENTRY' if new else 'EXISTING CHANGED'}" + ("" if new else f" - {changes}"))
+    # Avoid logging the full changes dict - it contains all fields,
+    # which is more than we need for an audit trail.
+    if new:
+        logger.info("Workout (%s) update triggered point cap recalc - NEW ENTRY", instance.pk)
+    else:
+        changed_fields = list(changes.keys()) if isinstance(changes, dict) else []
+        logger.info("Workout (%s) update triggered point cap recalc - EXISTING CHANGED (%s)",
+                    instance.pk, changed_fields)
 
     trigger_recalc_points()
 
@@ -144,7 +164,7 @@ def trigger_competition_change(instance, new, changes):
             points_to_delete.delete()
             print(f"Competition ({instance.pk}) start_date was shortened from {changes['start_date'][0]} to {changes['start_date'][1]} triggering point cap recalc")
 
-        trigger_recalc_points
+        trigger_recalc_points()
 
     if 'end_date' in changes:
         if changes['end_date'][1] > changes['end_date'][0]:

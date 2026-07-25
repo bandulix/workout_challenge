@@ -32,6 +32,20 @@ services:
       - EMAIL_FROM=competition@yourdomain.com
       - EMAIL_REPLY_TO=support@yourdomain.com
       - OPENAI_API_KEY=<secret_key>
+      # Optional: use any OpenAI-compatible provider by setting LLM_BASE_URL
+      # Examples:
+      #   - https://openrouter.ai/api/v1
+      #   - https://api.groq.com/openai/v1
+      #   - http://localhost:11434/v1          # Ollama
+      # - LLM_BASE_URL=<provider_url>
+      # - LLM_MODEL=<model_name>              # default: gpt-4o-mini (Drill Instructor)
+      # - LLM_EMAIL_MODEL=<model_name>         # default: gpt-4o (weekly email fact)
+      # Optional: pin the VAPID keypair for browser push notifications.
+      # If unset, a keypair is auto-generated on first start and persisted
+      # to DATA_DIR/vapid.json.
+      # - VAPID_PUBLIC_KEY=
+      # - VAPID_PRIVATE_KEY=
+      # - VAPID_SUBJECT=mailto:admin@example.com
     restart: unless-stopped
     depends_on:
       database:

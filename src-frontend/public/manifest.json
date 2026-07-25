@@ -1,7 +1,26 @@
 {
-  "short_name": "Workout Challenge",
-  "name": "Compete with friends and coworkers across devices using the metrics you want respecting your privacy.",
+  "short_name": "Workout",
+  "name": "Workout Challenge",
+  "description": "Compete with friends and coworkers across devices using the metrics you want, respecting your privacy.",
   "icons": [
+    {
+      "src": "icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "maskable-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
     {
       "src": "favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",
@@ -10,11 +29,14 @@
     {
       "src": "apple-touch-icon.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "180x180"
     }
   ],
   "start_url": ".",
+  "scope": ".",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "orientation": "portrait",
+  "theme_color": "#0c4a6e",
+  "background_color": "#ffffff",
+  "categories": ["health", "fitness", "lifestyle"]
 }

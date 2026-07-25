@@ -136,7 +136,101 @@ docker compose -f /path/to/docker-compose.yml up
 | EMAIL_USE_TLS         | False                               | SMTP server - if TLS ise used for authentication.                                                                                                                                                                                                                                                               | 
 | EMAIL_FROM            | None                                | Sender email address of automated emails.                                                                                                                                                                                                                                                                       | 
 | EMAIL_REPLY_TO        | None                                | Reply-To email address of automated emails.                                                                                                                                                                                                                                                                     | 
-| OPENAI_API_KEY        | None                                | OpenAI API key to generate workout / health / nutritional facts for the weekly update email.                                                                                                                                                                                                                    | 
+| OPENAI_API_KEY        | None                                | API key for the LLM provider used by the weekly email fact and the AI Drill Instructor. The OpenAI SDK is used, so any OpenAI-compatible endpoint works.                                                                                                                                                          |
+| LLM_BASE_URL          | None (OpenAI default)               | Override the API endpoint - set to e.g. `https://openrouter.ai/api/v1`, `https://api.groq.com/openai/v1`, or `http://localhost:11434/v1` (Ollama) to use a non-OpenAI provider with the same SDK.                                                                                                          |
+| LLM_MODEL             | "gpt-4o-mini"                       | Model used by the AI Drill Instructor. Pick any chat-completions model the configured provider serves.                                                                                                                                                                                                          |
+| LLM_EMAIL_MODEL       | "gpt-4o"                            | Model used for the weekly email AI fact.                                                                                                                                                                                                                                                                       | 
+| VAPID_PUBLIC_KEY      | (auto-generated)                    | VAPID public key for browser push notifications. If unset, a keypair is auto-generated on first start and persisted to `DATA_DIR/vapid.json`.                                                                                                                                                                    |
+| VAPID_PRIVATE_KEY     | (auto-generated)                    | VAPID private key. Pin it via this env var if you don't want the keypair to drift on container rebuilds.                                                                                                                                                                                                       |
+| VAPID_SUBJECT         | "mailto:admin@example.com"          | `mailto:` (or `https://`) contact used in the VAPID claims.                                                                                                                                                                                                                                                    | 
+| Matrix (Drill Instructor) | n/a                              | No env vars are required for the AI Drill Instructor. The competition owner pastes a Matrix access token, homeserver URL and room ID in the UI; messages are sent over the Matrix client-server API using plain HTTPS. If `OPENAI_API_KEY` is set, the instructor uses the configured persona to generate a short comment per workout. | 
+
+## AI Drill Instructor
+Each competition can optionally activate an **AI Drill Instructor** that posts a comment to a Matrix room every time a participant logs an activity.
+
+### How to enable it (competition owner)
+1. In My Space, click **Manage Personas** to review or edit the AI personas. The defaults (Drill Sergeant, Cheerleader, British Butler, Zen Master) are global and available to every competition.
+2. On the competition page, click the new **AI Drill Instructor** button (owner only).
+3. Fill in:
+   - **Persona** — pick one of the global personas.
+   - **Matrix Homeserver URL** — e.g. `https://matrix.org` or your self-hosted Synapse.
+   - **Matrix Access Token** — Element → Settings → Help → Access Token.
+   - **Matrix Room ID** — looks like `!abcdef123456:matrix.org`. The bot must already be a member.
+   - **Display Name Prefix** (optional) — prepended like `[Drill Sergeant]` so people know it's the bot.
+4. Toggle **Activated** and save. Use the **Send a test message** field to verify the configuration before relying on it.
+
+### What it posts
+- For each new workout in the competition, the instructor generates a short, persona-voiced comment and posts it to the configured Matrix room.
+- An audit log of every message (successes and failures) is kept in Django admin and via `/api/drill-instructor/message/`.
+- All access tokens are write-only — the API only ever returns a masked preview.
+
+### Removing it
+Disable the toggle, or click **Remove Drill Instructor**. The Matrix messages are not deleted.
+
+## Admin & Site Settings
+The first user to register is automatically promoted to **staff + superuser** so they can manage the site. Sign in as that user and you'll see an **Admin** link in the top navigation (with a shield icon).
+
+The admin page (`/admin/site-settings`) - and the Django admin at `/admin/site_settings/sitesettings/1/change/` - edits three sections of runtime configuration. Resolution order is **database → environment variable** for every field, so changing values in the admin takes effect immediately without restarting workers.
+
+**LLM / AI Provider** (used by the AI Drill Instructor and weekly email)
+- API Key, Base URL, Drill Instructor Model (`gpt-4o-mini`), Weekly Email Model (`gpt-4o`).
+
+**Strava** (used for OAuth link and daily activity sync)
+- Client ID, Client Secret, Rate Limit / 15min (default 100), Rate Limit / Day (default 1000).
+
+**SMTP / Outbound Email** (used for welcome, leaderboard, weekly, password reset emails)
+- Host, Port, Username, Password, Use TLS, Use SSL, From Address, Reply-To (comma-separated).
+
+All secrets (`llm_api_key`, `strava_client_secret`, `email_host_password`) are write-only on the API - only a masked preview is returned.
+
+To promote another user to admin:
+```bash
+docker compose exec workoutchallenge python manage.py promotetostaff user@example.com
+```
+
+## Mobile / PWA & Push Notifications
+The app ships as a Progressive Web App:
+- **Installable** - on iOS Safari tap the Share button → "Add to Home Screen"; on Android Chrome you'll get an automatic install banner.
+- **Offline shell** - a service worker (`public/sw.js`) caches the app shell, last-viewed pages and icons so the app opens even without a network. Custom `offline.html` shows a friendly fallback.
+- **Standalone display** - no browser chrome when launched from the home screen.
+- **Safe-area handling** - iPhone notch / Dynamic Island / home indicator respected on the bottom nav and modals via `env(safe-area-inset-*)`.
+- **Mobile bottom nav** - a thumb-friendly tab bar (Home, Compete, **Log**, Me/Admin) replaces the cramped top nav on small screens. The **+ Log** button is a floating action button so adding a workout is one tap.
+- **Touch targets** - all icon-only buttons hit the iOS / Android minimum of 44×44 px.
+- **Mobile-keyboard hints** - numeric fields get `inputMode="decimal"` / `"numeric"` so phones show the right keyboard.
+- **Lazy-loaded pages** - `MySpace`, `Competition` and `AdminSettings` are split into separate chunks; the initial bundle stays small on first paint.
+
+### Browser push notifications
+You can opt in to browser/system notifications so the AI Drill Instructor pings your device whenever it comments on a workout in a competition you've enabled push for. This is independent of the Matrix integration - both can run side by side.
+
+Setup:
+1. **Install the app** to your home screen (required on iOS Safari; optional elsewhere).
+2. Open the app → click **Admin → Site Settings → Browser Push Notifications → Enable**.
+3. For each competition where you want push, click **AI Drill Instructor → "Browser push for participants"** on the competition page.
+
+The server uses **VAPID** to sign notifications:
+- The keypair is generated automatically on first start and persisted at `DATA_DIR/vapid.json`. **Don't lose this file** - changing it invalidates every existing subscription.
+- For production, generate a stable keypair once with `py_vapid` and pin it via `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` env vars (`VAPID_SUBJECT` is the `mailto:` contact, default `mailto:admin@example.com`).
+
+To update the service worker version (forces all clients to re-fetch the shell after a release):
+```bash
+# Edit public/sw.js and bump CACHE_VERSION, then rebuild.
+docker compose build
+```
+The app ships as a Progressive Web App:
+- **Installable** - on iOS Safari tap the Share button → "Add to Home Screen"; on Android Chrome you'll get an automatic install banner.
+- **Offline shell** - a service worker (`public/sw.js`) caches the app shell, last-viewed pages and icons so the app opens even without a network. Custom `offline.html` shows a friendly fallback.
+- **Standalone display** - no browser chrome when launched from the home screen.
+- **Safe-area handling** - iPhone notch / Dynamic Island / home indicator respected on the bottom nav and modals via `env(safe-area-inset-*)`.
+- **Mobile bottom nav** - a thumb-friendly tab bar (Home, Compete, **Log**, Me/Admin) replaces the cramped top nav on small screens. The **+ Log** button is a floating action button so adding a workout is one tap.
+- **Touch targets** - all icon-only buttons hit the iOS / Android minimum of 44×44 px.
+- **Mobile-keyboard hints** - numeric fields get `inputMode="decimal"` / `"numeric"` so phones show the right keyboard.
+- **Lazy-loaded pages** - `MySpace`, `Competition` and `AdminSettings` are split into separate chunks; the initial bundle stays small on first paint.
+
+To update the service worker version (forces all clients to re-fetch the shell after a release):
+```bash
+# Edit public/sw.js and bump CACHE_VERSION, then rebuild.
+docker compose build
+```
 
 ### How to get the Strava API Client id & secret
 1. Login to your Strava account [strava.com/login](https://www.strava.com/login)

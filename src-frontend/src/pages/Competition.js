@@ -33,7 +33,8 @@ import {
     ModifyGoalsButton,
     RefreshButton,
     SettingsButton, ShareButton,
-    StravaButton
+    StravaButton,
+    DrillInstructorButton,
 } from "../forms/basicComponents";
 import {BoxSection, ErrorBoxSection, PageWrapper, useDarkMode} from "../utils/miscellaneous";
 import {workoutTypes} from "../forms/workoutForm";
@@ -42,6 +43,7 @@ import {useDispatch} from "react-redux";
 import {useLeaveCompetitionMutation} from "../utils/reducers/joinSlice";
 import TransferOwnershipForm from "../forms/transferOwnershipForm";
 import {teamsApi} from "../utils/reducers/teamsSlice";
+import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
 
 ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Filler, Tooltip, Legend, BarElement, ChartDataLabels);
 
@@ -51,6 +53,7 @@ function CompetitionHead({competition, feed, isOwner}) {
     const [showEditCompetitionModal, setShowEditCompetitionModal] = useState(false);
     const [showInviteCompetitionModal, setShowInviteCompetitionModal] = useState(false);
     const [showTransferCompetitionModal, setShowTransferCompetitionModal] = useState(false);
+    const [showDrillInstructorModal, setShowDrillInstructorModal] = useState(false);
     const [countTotal, setCountTotal] = useState(0);
     const [countGroups, setCountGroups] = useState({});
 
@@ -117,6 +120,9 @@ function CompetitionHead({competition, feed, isOwner}) {
                         (isOwner) ? <SettingsButton  additionalClasses="mx-auto sm:ml-auto sm:mr-0 my-1" onClick={() => setShowEditCompetitionModal(competition.id)}/> :
                             <LeaveButton additionalClasses="mx-auto sm:ml-auto sm:mr-0 my-1" onClick={() => triggerLeaveCompetition()} isLoading={leaveIsLoading} />
                     }
+                    {isOwner && (
+                        <DrillInstructorButton additionalClasses="mx-auto sm:ml-auto sm:mr-0 my-1" onClick={() => setShowDrillInstructorModal(true)}/>
+                    )}
                     <ShareButton  additionalClasses="mx-auto sm:ml-auto sm:mr-0 my-1" onClick={() => setShowInviteCompetitionModal(true)} />
                 </div>
             </div>
@@ -124,6 +130,7 @@ function CompetitionHead({competition, feed, isOwner}) {
             {(showEditCompetitionModal) && <CompetitionForm setModalState={setShowEditCompetitionModal} setShowTransferCompetitionModal={setShowTransferCompetitionModal} competition={competition}/>}
             {(showInviteCompetitionModal) && <CompetitionInviteModal setModalState={setShowInviteCompetitionModal} competition={competition}/>}
             {(showTransferCompetitionModal) && <TransferOwnershipForm setModalState={setShowTransferCompetitionModal} competition={competition}/>}
+            {(showDrillInstructorModal) && <DrillInstructorConfigForm competition={competition} setModalState={setShowDrillInstructorModal}/>}
 
         </BoxSection>
     )

@@ -14,6 +14,9 @@ import {statsApi} from "./reducers/statsSlice";
 import {feedApi} from "./reducers/feedSlice";
 import {joinApi} from "./reducers/joinSlice";
 import {linkApi} from "./reducers/linkSlice";
+import {drillInstructorApi} from "./reducers/drillInstructorSlice";
+import {siteSettingsApi} from "./reducers/siteSettingsSlice";
+import {pushApi} from "./reducers/pushSlice";
 
 const appReducer = combineReducers({
     counter: counterReducer,
@@ -29,6 +32,9 @@ const appReducer = combineReducers({
     [feedApi.reducerPath]: feedApi.reducer,
     [joinApi.reducerPath]: joinApi.reducer,
     [linkApi.reducerPath]: linkApi.reducer,
+    [drillInstructorApi.reducerPath]: drillInstructorApi.reducer,
+    [siteSettingsApi.reducerPath]: siteSettingsApi.reducer,
+    [pushApi.reducerPath]: pushApi.reducer,
 });
 
 // root reducer that handles RESET_STORE
@@ -54,7 +60,10 @@ const store = configureStore({
             .concat(statsApi.middleware)
             .concat(feedApi.middleware)
             .concat(joinApi.middleware)
-            .concat(linkApi.middleware),
+            .concat(linkApi.middleware)
+            .concat(drillInstructorApi.middleware)
+            .concat(siteSettingsApi.middleware)
+            .concat(pushApi.middleware),
     preloadedState,
 });
 

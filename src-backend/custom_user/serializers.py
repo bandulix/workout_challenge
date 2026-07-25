@@ -14,8 +14,8 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance']
-        read_only_fields = ['is_verified', 'strava_athlete_id', 'strava_last_synced_at']
+        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
+        read_only_fields = ['is_verified', 'strava_athlete_id', 'strava_last_synced_at', 'is_staff', 'is_superuser']
         extra_kwargs = {
             'password': {'write_only': True},
         }
@@ -46,6 +46,9 @@ class CustomUserSerializer(serializers.ModelSerializer):
             rep.pop('gender', None)
             rep.pop('password', None)
             rep.pop('strava_last_synced_at', None)
+            # Don't leak staff status of other users.
+            rep.pop('is_staff', None)
+            rep.pop('is_superuser', None)
 
             if not rep['strava_allow_follow']:
                 rep.pop('strava_athlete_id', None)
@@ -75,6 +78,8 @@ class PasswordResetSerializer(serializers.Serializer):
 
     def save(self, request):
         email = self.validated_data['email']
+        from .emails.multipurpose import email_settings_context
+
         users = CustomUser.objects.filter(email=email)
         for user in users:
             uid = urlsafe_base64_encode(force_bytes(user.pk))
@@ -82,17 +87,17 @@ class PasswordResetSerializer(serializers.Serializer):
             reset_url = f"{settings.MAIN_HOST}/password/reset/{uid}/{token}/"
 
             email_subject = "Workout Challenge - Reset Your Password"
-            email_body = render_to_string(
-                "email_password_reset.html",
-                {
-                    'first_name': user.first_name,
-                    'MAIN_HOST': settings.MAIN_HOST,
-                    'RESET_URL': reset_url,
-                    'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO,
-                }
-            )
-
-            send_email(subject=email_subject, body=email_body, to_email=user.email)
+            with email_settings_context():
+                email_body = render_to_string(
+                    "email_password_reset.html",
+                    {
+                        'first_name': user.first_name,
+                        'MAIN_HOST': settings.MAIN_HOST,
+                        'RESET_URL': reset_url,
+                        'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO,
+                    }
+                )
+                send_email(subject=email_subject, body=email_body, to_email=user.email)
 
 
 

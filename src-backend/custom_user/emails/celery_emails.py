@@ -8,7 +8,7 @@ from workout_challenge.celery import app
 from django.db.models import Sum, Count, Q
 from django.db.models.functions import TruncDate, TruncDay
 
-from .multipurpose import send_email
+from .multipurpose import send_email, email_settings_context
 from competition.stats import get_competition_stats
 
 
@@ -20,21 +20,22 @@ def welcome_email(user_pk):
 
     email_subject = 'Welcome to the Workout Challenge!'
 
-    email_body = render_to_string(
-        "email_welcome.html",
-        {
-            'first_name': user_obj.first_name,
-            'MAIN_HOST': settings.MAIN_HOST,
-            'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
-            'link_strava_note': user_obj.strava_refresh_token is None or user_obj.strava_refresh_token == '',
-        }
-    )
+    with email_settings_context():
+        email_body = render_to_string(
+            "email_welcome.html",
+            {
+                'first_name': user_obj.first_name,
+                'MAIN_HOST': settings.MAIN_HOST,
+                'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
+                'link_strava_note': user_obj.strava_refresh_token is None or user_obj.strava_refresh_token == '',
+            }
+        )
 
-    if settings.DEBUG:
-        with open('tmp_email.html', 'w') as file:
-            file.write(email_body)
+        if settings.DEBUG:
+            with open('tmp_email.html', 'w') as file:
+                file.write(email_body)
 
-    send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
+        send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
 
     return {'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email}
 
@@ -67,22 +68,23 @@ def log_workouts_email(user_pk):
 
     email_subject = 'Workout Challenge - Log Your Workouts!'
 
-    email_body = render_to_string(
-        "email_log_workouts.html",
-        {
-            'first_name': user_obj.first_name,
-            'last_workouts': workout_obj_lst,
-            'link_strava_note': user_obj.strava_refresh_token is None or user_obj.strava_refresh_token == '',
-            'MAIN_HOST': settings.MAIN_HOST,
-            'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
-        }
-    )
+    with email_settings_context():
+        email_body = render_to_string(
+            "email_log_workouts.html",
+            {
+                'first_name': user_obj.first_name,
+                'last_workouts': workout_obj_lst,
+                'link_strava_note': user_obj.strava_refresh_token is None or user_obj.strava_refresh_token == '',
+                'MAIN_HOST': settings.MAIN_HOST,
+                'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
+            }
+        )
 
-    if settings.DEBUG:
-        with open('tmp_email.html', 'w') as file:
-            file.write(email_body)
+        if settings.DEBUG:
+            with open('tmp_email.html', 'w') as file:
+                file.write(email_body)
 
-    send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
+        send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
 
     return {'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email}
 
@@ -117,23 +119,24 @@ def competition_start_email(competition_pk, user_pk):
 
     email_subject = 'Workout Challenge - READY, SET, GO!'
 
-    email_body = render_to_string(
-        "email_competition_start.html",
-        {
-            'first_name': user_obj.first_name,
-            'MAIN_HOST': settings.MAIN_HOST,
-            'competition': competition_obj,
-            'goals': goal_objs,
-            'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
-            'goal_equalizer_note': user_obj.scaling_kcal == 1 and user_obj.scaling_distance == 1,
-        }
-    )
+    with email_settings_context():
+        email_body = render_to_string(
+            "email_competition_start.html",
+            {
+                'first_name': user_obj.first_name,
+                'MAIN_HOST': settings.MAIN_HOST,
+                'competition': competition_obj,
+                'goals': goal_objs,
+                'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
+                'goal_equalizer_note': user_obj.scaling_kcal == 1 and user_obj.scaling_distance == 1,
+            }
+        )
 
-    if settings.DEBUG:
-        with open('tmp_email.html', 'w') as file:
-            file.write(email_body)
+        if settings.DEBUG:
+            with open('tmp_email.html', 'w') as file:
+                file.write(email_body)
 
-    send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
+        send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
 
     return ({'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email})
 
@@ -177,23 +180,24 @@ def leaderboard_email(user_pk):
 
     email_subject = 'Workout Challenge - Your Spot on the Leaderboard!'
 
-    email_body = render_to_string(
-        "email_leaderboard.html",
-        {
-            'first_name': user_obj.first_name,
-            'MAIN_HOST': settings.MAIN_HOST,
-            'competitions_all': competition_all_data,
-            'competitions_7d': competition_7d_data,
-            'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
-            'goal_equalizer_note': user_obj.scaling_kcal == 1 and user_obj.scaling_distance == 1,
-        }
-    )
+    with email_settings_context():
+        email_body = render_to_string(
+            "email_leaderboard.html",
+            {
+                'first_name': user_obj.first_name,
+                'MAIN_HOST': settings.MAIN_HOST,
+                'competitions_all': competition_all_data,
+                'competitions_7d': competition_7d_data,
+                'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
+                'goal_equalizer_note': user_obj.scaling_kcal == 1 and user_obj.scaling_distance == 1,
+            }
+        )
 
-    if settings.DEBUG:
-        with open('tmp_email.html', 'w') as file:
-            file.write(email_body)
+        if settings.DEBUG:
+            with open('tmp_email.html', 'w') as file:
+                file.write(email_body)
 
-    send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
+        send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
 
     return ({'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email})
 
@@ -216,17 +220,27 @@ def send_all_weekly_emails():
 
 def openai_quote():
 
-    if settings.OPENAI_API_KEY is None:
+    from site_settings.models import resolve_llm_settings
+    from drill_instructor.llm_client import _safe_base_url
+
+    config = resolve_llm_settings()
+    api_key = config["api_key"]
+    if api_key is None:
         return None
+
+    base_url = _safe_base_url(config["base_url"])
 
     todays_ai_quote = cache.get('todays_ai_quote', None)
 
     if todays_ai_quote is None:
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        client_kwargs = {"api_key": api_key}
+        if base_url:
+            client_kwargs["base_url"] = base_url
+        client = OpenAI(**client_kwargs)
         options = ["fitness", "health", "nutritional", "workout"]
         selection = random.choice(options)
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=config["email_model"],
             messages=[
                 {"role": "user", "content": f"Tell me a one sentence {selection} fact."},
             ],
@@ -310,27 +324,28 @@ def weekly_email(user_pk):
     recorded_total_distance = 0 if workout_7day_stats["total_distance"] is None else workout_7day_stats["total_distance"]
     recorded_distinct_days = 0 if workout_7day_stats["distinct_days"] is None else workout_7day_stats["distinct_days"]
 
-    email_body = render_to_string(
-        "email_weekly.html",
-        {
-            'first_name': user_obj.first_name,
-            'MAIN_HOST': settings.MAIN_HOST,
-            'calendar': calendar,
-            'week_streak': week_streak,
-            'goals': {
-                'active_days': None if user_obj.goal_active_days is None or user_obj.goal_active_days == '' else {'recorded': recorded_distinct_days,'target': user_obj.goal_active_days, 'percent': min(1, recorded_distinct_days / user_obj.goal_active_days) * 100, 'percent_vml': int(min(1, recorded_distinct_days / user_obj.goal_active_days) * 100 * 2.5)},
-                'distance': None if user_obj.goal_distance is None or user_obj.goal_distance == '' else {'recorded': recorded_total_distance,'target': user_obj.goal_distance, 'percent': min(1, recorded_total_distance / user_obj.goal_distance) * 100, 'percent_vml': int(min(1, recorded_total_distance / user_obj.goal_distance) * 100 * 2.5)},
-                'minutes': None if user_obj.goal_workout_minutes is None or user_obj.goal_workout_minutes == '' else {'recorded': recorded_total_duration,'target': user_obj.goal_workout_minutes, 'percent': min(1, recorded_total_duration / user_obj.goal_workout_minutes) * 100, 'percent_vml': int(min(1, recorded_total_duration / user_obj.goal_workout_minutes) * 100 * 2.5)},
-            },
-            'openai_quote': todays_ai_quote,
-            'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
-        }
-    )
+    with email_settings_context():
+        email_body = render_to_string(
+            "email_weekly.html",
+            {
+                'first_name': user_obj.first_name,
+                'MAIN_HOST': settings.MAIN_HOST,
+                'calendar': calendar,
+                'week_streak': week_streak,
+                'goals': {
+                    'active_days': None if user_obj.goal_active_days is None or user_obj.goal_active_days == '' else {'recorded': recorded_distinct_days,'target': user_obj.goal_active_days, 'percent': min(1, recorded_distinct_days / user_obj.goal_active_days) * 100, 'percent_vml': int(min(1, recorded_distinct_days / user_obj.goal_active_days) * 100 * 2.5)},
+                    'distance': None if user_obj.goal_distance is None or user_obj.goal_distance == '' else {'recorded': recorded_total_distance,'target': user_obj.goal_distance, 'percent': min(1, recorded_total_distance / user_obj.goal_distance) * 100, 'percent_vml': int(min(1, recorded_total_distance / user_obj.goal_distance) * 100 * 2.5)},
+                    'minutes': None if user_obj.goal_workout_minutes is None or user_obj.goal_workout_minutes == '' else {'recorded': recorded_total_duration,'target': user_obj.goal_workout_minutes, 'percent': min(1, recorded_total_duration / user_obj.goal_workout_minutes) * 100, 'percent_vml': int(min(1, recorded_total_duration / user_obj.goal_workout_minutes) * 100 * 2.5)},
+                },
+                'openai_quote': todays_ai_quote,
+                'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
+            }
+        )
 
-    if settings.DEBUG:
-        with open('tmp_email.html', 'w') as file:
-            file.write(email_body)
+        if settings.DEBUG:
+            with open('tmp_email.html', 'w') as file:
+                file.write(email_body)
 
-    send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
+        send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
 
     return {'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email}

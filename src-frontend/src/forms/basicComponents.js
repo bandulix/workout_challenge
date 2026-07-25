@@ -15,6 +15,8 @@ import {
     DoorOpen,
     Scale,
     UserRoundPen,
+    Megaphone,
+    Bot,
 } from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import { isMobile } from "react-device-detect";
@@ -45,7 +47,7 @@ export function Modal({setShowModal, title = null, landscape = false, isLoading 
             <div className="modal-background min-h-screen flex items-center justify-center">
                 <div
                     className={"relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 " + ((landscape) ? "max-w-4xl" : "max-w-2xl") +
-                        " w-full space-y-4 max-sm:w-full max-sm:min-h-screen max-sm:rounded-none max-sm:p-4 max-sm:m-0 max-sm:shadow-none"}
+                        " w-full space-y-4 max-sm:w-full max-sm:min-h-screen max-sm:rounded-none max-sm:p-4 max-sm:m-0 max-sm:shadow-none max-sm:pb-[max(2rem,env(safe-area-inset-bottom))]"}
                 >
                     <div className="flex justify-between items-center mb-4">
                         <h2 className="text-2xl font-semibold">{title}</h2>
@@ -95,6 +97,7 @@ export function FormInput({
                               width = "w-full",
                               highlight = false,
                               errorMsg = null,
+                              inputMode = null,
                           }) {
 
 
@@ -200,6 +203,8 @@ export function FormInput({
                                 autoFocus={!isMobile && autoFocus}
                                 autoComplete={autoComplete}
                                 pattern={pattern}
+                                inputMode={inputMode || (type === "number" ? "decimal" : type === "email" ? "email" : undefined)}
+                                enterKeyHint={type === "number" ? "next" : type === "email" ? "next" : "done"}
                                 value={(value === null) ? '' : value}
                                 list={name + "-suggestions"}
                                 onChange={(e) => setValue(e.target.value)}
@@ -313,9 +318,12 @@ function GenericButton({onClick, icon, label, highlighted, larger, IconObject, i
         return () => clearInterval(interval);
     }, [isLoading]);
 
+    // Icon-only buttons get a min 44x44 tap target on touch devices.
+    const tapTargetClass = !label ? "min-h-[44px] min-w-[44px]" : "";
+
     return (
         <button
-            className={"flex items-center gap-2 transition hover:shadow " + (larger ? (label ? " px-5 py-2.5 font-semibold rounded-full " : " px-3 py-3 rounded-2xl ") : (label ? " px-4 py-2 rounded-full " : " p-2 rounded-2xl ")) + (isLoading ? " bg-white hover:bg-white shadow-none border border-gray-200 dark:bg-gray-800 dark:hover:bg-gray-800 " : (highlighted ? " bg-sky-800 text-white  hover:bg-sky-700 " : " bg-gray-100 hover:bg-gray-300 dark:bg-gray-900 dark:hover:bg-gray-700 ")) + additionalClasses}
+            className={"flex items-center gap-2 transition hover:shadow " + tapTargetClass + " " + (larger ? (label ? " px-5 py-2.5 font-semibold rounded-full " : " px-3 py-3 rounded-2xl ") : (label ? " px-4 py-2 rounded-full " : " p-2 rounded-2xl ")) + (isLoading ? " bg-white hover:bg-white shadow-none border border-gray-200 dark:bg-gray-800 dark:hover:bg-gray-800 " : (highlighted ? " bg-sky-800 text-white  hover:bg-sky-700 " : " bg-gray-100 hover:bg-gray-300 dark:bg-gray-900 dark:hover:bg-gray-700 ")) + additionalClasses}
             onClick={onClick}
             disabled={isLoading}
         >
@@ -510,16 +518,42 @@ export function RefreshButton({
 }
 
 export function SyncStravaButton({
-                                     onClick,
-                                     icon = true,
-                                     label = "Re-Sync with Strava",
-                                     highlighted = false,
-                                     larger = false,
-                                     isLoading = false,
-                                     additionalClasses = "",
-                                 }) {
+                                   onClick,
+                                   icon = true,
+                                   label = "Re-Sync with Strava",
+                                   highlighted = false,
+                                   larger = false,
+                                   isLoading = false,
+                                   additionalClasses = "",
+                               }) {
     return <GenericButton onClick={onClick} icon={icon} label={label} highlighted={highlighted} larger={larger}
                           IconObject={RefreshCw} isLoading={isLoading} additionalClasses={additionalClasses}/>
+}
+
+export function DrillInstructorButton({
+                                         onClick,
+                                         icon = true,
+                                         label = "AI Drill Instructor",
+                                         highlighted = false,
+                                         larger = false,
+                                         isLoading = false,
+                                         additionalClasses = "",
+                                     }) {
+    return <GenericButton onClick={onClick} icon={icon} label={label} highlighted={highlighted} larger={larger}
+                          IconObject={Megaphone} isLoading={isLoading} additionalClasses={additionalClasses}/>
+}
+
+export function PersonaButton({
+                                  onClick,
+                                  icon = true,
+                                  label = "Manage Personas",
+                                  highlighted = false,
+                                  larger = false,
+                                  isLoading = false,
+                                  additionalClasses = "",
+                              }) {
+    return <GenericButton onClick={onClick} icon={icon} label={label} highlighted={highlighted} larger={larger}
+                          IconObject={Bot} isLoading={isLoading} additionalClasses={additionalClasses}/>
 }
 
 export function StravaButton({onClick, additionalClasses = "", label = "Strava"}) {

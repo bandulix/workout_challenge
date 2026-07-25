@@ -1,6 +1,5 @@
 # myapp/monitor.py
 from datetime import datetime, timezone
-from django.conf import settings
 
 
 class RateLimitExceeded(Exception):
@@ -8,14 +7,23 @@ class RateLimitExceeded(Exception):
     pass
 
 class APIRequestMonitor:
-    """ API request rate limiter"""
-    def __init__(self, limit_15min: int, limit_day: int):
-        self.limit_15min = limit_15min
-        self.limit_day = limit_day
+    """ API request rate limiter.
+
+    Rate limits are read fresh on each check from the SiteSettings DB row
+    (or env-var fallback), so admin changes take effect without restart.
+    """
+    def __init__(self):
+        # Initial values populated lazily on first use.
         self.current_15min_slot = self._get_15min_slot()
         self.current_day = self._get_day()
         self.count_15min = 0
         self.count_day = 0
+
+    def _limits(self):
+        # Lazy import to avoid circular-import at startup.
+        from site_settings.models import resolve_strava_settings
+        cfg = resolve_strava_settings()
+        return cfg["limit_15min"], cfg["limit_day"]
 
     def _get_15min_slot(self):
         now = datetime.now(timezone.utc)
@@ -37,18 +45,19 @@ class APIRequestMonitor:
             self.count_day = 0
 
     def log_request(self, response) -> bool:
+        limit_15min, limit_day = self._limits()
         self._maybe_reset_counters()
         self.count_day += 1
 
         if response.status_code == 429:
-            self.count_15min = self.limit_15min
+            self.count_15min = limit_15min
             raise RateLimitExceeded("API rate limit exceeded")
 
-        if self.count_15min >= self.limit_15min or self.count_day >= self.limit_day:
+        if self.count_15min >= limit_15min or self.count_day >= limit_day:
             raise RateLimitExceeded("API rate limit probably exceeded")
 
         self.count_15min += 1
-        print(f'Strava API Request (15min: {self.count_15min} / {self.limit_15min}, day: {self.count_day} / {self.limit_day})')
+        print(f'Strava API Request (15min: {self.count_15min} / {limit_15min}, day: {self.count_day} / {limit_day})')
         return True
 
     def count_requests(self):
@@ -59,13 +68,15 @@ class APIRequestMonitor:
         }
 
     def ok_workout_requests(self):
+        limit_15min, limit_day = self._limits()
         stats = self.count_requests()
-        return ((stats["requests_today"] <= self.limit_day * 0.8) & (stats["requests_15min"] <= self.limit_15min * 0.66))
+        return ((stats["requests_today"] <= limit_day * 0.8) & (stats["requests_15min"] <= limit_15min * 0.66))
 
     def ok_linkage_requests(self):
+        limit_15min, limit_day = self._limits()
         stats = self.count_requests()
-        return ((stats["requests_today"] <= self.limit_day) & (stats["requests_15min"] <= self.limit_15min))
+        return ((stats["requests_today"] <= limit_day) & (stats["requests_15min"] <= limit_15min))
 
 
 # Singleton instance
-strava_api_monitor = APIRequestMonitor(limit_15min=settings.STRAVA_LIMIT_15MIN, limit_day=settings.STRAVA_LIMIT_DAY)
+strava_api_monitor = APIRequestMonitor()

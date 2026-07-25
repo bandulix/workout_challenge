@@ -24,6 +24,18 @@ from rest_framework.routers import DefaultRouter
 from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView
 from workouts.views import WorkoutViewSet
 from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, SyncStravaView, PasswordResetView, PasswordResetConfirmView
+from drill_instructor.views import (
+    DrillInstructorPersonaViewSet,
+    DrillInstructorConfigViewSet,
+    DrillInstructorMessageViewSet,
+    DrillInstructorTestMessageView,
+)
+from site_settings.views import SiteSettingsView
+from push_notifications.views import (
+    PushSubscribeView,
+    PushUnsubscribeView,
+    PushStatusView,
+)
 
 router = DefaultRouter()
 router.register(r'competition', CompetitionViewSet, basename='competition')
@@ -32,6 +44,9 @@ router.register(r'goal', ActivityGoalViewSet, basename='goal')
 router.register(r'workout', WorkoutViewSet, basename='workout')
 router.register(r'point', PointsViewSet, basename='points')
 router.register(r'user', CustomUserViewSet, basename='cutomuser')
+router.register(r'drill-instructor/persona', DrillInstructorPersonaViewSet, basename='drill-persona')
+router.register(r'drill-instructor/config', DrillInstructorConfigViewSet, basename='drill-config')
+router.register(r'drill-instructor/message', DrillInstructorMessageViewSet, basename='drill-message')
 
 urlpatterns = [
     path('api/', include([
@@ -46,6 +61,11 @@ urlpatterns = [
         path('celery/tasks/', CeleryQueryView.as_view(), name='celery-task-list'),
         path('celery/tasks/<str:task_id>/', CeleryQueryView.as_view(), name='celery-task-status'),
         path('celery/', CeleryQueryView.as_view(), name='celery-task-run'),
+        path('drill-instructor/config/<int:pk>/test/', DrillInstructorTestMessageView.as_view(), name='drill-config-test'),
+        path('site-settings/', SiteSettingsView.as_view(), name='site-settings'),
+        path('push/status/', PushStatusView.as_view(), name='push-status'),
+        path('push/subscribe/', PushSubscribeView.as_view(), name='push-subscribe'),
+        path('push/unsubscribe/', PushUnsubscribeView.as_view(), name='push-unsubscribe'),
         path('token/', TokenObtainPairView.as_view(), name='token-initial'),
         path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
         path('password-reset/request/', PasswordResetView.as_view(), name='password-reset'),

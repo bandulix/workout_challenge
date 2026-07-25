@@ -2,7 +2,7 @@ import requests
 import qrcode, datetime
 from decimal import Decimal
 
-from django.db import models
+from django.db import models, transaction
 from django.utils.translation import gettext_lazy as _
 
 from django.contrib.auth.base_user import BaseUserManager
@@ -144,6 +144,24 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
                 self.username = f'{self.first_name} {".".join([i[0] for i in self.last_name.replace("-"," ").split(" ") if len(i) >= 1])}.'
 
         is_create = self.pk is None
+
+        # The very first user to register becomes the admin so they can
+        # access /admin/ and edit Site Settings without a separate
+        # `manage.py promotetostaff` step. Wrap in a transaction with
+        # SELECT ... FOR UPDATE on the user table to make sure two
+        # concurrent signups don't both get superuser.
+        if is_create and not self.is_superuser:
+            with transaction.atomic():
+                has_superuser = (
+                    CustomUser.objects
+                    .select_for_update()
+                    .filter(is_superuser=True)
+                    .exists()
+                )
+                if not has_superuser:
+                    self.is_staff = True
+                    self.is_superuser = True
+
         super().save(*args, **kwargs)
 
         if is_create:
@@ -183,7 +201,9 @@ def my_competitions_changed_handler(sender, instance, action, pk_set, **kwargs):
 
 def get_strava_auth_url(user_id):
     """ Generate the initial auth url the user clicks, which will re-direct back to this page providing the code."""
-    client_id = settings.STRAVA_CLIENT_ID
+    from site_settings.models import resolve_strava_settings
+    strava_cfg = resolve_strava_settings()
+    client_id = strava_cfg["client_id"]
     redirect_url = f"{settings.MAIN_HOST}/strava/return/?user_id={user_id}"
     return f"https://www.strava.com/oauth/authorize?client_id={client_id}&response_type=code&approval_prompt=force&scope=profile:read_all,activity:read_all&redirect_uri={redirect_url}"
 
