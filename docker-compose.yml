@@ -14,6 +14,7 @@ services:
       - SECRET_KEY=${SECRET_KEY:-dev-only-not-for-production-CHANGE-ME-please-50chars}
       - DEBUG=${DEBUG:-true}
       - TIME_ZONE=${TIME_ZONE:-Europe/London}
+      - REGISTRATION_TOKEN=${REGISTRATION_TOKEN:-}
       - MAIN_HOST=${MAIN_HOST:-http://localhost}
       - HOSTS=${HOSTS:-http://localhost,http://127.0.0.1}
       # NOTE: in production set HOSTS to the comma-separated list of

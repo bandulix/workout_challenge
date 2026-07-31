@@ -10,6 +10,10 @@ from .models import CustomUser
 class CustomUserSerializer(serializers.ModelSerializer):
     my = serializers.SerializerMethodField()
 
+    # Invite token required at registration when REGISTRATION_TOKEN is
+    # configured server-side. Write-only; validated in validate().
+    invite_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
     MAX_PROFILE_PICTURE_BYTES = 5 * 1024 * 1024  # 5 MB
 
     def validate_profile_picture(self, value):
@@ -24,7 +28,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'profile_picture', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
+        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'invite_token', 'profile_picture', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
         # my_competitions / my_teams are read-only: joining happens
         # exclusively through the dedicated join views (join code +
         # participant checks). Writable M2M fields would be a
@@ -37,6 +41,22 @@ class CustomUserSerializer(serializers.ModelSerializer):
     def get_my(self, obj):
         user = self.context['request'].user
         return obj.pk == user.pk
+
+    def validate(self, attrs):
+        # Registration invite gate (only active when the server has a
+        # REGISTRATION_TOKEN configured). compare_digest to avoid a
+        # timing oracle over the token bytes. Only enforced on create -
+        # profile PATCHes don't re-ask for the token.
+        required = getattr(settings, "REGISTRATION_TOKEN", "")
+        if required and self.instance is None:
+            import secrets as _secrets
+            provided = (attrs.get("invite_token") or "").strip()
+            if not _secrets.compare_digest(provided, required):
+                raise serializers.ValidationError(
+                    {"invite_token": "Invalid invite token. Please ask the person who invited you for the correct token."}
+                )
+        attrs.pop("invite_token", None)
+        return super().validate(attrs)
 
     def create(self, validated_data):
         from django.contrib.auth.password_validation import validate_password

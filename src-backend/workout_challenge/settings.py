@@ -51,6 +51,11 @@ def _get_secret_key():
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = _get_secret_key()
 
+# Optional invite token required for new registrations. If unset,
+# registration is open (backwards compatible). Set REGISTRATION_TOKEN
+# in your (git-ignored) .env - never commit the real token.
+REGISTRATION_TOKEN = os.environ.get("REGISTRATION_TOKEN", "").strip()
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 print(f'Debug modus is turned {"on" if DEBUG else "off"}')
