@@ -90,10 +90,8 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
     # The system prompt is user-editable, so it's a soft prompt-injection
     # target: a custom persona could try to leak secrets, override the
     # model into producing @-mentions for arbitrary user IDs, or push the
-    # assistant into "ignore previous instructions" territory. The output
-    # is sanitised further by the caller (the Matrix client strips
-    # non-MXID mention entries), but we also clamp the temperature here
-    # and append a non-overridable guardrail.
+    # assistant into "ignore previous instructions" territory. We clamp
+    # the temperature here and append a non-overridable guardrail.
     safe_system_prompt = (system_prompt or "").strip()[:2000]
     safe_user_prompt = (user_prompt or "").strip()[:1500]
     guardrail = (
@@ -146,8 +144,8 @@ def build_workout_prompt(*, user_first_name: str, username: str, sport_type: str
 
     The LLM is told to address the athlete (and the "target" user -
     the leader, or the runner-up if the athlete is the leader) with
-    ``@FirstName`` tokens; the backend post-processor rewrites those
-    tokens to real Matrix MXIDs and builds the ``m.mentions`` block.
+    ``@FirstName`` tokens so the generated comment names real
+    participants without inventing anyone.
     """
     parts = [
         f"Competition: {competition_name}",
@@ -179,8 +177,8 @@ def build_workout_prompt(*, user_first_name: str, username: str, sport_type: str
             parts.append(f"Leader to call out: @{target_first_name}")
     parts.append(
         "Write one short sentence (max 220 chars). Always address the "
-        "athlete and the call-out target using their @FirstName so Matrix "
-        "actually pings them. Never invent other names."
+        "athlete and the call-out target using their @FirstName so the "
+        "comment names the real participants. Never invent other names."
     )
     parts.append("Write your comment now.")
     return "\n".join(parts)
