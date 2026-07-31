@@ -74,6 +74,7 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
             "persona",
             "persona_detail",
             "comment_on_activity",
+            "nudge_on_inactivity",
             "send_push_on_activity",
             "last_posted_at",
             "messages_posted",
@@ -121,6 +122,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "config",
+            "kind",
             "workout",
             "body",
             "posted_at",

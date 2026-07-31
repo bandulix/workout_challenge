@@ -42,6 +42,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
     const [enabled, setEnabled] = useState(false);
     const [persona, setPersona] = useState("");
     const [commentOnActivity, setCommentOnActivity] = useState(true);
+    const [nudgeOnInactivity, setNudgeOnInactivity] = useState(true);
     const [sendPushOnActivity, setSendPushOnActivity] = useState(false);
     const [testBody, setTestBody] = useState(PLACEHOLDER_BODY);
     const [fieldErrors, setFieldErrors] = useState({});
@@ -52,6 +53,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             setEnabled(!!existing.enabled);
             setPersona(existing.persona ?? "");
             setCommentOnActivity(!!existing.comment_on_activity);
+            setNudgeOnInactivity(existing.nudge_on_inactivity !== false);
             setSendPushOnActivity(!!existing.send_push_on_activity);
         }
     }, [existing]);
@@ -69,6 +71,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             enabled,
             persona,
             comment_on_activity: commentOnActivity,
+            nudge_on_inactivity: nudgeOnInactivity,
             send_push_on_activity: sendPushOnActivity,
         };
 
@@ -174,6 +177,19 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                         onChange={(e) => setCommentOnActivity(e.target.checked)}
                     />
                     Generate a comment for every workout logged in this competition
+                </label>
+            </Field>
+
+            <Field label="Nudge when the group goes quiet" error={fieldErrors.nudge_on_inactivity}
+                   hint="If a whole day passes without any workout in a running competition, the instructor posts one motivational nudge to keep the group active.">
+                <label className="inline-flex items-center text-gray-700 dark:text-gray-300 text-sm">
+                    <input
+                        type="checkbox"
+                        className="mr-2 leading-tight"
+                        checked={nudgeOnInactivity}
+                        onChange={(e) => setNudgeOnInactivity(e.target.checked)}
+                    />
+                    Post a daily nudge when nobody logged a workout
                 </label>
             </Field>
 

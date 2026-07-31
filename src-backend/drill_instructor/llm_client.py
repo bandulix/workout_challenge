@@ -184,3 +184,42 @@ def build_workout_prompt(*, user_first_name: str, username: str, sport_type: str
     )
     parts.append("Write your comment now.")
     return "\n".join(parts)
+
+
+def build_inactivity_prompt(*, competition_name: str, participant_first_names, leader_first_name: Optional[str] = None, leader_points: Optional[float] = None, days_left: Optional[int] = None) -> str:
+    """Compose the user-message for a quiet-day (inactivity) nudge.
+
+    Sent when a running competition saw zero workouts on a given day.
+    Unlike the workout prompt this addresses the whole group, not a
+    single athlete - the goal is to wake the platoon up and get someone
+    to log something before the day is over.
+    """
+    parts = [
+        f"Competition: {competition_name}",
+        "Situation: a whole day passed and NOT A SINGLE participant logged "
+        "a workout. The group has gone quiet.",
+    ]
+    names = [n for n in (participant_first_names or []) if n]
+    if names:
+        parts.append("Participants: " + ", ".join(f"@{n}" for n in names[:8]))
+    if leader_first_name:
+        if leader_points:
+            parts.append(f"Current leader: @{leader_first_name} with {round(leader_points)} total points")
+        else:
+            parts.append(f"Current leader: @{leader_first_name}")
+    if days_left is not None:
+        if days_left <= 0:
+            parts.append("The competition ends TODAY.")
+        elif days_left == 1:
+            parts.append("Only 1 day left in the competition.")
+        else:
+            parts.append(f"{days_left} days left in the competition.")
+    parts.append(
+        "Write one short sentence (max 220 chars) addressed to the WHOLE "
+        "group, calling them out by their @FirstName tokens (pick one or "
+        "two). Rouse them: mock the collective laziness, remind them the "
+        "competition is still on, and dare someone to log a workout today. "
+        "Never invent other names."
+    )
+    parts.append("Write your nudge now.")
+    return "\n".join(parts)

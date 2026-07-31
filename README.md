@@ -189,7 +189,7 @@ docker compose -f /path/to/docker-compose.yml up
 | VAPID_PRIVATE_KEY     | (auto-generated)                    | VAPID private key. Pin it via this env var if you don't want the keypair to drift on container rebuilds.                                                                                                                                                                                                       |
  | VAPID_SUBJECT         | "mailto:admin@example.com"          | `mailto:` (or `https://`) contact used in the VAPID claims.                                                                                                                                                                                                                                                    |
 | GARMIN_TOKEN_KEY      | (derived from SECRET_KEY)           | Key used to encrypt stored Garmin OAuth tokens at rest (Fernet). Set it explicitly if you rotate `SECRET_KEY` and want existing Garmin linkages to survive.                                                                                                                                                     |
-| REGISTRATION_TOKEN    | "" (open registration)              | If set, new users must enter this invite token to register. Keep it in your (git-ignored) `.env` - committing the real token would make it public.                                                                                                                                                              |
+| REGISTRATION_TOKEN    | "" (open registration)              | If set, new users must enter this invite token to register - unless they arrive via a competition invite link (`?join=<code>`), in which case the join code alone is enough. Keep the token in your (git-ignored) `.env` - committing the real token would make it public.                                          |
 
 ## AI Drill Instructor
 Each competition can optionally activate an **AI Drill Instructor** that generates a short, persona-voiced comment every time a participant logs an activity. Generated messages are stored in the in-app audit log so the competition owner can read them back, and (optionally) sent as a web push notification to the athlete's devices.
@@ -202,7 +202,8 @@ Each competition can optionally activate an **AI Drill Instructor** that generat
 
 ### What it does
 - For each new workout in the competition, the instructor generates a short, persona-voiced comment and records it in the in-app audit log (visible to participants of the competition via `/api/drill-instructor/message/` and to staff via Django admin).
-- If browser push is enabled in the config, the same message is also dispatched to the athlete's subscribed devices.
+- **Quiet-day nudge:** if a whole day passes without a single workout in a running competition, the instructor posts one motivational nudge addressed to the whole group (daily early-evening sweep, one nudge per competition per day). Owners can switch this off per competition with the *Nudge when the group goes quiet* toggle.
+- If browser push is enabled in the config, the same message is also dispatched to the athlete's subscribed devices (quiet-day nudges go to every subscribed participant).
 
 ### Built-in personas
 Every persona has its own **profile picture, tagline and accent colour** - they show up across the Coach page, the chat-style coach feed, the bottom navigation and even as the icon of push notifications.
