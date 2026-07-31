@@ -36,6 +36,7 @@
   ],
   "start_url": "/dashboard",
   "scope": "/",
+  "handle_links": "preferred",
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#0a0d06",
