@@ -175,3 +175,6 @@ The following changes were made in the fork on top of the state above
 - `lodash` full-package imports replaced with per-method imports on the dashboard and competition pages.
 - DB indexes: `Workout (user, start_datetime)` (per-workout save lookups + dashboards) and `DrillInstructorMessage (config, posted_at)` (coach feed) - new migrations `workouts/0003`, `drill_instructor/0005`.
 - nginx: content-hashed `/static/` assets cached 30 d, personas/fonts 7 d, HTML shell never cached; security headers preserved on all locations (see Security).
+
+### Added (2026-07-31)
+- **Registration invite token** - when `REGISTRATION_TOKEN` is set (env, git-ignored), new signups must provide the token (`invite_token` field, constant-time comparison, field-level error). Unset = open registration (backwards compatible). Registration form gained the Invite Token input.

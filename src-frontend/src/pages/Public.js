@@ -161,7 +161,7 @@ const LoadingForm = () => {
 }
 
 
-const apiCreateAccount = async (email, first_name, last_name, gender, password) => {
+const apiCreateAccount = async (email, first_name, last_name, gender, password, invite_token) => {
     try {
         const response = await fetch((process.env.REACT_APP_BACKEND_URL || '') + '/api/user/', {
             method: 'POST',
@@ -173,7 +173,8 @@ const apiCreateAccount = async (email, first_name, last_name, gender, password) 
                 first_name: first_name,
                 last_name: last_name,
                 gender: gender,
-                password: password
+                password: password,
+                invite_token: invite_token
             }),
         });
         
@@ -408,6 +409,7 @@ function RegisterPage() {
         const gender = e.target.gender.value;
         const password1 = e.target.password1.value;
         const password2 = e.target.password2.value;
+        const invite_token = e.target.invite_token?.value || "";
         if (typeof (email) === "undefined" || email === null || email === "") {
             setErrorMessage(['Please enter an email address.']);
         } else if (typeof (first_name) === "undefined" || first_name === null || first_name === "") {
@@ -418,7 +420,7 @@ function RegisterPage() {
             setErrorMessage(['Passwords do not match.']);
         } else {
             setIsLoading(true);
-            const [success_register, msg_register] = await apiCreateAccount(email, first_name, last_name, gender, password1);
+            const [success_register, msg_register] = await apiCreateAccount(email, first_name, last_name, gender, password1, invite_token);
             const [success_login, msg_login] = await apiLogin(email, password1);
             const params = new URLSearchParams(location.search);
             if (success_register && success_login) {
@@ -513,15 +515,24 @@ function RegisterPage() {
                                     className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                     id="password2" type="password" placeholder="******************" tabIndex="6"/>
                             </div>
+                            <div className="mb-6">
+                                <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="invite_token">
+                                    Invite Token*
+                                </label>
+                                <input
+                                    className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
+                                    id="invite_token" type="text" placeholder="Ask your inviter for the token" tabIndex="7"/>
+                                <p className="text-xs text-gray-500 mt-1">Registration is by invitation only.</p>
+                            </div>
                             <div className="flex items-center justify-between">
                                 <button
                                     className="bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm transition focus:outline-none mr-2 sm:mr-10"
-                                    type="submit" tabIndex="7">
+                                    type="submit" tabIndex="8">
                                     Create Account
                                 </button>
                                 <Link to={`/login/${location.search}`}
                                       className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300 ml-2"
-                                      tabIndex="8">
+                                      tabIndex="9">
                                     Go to SignIn
                                 </Link>
                             </div>
