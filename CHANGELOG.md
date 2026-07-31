@@ -17,19 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New Celery task `drill_instructor.tasks.post_inactivity_nudges` + `build_inactivity_prompt`: daily 17:10 sweep posts one persona-voiced, group-addressed nudge per quiet competition (idempotent - one per competition per day; skipped as soon as anyone logs a workout). When the config's push toggle is on, the nudge is pushed to every subscribed participant.
   - Beat runs the `DatabaseScheduler`, so migration `drill_instructor/0007` seeds the matching `PeriodicTask` row (the static `beat_schedule` entry in celery.py is documentation-only there).
   - Config UI gains a "Nudge when the group goes quiet" checkbox; the Coach feed labels nudges with a "quiet-day nudge" chip.
-- **AI Drill Instructor** — per-competition optional integration with a Matrix room.
+- **AI Drill Instructor** — per-competition optional AI coach that comments on every logged workout in a chosen persona voice.
   - New `drill_instructor` Django app: `DrillInstructorPersona`, `DrillInstructorConfig`, `DrillInstructorMessage`.
   - Four built-in global personas (Drill Sergeant, Cheerleader, British Butler, Zen Master) seeded on first start.
-  - Owner-only competition settings UI to pick a persona, paste a Matrix homeserver / access token / room id, toggle comment-on-activity, send a test message, and remove the config.
+  - Owner-only competition settings UI to pick a persona, toggle comment-on-activity and browser push, send a test message, and remove the config.
   - Celery task `post_workout_comment` is enqueued from `competition/scorer.py:trigger_workout_change` after point recalculation.
   - New REST endpoints: `/api/drill-instructor/persona/`, `/api/drill-instructor/config/`, `/api/drill-instructor/message/`, and `POST /api/drill-instructor/config/<id>/test/`.
 - **LLM provider configuration** — `OPENAI_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_EMAIL_MODEL` env vars, with the same client reused by the Drill Instructor and the weekly email AI fact. Any OpenAI-compatible provider (OpenRouter, Groq, Together, Mistral, Ollama, …) works via `base_url`.
 - **LLM provider preset** — new `llm_provider` Site Settings field (and `LLM_PROVIDER` env var) with a `MiniMax` option that auto-fills `base_url=https://api.MiniMax.chat/v1` and `model=MiniMax-M3`. The provider preset can still be overridden per-field in the admin UI.
 - **AI Drill Instructor personalities** — rewrote Drill Sergeant to roast laggards + mock the leader, and added a new "Roast Master" persona (savage but affectionate NBA-banter style). Workout prompt now includes the leader's total points and the gap to the leader so trash-talk personas can reference real standings instead of inventing numbers.
-- **Real @-mentions in Matrix** — `CustomUser.matrix_user_id` (validated `@user:host` format) lets each participant register their Matrix user ID. The Drill Instructor prompts the LLM with `@FirstName` tokens, the task rewrites them to full MXIDs, and `matrix_client.send_text_message` now attaches an `m.mentions` block plus an `org.matrix.custom.html` body so Matrix clients actually ping participants. New per-competition `DrillInstructorConfig.mention_in_matrix` toggle lets the owner switch pings off.
 - **Site Settings** — new `site_settings` Django app holding a singleton `SiteSettings` row editable at runtime.
   - Three sections in the UI: **LLM / AI provider**, **Strava**, **SMTP / Outbound Email**.
-  - All secrets (`llm_api_key`, `strava_client_secret`, `email_host_password`, `matrix_access_token`) are write-only on the API; the read path returns a masked preview.
+  - All secrets (`llm_api_key`, `strava_client_secret`, `email_host_password`) are write-only on the API; the read path returns a masked preview.
   - Resolution order is **DB → environment variable** so admin edits take effect without restarting workers.
   - `site_settings/models.py:resolve_llm_settings()` / `resolve_strava_settings()` / `resolve_email_settings()` are the single entry points.
 - **First-user-is-admin** — `custom_user/models.py:CustomUser.save()` automatically promotes the very first registered user to `is_staff=True` and `is_superuser=True` inside `transaction.atomic()` with `select_for_update()` to avoid a race.
@@ -49,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Optional per-competition `send_push_on_activity` toggle on `DrillInstructorConfig`. The Drill Instructor Celery task fans out via `pywebpush` to every subscribed device of the participant.
   - `index.js` exports `subscribeToPush()` / `unsubscribeFromPush()` helpers. "Enable browser notifications" button in the Site Settings form. `REACT_APP_VAPID_PUBLIC_KEY` injected via `window.RUNTIME_CONFIG`.
 - **Security & performance audit** (full pass over the changes above):
-  - SSRF guards on Matrix homeserver and LLM base URL (HTTPS required; literal-loopback allowed for self-hosted dev; private/loopback/link-local/multicast/reserved DNS resolutions blocked).
+  - SSRF guard on the LLM base URL (HTTPS required; literal-loopback allowed for self-hosted dev; private/loopback/link-local/multicast/reserved DNS resolutions blocked).
   - Push-subscribe endpoint refuses to hijack another user's endpoint with a `409 Conflict`.
   - Built-in persona writes locked to staff to prevent prompt-injection via the `system_prompt`.
   - Email subject stripped of CR/LF to defeat SMTP header injection.
@@ -65,7 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### New dependencies
 - `pywebpush>=2.0.0` (Web Push delivery).
 - `py_vapid` (VAPID keypair generation).
-- `requests` was already present; used by the Matrix client and `pywebpush`.
+- `requests` was already present; used by `pywebpush`.
 
 ### New env vars
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (auto-generated if unset).
@@ -105,7 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Files added
 ```
 src-backend/drill_instructor/{__init__,apps,models,serializers,views,admin,tasks,
-                              matrix_client,llm_client,seed,migrations/*}.py
+                              llm_client,seed,migrations/*}.py
 src-backend/site_settings/{__init__,apps,models,serializers,views,admin,
                           migrations/*}.py
 src-backend/push_notifications/{__init__,apps,models,serializers,views,admin,
@@ -120,7 +119,7 @@ src-frontend/src/utils/bottomNav.js
 
 ### Security notes
 - All secrets are write-only on the REST API; reads return masked previews.
-- SSRF protection on every outbound user-controlled URL (Matrix homeserver, LLM base URL).
+- SSRF protection on the outbound admin-controlled LLM base URL.
 - Push subscriptions are scoped to the authenticated user; cross-user hijacking returns `409 Conflict`.
 - Built-in persona writes restricted to staff.
 - VAPID private key on disk is `chmod 0o600`.
@@ -160,6 +159,7 @@ The following changes were made in the fork on top of the state above
 - Legacy "Manage Personas / Goal Equalizer / Settings" buttons from the welcome block (moved to Coach page / Me sheet).
 - Broken `critters-webpack-plugin` (build failed with "Could not find HTML asset" on CRA 5 / webpack 5); critters dev-dependencies dropped.
 - `Dashboard.css`, `utils/navMenu.js` (dead after redesign).
+- **Matrix integration** — the Drill Instructor's original Matrix-room posting (homeserver / access token / room id config, `CustomUser.matrix_user_id`, MXID mention rewriting, `matrix_client.py`) was dropped in favour of the in-app audit log + web push; migration `drill_instructor/0003_drop_matrix_fields`.
 
 ### Fixed
 - Drill-persona seeder survives boots before migrations are applied (was crashing the container's entrypoint in a restart loop).

@@ -172,7 +172,7 @@ def post_workout_comment(self, workout_id):
             config.save(update_fields=["last_error", "updated_at"])
             logger.warning("Drill Instructor: message save failed for competition %s: %s", competition.id, exc)
 
-        # Optional web push for the athlete (browser push, not Matrix).
+        # Optional web push for the athlete.
         if config.send_push_on_activity and send_push_to_user is not None:
             try:
                 import re as _re
