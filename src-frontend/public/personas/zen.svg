@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="28%" r="95%">
+      <stop offset="0%" stop-color="#b5f2e8"/>
+      <stop offset="100%" stop-color="#2bb3a3"/>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <!-- enso circle -->
+  <path d="M128 26 a92 92 0 1 1 -91.8 98" fill="none" stroke="#173c37" stroke-width="10" stroke-linecap="round" opacity=".28"/>
+  <!-- shoulders: robe -->
+  <path d="M40 256 C40 206 78 180 128 180 C178 180 216 206 216 256 Z" fill="#7a4a2c"/>
+  <path d="M128 180 L128 256" stroke="#5c3620" stroke-width="6"/>
+  <path d="M104 184 L128 208 L152 184 L152 256 L104 256 Z" fill="#8f5a36" opacity=".6"/>
+  <!-- sash -->
+  <path d="M40 236 L216 204 L216 218 L40 250 Z" fill="#e8963c" opacity=".9"/>
+  <!-- neck -->
+  <rect x="114" y="152" width="28" height="34" rx="9" fill="#d99a6c"/>
+  <!-- head (bald) -->
+  <path d="M128 42 C160 42 180 68 180 106 C180 142 158 170 128 170 C98 170 76 142 76 106 C76 68 96 42 128 42 Z" fill="#e8b18c"/>
+  <ellipse cx="75" cy="110" rx="9" ry="12" fill="#e8b18c"/>
+  <ellipse cx="181" cy="110" rx="9" ry="12" fill="#e8b18c"/>
+  <!-- head shine -->
+  <ellipse cx="108" cy="66" rx="20" ry="12" fill="#f7d3b4" opacity=".8"/>
+  <!-- closed serene eyes -->
+  <path d="M94 106 q12 10 24 0" stroke="#4a2c14" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M138 106 q12 10 24 0" stroke="#4a2c14" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- calm brows -->
+  <path d="M94 92 q12 -4 24 0 M138 92 q12 -4 24 0" stroke="#4a2c14" stroke-width="4" fill="none" stroke-linecap="round" opacity=".7"/>
+  <!-- gentle smile -->
+  <path d="M110 140 q18 14 36 0" stroke="#a3704d" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- lotus accent -->
+  <path d="M216 176 q6 -14 0 -26 q-14 4 -16 18 q10 2 16 8 z M216 176 q-6 -14 0 -26 q14 4 16 18 q-10 2 -16 8 z" fill="#e8f7f4" opacity=".9"/>
+</svg>

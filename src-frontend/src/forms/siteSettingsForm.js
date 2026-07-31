@@ -94,7 +94,7 @@ function PushSubscribeButton({status, onSubscribed}) {
                 </button>
             ) : (
                 <button onClick={handleSubscribe} disabled={busy}
-                        className="px-4 py-2 rounded-full bg-sky-700 text-white hover:bg-sky-600 text-sm font-semibold min-h-[44px]">
+                        className="px-4 py-2 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold min-h-[44px] transition">
                     {busy ? "Working..." : "Enable browser notifications"}
                 </button>
             )}
@@ -130,6 +130,7 @@ export default function SiteSettingsForm({setModalState}) {
                 strava_client_secret: "",
                 email_host_password: "",
                 // Plain fields.
+                llm_provider: settings.llm_provider || "custom",
                 llm_base_url: settings.llm_base_url || "",
                 llm_model: settings.llm_model || "",
                 llm_email_model: settings.llm_email_model || "",
@@ -146,6 +147,24 @@ export default function SiteSettingsForm({setModalState}) {
             });
         }
     }, [settings]);
+
+    const LLM_PROVIDER_PRESETS = {
+        custom: {base_url: "", model: ""},
+        MiniMax: {base_url: "https://api.MiniMax.chat/v1", model: "MiniMax-M3"},
+        openai: {base_url: "", model: "gpt-4o-mini"},
+    };
+
+    function handleProviderChange(newProvider) {
+        const preset = LLM_PROVIDER_PRESETS[newProvider] || {};
+        setValues((prev) => ({
+            ...prev,
+            llm_provider: newProvider,
+            // Only auto-fill when the field is empty - don't clobber an
+            // explicit override the admin already typed.
+            llm_base_url: prev.llm_base_url || preset.base_url || "",
+            llm_model: prev.llm_model || preset.model || "",
+        }));
+    }
 
     function setField(name, value) {
         setValues((prev) => ({...prev, [name]: value}));
@@ -195,6 +214,19 @@ export default function SiteSettingsForm({setModalState}) {
 
             <Section title="LLM / AI Provider"
                      description="Used by the AI Drill Instructor and the weekly email AI fact.">
+                <div className="px-4 w-full sm:w-1/2">
+                    <Field label="Provider Preset" error={fieldErrors.llm_provider}
+                           hint="Picking MiniMax auto-fills the base URL and model below. You can still override either.">
+                        <select
+                            className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                            value={values.llm_provider || "custom"}
+                            onChange={(e) => handleProviderChange(e.target.value)}>
+                            <option value="custom">Custom (OpenAI-compatible)</option>
+                            <option value="MiniMax">MiniMax</option>
+                            <option value="openai">OpenAI</option>
+                        </select>
+                    </Field>
+                </div>
                 <Field label="API Key" error={fieldErrors.llm_api_key}
                        hint={<>Currently stored: <code>{settings?.llm_api_key_masked || "(not set)"}</code></>}>
                     <input type="password" autoComplete="off"

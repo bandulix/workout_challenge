@@ -26,6 +26,12 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="44", hour="4"),
         "args": (),
     },
+    # every morning import users garmin workouts
+    "garmin_sync": {
+        "task": "custom_user.garmin.daily_garmin_sync",
+        "schedule": crontab(minute="54", hour="4"),
+        "args": (),
+    },
     # not needed - just fallback - do all pending point recalc tasks in the morning
     "point_recal": {
         "task": "custom_user.point_recalc.recalc_points",

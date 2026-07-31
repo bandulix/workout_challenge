@@ -1,4 +1,5 @@
 import logging
+import re
 
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -10,6 +11,14 @@ from .serializers import PushSubscriptionSerializer
 from .vapid import get_vapid_public_key
 
 logger = logging.getLogger(__name__)
+
+
+# Endpoint URLs come from the browser's PushSubscription JSON, but the
+# Push API spec lets a misbehaving / malicious page post any string it
+# wants. We restrict to the known push service origins so an attacker
+# can't register the backend to a URL of their choosing (SSRF /
+# stored-XSS-in-push-payload).
+_ENDPOINT_RE = re.compile(r"^https://(?:fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|wns\.windows\.com|notify\.windows\.com|push\.apple\.com|web\.push\.apple\.com|registry\.push\.services\.mozilla\.com|.+?\.push\.notifications\.apple\.com)/", re.IGNORECASE)
 
 
 class PushSubscribeView(APIView):
@@ -27,6 +36,14 @@ class PushSubscribeView(APIView):
         serializer.is_valid(raise_exception=True)
 
         endpoint = serializer.validated_data["endpoint"]
+        # Restrict the endpoint to known push services so the URL we
+        # later send push notifications to (in sender.py) is never a
+        # self-controlled or internal target.
+        if not _ENDPOINT_RE.match(endpoint):
+            return Response(
+                {"endpoint": "Push endpoint must be HTTPS to a known push service."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         p256dh = serializer.validated_data["p256dh"]
         auth = serializer.validated_data["auth"]
         ua = serializer.validated_data.get("user_agent") or request.META.get("HTTP_USER_AGENT", "")[:300]
@@ -63,9 +80,11 @@ class PushUnsubscribeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        endpoint = request.data.get("endpoint", "").strip()
+        endpoint = (request.data.get("endpoint") or "").strip()
         if not endpoint:
             return Response({"endpoint": "Required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not _ENDPOINT_RE.match(endpoint):
+            return Response({"endpoint": "Invalid endpoint."}, status=status.HTTP_400_BAD_REQUEST)
         deleted, _ = PushSubscription.objects.filter(user=request.user, endpoint=endpoint).delete()
         return Response({"deleted": bool(deleted)}, status=status.HTTP_200_OK)
 

@@ -20,8 +20,8 @@ class DrillInstructorPersonaAdmin(admin.ModelAdmin):
 class DrillInstructorConfigAdmin(admin.ModelAdmin):
     list_display = ("competition", "enabled", "persona", "messages_posted", "last_posted_at")
     list_filter = ("enabled", "persona")
-    search_fields = ("competition__name", "matrix_room_id")
-    readonly_fields = ("last_posted_at", "messages_posted", "last_error", "created_at", "updated_at", "access_token_masked")
+    search_fields = ("competition__name",)
+    readonly_fields = ("last_posted_at", "messages_posted", "last_error", "created_at", "updated_at")
 
 
 @admin.register(DrillInstructorMessage)

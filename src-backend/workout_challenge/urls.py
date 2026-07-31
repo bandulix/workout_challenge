@@ -23,7 +23,7 @@ from rest_framework_simplejwt.views import (
 from rest_framework.routers import DefaultRouter
 from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView
 from workouts.views import WorkoutViewSet
-from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, SyncStravaView, PasswordResetView, PasswordResetConfirmView
+from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, SyncStravaView, PasswordResetView, PasswordResetConfirmView, LinkGarminView, UnlinkGarminView, SyncGarminView
 from drill_instructor.views import (
     DrillInstructorPersonaViewSet,
     DrillInstructorConfigViewSet,
@@ -58,6 +58,9 @@ urlpatterns = [
         path('strava/link/<str:code>/', LinkStravaView.as_view(), name='strava-link'),
         path('strava/unlink/', UnlinkStravaView.as_view(), name='strava-unlink'),
         path('strava/sync/', SyncStravaView.as_view(), name='strava-sync'),
+        path('garmin/link/', LinkGarminView.as_view(), name='garmin-link'),
+        path('garmin/unlink/', UnlinkGarminView.as_view(), name='garmin-unlink'),
+        path('garmin/sync/', SyncGarminView.as_view(), name='garmin-sync'),
         path('celery/tasks/', CeleryQueryView.as_view(), name='celery-task-list'),
         path('celery/tasks/<str:task_id>/', CeleryQueryView.as_view(), name='celery-task-status'),
         path('celery/', CeleryQueryView.as_view(), name='celery-task-run'),

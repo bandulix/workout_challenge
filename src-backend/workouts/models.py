@@ -155,6 +155,8 @@ class Workout(models.Model):
     strava_id = models.BigIntegerField(unique=True, null=True)
     strava_intensity_avg_watts = models.DecimalField(null=True, max_digits=7, decimal_places=2)
 
+    garmin_id = models.CharField(max_length=40, unique=True, null=True)
+
     @property
     def duration_seconds(self):
         return self.duration.seconds
@@ -228,13 +230,22 @@ class Workout(models.Model):
 
         # if workout is run or walk and steps were recorded on the same day, update steps to avoid double counting
         if self.sport_type in ['Run', 'Walk']:
+            # The keys of `changed` hold (old_value, new_value) tuples,
+            # not the value itself. When start_datetime was edited we
+            # need to also revisit the *old* day (in case a Steps row
+            # was previously counted against the old date) - and the
+            # *new* day (so it gets counted against the new date).
+            target_dates = set()
             if 'start_datetime' in changed:
-                date_lst = datetime.datetime.fromisoformat(changed['start_datetime']) if type(changed['start_datetime']) is str else changed['start_datetime']
-                date_lst = list(date_lst)
+                old_dt, new_dt = changed['start_datetime']
+                for dt in (old_dt, new_dt):
+                    if isinstance(dt, str):
+                        dt = datetime.datetime.fromisoformat(dt)
+                    if dt is not None:
+                        target_dates.add(dt.date())
             else:
-                date_lst = datetime.datetime.fromisoformat(self.start_datetime) if type(self.start_datetime) is str else self.start_datetime
-                date_lst = [date_lst]
-            recorded_steps = Workout.objects.filter(user=self.user, start_datetime__date__in=date_lst, sport_type='Steps')
+                target_dates.add(self.start_datetime.date())
+            recorded_steps = Workout.objects.filter(user=self.user, start_datetime__date__in=target_dates, sport_type='Steps')
             if len(recorded_steps) > 0:
                 for steps in recorded_steps:
                     setattr(steps, 'distance', None)

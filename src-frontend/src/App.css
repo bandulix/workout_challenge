@@ -1,33 +1,16 @@
-.App {
-  text-align: center;
-}
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
-}
-
-.App-link {
-  color: #61dafb;
-}
-
-
+/* Legacy brand helpers kept as aliases (now volt-toned). */
 .bg-light-blue {
-  background-color: #6387bc;
+  background-color: #b8e62e;
 }
 
-.text-light-blue, .hover\:text-light-blue:hover {
-  color: #6387bc;
+.text-light-blue {
+  color: #93b819;
 }
 
+.hover\:bg-light-blue:hover {
+  background-color: #b8e62e;
+}
+
+.hover\:text-light-blue:hover {
+  color: #93b819;
+}

@@ -8,7 +8,6 @@ from django.utils import timezone
 from workout_challenge.celery import app
 
 from .llm_client import build_workout_prompt, generate_message
-from .matrix_client import MatrixError, send_text_message
 
 try:
     from push_notifications.sender import send_push_to_user
@@ -33,14 +32,20 @@ def _format_workout_summary(workout):
 
 
 def _user_rank(workout, competition):
-    """Compute this user's capped-points rank within the competition.
+    """Compute this user's rank, totals and the leaderboard "target" user.
 
-    Two queries: one aggregates points per user (with the runner-up's
-    score so we can break ties), one counts participants. Avoids
-    scanning the whole per-user list in Python.
+    Returns ``(rank, total_participants, my_total, leader_total, target_user)``.
+
+    ``target_user`` is the person the instructor should address in the
+    message:
+      * if the athlete is not leading, the leader
+      * if the athlete IS leading, the runner-up (so we have someone
+        to call out for the leader to "watch out for")
+
+    Falls back to ``None`` if the competition has fewer than two
+    scored participants.
     """
     Points = apps.get_model("competition", "Points")
-    from django.db.models import Count
 
     my_total = (
         Points.objects
@@ -48,33 +53,44 @@ def _user_rank(workout, competition):
         .aggregate(total=Sum("points_capped"))
     )["total"] or 0
 
-    if my_total == 0:
-        return None, 0
-
-    ahead = (
+    per_user = list(
         Points.objects
         .filter(goal__competition=competition)
         .values("workout__user")
         .annotate(total=Sum("points_capped"))
-        .filter(total__gt=my_total)
-        .count()
+        .order_by("-total")
     )
-    total = (
-        Points.objects
-        .filter(goal__competition=competition)
-        .values("workout__user")
-        .distinct()
-        .aggregate(c=Count("workout__user"))
-    )["c"]
-    return ahead + 1, total
+
+    if not per_user:
+        return None, 0, 0, 0, None
+
+    leader_total = per_user[0]["total"] or 0
+    target_user_id = None
+    if per_user[0]["workout__user"] == workout.user_id and len(per_user) > 1:
+        target_user_id = per_user[1]["workout__user"]
+    elif per_user[0]["workout__user"] != workout.user_id:
+        target_user_id = per_user[0]["workout__user"]
+
+    target_user = None
+    if target_user_id is not None:
+        CustomUser = apps.get_model("custom_user", "CustomUser")
+        target_user = CustomUser.objects.filter(pk=target_user_id).first()
+
+    if my_total == 0:
+        return None, len(per_user), 0, leader_total, target_user
+
+    ahead = sum(1 for entry in per_user if (entry["total"] or 0) > my_total)
+    return ahead + 1, len(per_user), my_total, leader_total, target_user
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=120)
 def post_workout_comment(self, workout_id):
-    """Post a single Drill Instructor comment for a workout.
+    """Generate a Drill Instructor comment for a workout and store it.
 
-    Walks every competition this workout belongs to, picks those that
-    have an enabled Drill Instructor config, and posts once per config.
+    For every competition this workout belongs to that has an enabled
+    Drill Instructor, generate one AI-voiced comment, persist it to
+    ``DrillInstructorMessage`` so the competition owner can read it from
+    the audit log, and (optionally) send a web push to the athlete.
     """
     Workout = apps.get_model("workouts", "Workout")
     DrillInstructorConfig = apps.get_model("drill_instructor", "DrillInstructorConfig")
@@ -106,7 +122,7 @@ def post_workout_comment(self, workout_id):
         config = competition.drill_instructor
         persona = config.persona
 
-        rank, total_participants = _user_rank(workout, competition)
+        rank, total_participants, my_total, leader_total, target_user = _user_rank(workout, competition)
         user_prompt = build_workout_prompt(
             user_first_name=workout.user.first_name or workout.user.username or "Athlete",
             username=workout.user.username or "",
@@ -119,16 +135,17 @@ def post_workout_comment(self, workout_id):
             points_capped=None,
             user_rank=rank,
             total_participants=total_participants,
+            leader_points=leader_total,
+            user_total_points=my_total,
+            target_first_name=(target_user.first_name if target_user else None),
         )
 
         body = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
         if not body:
             body = f"{persona.name}: nice work on that {summary or workout.sport_type}!"
 
-        prefix = config.matrix_bot_display_name.strip()
-        if prefix:
-            body = f"[{prefix}] {body}"
-
+        # Store the message in the in-app audit log so the owner can
+        # read it back from the Drill Instructor "messages" endpoint.
         message = DrillInstructorMessage(
             config=config,
             workout=workout,
@@ -136,36 +153,41 @@ def post_workout_comment(self, workout_id):
             posted_at=timezone.now(),
         )
         try:
-            event_id = send_text_message(
-                homeserver=config.matrix_homeserver,
-                access_token=config.matrix_access_token,
-                room_id=config.matrix_room_id,
-                body=body,
-            )
-            message.matrix_event_id = event_id
-            message.success = True
             message.save()
             config.last_posted_at = timezone.now()
             config.messages_posted = (config.messages_posted or 0) + 1
             config.last_error = ""
             config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
             posted += 1
-        except MatrixError as exc:
+            logger.info("Drill Instructor: stored message %s for competition %s", message.id, competition.id)
+        except Exception as exc:  # noqa: BLE001 - never block workout saves
             message.success = False
-            message.error = str(exc)
-            message.save()
+            message.error = str(exc)[:2000]
+            try:
+                message.save()
+            except Exception:  # pragma: no cover
+                pass
             config.last_error = str(exc)[:2000]
             config.save(update_fields=["last_error", "updated_at"])
-            logger.warning("Drill Instructor: Matrix post failed for competition %s: %s", competition.id, exc)
+            logger.warning("Drill Instructor: message save failed for competition %s: %s", competition.id, exc)
 
-        # Browser push (optional per-config toggle).
+        # Optional web push for the athlete (browser push, not Matrix).
         if config.send_push_on_activity and send_push_to_user is not None:
             try:
+                import re as _re
+                avatar_icon = (
+                    f"/personas/{persona.avatar}.svg"
+                    if persona.avatar and _re.fullmatch(r"[a-z0-9_-]+", persona.avatar)
+                    else None
+                )
                 send_push_to_user(
                     workout.user,
                     title=f"{competition.name} - {persona.name}",
                     body=body,
-                    url=f"/competition/{competition.id}",
+                    url=f"/coach",
+                    icon=avatar_icon,
+                    badge="/icon-badge.png",
+                    tag=f"drill-{competition.id}",
                 )
             except Exception as exc:  # noqa: BLE001 - never block workout saves
                 logger.warning("Drill Instructor: push failed for user %s: %s", workout.user_id, exc)
@@ -175,7 +197,12 @@ def post_workout_comment(self, workout_id):
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=120)
 def post_test_message(self, config_id, message):
-    """Send a one-off test message from the owner's settings UI."""
+    """Store a one-off test message in the audit log.
+
+    The competition owner triggered this from the Drill Instructor
+    settings UI to preview how a message would look; we keep it in the
+    audit log so they can re-read it.
+    """
     DrillInstructorConfig = apps.get_model("drill_instructor", "DrillInstructorConfig")
     DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
 
@@ -191,18 +218,13 @@ def post_test_message(self, config_id, message):
         posted_at=timezone.now(),
     )
     try:
-        event_id = send_text_message(
-            homeserver=config.matrix_homeserver,
-            access_token=config.matrix_access_token,
-            room_id=config.matrix_room_id,
-            body=message,
-        )
-        record.matrix_event_id = event_id
-        record.success = True
         record.save()
-        return {"event_id": event_id, "config_id": config_id}
-    except MatrixError as exc:
+        return {"config_id": config_id, "id": record.id}
+    except Exception as exc:  # noqa: BLE001
         record.success = False
-        record.error = str(exc)
-        record.save()
+        record.error = str(exc)[:2000]
+        try:
+            record.save()
+        except Exception:  # pragma: no cover
+            pass
         return {"error": str(exc), "config_id": config_id}

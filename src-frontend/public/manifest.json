@@ -1,8 +1,27 @@
 {
-  "short_name": "Workout",
-  "name": "Workout Challenge",
-  "description": "Compete with friends and coworkers across devices using the metrics you want, respecting your privacy.",
+  "short_name": "Drill",
+  "name": "Workout Challenge - Your AI Drill Instructor",
+  "description": "Compete with friends and coworkers - with an AI Drill Instructor in your corner.",
+  "id": "/",
   "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
     {
       "src": "icon-192.svg",
       "sizes": "192x192",
@@ -10,33 +29,30 @@
       "purpose": "any"
     },
     {
-      "src": "icon-512.svg",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "maskable-icon.svg",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "maskable"
-    },
-    {
       "src": "favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",
       "type": "image/x-icon"
-    },
-    {
-      "src": "apple-touch-icon.png",
-      "type": "image/png",
-      "sizes": "180x180"
     }
   ],
-  "start_url": ".",
-  "scope": ".",
+  "start_url": "/dashboard",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#0c4a6e",
-  "background_color": "#ffffff",
-  "categories": ["health", "fitness", "lifestyle"]
+  "theme_color": "#0a0d06",
+  "background_color": "#0a0d06",
+  "categories": ["health", "fitness", "lifestyle"],
+  "shortcuts": [
+    {
+      "name": "Log a workout",
+      "short_name": "Log",
+      "url": "/dashboard?action=log",
+      "icons": [{"src": "icon-192.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "Coach",
+      "short_name": "Coach",
+      "url": "/coach",
+      "icons": [{"src": "icon-192.png", "sizes": "192x192"}]
+    }
+  ]
 }

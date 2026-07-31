@@ -1,0 +1,78 @@
+import React, {useRef, useState} from "react";
+import {Camera} from "lucide-react";
+import {BeatLoader} from "react-spinners";
+import {useUploadProfilePictureMutation} from "../utils/reducers/usersSlice";
+
+// The user's profile picture with an optional camera-badge edit affordance.
+// Uploads go straight to PATCH /api/user/me/ as multipart form data.
+
+const ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+
+function ProfileAvatar({user, size = 96, editable = false, className = ""}) {
+    const fileInput = useRef(null);
+    const [upload, {isLoading}] = useUploadProfilePictureMutation();
+    const [error, setError] = useState(null);
+
+    const src = user?.profile_picture || "/profile.png";
+
+    async function handleFile(e) {
+        const file = e.target.files?.[0];
+        e.target.value = ""; // allow re-picking the same file
+        if (!file) return;
+        setError(null);
+        if (file.size > 5 * 1024 * 1024) {
+            setError("Image too large (max 5 MB).");
+            return;
+        }
+        try {
+            await upload(file).unwrap();
+        } catch (err) {
+            const msg = err?.data?.profile_picture;
+            setError(Array.isArray(msg) ? msg[0] : "Upload failed - please try again.");
+        }
+    }
+
+    const img = (
+        <img
+            src={src}
+            alt={user?.first_name ? `${user.first_name}'s profile picture` : "Profile picture"}
+            className="rounded-full object-cover w-full h-full select-none"
+            draggable={false}
+        />
+    );
+
+    if (!editable) {
+        return (
+            <div className={"shrink-0 rounded-full " + className} style={{width: size, height: size}}>
+                {img}
+            </div>
+        );
+    }
+
+    return (
+        <div className={"relative shrink-0 " + className} style={{width: size, height: size}}>
+            <button
+                type="button"
+                onClick={() => fileInput.current?.click()}
+                className="group relative block w-full h-full rounded-full overflow-hidden ring-2 ring-volt-400/60 focus:outline-none focus:ring-volt-400"
+                aria-label="Change profile picture"
+            >
+                {img}
+                <span className="absolute inset-0 bg-ink-950/45 opacity-0 group-hover:opacity-100 group-active:opacity-100 transition flex items-center justify-center">
+                    {isLoading
+                        ? <BeatLoader size={6} color="#d7ff3e"/>
+                        : <Camera className="h-6 w-6 text-volt-400"/>}
+                </span>
+            </button>
+            <span className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-volt-400 text-ink-950 flex items-center justify-center shadow-glow-volt pointer-events-none">
+                <Camera className="h-4 w-4"/>
+            </span>
+            <input ref={fileInput} type="file" accept={ACCEPT} className="hidden" onChange={handleFile}/>
+            {error && (
+                <p className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-48 text-center text-xs text-red-500">{error}</p>
+            )}
+        </div>
+    );
+}
+
+export default ProfileAvatar;

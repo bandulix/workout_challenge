@@ -63,6 +63,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     first_name = models.CharField(max_length=30, null=False, blank=False)
     last_name = models.CharField(max_length=40, null=True, blank=True)
     gender = models.CharField(max_length=1, null=True, blank=True, choices=GENDER_CHOICES)
+    profile_picture = models.ImageField(upload_to="profile_pics/", null=True, blank=True)
 
     username = models.CharField(max_length=40, null=True, blank=True)
 
@@ -95,6 +96,12 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     strava_allow_follow = models.BooleanField(default=True)
     strava_refresh_token = models.CharField(max_length=40, null=True, blank=True)
     strava_last_synced_at = models.DateTimeField(null=True, blank=True)
+
+    # Garmin Connect linkage - only encrypted OAuth tokens are stored,
+    # never the password (see custom_user/garmin.py).
+    garmin_email = models.CharField(max_length=120, null=True, blank=True)
+    garmin_tokens_enc = models.TextField(null=True, blank=True)
+    garmin_last_synced_at = models.DateTimeField(null=True, blank=True)
 
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
@@ -161,6 +168,19 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
                 if not has_superuser:
                     self.is_staff = True
                     self.is_superuser = True
+
+        # Housekeeping: if the profile picture was replaced, delete the old
+        # file so abandoned uploads don't pile up in MEDIA_ROOT.
+        if not is_create:
+            try:
+                old_picture = (self._original or {}).get("profile_picture")
+                new_name = self.profile_picture.name if self.profile_picture else ""
+                if old_picture and old_picture != new_name:
+                    old_file = settings.MEDIA_ROOT / old_picture
+                    if old_file.is_file():
+                        old_file.unlink()
+            except Exception:  # noqa: BLE001 - never block a user save
+                pass
 
         super().save(*args, **kwargs)
 

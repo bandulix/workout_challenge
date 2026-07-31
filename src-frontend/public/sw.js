@@ -8,7 +8,7 @@
  * Bump CACHE_VERSION on each release to invalidate stale assets.
  */
 
-const CACHE_VERSION = "wc-v1";
+const CACHE_VERSION = "wc-v2";
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 const API_CACHE = `${CACHE_VERSION}-api`;
@@ -18,11 +18,25 @@ const SHELL_URLS = [
     "/index.html",
     "/offline.html",
     "/manifest.json",
-    "/icon-192.svg",
-    "/icon-512.svg",
-    "/maskable-icon.svg",
+    "/icon-192.png",
+    "/icon-512.png",
+    "/icon-maskable-512.png",
+    "/icon-badge.png",
     "/favicon.ico",
     "/apple-touch-icon.png",
+    "/fonts/fonts.css",
+    "/fonts/Inter-var.woff2",
+    "/fonts/ArchivoBlack-400.woff2",
+    "/personas/megaphone.svg",
+    "/personas/sergeant.svg",
+    "/personas/roast.svg",
+    "/personas/cheerleader.svg",
+    "/personas/butler.svg",
+    "/personas/zen.svg",
+    "/personas/rocket.svg",
+    "/personas/ninja.svg",
+    "/personas/robot.svg",
+    "/personas/captain.svg",
 ];
 
 self.addEventListener("install", (event) => {
@@ -48,7 +62,8 @@ self.addEventListener("fetch", (event) => {
 
     const url = new URL(request.url);
 
-    // Never cache the Matrix outbound API; never cache non-HTTP.
+    // Never cache cross-origin or non-HTTP requests (push notifications
+    // and any future third-party APIs stay uncached).
     if (url.origin !== self.location.origin) return;
 
     // API: network-first with short timeout, cached fallback.
@@ -126,7 +141,7 @@ async function cacheFirst(request, cacheName) {
 // button on the Site Settings page.
 
 self.addEventListener("push", (event) => {
-    let payload = {title: "Workout Challenge", body: "You have a new update.", url: "/"};
+    let payload = {title: "Workout Challenge", body: "You have a new update.", url: "/", icon: null, badge: null, tag: null};
     if (event.data) {
         try {
             payload = {...payload, ...event.data.json()};
@@ -137,8 +152,11 @@ self.addEventListener("push", (event) => {
     event.waitUntil(
         self.registration.showNotification(payload.title, {
             body: payload.body,
-            icon: "/icon-192.svg",
-            badge: "/icon-192.svg",
+            // The coach's face (persona artwork) when provided; app bolt otherwise.
+            icon: payload.icon || "/icon-192.png",
+            badge: payload.badge || "/icon-badge.png",
+            tag: payload.tag || "workout-challenge",
+            renotify: Boolean(payload.tag),
             data: {url: payload.url || "/"},
             vibrate: [100, 50, 100],
         })

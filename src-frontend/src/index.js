@@ -76,12 +76,36 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
 }
 
 
-// ---- Push notification subscription helpers ---------------------------
-// The Drill Instructor can send a browser push in addition to the Matrix
-// message. The user opts in from the Site Settings page; the resulting
-// PushSubscription is POSTed to /api/push/subscribe/ on the backend.
+// ---- Install prompt capture ------------------------------------------
+// Chrome/Android fires `beforeinstallprompt`; we stash it globally so the
+// InstallBanner / Coach page can trigger the native install dialog later.
+window.deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    window.deferredInstallPrompt = e;
+    window.dispatchEvent(new Event('pwa-install-available'));
+});
+window.addEventListener('appinstalled', () => {
+    window.deferredInstallPrompt = null;
+    window.dispatchEvent(new Event('pwa-installed'));
+});
 
-export async function subscribeToPush() {
+export async function promptInstall() {
+    const promptEvent = window.deferredInstallPrompt;
+    if (!promptEvent) return false;
+    promptEvent.prompt();
+    const {outcome} = await promptEvent.userChoice;
+    window.deferredInstallPrompt = null;
+    return outcome === 'accepted';
+}
+
+
+// ---- Push notification subscription helpers ---------------------------
+// The Drill Instructor can send a browser push when it generates a
+// message. The user opts in from the Coach page / Site Settings; the
+// resulting PushSubscription is POSTed to /api/push/subscribe/.
+
+export async function subscribeToPush(vapidKeyOverride) {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
         throw new Error("Push notifications are not supported in this browser.");
     }
@@ -92,10 +116,13 @@ export async function subscribeToPush() {
     const reg = await navigator.serviceWorker.ready;
     let subscription = await reg.pushManager.getSubscription();
     if (!subscription) {
-        const vapidKey = window.RUNTIME_CONFIG?.REACT_APP_VAPID_PUBLIC_KEY;
+        const vapidKey = vapidKeyOverride || window.RUNTIME_CONFIG?.REACT_APP_VAPID_PUBLIC_KEY;
+        if (!vapidKey) {
+            throw new Error("Push is not configured on this server (missing VAPID key).");
+        }
         subscription = await reg.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: vapidKey ? urlBase64ToUint8Array(vapidKey) : undefined,
+            applicationServerKey: urlBase64ToUint8Array(vapidKey),
         });
     }
     return subscription;

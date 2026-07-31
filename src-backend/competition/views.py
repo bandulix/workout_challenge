@@ -259,19 +259,32 @@ class JoinCompetitionView(APIView):
         return Response({"message": "Successfully joined competition.", "competition": competition.id}, status=status.HTTP_200_OK)
 
     def delete(self, request, join_code):
-        id = int(join_code)
+        # `join_code` here is actually the *competition id* - the URL
+        # path is reused for POST and DELETE but the two payloads are
+        # different things (POST takes a join code, DELETE takes an id).
+        try:
+            competition_id = int(join_code)
+        except (TypeError, ValueError):
+            return Response({"message": "Invalid competition id."}, status=status.HTTP_400_BAD_REQUEST)
 
-        request.user.my_competitions.remove(id)
-        teams = request.user.my_teams.filter(competition=id)
+        if not Competition.objects.filter(pk=competition_id).exists():
+            return Response({"message": "Competition not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not request.user.my_competitions.filter(pk=competition_id).exists():
+            # Don't leak that the user isn't a member - same response
+            # either way. Avoids IDOR enumeration via the DELETE verb.
+            return Response({"message": "Successfully left competition.", "competition": competition_id}, status=status.HTTP_200_OK)
+
+        request.user.my_competitions.remove(competition_id)
+        teams = request.user.my_teams.filter(competition=competition_id)
         for team in teams:
             team.user.remove(request.user)
             team.save()
         request.user.save()
 
-        points = Points.objects.filter((Q(award__competition__id=id) | Q(goal__competition_id=id)) & Q(workout__user=request.user))
-        points.delete()
+        Points.objects.filter((Q(award__competition__id=competition_id) | Q(goal__competition_id=competition_id)) & Q(workout__user=request.user)).delete()
 
-        return Response({"message": "Successfully left competition.", "competition": id}, status=status.HTTP_200_OK)
+        return Response({"message": "Successfully left competition.", "competition": competition_id}, status=status.HTTP_200_OK)
 
 
 class JoinTeamView(APIView):
@@ -285,7 +298,10 @@ class JoinTeamView(APIView):
             return Response({"message": "Invalid team id."}, status=status.HTTP_400_BAD_REQUEST)
         team = team[0]
 
-        user_id = request.query_params.get('user', request.user.id)
+        try:
+            user_id = int(request.query_params.get('user', request.user.id))
+        except (TypeError, ValueError):
+            return Response({"message": "Invalid user id."}, status=status.HTTP_400_BAD_REQUEST)
         user = CustomUser.objects.filter(id=user_id)
         if len(user) == 0:
             return Response({"message": "Invalid user id."}, status=status.HTTP_400_BAD_REQUEST)
@@ -294,8 +310,43 @@ class JoinTeamView(APIView):
         competition = team.competition
         competition_teams = competition.team_set.all()
 
-        if user != request.user and request.user != competition.owner and len(competition_teams.filter(user=user)) > 0:
-            return Response({"message": "Unauthorized. You can only change your own team or add people to your team if they are currently in no team."}, status=status.HTTP_403_FORBIDDEN)
+        # Authorization rules:
+        #   * A user can always move themselves (no need to be in no
+        #     team first - that's what the dedup loop below enforces).
+        #   * The competition owner can move any participant.
+        #   * Anyone else can only move a user who is currently in
+        #     *no* team in this competition - the previous version of
+        #     this check allowed anyone to silently re-assign un-teamed
+        #     participants to their own team, which let a regular
+        #     participant scrape the participant list and shove people
+        #     into the wrong team.
+        target_is_self = (user.pk == request.user.pk)
+        is_owner = (competition.owner_id == request.user.id)
+        target_in_a_team = competition_teams.filter(user=user).exists()
+
+        if not target_is_self and not is_owner and target_in_a_team:
+            return Response(
+                {"message": "Unauthorized. You can only change your own team or move team-less participants."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Only the owner or the target themselves can move people into
+        # a specific team when they had no team. Otherwise a regular
+        # participant could add team-less competitors into their team.
+        if not target_is_self and not is_owner and not target_in_a_team:
+            return Response(
+                {"message": "Unauthorized. Only the competition owner can assign un-teamed participants to a team."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Make sure the target is actually a participant of the
+        # competition - otherwise we'd be adding a stranger to the
+        # team rosters.
+        if not competition.user.filter(pk=user.pk).exists():
+            return Response(
+                {"message": "User is not a participant of this competition."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         for competition_team in competition_teams:
             competition_team.user.remove(user.id)

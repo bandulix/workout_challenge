@@ -20,6 +20,7 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             # LLM
+            "llm_provider",
             "llm_api_key",
             "llm_api_key_masked",
             "llm_base_url",

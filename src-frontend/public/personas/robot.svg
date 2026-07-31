@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="28%" r="95%">
+      <stop offset="0%" stop-color="#d9dee8"/>
+      <stop offset="100%" stop-color="#6b7486"/>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <circle cx="128" cy="128" r="88" fill="#9aa3b5" opacity=".5"/>
+  <!-- body -->
+  <path d="M64 256 C64 214 92 192 128 192 C164 192 192 214 192 256 Z" fill="#3c4250"/>
+  <rect x="104" y="216" width="48" height="10" rx="5" fill="#d7ff3e"/>
+  <circle cx="88" cy="226" r="6" fill="#ff5c5c"/>
+  <!-- neck -->
+  <rect x="110" y="168" width="36" height="30" rx="6" fill="#2b2f3a"/>
+  <!-- head -->
+  <rect x="66" y="66" width="124" height="106" rx="26" fill="#3c4250"/>
+  <rect x="66" y="66" width="124" height="52" rx="26" fill="#4a5162"/>
+  <!-- antenna -->
+  <rect x="124" y="34" width="8" height="26" rx="4" fill="#2b2f3a"/>
+  <circle cx="128" cy="30" r="11" fill="#d7ff3e"/>
+  <circle cx="128" cy="30" r="11" fill="none" stroke="#a8d41f" stroke-width="4"/>
+  <!-- ears -->
+  <rect x="52" y="104" width="14" height="34" rx="7" fill="#2b2f3a"/>
+  <rect x="190" y="104" width="14" height="34" rx="7" fill="#2b2f3a"/>
+  <!-- glowing eyes -->
+  <circle cx="102" cy="112" r="16" fill="#d7ff3e"/>
+  <circle cx="154" cy="112" r="16" fill="#d7ff3e"/>
+  <circle cx="102" cy="112" r="7" fill="#161d07"/>
+  <circle cx="154" cy="112" r="7" fill="#161d07"/>
+  <!-- smile grill -->
+  <rect x="94" y="142" width="68" height="16" rx="8" fill="#2b2f3a"/>
+  <rect x="102" y="147" width="8" height="6" rx="2" fill="#d7ff3e"/>
+  <rect x="116" y="147" width="8" height="6" rx="2" fill="#d7ff3e"/>
+  <rect x="130" y="147" width="8" height="6" rx="2" fill="#d7ff3e"/>
+  <rect x="144" y="147" width="8" height="6" rx="2" fill="#d7ff3e"/>
+</svg>

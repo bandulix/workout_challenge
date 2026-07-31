@@ -27,8 +27,29 @@ QR_CODE_PATH = BASE_DIR.parent / "src-frontend" / "public"
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
+def _get_secret_key():
+    """Resolve Django's SECRET_KEY.
+
+    The fallback only fires when SECRET_KEY is unset *and* DEBUG is on -
+    so a developer who starts the server without configuring a key can
+    still get a working dev setup. In production a missing key is a hard
+    error: shipping a known SECRET_KEY would let attackers forge
+    sessions, password-reset tokens, and CSRF tokens.
+    """
+    key = os.environ.get("SECRET_KEY", "").strip()
+    if key:
+        return key
+    if os.environ.get("DEBUG", "false").lower() == "true":
+        return 'django-insecure-dev-only-not-for-production-CHANGE-ME-please-50chars'
+    raise RuntimeError(
+        "SECRET_KEY environment variable is required in production. "
+        "Generate one with `python -c \"from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())\"` "
+        "and set it via your secrets manager or docker-compose environment."
+    )
+
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get("SECRET_KEY", 'django-insecure-y4cob-qij5d!!h6^oy8bt_xqtuo%3s$w(^=7wq%9w%ckd(--9t')
+SECRET_KEY = _get_secret_key()
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
@@ -36,10 +57,17 @@ print(f'Debug modus is turned {"on" if DEBUG else "off"}')
 
 MAIN_HOST = os.environ.get("MAIN_HOST", "http://localhost")
 HOSTS = os.environ.get("HOSTS", "http://localhost,http://127.0.0.1").split(",")
+
+# CORS / hosts hardening.
+# CORS_ALLOW_ALL_ORIGINS *  CORS_ALLOW_CREDENTIALS is forbidden by the
+# spec (the browser will refuse the response) and - more importantly -
+# means any origin can issue credentialed cross-site requests if a
+# browser ever accepts it. Never combine them in production. We default
+# to a strict, allow-listed CORS configuration regardless of DEBUG.
 CSRF_TRUSTED_ORIGINS = HOSTS
-ALLOWED_HOSTS = ['*'] if os.environ.get("ALLOW_ALL_HOSTS", "false").lower() == "true" else [urlparse(url).netloc for url in HOSTS]
+ALLOWED_HOSTS = [urlparse(url).netloc for url in HOSTS]
 CORS_ALLOWED_ORIGINS = HOSTS
-CORS_ALLOW_ALL_ORIGINS = True if DEBUG or os.environ.get("ALLOW_ALL_HOSTS", "false").lower() == "true" else False
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 
 
@@ -54,6 +82,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'corsheaders',
     'rest_framework',
+    'rest_framework_simplejwt.token_blacklist',
     'django_filters',
     'celery',
     'django_celery_beat',
@@ -174,7 +203,7 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': datetime.timedelta(minutes=5),
     'REFRESH_TOKEN_LIFETIME': datetime.timedelta(days=5),
-    'ROTATE_REFRESH_TOKENS': False,
+    'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,
 }
@@ -193,14 +222,33 @@ USE_I18N = True
 
 USE_TZ = True
 
+
+# Security headers - Django emits these on every response. nginx also
+# sets some headers (see nginx.conf) so we set both for defense in
+# depth: nginx is in front of the API for the public compose setup but
+# gunicorn is also exposed on :8000 for debugging.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = 'same-origin'
+X_FRAME_OPTIONS = 'DENY'
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+
 # Celery
 CELERY_BROKER_URL = 'redis://localhost:6379/0'
 CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 
 CACHES = {
-    'default': ({
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-    } if DEBUG else {
+    # Redis is always running in this stack (supervisord starts it as
+    # the first process). We use it for the cache regardless of DEBUG
+    # so that throttles / locks work across all gunicorn workers -
+    # LocMemCache is per-process so multi-worker dev runs would have
+    # N times the intended throttle threshold.
+    'default': {
         "BACKEND": "django_redis.cache.RedisCache",
         "LOCATION": "redis://0.0.0.0:6379/1",
         "OPTIONS": {
@@ -212,7 +260,7 @@ CACHES = {
             "SOCKET_CONNECT_TIMEOUT": 5,
             "SOCKET_TIMEOUT": 5,
         }
-    })
+    }
 }
 
 
@@ -221,6 +269,11 @@ CACHES = {
 
 STATIC_URL = 'apistatic/'
 STATIC_ROOT = BASE_DIR / 'static'
+
+# User-uploaded media (profile pictures). Served by nginx under /media/
+# in the container; persisted in the data volume.
+MEDIA_URL = 'media/'
+MEDIA_ROOT = DATA_DIR / 'media'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -290,10 +343,15 @@ LOGGING = {
 
 # OpenAI for AI quotes
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", None)
+# Provider preset: "custom" (default OpenAI-compatible), "MiniMax",
+# "openai". Used as a fallback when the Site Settings DB row hasn't
+# picked one. Resolved base_url + model are derived from this preset
+# unless the DB row overrides them.
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", None)
 # Any OpenAI-compatible provider can be used by setting LLM_BASE_URL
 # (e.g. https://openrouter.ai/api/v1, https://api.groq.com/openai/v1,
-# http://localhost:11434/v1 for Ollama). Leave unset to use OpenAI's
-# default endpoint.
+# http://localhost:11434/v1 for Ollama). Leave unset to use the
+# provider preset's default endpoint (or OpenAI's endpoint for "custom").
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", None)
 # Default model for the Drill Instructor (short, persona-voiced comments).
 LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")

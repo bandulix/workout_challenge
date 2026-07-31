@@ -3,6 +3,14 @@
 docs
 src-backend/static
 src-backend/data
+# But the migrations MUST ship with the image - they're not runtime data.
+!src-backend/data/db_migrations/
+# The bundled scripts/ directory at the repo root (entrypoint,
+# render_config_js, dev helpers) must ship into the image. The
+# generic "[Ss]cripts" rule from the Python template below was
+# too broad and was excluding this directory.
+!scripts/
+!scripts/**
 
 ### venv template
 # Virtualenv
@@ -13,7 +21,11 @@ src-backend/data
 [Ll]ib
 [Ll]ib64
 [Ll]ocal
-[Ss]cripts
+# Removed the generic "[Ss]cripts" rule - it was meant to exclude
+# Python venv script folders but it also caught our repo-level
+# scripts/ directory which the image needs (entrypoint.sh,
+# render_config_js.py). Venv contents are still excluded via the
+# [Bb]in / [Ll]ib rules above.
 pyvenv.cfg
 .venv
 pip-selfcheck.json

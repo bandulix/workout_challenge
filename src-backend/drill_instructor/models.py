@@ -15,6 +15,27 @@ class DrillInstructorPersona(models.Model):
 
     name = models.CharField(max_length=60, unique=True)
     description = models.CharField(max_length=200, blank=True, default="")
+    tagline = models.CharField(
+        max_length=80,
+        blank=True,
+        default="",
+        help_text="Short one-liner shown under the persona's name in the Coach UI.",
+    )
+    avatar = models.CharField(
+        max_length=40,
+        blank=True,
+        default="",
+        help_text=(
+            "Avatar artwork key. Either one of the built-in keys shipped in "
+            "the frontend (/personas/<key>.svg) or a custom emoji character."
+        ),
+    )
+    theme_color = models.CharField(
+        max_length=7,
+        blank=True,
+        default="",
+        help_text="Hex accent colour (e.g. #d7ff3e) used for the persona's avatar ring and chat bubbles.",
+    )
     system_prompt = models.TextField()
     is_builtin = models.BooleanField(default=False)
     created_by = models.ForeignKey(
@@ -37,9 +58,10 @@ class DrillInstructorPersona(models.Model):
 class DrillInstructorConfig(models.Model):
     """Per-competition Drill Instructor configuration.
 
-    Holds the Matrix destination, the chosen persona, and a small set of
-    feature toggles. Access tokens are write-only on the API: only a
-    short masked preview is ever returned to the client.
+    Holds the chosen persona and a small set of feature toggles. The
+    instructor writes its generated messages to ``DrillInstructorMessage``
+    so the competition owner can read them back; push notifications and
+    "test message" previews go through the in-app channels.
     """
 
     competition = models.OneToOneField(
@@ -55,11 +77,6 @@ class DrillInstructorConfig(models.Model):
         on_delete=models.PROTECT,
         related_name="competitions",
     )
-
-    matrix_homeserver = models.CharField(max_length=200)
-    matrix_access_token = models.CharField(max_length=512)
-    matrix_room_id = models.CharField(max_length=120)
-    matrix_bot_display_name = models.CharField(max_length=60, blank=True, default="")
 
     comment_on_activity = models.BooleanField(default=True)
     send_push_on_activity = models.BooleanField(
@@ -81,19 +98,13 @@ class DrillInstructorConfig(models.Model):
     class Meta:
         ordering = ["competition__name"]
 
-    @property
-    def access_token_masked(self):
-        token = self.matrix_access_token or ""
-        if len(token) <= 6:
-            return "*" * len(token)
-        return f"{'*' * (len(token) - 4)}{token[-4:]}"
-
 
 class DrillInstructorMessage(models.Model):
-    """Audit log of every message the Drill Instructor has posted.
+    """Audit log of every Drill Instructor message generated.
 
-    Useful for debugging, for the owner to see what's been said, and as
-    a safety trail so the same workout is never commented on twice.
+    When the instructor is enabled, generated workout comments and any
+    "test message" preview are stored here so the competition owner can
+    read them back from the webapp.
     """
 
     config = models.ForeignKey(
@@ -108,7 +119,6 @@ class DrillInstructorMessage(models.Model):
         blank=True,
         related_name="drill_instructor_messages",
     )
-    matrix_event_id = models.CharField(max_length=120, blank=True, default="")
     body = models.TextField()
     posted_at = models.DateTimeField(default=timezone.now)
     success = models.BooleanField(default=True)

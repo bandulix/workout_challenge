@@ -1,8 +1,12 @@
 import time, datetime
+import logging
 import requests
+
+logger = logging.getLogger(__name__)
 from rest_framework import viewsets
 from rest_framework.permissions import BasePermission, IsAdminUser, SAFE_METHODS, AllowAny
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.throttling import BaseThrottle
 from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -19,6 +23,26 @@ from .models import CustomUser
 from .serializers import CustomUserSerializer
 from .filters import CustomUserFilter
 from .strava import sync_strava
+
+
+def _blacklist_user_tokens(user):
+    """Invalidate every outstanding refresh token for ``user``.
+
+    Called on account deletion and on Strava unlink so that even if a
+    stolen access token (lifetime 5 minutes by default) is replayed
+    immediately after the action, the attacker can't mint a fresh
+    access token by presenting the (now blacklisted) refresh token.
+    """
+    try:
+        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
+        for token in OutstandingToken.objects.filter(user=user):
+            BlacklistedToken.objects.get_or_create(token=token)
+    except Exception:
+        # The blacklist app may not be migrated yet on a brand-new
+        # install. Swallow the error so the caller's primary action
+        # (delete / unlink) still succeeds - the short access-token
+        # lifetime is the next line of defence.
+        pass
 
 class IsOwnerOrReadOnly(BasePermission):
     """ Permission class to only allow admins and owner to edit or delete entry """
@@ -48,7 +72,15 @@ class IsOwnerOrReadOnly(BasePermission):
 
 
 class UserPermissionClass(BasePermission):
-    """ Allow unauthenticated users to POST data - i.e. for registration """
+    """ Allow unauthenticated users to POST data - i.e. for registration.
+
+    The ``POST`` allowance is throttled by ``REGISTER_THROTTLE`` below
+    so a single attacker can't bulk-create accounts. Per the docs, the
+    first registered user is auto-promoted to staff/superuser, so an
+    open registration endpoint without throttling would let an attacker
+    race the legitimate first user and lock them out of the admin
+    panel.
+    """
     def has_permission(self, request, view):
         # Only create new requsts - i.e. POST
         if request.method in ('POST', 'OPTIONS'):
@@ -59,6 +91,48 @@ class UserPermissionClass(BasePermission):
         return obj.pk == request.user.pk
 
 
+class RegisterRateThrottle(BaseThrottle):
+    """Rate-limit anonymous ``POST /api/user/`` (account creation).
+
+    Backed by the Django cache (Redis in production, LocMem in DEBUG),
+    so the limit is shared across gunicorn workers. 20 / hour / IP
+    easily accommodates real-world signups (a household or small office
+    behind a single NAT can create a few accounts in one sitting)
+    while still keeping the
+    ``first-registered-user-becomes-admin`` race outside the reach of
+    a single attacker. Pure-noise attacks (mass bot account creation
+    for spam) need to clear captcha / email verification before they
+    get this far, so 20/hr is well below that bar too.
+    """
+    RATE_LIMIT = 20
+    RATE_WINDOW_SECONDS = 60 * 60
+
+    def get_cache_key(self, request, view):
+        # X-Forwarded-For is set by nginx in front of the API. Fall
+        # back to REMOTE_ADDR if there's no proxy.
+        ip = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip() or request.META.get('REMOTE_ADDR', 'unknown')
+        return f"register-throttle:{ip}"
+
+    def allow_request(self, request, view):
+        if request.method != 'POST':
+            return True
+        from django.core.cache import cache
+        key = self.get_cache_key(request, view)
+        count = cache.get(key, 0)
+        if count >= self.RATE_LIMIT:
+            return False
+        # ``incr`` is atomic on the cache backend; fall back to ``set``
+        # if the key doesn't exist yet (LocMem/Redis return KeyError).
+        try:
+            cache.incr(key)
+        except ValueError:
+            cache.set(key, 1, self.RATE_WINDOW_SECONDS)
+        return True
+
+    def wait(self):
+        return self.RATE_WINDOW_SECONDS
+
+
 class CustomUserViewSet(viewsets.ModelViewSet):
     #queryset = Competition.objects.all()
     serializer_class = CustomUserSerializer
@@ -67,6 +141,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
     filterset_class = CustomUserFilter
 
     permission_classes = [UserPermissionClass]
+    throttle_classes = [RegisterRateThrottle]
 
     def get_queryset(self):
         # return all competitions the user is owner of or a participant of
@@ -81,6 +156,14 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             lookup_value = self.request.user.id
 
         return get_object_or_404(self.get_queryset(), pk=lookup_value)
+
+    def destroy(self, request, *args, **kwargs):
+        # Blacklist the user's refresh tokens before the user row is
+        # deleted. After the cascade, OutstandingToken rows go with it
+        # so we wouldn't be able to blacklist them afterwards.
+        instance = self.get_object()
+        _blacklist_user_tokens(instance)
+        return super().destroy(request, *args, **kwargs)
 
 
 class PasswordResetView(APIView):
@@ -119,22 +202,48 @@ class LinkStravaView(APIView):
         if not client_id or not client_secret:
             return Response({"message": "Sever configuration error - STRAVA_CLIENT_ID and/or STRAVA_CLIENT_SECRET are not set."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-        response = requests.post(
-            url='https://www.strava.com/oauth/token',
-            data={
-                'client_id': client_id,
-                'client_secret': client_secret,
-                'code': code,
-                'grant_type': 'authorization_code'
-            }
-        )
-
-        if response.ok is False:
-            return Response({"message": "Invalid Strava linkage code"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            response = requests.post(
+                url='https://www.strava.com/oauth/token',
+                data={
+                    'client_id': client_id,
+                    'client_secret': client_secret,
+                    'code': code,
+                    'grant_type': 'authorization_code'
+                },
+                timeout=15,
+            )
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as exc:
+            if response.status_code == 400:
+                # Strava rejected the auth code (already used, expired,
+                # or never issued). Surface that to the user.
+                return Response({"message": "Invalid or expired Strava linkage code."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"message": f"Strava token exchange failed ({response.status_code})."}, status=status.HTTP_502_BAD_GATEWAY)
+        except requests.RequestException as exc:
+            # Network / DNS / TLS error talking to Strava. Don't leak
+            # the exception text - it can include the resolved hostname
+            # or proxy details.
+            return Response({"message": "Could not reach Strava. Please try again later."}, status=status.HTTP_502_BAD_GATEWAY)
 
         strava_tokens = response.json()
+        new_athlete_id = strava_tokens.get('athlete', {}).get('id')
+
+        # If the Strava athlete is already linked to a *different*
+        # account on this server, refuse to overwrite it. Otherwise an
+        # attacker who happens to be logged into Strava as victim A
+        # could use their OAuth code to attach victim A's Strava to
+        # their own workout-challenge account.
+        if new_athlete_id is not None:
+            existing = CustomUser.objects.filter(strava_athlete_id=new_athlete_id).exclude(pk=user.pk).first()
+            if existing is not None:
+                return Response(
+                    {"message": "This Strava account is already linked to a different Workout Challenge user."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
         setattr(user, 'strava_refresh_token', strava_tokens.get('refresh_token', None))
-        setattr(user, 'strava_athlete_id', strava_tokens.get('athlete', {}).get('id', None))
+        setattr(user, 'strava_athlete_id', new_athlete_id)
         user.save()
 
         cache.set(f"strava_access_token_{user.id}", strava_tokens.get('access_token', None), int(strava_tokens.get('expires_in', 21600)) - 60)
@@ -148,7 +257,7 @@ class LinkStravaView(APIView):
             if '401 Client Error: Unauthorized' in str(err):
                 return Response({'message': 'Access to activities denied by Strava. Not sufficient permissions to download activities.'}, status=status.HTTP_403_FORBIDDEN)
             else:
-                raise Response(err.response.json(), status=err.response.status_code)
+                return Response({'message': 'Failed to import Strava activities. Please try again later.'}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response({"message": "Successfully linked Strava."}, status=status.HTTP_200_OK)
 
@@ -162,6 +271,11 @@ class UnlinkStravaView(APIView):
         setattr(user, 'strava_refresh_token', None)
         setattr(user, 'strava_athlete_id', None)
         user.save()
+
+        # If Strava was unlinked because of a hijacked account, the
+        # attacker shouldn't be able to mint a fresh access token. The
+        # Strava token is gone; blacklist ours too.
+        _blacklist_user_tokens(user)
 
         return Response({"message": "Successfully unlinked Strava."}, status=status.HTTP_200_OK)
 
@@ -181,3 +295,88 @@ class SyncStravaView(APIView):
             return Response({"message": f"Successfully synced Strava."}, status=status.HTTP_200_OK)
 
         return Response({"message": "Too many requests! You can only request a Strava sync every 60 minutes."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+class LinkGarminView(APIView):
+    """Link the user's Garmin Connect account.
+
+    The password is used once to obtain OAuth tokens and is never
+    stored - only the encrypted token blob is kept.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .garmin import (
+            GarminAuthError,
+            GarminUnavailableError,
+            encrypt_tokens,
+            login_and_get_tokens,
+            sync_garmin,
+        )
+
+        email = (request.data.get("email") or "").strip()
+        password = request.data.get("password") or ""
+        if not email or not password:
+            return Response({"message": "Garmin email and password are required."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            token_blob = login_and_get_tokens(email, password)
+        except GarminAuthError as exc:
+            return Response({"message": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except GarminUnavailableError as exc:
+            return Response({"message": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        user = request.user
+        user.garmin_email = email
+        user.garmin_tokens_enc = encrypt_tokens(token_blob)
+        user.garmin_last_synced_at = None
+        user.save()
+
+        # Initial import of the last ~6 weeks runs in the background -
+        # the Garmin SSO roundtrip is slow enough already.
+        try:
+            sync_garmin.delay(user__id=user.id, days_back=43)
+        except Exception as exc:  # noqa: BLE001 - linkage itself succeeded
+            logger.warning("Garmin linked but initial sync could not be queued for user %s: %s", user.id, exc)
+
+        return Response({"message": "Successfully linked Garmin. Your recent activities are being imported in the background."},
+                        status=status.HTTP_200_OK)
+
+
+class UnlinkGarminView(APIView):
+    """Unlink Garmin Connect and drop the stored tokens."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        user.garmin_email = None
+        user.garmin_tokens_enc = None
+        user.garmin_last_synced_at = None
+        user.save()
+        return Response({"message": "Successfully unlinked Garmin."}, status=status.HTTP_200_OK)
+
+
+class SyncGarminView(APIView):
+    """Manually re-sync recent Garmin activities (throttled to hourly)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .garmin import GarminAuthError, GarminUnavailableError, sync_garmin
+
+        user = request.user
+        if not user.garmin_tokens_enc:
+            return Response({"message": "Garmin is not linked."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if user.garmin_last_synced_at and user.garmin_last_synced_at > (timezone.now() - datetime.timedelta(minutes=59)):
+            return Response({"message": "Too many requests! You can only request a Garmin sync every 60 minutes."},
+                            status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        try:
+            result = sync_garmin(user__id=user.id, days_back=3)
+        except GarminAuthError as exc:
+            return Response({"message": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except GarminUnavailableError as exc:
+            return Response({"message": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response({"message": f"Successfully synced Garmin ({result.get('created', 0)} new activities)."},
+                        status=status.HTTP_200_OK)

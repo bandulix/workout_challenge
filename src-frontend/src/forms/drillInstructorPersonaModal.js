@@ -12,33 +12,18 @@ import {
     Modal,
     SaveButton,
 } from "./basicComponents";
-import {SectionLoader} from "../utils/loaders";
+import PersonaAvatar from "../components/PersonaAvatar";
 
-const PERSONA_FIELDS = {
-    name: {
-        type: "text",
-        required: true,
-        read_only: false,
-        label: "Name",
-        width: "w-full",
-        autoFocus: true,
-    },
-    description: {
-        type: "text",
-        required: false,
-        read_only: false,
-        label: "Short Description",
-        width: "w-full",
-        placeholder: "e.g. Tough-love military style",
-    },
-    system_prompt: {
-        type: "textarea",
-        required: true,
-        read_only: false,
-        label: "System Prompt (voice and style)",
-        width: "w-full",
-    },
-};
+// Artwork shipped in /public/personas - custom personas pick one of these
+// (or type a single emoji) plus an accent colour.
+export const PERSONA_ARTWORK = [
+    "megaphone", "sergeant", "roast", "cheerleader", "butler", "zen",
+    "rocket", "ninja", "robot", "captain",
+];
+export const PERSONA_COLORS = [
+    "#d7ff3e", "#ff6b3d", "#ff5cb8", "#9fb4d8", "#4fd6c4",
+    "#a78bfa", "#f43f5e", "#38bdf8", "#fbbf24", "#94a3b8",
+];
 
 function PersonaEditModal({persona, setModalState}) {
     const isNew = persona?.id === undefined;
@@ -53,7 +38,10 @@ function PersonaEditModal({persona, setModalState}) {
         if (persona) {
             setValues({
                 name: persona.name || "",
+                tagline: persona.tagline || "",
                 description: persona.description || "",
+                avatar: persona.avatar || "megaphone",
+                theme_color: persona.theme_color || PERSONA_COLORS[0],
                 system_prompt: persona.system_prompt || "",
             });
         }
@@ -87,38 +75,85 @@ function PersonaEditModal({persona, setModalState}) {
         }
     }
 
-    const fields = {...PERSONA_FIELDS};
+    const inputClass = "w-full shadow border rounded-xl py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-300 leading-tight focus:outline-none focus:border-volt-500";
 
     return (
         <Modal title={isNew ? "New Persona" : "Edit Persona"} setShowModal={setModalState} isLoading={addLoading || updateLoading}>
+            {/* identity preview */}
+            <div className="flex items-center gap-4 px-4 pb-2">
+                <PersonaAvatar persona={values} size={72} glow/>
+                <div>
+                    <p className="font-bold">{values.name || "Unnamed coach"}</p>
+                    <p className="text-sm text-gray-400 italic">{values.tagline || "No tagline yet."}</p>
+                </div>
+            </div>
+
             <div className="flex flex-wrap">
-                {Object.entries(fields).map(([fieldName, fieldKwargs]) => (
-                    <div key={fieldName} className={"px-4 " + (fieldKwargs.width || "w-full")}>
-                        <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
-                            {fieldKwargs.label}{fieldKwargs.required ? "*" : ""}
-                            {fieldErrors[fieldName] && (
-                                <span className="text-red-600 font-normal italic"> ({fieldErrors[fieldName]})</span>
-                            )}
-                        </label>
-                        {fieldKwargs.type === "textarea" ? (
-                            <textarea
-                                rows={8}
-                                className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
-                                value={values[fieldName] || ""}
-                                onChange={(e) => setValues({...values, [fieldName]: e.target.value})}
-                            />
-                        ) : (
-                            <input
-                                type={fieldKwargs.type}
-                                className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
-                                value={values[fieldName] || ""}
-                                placeholder={fieldKwargs.placeholder || ""}
-                                onChange={(e) => setValues({...values, [fieldName]: e.target.value})}
-                                autoFocus={fieldKwargs.autoFocus && !window.matchMedia("(max-width: 640px)").matches}
-                            />
-                        )}
+                <div className="px-4 w-full sm:w-1/2">
+                    <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
+                        Name*{fieldErrors.name && <span className="text-red-600 font-normal italic"> ({fieldErrors.name})</span>}
+                    </label>
+                    <input type="text" className={inputClass} value={values.name || ""}
+                           onChange={(e) => setValues({...values, name: e.target.value})}
+                           autoFocus={!window.matchMedia("(max-width: 640px)").matches}/>
+                </div>
+                <div className="px-4 w-full sm:w-1/2">
+                    <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
+                        Tagline{fieldErrors.tagline && <span className="text-red-600 font-normal italic"> ({fieldErrors.tagline})</span>}
+                    </label>
+                    <input type="text" className={inputClass} value={values.tagline || ""} maxLength={80}
+                           placeholder="e.g. No mercy. All love."
+                           onChange={(e) => setValues({...values, tagline: e.target.value})}/>
+                </div>
+                <div className="px-4 w-full">
+                    <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
+                        Short Description{fieldErrors.description && <span className="text-red-600 font-normal italic"> ({fieldErrors.description})</span>}
+                    </label>
+                    <input type="text" className={inputClass} value={values.description || ""}
+                           placeholder="e.g. Tough-love military style"
+                           onChange={(e) => setValues({...values, description: e.target.value})}/>
+                </div>
+
+                {/* avatar artwork picker */}
+                <div className="px-4 w-full">
+                    <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
+                        Profile Picture{fieldErrors.avatar && <span className="text-red-600 font-normal italic"> ({fieldErrors.avatar})</span>}
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                        {PERSONA_ARTWORK.map((key) => (
+                            <button key={key} type="button" onClick={() => setValues({...values, avatar: key})}
+                                    className={"rounded-full transition active:scale-90 " + (values.avatar === key ? "ring-2 ring-offset-2 ring-volt-400 dark:ring-offset-ink-850" : "opacity-60 hover:opacity-100")}>
+                                <PersonaAvatar persona={{avatar: key, theme_color: values.theme_color}} size={44} ring={false}/>
+                            </button>
+                        ))}
                     </div>
-                ))}
+                    <p className="text-xs text-gray-500 mt-1">…or type a single emoji:</p>
+                    <input type="text" className={inputClass + " mt-1 w-24 text-center"} value={PERSONA_ARTWORK.includes(values.avatar) ? "" : values.avatar || ""}
+                           placeholder="🔥" maxLength={8}
+                           onChange={(e) => setValues({...values, avatar: e.target.value || "megaphone"})}/>
+                </div>
+
+                {/* accent colour picker */}
+                <div className="px-4 w-full">
+                    <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
+                        Accent Colour{fieldErrors.theme_color && <span className="text-red-600 font-normal italic"> ({fieldErrors.theme_color})</span>}
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                        {PERSONA_COLORS.map((c) => (
+                            <button key={c} type="button" onClick={() => setValues({...values, theme_color: c})}
+                                    className={"h-9 w-9 rounded-full transition active:scale-90 " + (values.theme_color === c ? "ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-ink-850 scale-110" : "hover:scale-110")}
+                                    style={{backgroundColor: c}}/>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="px-4 w-full">
+                    <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
+                        System Prompt (voice and style)*{fieldErrors.system_prompt && <span className="text-red-600 font-normal italic"> ({fieldErrors.system_prompt})</span>}
+                    </label>
+                    <textarea rows={8} className={inputClass} value={values.system_prompt || ""}
+                              onChange={(e) => setValues({...values, system_prompt: e.target.value})}/>
+                </div>
             </div>
             <div className="text-center text-red-500 text-xs italic">{formError}</div>
             <div className="relative flex justify-end items-center">
@@ -150,35 +185,34 @@ export default function DrillInstructorPersonaModal({setModalState}) {
                 Personas define the voice and style of the AI Drill Instructor. Any competition owner can pick
                 any persona when configuring their Drill Instructor. Built-in personas can be edited but not deleted.
             </div>
-            <table className="min-w-full my-2">
-                <tbody>
+            <div className="grid gap-2 sm:grid-cols-2 px-2">
                 {(personas?.length ?? 0) === 0 ? (
-                    <tr>
-                        <td className="py-2 px-4 text-center text-gray-500">No personas yet - create the first one.</td>
-                    </tr>
+                    <p className="py-2 px-4 text-center text-gray-500 sm:col-span-2">No personas yet - create the first one.</p>
                 ) : (
                     personas.map((persona) => (
-                        <tr key={"persona" + persona.id} className="hover:bg-gray-100 dark:hover:bg-gray-900 border-b">
-                            <td className="py-2 px-4">
-                                <div className="font-semibold">{persona.name}{persona.is_builtin && (
-                                    <span className="ml-2 text-xs text-gray-500 italic">(built-in)</span>
+                        <div key={"persona" + persona.id}
+                             className="flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-ink-700/60 p-3 hover:shadow-card transition">
+                            <PersonaAvatar persona={persona} size={52}/>
+                            <div className="min-w-0 flex-1">
+                                <div className="font-bold truncate">{persona.name}{persona.is_builtin && (
+                                    <span className="ml-2 text-[10px] uppercase tracking-wide text-volt-600 dark:text-volt-400 font-bold">built-in</span>
                                 )}</div>
-                                <div className="text-sm text-gray-500">{persona.description}</div>
-                            </td>
-                            <td className="py-2 px-2 whitespace-nowrap">
+                                <div className="text-xs text-gray-400 italic truncate">{persona.tagline}</div>
+                                <div className="text-sm text-gray-500 dark:text-gray-400 truncate">{persona.description}</div>
+                            </div>
+                            <div className="flex flex-col gap-1">
                                 <EditButton additionalClasses="mx-1" onClick={() => setEditing(persona)} label={false} larger={true}/>
                                 {!persona.is_builtin && (
                                     <DeleteButton additionalClasses="mx-1" onClick={() => handleDelete(persona)} label={false} larger={true}/>
                                 )}
-                            </td>
-                        </tr>
+                            </div>
+                        </div>
                     ))
                 )}
-                </tbody>
-            </table>
+            </div>
             <div className="relative flex justify-between items-center">
                 <AddButton onClick={() => setEditing({})} label="New Persona" highlighted={true} larger={true}/>
-                <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => refetch()}>Refresh</button>
+                <button className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-volt-300" onClick={() => refetch()}>Refresh</button>
             </div>
             {editing !== null && (
                 <PersonaEditModal persona={editing} setModalState={(open) => {

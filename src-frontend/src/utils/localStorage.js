@@ -11,7 +11,6 @@ const NEVER_PERSIST = new Set([
   "llm_api_key",
   "strava_client_secret",
   "email_host_password",
-  "matrix_access_token",
   "p256dh",
   "auth",
 ]);

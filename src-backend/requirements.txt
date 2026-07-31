@@ -17,3 +17,6 @@ sentry-sdk[celery]
 openai>=1.0.0
 gevent
 pywebpush>=2.0.0
+py-vapid>=1.9.0Pillow>=10.0.0
+garminconnect>=0.2.0
+cryptography>=41.0.0

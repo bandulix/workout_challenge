@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="28%" r="95%">
+      <stop offset="0%" stop-color="#cfdcf5"/>
+      <stop offset="100%" stop-color="#7b93c4"/>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <circle cx="128" cy="118" r="86" fill="#a7bce0" opacity=".55"/>
+  <!-- shoulders: tuxedo -->
+  <path d="M40 256 C40 206 78 180 128 180 C178 180 216 206 216 256 Z" fill="#22242c"/>
+  <path d="M104 182 L128 256 L152 182 L140 178 L128 196 L116 178 Z" fill="#f4f5f7"/>
+  <path d="M104 182 L84 226 L96 230 L110 190 Z M152 182 L172 226 L160 230 L146 190 Z" fill="#2e3038"/>
+  <!-- bow tie -->
+  <path d="M128 190 l-18 -10 l0 20 z M128 190 l18 -10 l0 20 z" fill="#14151a"/>
+  <rect x="123" y="184" width="10" height="12" rx="2" fill="#14151a"/>
+  <!-- neck -->
+  <rect x="114" y="152" width="28" height="34" rx="9" fill="#e3a97e"/>
+  <!-- head -->
+  <path d="M128 46 C160 46 180 70 180 108 C180 144 158 170 128 170 C98 170 76 144 76 108 C76 70 96 46 128 46 Z" fill="#f2c19b"/>
+  <ellipse cx="75" cy="112" rx="9" ry="12" fill="#f2c19b"/>
+  <ellipse cx="181" cy="112" rx="9" ry="12" fill="#f2c19b"/>
+  <!-- slicked side-part hair -->
+  <path d="M76 104 C72 56 96 32 130 32 C164 32 184 54 180 98 C172 74 160 64 140 62 C112 58 88 70 76 104 Z" fill="#3a3d46"/>
+  <path d="M96 44 C112 36 140 34 158 44" stroke="#565a66" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <!-- eyes: polite, one monocle -->
+  <circle cx="106" cy="110" r="5" fill="#241408"/>
+  <circle cx="150" cy="110" r="5" fill="#241408"/>
+  <path d="M92 96 q12 -6 24 -2 M136 94 q12 -6 24 0" stroke="#241408" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <!-- monocle -->
+  <circle cx="150" cy="112" r="17" fill="none" stroke="#c9a227" stroke-width="4"/>
+  <path d="M164 124 C172 140 170 158 160 172" stroke="#c9a227" stroke-width="3" fill="none"/>
+  <!-- thin mustache -->
+  <path d="M104 140 q12 -8 24 -2 q12 -6 24 2 q-4 8 -14 6 q-10 -2 -10 -4 q0 2 -10 4 q-10 2 -14 -6 z" fill="#3a3d46"/>
+  <!-- composed mouth -->
+  <path d="M116 156 q12 6 24 0" stroke="#a3704d" stroke-width="5" fill="none" stroke-linecap="round"/>
+</svg>

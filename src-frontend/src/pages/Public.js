@@ -20,25 +20,36 @@ function BaseHome({children}) {
     }, [navType]);
 
     return (
-        <div className="relative min-h-screen bg-cover bg-center"
+        <div className="relative min-h-screen bg-cover bg-center bg-ink-950"
              style={{backgroundImage: "url('/running.webp')"}}>
 
-            <div className="absolute inset-0 bg-black/50 z-0"></div>
+            <div className="absolute inset-0 bg-gradient-to-b from-ink-950/80 via-ink-950/70 to-ink-950/95 z-0"></div>
+            <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-96 w-96 rounded-full bg-volt-400/20 blur-3xl z-0"></div>
 
             <div className="relative z-10 flex items-center justify-center min-h-screen px-0 md:px-4">
-                <div className="p-8 rounded-xl shadow-lg max-w-2xl text-center text-white my-4">
-                    <h1 className="text-4xl md:text-5xl font-bold mb-6">Workout Challenge</h1>
+                <div className="p-8 max-w-2xl text-center text-white my-4 animate-slide-up">
+
+                    {/* the coaches */}
+                    <div className="flex justify-center -space-x-3 mb-6">
+                        {["sergeant", "roast", "cheerleader", "butler", "zen"].map((p) => (
+                            <img key={p} src={`/personas/${p}.svg`} alt=""
+                                 className="h-14 w-14 rounded-full border-2 border-ink-950 shadow-glow-volt"/>
+                        ))}
+                    </div>
+
+                    <h1 className="font-display text-4xl md:text-6xl uppercase leading-none mb-3">
+                        Workout<br/>
+                        <span className="text-volt-400">Challenge</span>
+                    </h1>
+                    <p className="font-display text-xs md:text-sm uppercase tracking-[0.3em] text-gray-400 mb-6">
+                        Now with an AI Drill Instructor in your corner
+                    </p>
                     <div>
-                        <p className="text-l md:text-xl mb-8">
-                            Compete with friends and co-workers <b>across devices</b> <small
-                            className="hidden md:inline-block"> (Apple / Android / Garmin /
-                            etc.) </small> <br className="hidden lg:inline-block"/>
-                            using the <b>metrics you want</b> to use <small className="hidden md:inline-block"> (km /
-                            minutes / kcal / # of times /
-                            etc.) </small> <br className="hidden lg:inline-block"/>
-                            <b>respecting your privacy</b><small className="hidden md:inline-block"> (no data is sold or
-                            shared and only for the competition
-                            necessary data synced with Strava)</small>
+                        <p className="text-base md:text-lg text-gray-200 mb-8 leading-relaxed">
+                            Compete with friends and co-workers <b className="text-volt-300">across devices</b>,
+                            using the <b className="text-volt-300">metrics you want</b>,
+                            <b className="text-volt-300"> respecting your privacy</b> —
+                            while your personal AI coach keeps the banter coming.
                         </p>
                     </div>
 
@@ -111,11 +122,11 @@ function WelcomePage() {
         <BaseHome>
             <div>
                 <Link to={`/signup/${location.search}`}
-                      className="bg-sky-800 text-white shadow-2xl mx-2 px-6 py-3 rounded-full font-semibold hover:bg-sky-700 transition">
+                      className="inline-block bg-volt-400 text-ink-950 shadow-glow-volt mx-2 px-8 py-3.5 rounded-full font-bold uppercase tracking-wide text-sm hover:bg-volt-300 transition active:scale-95">
                     Create Account
                 </Link>
                 <Link to={`/login/${location.search}`}
-                      className="bg-white text-sky-800 shadow-2xl mx-2 px-6 py-3 rounded-full font-semibold hover:bg-gray-300 transition">
+                      className="inline-block bg-white/10 backdrop-blur text-white border border-white/25 mx-2 px-8 py-3.5 rounded-full font-bold uppercase tracking-wide text-sm hover:bg-white/20 transition active:scale-95">
                     Log In
                 </Link>
             </div>
@@ -142,7 +153,7 @@ const waitForLocalStorage = (key, timeout = 5000) =>
 
 const LoadingForm = () => {
     return (
-        <div className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4 flex items-center justify-center"
+        <div className="bg-ink-850/95 backdrop-blur border border-ink-700/60 shadow-card-dark rounded-3xl px-8 pt-6 pb-8 mb-4 flex items-center justify-center"
              style={{minWidth: '310px'}}>
             <BarLoader height={6} width={200}/>
         </div>
@@ -287,7 +298,7 @@ const apiSetNewPassword = async (uid, token, newPassword) => {
                 new_password: newPassword,
             }),
         });
-        
+
         if (response.ok) {
             console.log('Set New Password Successful');
             return [true, undefined];
@@ -311,6 +322,31 @@ const apiSetNewPassword = async (uid, token, newPassword) => {
         });
         return [false, 'Network or server error occurred. Please try again.'];
     }
+}
+
+
+// Only honour a redirect target if it points at the same origin and
+// is a real path. Anything else (absolute URL, javascript:, protocol-
+// relative //evil.com) is dropped to prevent open-redirect abuse.
+function sanitizeRedirect(value) {
+    if (!value) return null;
+    let raw;
+    try {
+        raw = decodeURIComponent(value);
+    } catch (e) {
+        return null;
+    }
+    if (!raw || typeof raw !== 'string') return null;
+    // Must start with a single forward slash and a second char that's
+    // not '/' or '\' (avoids protocol-relative URLs).
+    if (!raw.startsWith('/')) return null;
+    if (raw.startsWith('//') || raw.startsWith('/\\')) return null;
+    // Reject anything that looks like a scheme prefix followed by
+    // characters (e.g. '/javascript:foo'). Same-origin query strings
+    // may contain '://' inside values and that's fine - we only look
+    // for the scheme prefix.
+    if (/^\/[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw)) return null;
+    return raw;
 }
 
 
@@ -385,7 +421,6 @@ function RegisterPage() {
             const [success_register, msg_register] = await apiCreateAccount(email, first_name, last_name, gender, password1);
             const [success_login, msg_login] = await apiLogin(email, password1);
             const params = new URLSearchParams(location.search);
-            params.set('welcome', 'true');
             if (success_register && success_login) {
                 await waitForLocalStorage('access_token');
                 console.log('Register and Login Successful - redirect ', localStorage.getItem('access_token'));
@@ -422,38 +457,38 @@ function RegisterPage() {
                 isLoading ? <LoadingForm/> : (
 
                     <div className="flex justify-center">
-                        <form className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}
+                        <form className="bg-ink-850/95 backdrop-blur border border-ink-700/60 shadow-card-dark rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}
                               onSubmit={handleSubmit}>
                             <div className="mb-4">
-                                <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">
+                                <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="email">
                                     Email*
                                 </label>
                                 <input
-                                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                    className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                     id="email" type="text" placeholder="Email" autoFocus="True" tabIndex="1"/>
                             </div>
                             <div className="mb-4">
-                                <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="first_name">
+                                <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="first_name">
                                     First Name*
                                 </label>
                                 <input
-                                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                    className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                     id="first_name" type="text" placeholder="First Name" tabIndex="2"/>
                             </div>
                             <div className="mb-4">
-                                <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="last_name">
+                                <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="last_name">
                                     Last Name
                                 </label>
                                 <input
-                                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                    className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                     id="last_name" type="text" placeholder="Last Name" tabIndex="3"/>
                             </div>
                             <div className="mb-4">
-                                <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="gender">
+                                <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="gender">
                                     Gender
                                 </label>
                                 <select
-                                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                    className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                     id="gender" value={gender} tabIndex="4" onChange={handleDropDownChange}>
                                     <option value=''>--Please choose an option--</option>
                                     <option value='M'>Male</option>
@@ -463,29 +498,29 @@ function RegisterPage() {
                                 </select>
                             </div>
                             <div className="mb-6">
-                                <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password1">
+                                <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="password1">
                                     Password*
                                 </label>
                                 <input
-                                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                    className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                     id="password1" type="password" placeholder="******************" tabIndex="5"/>
                             </div>
                             <div className="mb-6">
-                                <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password2">
+                                <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="password2">
                                     Repeat Password*
                                 </label>
                                 <input
-                                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                    className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                     id="password2" type="password" placeholder="******************" tabIndex="6"/>
                             </div>
                             <div className="flex items-center justify-between">
                                 <button
-                                    className="bg-sky-800 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2 sm:mr-10"
+                                    className="bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm transition focus:outline-none mr-2 sm:mr-10"
                                     type="submit" tabIndex="7">
                                     Create Account
                                 </button>
                                 <Link to={`/login/${location.search}`}
-                                      className="inline-block align-baseline font-bold text-sm text-sky-800 hover:text-sky-600 ml-2"
+                                      className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300 ml-2"
                                       tabIndex="8">
                                     Go to SignIn
                                 </Link>
@@ -526,9 +561,17 @@ function LogInPage() {
             setIsLoading(false);
             console.log('redirect', localStorage.getItem('access_token'));
             if (params.has('redirect')) {
-                const redirectUrl = decodeURIComponent(params.get('redirect'));
-                console.log('Redirect to:', redirectUrl);
-                navigate(redirectUrl);
+                // Only honour the redirect param when it points at a
+                // same-origin path. Anything else (absolute URL, scheme
+                // like javascript:, protocol-relative //evil.com) is
+                // dropped to prevent open-redirect abuse.
+                const redirectUrl = sanitizeRedirect(params.get('redirect'));
+                if (redirectUrl) {
+                    console.log('Redirect to:', redirectUrl);
+                    navigate(redirectUrl);
+                } else {
+                    navigate(`/dashboard/${location.search}`);
+                }
             } else {
                 navigate(`/dashboard/${location.search}`);
             }
@@ -578,38 +621,38 @@ function LogInPage() {
                 {
                     isLoading ? <LoadingForm/> : (
 
-                        <form className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}
+                        <form className="bg-ink-850/95 backdrop-blur border border-ink-700/60 shadow-card-dark rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}
                               onSubmit={handleSubmit}>
                             <div className="mb-4">
-                                <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">
+                                <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="email">
                                     Email
                                 </label>
                                 <input
-                                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                    className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                     id="email" type="text" placeholder="Email" autoFocus="True" tabIndex="1"
                                     required={true}/>
                             </div>
                             <div className="mb-6">
-                                <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
+                                <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="password">
                                     Password
                                 </label>
                                 <input
-                                    className="shadow appearance-none border  rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                    className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                     id="password" type="password" placeholder="******************" tabIndex="2"
                                     required={true}/>
-                                <Link to={`/password/`} className="button italic text-sm text-sky-800 hover:text-sky-600"
+                                <Link to={`/password/`} className="button italic text-sm text-volt-400 hover:text-volt-300"
                                       tabIndex="3">
                                     Forgot Password?
                                 </Link>
                             </div>
                             <div className="flex items-center justify-between">
                                 <button
-                                    className="bg-sky-800 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2 sm:mr-16"
+                                    className="bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm transition focus:outline-none mr-2 sm:mr-16"
                                     type="submit" tabIndex="4">
                                     Sign In
                                 </button>
                                 <Link to={`/signup/${location.search}`}
-                                      className="inline-block align-baseline font-bold text-sm text-sky-800 hover:text-sky-600 ml-2"
+                                      className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300 ml-2"
                                       tabIndex="5">
                                     Create Account
                                 </Link>
@@ -655,23 +698,23 @@ function ResetPasswordPage() {
             <div className="flex justify-center">
                 {
                     isLoading ? <LoadingForm/> : (
-                    <form onSubmit={handleSubmit} className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}>
+                    <form onSubmit={handleSubmit} className="bg-ink-850/95 backdrop-blur border border-ink-700/60 shadow-card-dark rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}>
                         <div className="mb-4">
-                            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email" autoFocus="True">
+                            <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="email" autoFocus="True">
                                 Email
                             </label>
                             <input
-                                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                 id="email" type="text" placeholder="Email" autoFocus="True" tabIndex="1"/>
                         </div>
                         <div className="flex items-center justify-between">
                             <button
-                                className="bg-sky-800 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2 sm:mr-16"
+                                className="bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm transition focus:outline-none mr-2 sm:mr-16"
                                 type="submit" tabIndex="2">
                                 Reset Password
                             </button>
                             <Link to="/login"
-                                  className="inline-block align-baseline font-bold text-sm text-sky-800 hover:text-sky-600 ml-2"
+                                  className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300 ml-2"
                                   tabIndex="3">
                                 Back to SignIn
                             </Link>
@@ -725,26 +768,26 @@ function SetNewPasswordPage() {
             <div className="flex justify-center">
                 {
                     isLoading ? <LoadingForm/> : (
-                    <form onSubmit={handleSubmit} className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" style={{minWidth: '45%'}}>
+                    <form onSubmit={handleSubmit} className="bg-ink-850/95 backdrop-blur border border-ink-700/60 shadow-card-dark rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '45%'}}>
                         <div className="mb-6">
-                            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password1">
+                            <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="password1">
                                 Password
                             </label>
                             <input
-                                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                 id="password1" type="password" placeholder="******************" tabIndex="1" autoFocus={true}/>
                         </div>
                         <div className="mb-6">
-                            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password2">
+                            <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="password2">
                                 Repeat Password
                             </label>
                             <input
-                                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                 id="password2" type="password" placeholder="******************" tabIndex="2"/>
                         </div>
                         <div className="flex items-center justify-between">
                             <button
-                                className="bg-sky-800 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mx-auto sm:mx-16"
+                                className="bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm transition focus:outline-none mx-auto sm:mx-16"
                                 type="submit" tabIndex="3">
                                 Reset Password
                             </button>

@@ -14,10 +14,34 @@ def _truthy(value):
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+LLM_PROVIDER_CHOICES = [
+    ("custom", "Custom (OpenAI-compatible)"),
+    ("MiniMax", "MiniMax"),
+    ("openai", "OpenAI"),
+]
+
+LLM_PROVIDER_DEFAULTS = {
+    # OpenAI-compatible base URLs and sensible default models for the
+    # providers we pre-configure. Users can still override base_url /
+    # model manually if they want a different model on the same provider.
+    "MiniMax": {
+        "base_url": "https://api.MiniMax.chat/v1",
+        "model": "MiniMax-M3",
+    },
+}
+
+
 class SiteSettings(models.Model):
     """There is exactly one row of this table - use :meth:`get_solo`."""
 
     # ---- LLM / AI provider configuration ------------------------------
+    llm_provider = models.CharField(
+        max_length=20,
+        choices=LLM_PROVIDER_CHOICES,
+        default="custom",
+        blank=True,
+        help_text="Preset provider. Picks sane defaults for base URL + model; you can override below.",
+    )
     llm_api_key = models.CharField(max_length=200, blank=True, default="")
     llm_base_url = models.CharField(max_length=300, blank=True, default="")
     llm_model = models.CharField(max_length=80, blank=True, default="")
@@ -98,12 +122,34 @@ def _email_reply_to_list(value):
 
 
 def resolve_llm_settings():
-    """Active LLM configuration as a dict (DB → env)."""
+    """Active LLM configuration as a dict (DB → env → provider preset).
+
+    Resolution order:
+      1. DB column (``llm_base_url``, ``llm_model``) - explicit override
+      2. Provider preset (e.g. MiniMax auto-fills base URL + model)
+      3. Environment variable fallback
+    """
     solo = SiteSettings.get_solo()
+
+    provider = (solo.llm_provider or settings.LLM_PROVIDER or "custom").strip() or "custom"
+    preset = LLM_PROVIDER_DEFAULTS.get(provider, {})
+
+    db_base_url = (solo.llm_base_url or "").strip()
+    preset_base_url = preset.get("base_url", "")
+    env_base_url = (settings.LLM_BASE_URL or "").strip()
+
+    db_model = (solo.llm_model or "").strip()
+    preset_model = preset.get("model", "")
+    env_model = (settings.LLM_MODEL or "").strip()
+
+    base_url = db_base_url or preset_base_url or env_base_url or None
+    model = db_model or preset_model or env_model or "gpt-4o-mini"
+
     return {
+        "provider": provider,
         "api_key": (solo.llm_api_key or settings.OPENAI_API_KEY or "").strip() or None,
-        "base_url": (solo.llm_base_url or settings.LLM_BASE_URL or "").strip() or None,
-        "model": (solo.llm_model or settings.LLM_MODEL or "gpt-4o-mini").strip(),
+        "base_url": base_url,
+        "model": model,
         "email_model": (solo.llm_email_model or settings.LLM_EMAIL_MODEL or "gpt-4o").strip(),
     }
 
