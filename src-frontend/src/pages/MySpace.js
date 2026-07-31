@@ -9,7 +9,16 @@ import {
 } from 'lucide-react';
 import {useGetWorkoutsQuery, workoutsApi} from "../utils/reducers/workoutsSlice";
 import WorkoutForm, {workoutTypes} from "../forms/workoutForm";
-import _ from 'lodash';
+import lodFilter from 'lodash/filter';
+import lodFind from 'lodash/find';
+import lodFrompairs from 'lodash/fromPairs';
+import lodGroupby from 'lodash/groupBy';
+import lodMapvalues from 'lodash/mapValues';
+import lodOrderby from 'lodash/orderBy';
+import lodSumby from 'lodash/sumBy';
+import lodTopairs from 'lodash/toPairs';
+import lodUniqby from 'lodash/uniqBy';
+import lodValues from 'lodash/values';
 import {useGetUserByIdQuery, usersApi} from "../utils/reducers/usersSlice";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import CompetitionForm from "../forms/competitionForm";
@@ -41,10 +50,10 @@ function WelcomeBox({user, workouts}) {
 
     useEffect(() => {
         if (workouts !== undefined) {
-            const filteredWorkouts = _.filter(workouts || [], item => item.sport_type !== 'Steps');
+            const filteredWorkouts = lodFilter(workouts || [], item => item.sport_type !== 'Steps');
             setCountTotal(filteredWorkouts.length);
-            const grouped = _.mapValues(_.groupBy(_.values(filteredWorkouts), 'sport_type'), group => group.length);
-            const sorted = _.fromPairs(_.orderBy(_.toPairs(grouped), ([, value]) => value, 'desc'));
+            const grouped = lodMapvalues(lodGroupby(lodValues(filteredWorkouts), 'sport_type'), group => group.length);
+            const sorted = lodFrompairs(lodOrderby(lodTopairs(grouped), ([, value]) => value, 'desc'));
             const limited = Object.fromEntries(Object.entries(sorted).slice(0, 4));
             setCountGroups(limited);
         }
@@ -425,8 +434,8 @@ function StreakCard({workouts}) {
     const [weekMinutes, setWeekMinutes] = useState(0);
 
     useEffect(() => {
-        const filteredWorkouts = _.filter(workouts || [], item => item.sport_type !== 'Steps');
-        const workoutsPerWeek = _.mapValues(_.groupBy(filteredWorkouts || [], 'start_datetime_fmt.weeksAgo'), items => _.sumBy(items, 'duration_seconds'));
+        const filteredWorkouts = lodFilter(workouts || [], item => item.sport_type !== 'Steps');
+        const workoutsPerWeek = lodMapvalues(lodGroupby(filteredWorkouts || [], 'start_datetime_fmt.weeksAgo'), items => lodSumby(items, 'duration_seconds'));
 
         // streak number (consecutive weeks with at least one workout)
         let streak = -1;
@@ -443,9 +452,9 @@ function StreakCard({workouts}) {
         setWeekStreak(streak + 1);
 
         // this week's active weekdays + minutes
-        const thisWeek = _.filter(filteredWorkouts, item => item.start_datetime_fmt.weeksAgo === 0);
+        const thisWeek = lodFilter(filteredWorkouts, item => item.start_datetime_fmt.weeksAgo === 0);
         setActiveWeekdays(new Set(thisWeek.map(w => (new Date(w.start_datetime).getDay() + 6) % 7))); // Mon=0 .. Sun=6
-        setWeekMinutes(Math.round(_.sumBy(thisWeek, item => +item.duration_seconds || 0) / 60));
+        setWeekMinutes(Math.round(lodSumby(thisWeek, item => +item.duration_seconds || 0) / 60));
     }, [workouts]);
 
     const whoGoalHit = weekMinutes >= 150;
@@ -509,30 +518,30 @@ function StatsBox({workouts, user}) {
 
     useEffect(() => {
         // 30 day stats
-        const filtered30Days = _.filter(workouts || [], item => item.start_datetime_fmt.days_ago < 30 && item.sport_type !== 'Steps');
+        const filtered30Days = lodFilter(workouts || [], item => item.start_datetime_fmt.days_ago < 30 && item.sport_type !== 'Steps');
         setThirtyDayStats({
-            activeDays: _.uniqBy(filtered30Days, 'start_datetime_fmt.date_iso').length,
+            activeDays: lodUniqby(filtered30Days, 'start_datetime_fmt.date_iso').length,
             workouts: filtered30Days.length,
-            distance: Math.round(_.sumBy(filtered30Days, item => +item.distance || 0) * 10) / 10,
-            kcal: Math.round(_.sumBy(filtered30Days, item => +item.kcal || 0)),
-            time: Math.round(_.sumBy(filtered30Days, item => +item.duration_seconds || 0)),
-            startDate: _.find(last5WeeksList, {offset: -29})?.dateObj?.toLocaleDateString('en-US', {
+            distance: Math.round(lodSumby(filtered30Days, item => +item.distance || 0) * 10) / 10,
+            kcal: Math.round(lodSumby(filtered30Days, item => +item.kcal || 0)),
+            time: Math.round(lodSumby(filtered30Days, item => +item.duration_seconds || 0)),
+            startDate: lodFind(last5WeeksList, {offset: -29})?.dateObj?.toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric'
             }),
-            endDate: _.find(last5WeeksList, {offset: 0})?.dateObj?.toLocaleDateString('en-US', {
+            endDate: lodFind(last5WeeksList, {offset: 0})?.dateObj?.toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric'
             }),
         })
 
         // 7 day goals
-        const filtered7Days = _.filter(workouts || [], item => item.start_datetime_fmt.days_ago < 7 && item.sport_type !== 'Steps');
+        const filtered7Days = lodFilter(workouts || [], item => item.start_datetime_fmt.days_ago < 7 && item.sport_type !== 'Steps');
         let newGoals = [];
         if (user.goal_active_days !== null) {
             newGoals.push({
                 name: 'Active Days',
-                value: _.uniqBy(filtered7Days, 'start_datetime_fmt.date_iso').length,
+                value: lodUniqby(filtered7Days, 'start_datetime_fmt.date_iso').length,
                 target: user.goal_active_days,
                 unit: ''
             });
@@ -540,7 +549,7 @@ function StatsBox({workouts, user}) {
         if (user.goal_workout_minutes !== null) {
             newGoals.push({
                 name: 'Time Goal',
-                value: Math.round(_.sumBy(filtered7Days, item => +item.duration_seconds || 0) / 60),
+                value: Math.round(lodSumby(filtered7Days, item => +item.duration_seconds || 0) / 60),
                 target: user.goal_workout_minutes,
                 unit: 'min'
             });
@@ -548,7 +557,7 @@ function StatsBox({workouts, user}) {
         if (user.goal_distance !== null) {
             newGoals.push({
                 name: 'Distance',
-                value: Math.round(_.sumBy(filtered7Days, item => +item.distance || 0)),
+                value: Math.round(lodSumby(filtered7Days, item => +item.distance || 0)),
                 target: user.goal_distance,
                 unit: 'km'
             });

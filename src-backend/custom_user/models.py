@@ -144,7 +144,9 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         """ trigger recalculation of points_capped if workout changes """
         if self.username is None or self.username == "":
             if self.first_name is None or self.first_name == "":
-                self.username = self.email.split("@")[0]
+                # Never derive the public username from the email local-part
+                # (would disclose part of the address to co-participants).
+                self.username = "Athlete"
             elif self.last_name is None or self.last_name == "":
                 self.username = self.first_name
             else:

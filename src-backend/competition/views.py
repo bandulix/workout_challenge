@@ -8,6 +8,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.permissions import BasePermission
 
 from django.db.models import Sum
@@ -61,6 +62,10 @@ class TeamViewSet(viewsets.ModelViewSet):
         # only allow user to create a team if they are a member or owner of the competition
         if not (competition_obj.owner == self.request.user) and not (competition_obj in self.request.user.my_competitions.all()):
             raise PermissionDenied("You are not a participant of the competition you want to create a team for.")
+
+        # organizer-assigns-teams mode: only the owner creates teams
+        if competition_obj.organizer_assigns_teams and competition_obj.owner != self.request.user:
+            raise PermissionDenied("The organizer assigns teams in this competition.")
 
         serializer.save()
 
@@ -248,6 +253,8 @@ class FeedQueryView(APIView):
 class JoinCompetitionView(APIView):
     """ API post view for users to join a competition. """
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'join'
 
     def post(self, request, join_code):
         competition = Competition.objects.filter(join_code=join_code.upper())
@@ -293,6 +300,10 @@ class JoinTeamView(APIView):
 
     def post(self, request):
         team_id = request.query_params.get('team')
+        try:
+            team_id = int(team_id)
+        except (TypeError, ValueError):
+            return Response({"message": "Invalid team id."}, status=status.HTTP_400_BAD_REQUEST)
         team = Team.objects.filter(id=team_id)
         if len(team) == 0:
             return Response({"message": "Invalid team id."}, status=status.HTTP_400_BAD_REQUEST)
@@ -310,6 +321,17 @@ class JoinTeamView(APIView):
         competition = team.competition
         competition_teams = competition.team_set.all()
 
+        target_is_self = (user.pk == request.user.pk)
+        is_owner = (competition.owner_id == request.user.id)
+
+        # Organizer-assigns-teams mode: only the owner may move anyone,
+        # including members moving themselves.
+        if competition.organizer_assigns_teams and not is_owner:
+            return Response(
+                {"message": "The organizer assigns teams in this competition."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         # Authorization rules:
         #   * A user can always move themselves (no need to be in no
         #     team first - that's what the dedup loop below enforces).
@@ -320,8 +342,6 @@ class JoinTeamView(APIView):
         #     participants to their own team, which let a regular
         #     participant scrape the participant list and shove people
         #     into the wrong team.
-        target_is_self = (user.pk == request.user.pk)
-        is_owner = (competition.owner_id == request.user.id)
         target_in_a_team = competition_teams.filter(user=user).exists()
 
         if not target_is_self and not is_owner and target_in_a_team:

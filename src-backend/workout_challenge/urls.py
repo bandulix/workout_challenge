@@ -16,6 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -23,7 +24,19 @@ from rest_framework_simplejwt.views import (
 from rest_framework.routers import DefaultRouter
 from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView
 from workouts.views import WorkoutViewSet
-from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, SyncStravaView, PasswordResetView, PasswordResetConfirmView, LinkGarminView, UnlinkGarminView, SyncGarminView
+from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, LinkGarminView, UnlinkGarminView, SyncGarminView
+
+
+# Token endpoints with a strict throttle bucket (online brute-force
+# protection for email/password pairs and refresh tokens).
+class ThrottledTokenObtainPairView(TokenObtainPairView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
+
+
+class ThrottledTokenRefreshView(TokenRefreshView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
 from drill_instructor.views import (
     DrillInstructorPersonaViewSet,
     DrillInstructorConfigViewSet,
@@ -55,7 +68,8 @@ urlpatterns = [
         path('feed/<int:competition>/', FeedQueryView.as_view(), name='competition-feed'),
         path('join/competition/<str:join_code>/', JoinCompetitionView.as_view(), name='join-competition'),
         path('join/team/', JoinTeamView.as_view(), name='join-team'),
-        path('strava/link/<str:code>/', LinkStravaView.as_view(), name='strava-link'),
+        path('strava/state/', StravaStateView.as_view(), name='strava-state'),
+        path('strava/link/<str:code>/<path:state>/', LinkStravaView.as_view(), name='strava-link'),
         path('strava/unlink/', UnlinkStravaView.as_view(), name='strava-unlink'),
         path('strava/sync/', SyncStravaView.as_view(), name='strava-sync'),
         path('garmin/link/', LinkGarminView.as_view(), name='garmin-link'),
@@ -69,8 +83,8 @@ urlpatterns = [
         path('push/status/', PushStatusView.as_view(), name='push-status'),
         path('push/subscribe/', PushSubscribeView.as_view(), name='push-subscribe'),
         path('push/unsubscribe/', PushUnsubscribeView.as_view(), name='push-unsubscribe'),
-        path('token/', TokenObtainPairView.as_view(), name='token-initial'),
-        path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
+        path('token/', ThrottledTokenObtainPairView.as_view(), name='token-initial'),
+        path('token/refresh/', ThrottledTokenRefreshView.as_view(), name='token-refresh'),
         path('password-reset/request/', PasswordResetView.as_view(), name='password-reset'),
         path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
     ])),

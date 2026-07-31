@@ -126,6 +126,10 @@ class DrillInstructorMessage(models.Model):
 
     class Meta:
         ordering = ["-posted_at"]
+        indexes = [
+            # The coach feed filters by config and orders by recency.
+            models.Index(fields=["config", "-posted_at"], name="drill_msg_config_time"),
+        ]
 
     def __str__(self):
         return f"[{self.posted_at:%Y-%m-%d %H:%M}] {self.config.competition.name}: {self.body[:60]}"

@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 from rest_framework import viewsets
 from rest_framework.permissions import BasePermission, IsAdminUser, SAFE_METHODS, AllowAny
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.throttling import BaseThrottle
+from rest_framework.throttling import BaseThrottle, ScopedRateThrottle
 from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -91,6 +91,13 @@ class UserPermissionClass(BasePermission):
         return obj.pk == request.user.pk
 
 
+# Throttle scopes used with DRF's ScopedRateThrottle - the view sets
+# `throttle_scope` and the rate is looked up from
+# REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']:
+#   'auth' - token obtain/refresh + password reset (brute force)
+#   'join' - competition/team join attempts (join-code guessing)
+
+
 class RegisterRateThrottle(BaseThrottle):
     """Rate-limit anonymous ``POST /api/user/`` (account creation).
 
@@ -108,9 +115,11 @@ class RegisterRateThrottle(BaseThrottle):
     RATE_WINDOW_SECONDS = 60 * 60
 
     def get_cache_key(self, request, view):
-        # X-Forwarded-For is set by nginx in front of the API. Fall
-        # back to REMOTE_ADDR if there's no proxy.
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip() or request.META.get('REMOTE_ADDR', 'unknown')
+        # X-Forwarded-For is set by nginx in front of the API. Take the
+        # LAST entry: $proxy_add_x_forwarded_for appends the real client
+        # IP, while leading entries can be attacker-supplied spoofs.
+        # Fall back to REMOTE_ADDR if there's no proxy.
+        ip = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[-1].strip() or request.META.get('REMOTE_ADDR', 'unknown')
         return f"register-throttle:{ip}"
 
     def allow_request(self, request, view):
@@ -168,7 +177,8 @@ class CustomUserViewSet(viewsets.ModelViewSet):
 
 class PasswordResetView(APIView):
     permission_classes = [AllowAny]
-
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
     def post(self, request):
         serializer = PasswordResetSerializer(data=request.data)
         if serializer.is_valid():
@@ -179,7 +189,8 @@ class PasswordResetView(APIView):
 
 class PasswordResetConfirmView(APIView):
     permission_classes = [AllowAny]
-
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)
         if serializer.is_valid():
@@ -188,11 +199,42 @@ class PasswordResetConfirmView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class StravaStateView(APIView):
+    """Return a short-lived signed ``state`` token binding the upcoming
+    Strava OAuth flow to this user session (CSRF/login-CSRF protection).
+
+    The frontend embeds it in the Strava authorize URL; Strava echoes it
+    back; LinkStravaView verifies the signature and that it names the
+    same user before exchanging the code.
+    """
+    permission_classes = [IsAuthenticated]
+
+    STATE_MAX_AGE_SECONDS = 600
+
+    def get(self, request):
+        from django.core.signing import TimestampSigner
+        state = TimestampSigner().sign(f"strava-link:{request.user.pk}")
+        return Response({"state": state}, status=status.HTTP_200_OK)
+
+
 class LinkStravaView(APIView):
     """ API post view for users to link with Strava. """
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, code):
+    def post(self, request, code, state):
+        # Verify the OAuth state token: valid signature, fresh, and
+        # minted for *this* user - otherwise an attacker could trick a
+        # logged-in victim into linking the attacker's Strava account.
+        from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
+        try:
+            payload = TimestampSigner().unsign(state, max_age=StravaStateView.STATE_MAX_AGE_SECONDS)
+        except (BadSignature, SignatureExpired):
+            return Response({"message": "Invalid or expired Strava link session. Please start the linking again."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if payload != f"strava-link:{request.user.pk}":
+            return Response({"message": "Strava link session mismatch. Please start the linking again."},
+                            status=status.HTTP_403_FORBIDDEN)
+
         user = request.user
         from site_settings.models import resolve_strava_settings
         strava_cfg = resolve_strava_settings()

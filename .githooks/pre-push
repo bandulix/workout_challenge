@@ -1,0 +1,41 @@
+#!/bin/sh
+# pre-push secret guard - blocks pushes that would leak credentials.
+# Enabled via `git config core.hooksPath .githooks` (local to this clone).
+
+RED='\033[0;31m'
+NC='\033[0m'
+
+# Files that must never be pushed, even if gitignore is bypassed with -f.
+FORBIDDEN_FILES='(^|/)\.env$|(^|/)vapid\.json$|(^|/)db\.sqlite3$|\.pem$|\.p12$|id_rsa'
+
+# Content patterns that look like live credentials.
+SECRET_PATTERNS='sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{20,}|github_pat_[a-zA-Z0-9_]{20,}|xox[baprs]-[a-zA-Z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}|-----BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}'
+
+fail=0
+
+# Every commit about to be pushed (vs the remote tracking branch).
+range=$(git rev-list @{push}..HEAD 2>/dev/null || git rev-list HEAD --not --remotes 2>/dev/null)
+
+if [ -n "$range" ]; then
+    for commit in $range; do
+        # 1. forbidden filenames
+        files=$(git diff-tree --no-commit-id --name-only -r "$commit" | grep -E "$FORBIDDEN_FILES" || true)
+        if [ -n "$files" ]; then
+            echo "${RED}PUSH BLOCKED:${NC} $commit adds forbidden file(s): $files"
+            fail=1
+        fi
+        # 2. secret-looking content in added lines
+        hits=$(git show "$commit" | grep -nE "^\+.*($SECRET_PATTERNS)" || true)
+        if [ -n "$hits" ]; then
+            echo "${RED}PUSH BLOCKED:${NC} $commit adds secret-looking content:"
+            echo "$hits" | head -5
+            fail=1
+        fi
+    done
+fi
+
+if [ "$fail" -eq 1 ]; then
+    echo "${RED}Push aborted to protect credentials.${NC} Remove the leak (git reset / amend) and push again."
+    exit 1
+fi
+exit 0

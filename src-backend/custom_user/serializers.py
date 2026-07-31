@@ -3,10 +3,8 @@ from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes
-from django.template.loader import render_to_string
 
 from .models import CustomUser
-from .emails.multipurpose import send_email
 
 
 class CustomUserSerializer(serializers.ModelSerializer):
@@ -27,7 +25,11 @@ class CustomUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'profile_picture', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
-        read_only_fields = ['is_verified', 'strava_athlete_id', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'is_staff', 'is_superuser']
+        # my_competitions / my_teams are read-only: joining happens
+        # exclusively through the dedicated join views (join code +
+        # participant checks). Writable M2M fields would be a
+        # mass-assignment hole letting anyone join any competition/team.
+        read_only_fields = ['is_verified', 'strava_athlete_id', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'is_staff', 'is_superuser', 'my_competitions', 'my_teams']
         extra_kwargs = {
             'password': {'write_only': True},
         }
@@ -37,6 +39,8 @@ class CustomUserSerializer(serializers.ModelSerializer):
         return obj.pk == user.pk
 
     def create(self, validated_data):
+        from django.contrib.auth.password_validation import validate_password
+        validate_password(validated_data.get('password'))
         user = CustomUser.objects.create_user(
             email=validated_data.get('email'),
             first_name=validated_data.get('first_name'),
@@ -46,21 +50,42 @@ class CustomUserSerializer(serializers.ModelSerializer):
         )
         return user
 
+    def update(self, instance, validated_data):
+        # DRF's default update() would setattr('password', <plaintext>)
+        # and store the raw password in the DB. Hash it properly.
+        password = validated_data.pop('password', None)
+        instance = super().update(instance, validated_data)
+        if password:
+            from django.contrib.auth.password_validation import validate_password
+            validate_password(password, user=instance)
+            instance.set_password(password)
+        # A changed email must be re-verified.
+        if 'email' in validated_data and validated_data['email'] != instance.email:
+            instance.is_verified = False
+        if password or 'email' in validated_data:
+            instance.save()
+        return instance
+
+    # Fields only the user themselves may see - hidden when serializing
+    # co-participants (PII, PII-adjacent settings, and cross-competition
+    # membership rosters).
+    PRIVATE_FIELDS = [
+        'email', 'first_name', 'last_name', 'gender', 'password',
+        'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at',
+        'email_mid_week', 'is_verified', 'is_staff', 'is_superuser',
+        'my_competitions', 'my_teams',
+        'goal_active_days', 'goal_workout_minutes', 'goal_distance',
+        'scaling_kcal', 'scaling_distance',
+    ]
+
     def to_representation(self, instance):
         rep = super().to_representation(instance)
         user = self.context['request'].user
 
         # Omit 'secret' fields of other users that this user is not allowed to see
         if instance.pk != user.pk:
-            rep.pop('email', None)
-            rep.pop('first_name', None)
-            rep.pop('last_name', None)
-            rep.pop('gender', None)
-            rep.pop('password', None)
-            rep.pop('strava_last_synced_at', None)
-            # Don't leak staff status of other users.
-            rep.pop('is_staff', None)
-            rep.pop('is_superuser', None)
+            for field in self.PRIVATE_FIELDS:
+                rep.pop(field, None)
 
             if not rep['strava_allow_follow']:
                 rep.pop('strava_athlete_id', None)
@@ -87,25 +112,17 @@ class PasswordResetSerializer(serializers.Serializer):
         # the response is identical so an attacker can't enumerate
         # registered emails by timing or by error codes.
         email = (self.validated_data.get('email') or '').strip().lower()
-        from .emails.multipurpose import email_settings_context
 
         for user in CustomUser.objects.filter(email=email):
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             token = default_token_generator.make_token(user)
             reset_url = f"{settings.MAIN_HOST}/password/reset/{uid}/{token}/"
 
-            email_subject = "Workout Challenge - Reset Your Password"
-            with email_settings_context():
-                email_body = render_to_string(
-                    "email_password_reset.html",
-                    {
-                        'first_name': user.first_name,
-                        'MAIN_HOST': settings.MAIN_HOST,
-                        'RESET_URL': reset_url,
-                        'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO,
-                    }
-                )
-                send_email(subject=email_subject, body=email_body, to_email=user.email)
+            # Queued via Celery so the response time is identical for
+            # known and unknown addresses (no SMTP-roundtrip timing
+            # oracle for user enumeration).
+            from .emails.celery_emails import password_reset_email
+            password_reset_email.apply_async(args=[user.pk, reset_url])
 
 
 
@@ -115,17 +132,26 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
+        # Single, uniform error - distinct messages would confirm which
+        # user ids / uids are valid (user enumeration).
         try:
             uid = urlsafe_base64_decode(attrs['uid']).decode()
             self.user = CustomUser.objects.get(pk=uid)
-        except (CustomUser.DoesNotExist, ValueError):
-            raise serializers.ValidationError("Invalid user.")
+        except (CustomUser.DoesNotExist, ValueError, TypeError):
+            raise serializers.ValidationError("This reset link is invalid or has expired.")
 
         if not default_token_generator.check_token(self.user, attrs['token']):
-            raise serializers.ValidationError("Invalid or expired token.")
+            raise serializers.ValidationError("This reset link is invalid or has expired.")
+
+        from django.contrib.auth.password_validation import validate_password
+        validate_password(attrs['new_password'], user=self.user)
 
         return attrs
 
     def save(self):
         self.user.set_password(self.validated_data['new_password'])
         self.user.save()
+        # A reset usually means "something is wrong" - kill every
+        # outstanding refresh token so stolen sessions end here.
+        from .views import _blacklist_user_tokens
+        _blacklist_user_tokens(self.user)

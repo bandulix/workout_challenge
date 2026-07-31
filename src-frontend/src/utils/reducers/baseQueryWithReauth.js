@@ -1,6 +1,11 @@
 import {fetchBaseQuery} from '@reduxjs/toolkit/query/react';
-import * as Sentry from '@sentry/react';
 import {throwErrorWithCode} from '../miscellaneous';
+
+// Sentry is loaded on demand (dynamic import) so the SDK stays out of
+// the initial bundle when no DSN is configured.
+function getSentry() {
+    return import('@sentry/react').catch(() => null);
+}
 
 if (process.env.NODE_ENV !== 'production') {
     console.log('API URL:', process.env.REACT_APP_BACKEND_URL);
@@ -52,7 +57,11 @@ function _redact(value) {
 
 
 export function sentryError({result, errorSource, endpointName = undefined, queryArgs = undefined}) {
-    Sentry.withScope((scope) => {
+    // Fire-and-forget: if the SDK can't load (offline, no DSN), drop
+    // the report rather than break the caller.
+    getSentry().then((Sentry) => {
+        if (!Sentry) return;
+        Sentry.withScope((scope) => {
         // Add request query args (with sensitive fields redacted).
         scope.setContext('Request', _redact({
             ...queryArgs,
@@ -103,6 +112,7 @@ export function sentryError({result, errorSource, endpointName = undefined, quer
         Sentry.captureException(
             new Error(`API Request failed: ${result.error?.originalStatus || result.error?.status}`)
         );
+        });
     });
 }
 

@@ -3,7 +3,7 @@ import {ClipLoader} from "react-spinners";
 import React, {useEffect} from "react";
 import {useLocation, useNavigate} from "react-router-dom";
 import {useDeleteWorkoutMutation, workoutsApi} from "../utils/reducers/workoutsSlice";
-import {useLinkStravaMutation} from "../utils/reducers/linkSlice";
+import {useGetStravaStateQuery, useLinkStravaMutation} from "../utils/reducers/linkSlice";
 import {useDispatch} from "react-redux";
 import {ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
 import {SectionLoader} from "../utils/loaders";
@@ -22,11 +22,12 @@ export function InitStravaLink() {
     const encodedBaseUrl = encodeURIComponent(baseUrl);
 
     const STRAVA_CLIENT_ID = window.RUNTIME_CONFIG?.REACT_APP_STRAVA_CLIENT_ID;
+    const {data: stateData, isSuccess: stateIsSuccess} = useGetStravaStateQuery();
     const isIOS = () => {
         return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     };
 
-    const urlSecondPart = `client_id=${STRAVA_CLIENT_ID}&response_type=code&approval_prompt=force&scope=profile:read_all,activity:read_all&redirect_uri=${encodedBaseUrl}`;
+    const urlSecondPart = `client_id=${STRAVA_CLIENT_ID}&response_type=code&approval_prompt=force&scope=profile:read_all,activity:read_all&redirect_uri=${encodedBaseUrl}&state=${encodeURIComponent(stateData?.state || '')}`;
     let urlFirstPart = '';
 
     if (isIOS()) {
@@ -38,12 +39,13 @@ export function InitStravaLink() {
     console.log('Strava linkage url:', baseUrl);
 
     useEffect(() => {
-        // redirect if user valid and logged in
-        if (userIsSuccess) {
+        // redirect if user valid and logged in and the OAuth state
+        // token (CSRF protection) has arrived
+        if (userIsSuccess && stateIsSuccess) {
             console.log('Redirect to Strava Auth page');
             window.location.href = (urlFirstPart + urlSecondPart);
         }
-    }, [userIsSuccess]);
+    }, [userIsSuccess, stateIsSuccess]);
 
     // loading screen
     if (userIsLoading) return (
@@ -87,7 +89,7 @@ export function ReturnStravaLink() {
     const {search} = useLocation();
     const query = new URLSearchParams(search);
     const searchCode = query.get('code'); // null if not present
-    const searchScope = query.get('scope'); // null if not present
+    const searchState = query.get('state'); // null if not present
 
     const [errorMsg, setErrorMsg] = React.useState(null);
 
@@ -99,7 +101,7 @@ export function ReturnStravaLink() {
                 setErrorMsg('No auth code received from Strava. Please try again.');
                 navigate('/strava/link');
             } else {
-                linkStrava(searchCode)
+                linkStrava({code: searchCode, state: searchState || ''})
                     .unwrap()
                     .then(() => {
                         // successful linkage - redirect user to dashboard

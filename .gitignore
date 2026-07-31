@@ -280,3 +280,7 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 .idea/
 
+
+# Debug email artifacts
+tmp_email.html
+src-backend/tmp_email.html
