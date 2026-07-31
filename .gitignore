@@ -13,6 +13,9 @@ src-backend/data
 [Ll]ib64
 [Ll]ocal
 [Ss]cripts
+# ...but keep this repo's own /scripts directory - entrypoint.sh and
+# render_config_js.py are COPY'd into the image by the Dockerfile.
+!/scripts/
 pyvenv.cfg
 .venv
 pip-selfcheck.json
