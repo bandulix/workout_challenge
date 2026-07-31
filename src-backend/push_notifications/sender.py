@@ -20,14 +20,24 @@ logger = logging.getLogger(__name__)
 _PUSH_POOL_SIZE = 8
 
 
-def send_push_to_user(user, *, title: str, body: str, url: str = "/", ttl: int = 60) -> int:
+def send_push_to_user(
+    user,
+    *,
+    title: str,
+    body: str,
+    url: str = "/",
+    icon: Optional[str] = None,
+    badge: Optional[str] = None,
+    tag: Optional[str] = None,
+    ttl: int = 60,
+) -> int:
     """Send a push notification to every active subscription of ``user``.
 
     Returns the number of notifications successfully delivered.
     Sends in parallel via a small thread pool so multi-device users
     don't stall the Celery worker.
     """
-    payload = json.dumps({"title": title, "body": body, "url": url})
+    payload = json.dumps({"title": title, "body": body, "url": url, "icon": icon, "badge": badge, "tag": tag})
     subscriptions = list(user.push_subscriptions.all())
     if not subscriptions:
         return 0

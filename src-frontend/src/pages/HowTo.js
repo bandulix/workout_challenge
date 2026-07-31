@@ -39,54 +39,6 @@ const steps = [
     },
 ]
 
-export function HowToScreen({setModal}) {
-    const [current, setCurrent] = useState(0)
-
-    document.body.classList.add("body-no-scroll");
-
-    return (
-        <div className="fixed inset-0 z-50 bg-white bg-opacity-80 dark:bg-black dark:bg-opacity-80 flex items-center justify-center overflow-auto">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 max-w-2xl w-full text-center space-y-4 max-h-[100vh] overflow-y-auto">
-                <h2 className="text-xl font-semibold">{steps[current].title}</h2>
-                <p className="text-gray-600 dark:text-gray-400">{steps[current].content}</p>
-                <img src={steps[current].img}/>
-                <div className="flex justify-between mt-6">
-                    <button
-                        className="text-sm text-gray-500"
-                        onClick={() => {
-                            if (current === 0) {
-                                document.body.classList.remove("body-no-scroll");
-                                setModal(false); // Close the modal
-                                //setLinkStrava(true); // Open Strava link screen
-                            } else {
-                                setCurrent((c) => Math.max(0, c - 1));  // Go to previous step
-                            }
-                        }
-                        }
-                    >
-                        {current === 0 ? 'Skip' : 'Back'}
-                    </button>
-                    <button
-                        className="bg-blue-600 text-white px-4 py-2 rounded-full disabled:opacity-50"
-                        onClick={() => {
-                            if (current === steps.length - 1) {
-                                document.body.classList.remove("body-no-scroll");
-                                setModal(false); // Close the modal
-                                //setLinkStrava(true); // Open Strava link screen
-                            } else {
-                                setCurrent((c) => Math.min(steps.length - 1, c + 1)); // Go to next step
-                            }
-                        }}
-                    >
-                        {current === steps.length - 1 ? 'Finish' : 'Next'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    )
-}
-
-
 export function LinkStravaScreen({setModal}) {
     const [current, setCurrent] = useState(0)
     const domain = window.location.origin;

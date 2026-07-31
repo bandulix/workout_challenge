@@ -1,8 +1,8 @@
 import React from "react";
 import {AlertCircle} from "lucide-react";
-import { useEffect, useState } from 'react';
 import { createAsyncThunk } from '@reduxjs/toolkit';
 import {useDispatch} from "react-redux";
+import {useTheme} from "./theme";
 
 function throwErrorWithCode(message, errorCode) {
     const error = new Error(message);
@@ -55,7 +55,7 @@ function compareDictLists(oldDict, newDict) {
 
 function BoxSection({additionalClasses = '', children}) {
     return (
-        <div className={"bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 " + additionalClasses}>
+        <div className={"bg-white dark:bg-ink-850 rounded-3xl shadow-card dark:shadow-card-dark dark:border dark:border-ink-700/60 p-5 sm:p-6 " + additionalClasses}>
             {children}
         </div>
     )
@@ -93,30 +93,21 @@ function ErrorBoxSection({errorMsg, additionalClasses = ''}) {
 }
 
 function PageWrapper({additionClasses = '', children}) {
-    // pb-[5rem] reserves space at the bottom so content isn't covered
-    // by the mobile bottom-nav (md:hidden). The safe-area-inset
-    // accounts for iPhone home indicator.
+    // pb-24 reserves space at the bottom so content isn't covered by the
+    // fixed bottom navigation (bar on mobile, floating dock on desktop).
+    // The safe-area-inset accounts for the iPhone home indicator.
     return (
-        <div className={"min-h-screen bg-gray-100 dark:bg-gray-900 dark:text-white p-2 sm:p-6 pb-24 md:pb-6 " + additionClasses}>
+        <div className={"min-h-screen bg-[#f2f4ec] dark:bg-ink-950 dark:text-white p-2 sm:p-6 pb-24 " + additionClasses}>
             {children}
         </div>
     )
 }
 
 function useDarkMode() {
-  const [isDarkMode, setIsDarkMode] = useState(
-    window.matchMedia('(prefers-color-scheme: dark)').matches
-  );
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = () => setIsDarkMode(mediaQuery.matches);
-
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
-
-  return isDarkMode;
+  // Resolved class-based theme (light/dark/system) - keeps canvas charts
+  // in sync with the user-selected theme rather than only the OS setting.
+  const {resolvedTheme} = useTheme();
+  return resolvedTheme === 'dark';
 }
 
 

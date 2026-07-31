@@ -1,12 +1,45 @@
 # Workout Challenge
-No matter if a healthy close your rings competition with friends or a September steps challenge with work colleagues, this webapp enables you to compete with friends and co-workers across devices (Apple / Android / Garmin / etc.) using the metrics you want to use (km / minutes / kcal / # of times / etc.) respecting your privacy. Participants can either add their workouts and/or steps manually or link their free Strava account for automatic workout import. 
+
+> ### ⚠️ This is a fork
+> **Original project:** [vanalmsick/workout_challenge](https://github.com/vanalmsick/workout_challenge) — Copyright © 2025 [github.com/vanalmsick](https://github.com/vanalmsick).
+> This fork is maintained at [bandulix/workout_challenge](https://github.com/bandulix/workout_challenge).
+> Both the original and this fork are licensed under the **Server Side Public License v1 (SSPL)** — see [LICENSE](LICENSE) (unmodified, original copyright preserved). What this fork changes is documented below in [**Changes from the original**](#changes-from-the-original), in [NOTICE](NOTICE), and in [CHANGELOG.md](CHANGELOG.md).
+
+No matter if a healthy close your rings competition with friends or a September steps challenge with work colleagues, this webapp enables you to compete with friends and co-workers across devices (Apple / Android / Garmin / etc.) using the metrics you want to use (km / minutes / kcal / # of times / etc.) respecting your privacy. Participants can either add their workouts and/or steps manually or link their free Strava or Garmin Connect account for automatic workout import. 
+
+## Changes from the original
+This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/workout_challenge) (base: `main` @ `256e5b1`) with the following changes, grouped by topic. Everything below remains under the same SSPL v1 license; the original copyright is untouched.
+
+**🎖️ AI Drill Instructor (new feature)**
+- Per-competition, owner-configured AI coach that comments on every logged workout in a chosen persona voice (LLM via any OpenAI-compatible provider; runtime-configurable in Site Settings).
+- Personas have **profile pictures, taglines and accent colours** - 10 hand-crafted avatar artworks ship in `src-frontend/public/personas/`, custom personas can pick artwork or an emoji plus a colour.
+- Generated messages live in an in-app audit log (REST: `/api/drill-instructor/*`) and can be pushed to athletes' devices via web push.
+
+**📱 Coach-centred PWA redesign (mobile-first)**
+- New visual language: dark athletic "volt/ink" theme, Archivo Black + Inter (self-hosted for offline use), rounded-3xl cards, class-based dark mode with a manual toggle.
+- New **Coach page** (`/coach`): persona hero with speech bubble, live chat-style "coach wire" feed, persona roster, platform-aware push opt-in (incl. the iOS Add-to-Home-Screen flow).
+- Navigation rebuilt: top nav removed; dark bottom bar (floating dock on desktop) with the **Coach persona's avatar at centre stage** and a **Me sheet** (Settings, Goal Equalizer, theme, Help, Admin, Logout).
+- PWA hardening: PNG icons incl. maskable + monochrome Android notification badge, manifest shortcuts, service worker `wc-v2` (shell + fonts + persona artworks cached, persona icons inside push payloads), restyled offline page, `Coach's Corner` on every competition page.
+
+**🏠 Home / profile**
+- Dashboard reordered (My Workouts directly under the welcome block), 30-day stats and personal-goal blocks redesigned, streak calendar replaced by a compact **Streak Card** (week streak, current-week dots, WHO 150-min progress).
+- **Profile picture upload** (editable avatar; `ImageField` + nginx `/media/` serving, old files auto-deleted).
+- First-login tutorial removed; the public pages were re-themed.
+
+**⌚ Garmin Connect import (new connector, parallel to Strava)**
+- Link Garmin in Settings; password is used once and never stored - only the encrypted OAuth token blob (Fernet) is kept. Daily sync via Celery beat plus a manual hourly re-sync; ~60 Garmin activity types mapped; de-duplication by activity id. See [Automatic Garmin Connect Import](#automatic-garmin-connect-import).
+
+**🔧 Site & infra**
+- **Site Settings** runtime admin (LLM / Strava / SMTP sections, DB-over-env resolution, write-only secrets), **first-user-is-admin** bootstrap, admin page at `/admin/site-settings`.
+- **Web push** backend (VAPID auto-keypair, subscription registry, parallel sender).
+- Build fixes: removed the broken `critters-webpack-plugin`; added missing migrations.
 
 ## How does it work?
 Create your own competition or use a friend’s invitation link to join their competition, enter your workouts manually or link your Strava for automatic workout import, and enjoy the competition. You can customize each competition's activity goals individually. Participants earn 1 point for every 1% progress towards a goal. For example, if the goal is 100 minutes of exercise and you work out 50 minutes, you earn 50 points. Additionally, you can cap / floor the maximum / minimum points participants can earn per workout / day / week to e.g. ensure a healthy competition that is focused on consistency.
 
 **Features:**
 - Create your own competition or use a friend’s invitation link to join their competition
-- Enter workouts manually or import them automatically via Strava (daily at 4 AM)
+- Enter workouts manually or import them automatically via Strava or Garmin Connect (daily at 4 AM)
 - Your personal dashboard shows workout stats and your workout streak
 - The competition dashboards show friends’ workouts, leaderboards, and your progress towards the competition goals
 - A weekly email on Mondays shows you your spot on the competition leaderboards
@@ -30,6 +63,14 @@ Create your own competition or use a friend’s invitation link to join their co
 ### Automatic Strava Workout Import:
 ![Preview Strava Import](/src-frontend/public/how_to_strava_sync.png)
 
+### Automatic Garmin Connect Import:
+Link your Garmin Connect account in **Me → Settings → Garmin Connect** and your recent activities are imported in the background, then daily at ~4:54 AM (plus a manual hourly-rate-limited **Re-Sync with Garmin** button under My Workouts). Notes:
+- Your Garmin password is used **once** to obtain OAuth tokens and is **never stored** - only the encrypted token blob is kept (Fernet, key derived from `SECRET_KEY`, overridable via `GARMIN_TOKEN_KEY`).
+- Activities are de-duplicated by their Garmin activity id, mapped to the matching sport types (trail run → TrailRun, indoor cycling → VirtualRide, ...), and scored with the same intensity heuristic as Strava imports.
+- Accounts with **Garmin two-factor authentication can't be linked yet** - the link flow tells you so if that applies.
+- If Garmin invalidates the stored tokens, the linkage is cleared automatically and you simply re-link in Settings.
+- Under the hood this uses the community [garminconnect](https://github.com/cyberjunky/python-garminconnect) library, since Garmin's official Health API is enterprise-only.
+
 <div align="center">
 
 If you like <b>Workout Challenge</b>, consider giving it a **star** ⭐!  
@@ -41,7 +82,7 @@ Made with ❤️ in London
 
 ## Give it a quick try
 ```
-docker run -p 80:80 -e ALLOW_ALL_HOSTS=true vanalmsick/workout_challenge
+docker run -p 80:80 -e HOSTS=http://localhost,http://127.0.0.1 -e DEBUG=true -e SECRET_KEY=some-long-random-string vanalmsick/workout_challenge
 ```
 
 ## Full Production Deployment
@@ -117,7 +158,7 @@ docker compose -f /path/to/docker-compose.yml up
 | SECRET_KEY            | [a hard-coded string in code]       | Django's [SECRET_KEY](https://docs.djangoproject.com/en/5.2/ref/settings/#std-setting-SECRET_KEY) for cryptographic signing.                                                                                                                                                                                    |
 | TIME_ZONE             | "Europe/London"                     | Timezone for [Django](https://docs.djangoproject.com/en/5.2/ref/settings/#time-zone) and [Celery](https://docs.celeryq.dev/en/stable/userguide/configuration.html#timezone)                                                                                                                                     |
 | DEBUG                 | false                               | Django's DEBUG mode. If true, [CORS_ALLOW_ALL_ORIGINS](https://pypi.org/project/django-cors-headers/) will also be true and the [CACHE](https://docs.djangoproject.com/en/5.2/ref/settings/#caches) will use [Local Memory Cache](https://docs.djangoproject.com/en/5.2/ref/settings/#caches) instead of Redis. |
-| ALLOW_ALL_HOSTS       | false                               | For quick testing to not having to set HOSTS. Do not set to true in production but set HOSTS.                                                                                                                                                                                                                   |
+| HOSTS                 | "http://localhost,http://127.0.0.1" | Comma separated list of hosts for Django. This is used for [ALLOWED_HOSTS](https://docs.djangoproject.com/en/5.2/ref/settings/#allowed-hosts), [CORS_ALLOWED_ORIGINS](https://pypi.org/project/django-cors-headers/), and [CSRF_TRUSTED_ORIGINS](https://pypi.org/project/django-cors-headers/). The historical `ALLOW_ALL_HOSTS=true` escape hatch has been removed because it combined with `CORS_ALLOW_CREDENTIALS` made credentialed cross-site requests trivially exploitable. For quick testing set DEBUG=true - that still requires a SECRET_KEY but doesn't fail otherwise. |
 | POSTGRES_HOST         | None                                | If set to None, Django will use SQLite as database (might cause database lock errors in production), else this is the host url to the [Postgres database](https://hub.docker.com/_/postgres/).                                                                                                                  |
 | POSTGRES_DB           | "postgres"                          | Database name in [Postgres database](https://hub.docker.com/_/postgres/)                                                                                                                                                                                                                                        | 
 | POSTGRES_USER         | "postgres"                          | Database username in [Postgres database](https://hub.docker.com/_/postgres/)                                                                                                                                                                                                                                    | 
@@ -137,35 +178,60 @@ docker compose -f /path/to/docker-compose.yml up
 | EMAIL_FROM            | None                                | Sender email address of automated emails.                                                                                                                                                                                                                                                                       | 
 | EMAIL_REPLY_TO        | None                                | Reply-To email address of automated emails.                                                                                                                                                                                                                                                                     | 
 | OPENAI_API_KEY        | None                                | API key for the LLM provider used by the weekly email fact and the AI Drill Instructor. The OpenAI SDK is used, so any OpenAI-compatible endpoint works.                                                                                                                                                          |
+| LLM_PROVIDER          | None                                | Preset for the admin-side provider selector. `MiniMax` auto-fills `LLM_BASE_URL=https://api.MiniMax.chat/v1` and `LLM_MODEL=MiniMax-M3`. Leave blank for the OpenAI default. Can also be picked in the Site Settings UI.                                                                                     |
 | LLM_BASE_URL          | None (OpenAI default)               | Override the API endpoint - set to e.g. `https://openrouter.ai/api/v1`, `https://api.groq.com/openai/v1`, or `http://localhost:11434/v1` (Ollama) to use a non-OpenAI provider with the same SDK.                                                                                                          |
 | LLM_MODEL             | "gpt-4o-mini"                       | Model used by the AI Drill Instructor. Pick any chat-completions model the configured provider serves.                                                                                                                                                                                                          |
 | LLM_EMAIL_MODEL       | "gpt-4o"                            | Model used for the weekly email AI fact.                                                                                                                                                                                                                                                                       | 
 | VAPID_PUBLIC_KEY      | (auto-generated)                    | VAPID public key for browser push notifications. If unset, a keypair is auto-generated on first start and persisted to `DATA_DIR/vapid.json`.                                                                                                                                                                    |
 | VAPID_PRIVATE_KEY     | (auto-generated)                    | VAPID private key. Pin it via this env var if you don't want the keypair to drift on container rebuilds.                                                                                                                                                                                                       |
-| VAPID_SUBJECT         | "mailto:admin@example.com"          | `mailto:` (or `https://`) contact used in the VAPID claims.                                                                                                                                                                                                                                                    | 
-| Matrix (Drill Instructor) | n/a                              | No env vars are required for the AI Drill Instructor. The competition owner pastes a Matrix access token, homeserver URL and room ID in the UI; messages are sent over the Matrix client-server API using plain HTTPS. If `OPENAI_API_KEY` is set, the instructor uses the configured persona to generate a short comment per workout. | 
+ | VAPID_SUBJECT         | "mailto:admin@example.com"          | `mailto:` (or `https://`) contact used in the VAPID claims.                                                                                                                                                                                                                                                    |
 
 ## AI Drill Instructor
-Each competition can optionally activate an **AI Drill Instructor** that posts a comment to a Matrix room every time a participant logs an activity.
+Each competition can optionally activate an **AI Drill Instructor** that generates a short, persona-voiced comment every time a participant logs an activity. Generated messages are stored in the in-app audit log so the competition owner can read them back, and (optionally) sent as a web push notification to the athlete's devices.
 
 ### How to enable it (competition owner)
-1. In My Space, click **Manage Personas** to review or edit the AI personas. The defaults (Drill Sergeant, Cheerleader, British Butler, Zen Master) are global and available to every competition.
+1. In My Space, click **Manage Personas** to review or edit the AI personas. The defaults (Drill Sergeant, Roast Master, Cheerleader, British Butler, Zen Master) are global and available to every competition.
 2. On the competition page, click the new **AI Drill Instructor** button (owner only).
-3. Fill in:
-   - **Persona** — pick one of the global personas.
-   - **Matrix Homeserver URL** — e.g. `https://matrix.org` or your self-hosted Synapse.
-   - **Matrix Access Token** — Element → Settings → Help → Access Token.
-   - **Matrix Room ID** — looks like `!abcdef123456:matrix.org`. The bot must already be a member.
+3. Pick a **Persona**, optionally enable browser push, and save.
    - **Display Name Prefix** (optional) — prepended like `[Drill Sergeant]` so people know it's the bot.
 4. Toggle **Activated** and save. Use the **Send a test message** field to verify the configuration before relying on it.
 
-### What it posts
-- For each new workout in the competition, the instructor generates a short, persona-voiced comment and posts it to the configured Matrix room.
-- An audit log of every message (successes and failures) is kept in Django admin and via `/api/drill-instructor/message/`.
-- All access tokens are write-only — the API only ever returns a masked preview.
+### What it does
+- For each new workout in the competition, the instructor generates a short, persona-voiced comment and records it in the in-app audit log (visible to participants of the competition via `/api/drill-instructor/message/` and to staff via Django admin).
+- If browser push is enabled in the config, the same message is also dispatched to the athlete's subscribed devices.
+
+### Built-in personas
+Every persona has its own **profile picture, tagline and accent colour** - they show up across the Coach page, the chat-style coach feed, the bottom navigation and even as the icon of push notifications.
+
+| Persona | Style |
+| --- | --- |
+| **Drill Sergeant** | Tough-love military barking. Roasts laggards, mocks the leader, rallies the platoon. Group spirit with bark. |
+| **Roast Master** | Maximum roast mode - savage but affectionate, NBA-banter energy. Playful sarcasm, absurd comparisons, 1-2 emojis. Best for adult group chats that love trash talk. |
+| **Cheerleader** | Endless enthusiasm, capital letters, emojis, always positive. |
+| **British Butler** | Dry, polite, devastating one-liners. |
+| **Zen Master** | Calm and philosophical, focused on inner balance. |
+
+Competition owners can also create their own persona: pick one of the shipped avatar artworks (megaphone, rocket, ninja, robot, captain, ...) or a single emoji, choose an accent colour, and edit the system prompt.
+
+### The Coach page (`/coach`)
+The Drill Instructor is the heart of the app:
+- **Hero card** - the persona currently on duty with its latest message in a speech bubble.
+- **Coach wire** - a chat-style feed of every generated message across your competitions (persona avatar, athlete, workout summary, competition chip), live-refreshing.
+- **The roster** - all personas as tappable cards with profile pictures and briefings.
+- **Coach pings** - the platform-aware push opt-in (with the iOS "Add to Home Screen" flow built in).
+
+### Using MiniMax as the LLM
+The instructor uses any OpenAI-compatible chat-completions endpoint. To run it on **MiniMax**:
+1. Get an API token from the MiniMax dashboard.
+2. In **Site Settings → LLM / AI Provider** pick the **MiniMax** preset. This auto-fills the base URL (`https://api.MiniMax.chat/v1`) and default model (`MiniMax-M3`). Paste your API key and save.
+3. Or set env vars `LLM_PROVIDER=MiniMax`, `LLM_API_KEY=...` and restart workers.
+4. The Drill Instructor and weekly email both flow through the same provider - swap once and both update.
+
+### What the participant sees
+Participants can read every generated message from the audit log at `/api/drill-instructor/message/` (visible only for competitions they belong to). With browser push enabled, the instructor's message also shows up as a system / push notification on their subscribed devices.
 
 ### Removing it
-Disable the toggle, or click **Remove Drill Instructor**. The Matrix messages are not deleted.
+Disable the toggle, or click **Remove Drill Instructor**. Generated messages remain in the audit log unless the owner deletes them.
 
 ## Admin & Site Settings
 The first user to register is automatically promoted to **staff + superuser** so they can manage the site. Sign in as that user and you'll see an **Admin** link in the top navigation (with a shield icon).
@@ -189,42 +255,29 @@ docker compose exec workoutchallenge python manage.py promotetostaff user@exampl
 ```
 
 ## Mobile / PWA & Push Notifications
-The app ships as a Progressive Web App:
-- **Installable** - on iOS Safari tap the Share button → "Add to Home Screen"; on Android Chrome you'll get an automatic install banner.
-- **Offline shell** - a service worker (`public/sw.js`) caches the app shell, last-viewed pages and icons so the app opens even without a network. Custom `offline.html` shows a friendly fallback.
+The app ships as a Progressive Web App with a dark, athletic "volt" design language:
+- **Installable** - on iOS Safari tap the Share button → "Add to Home Screen"; on Android Chrome you'll get an automatic install banner. PNG home-screen icons (incl. maskable) plus a monochrome Android notification badge ship in `public/`.
+- **Offline shell** - a service worker (`public/sw.js`) caches the app shell, fonts, persona avatars, last-viewed pages and icons so the app opens even without a network. Custom `offline.html` shows a friendly fallback.
 - **Standalone display** - no browser chrome when launched from the home screen.
 - **Safe-area handling** - iPhone notch / Dynamic Island / home indicator respected on the bottom nav and modals via `env(safe-area-inset-*)`.
-- **Mobile bottom nav** - a thumb-friendly tab bar (Home, Compete, **Log**, Me/Admin) replaces the cramped top nav on small screens. The **+ Log** button is a floating action button so adding a workout is one tap.
+- **Mobile bottom nav with the Coach at centre stage** - a thumb-friendly dark tab bar (Home, Compete, **Coach**, Log, Me/Admin). The centre button carries the profile picture of the persona currently on duty and opens the **Coach page** (`/coach`).
+- **Light / dark themes** - class-based theming with a manual toggle in the top navigation (follows the OS by default, choice is persisted).
+- **Self-hosted fonts** - Inter (UI) and Archivo Black (display) ship in `public/fonts/` so the PWA works fully offline.
 - **Touch targets** - all icon-only buttons hit the iOS / Android minimum of 44×44 px.
 - **Mobile-keyboard hints** - numeric fields get `inputMode="decimal"` / `"numeric"` so phones show the right keyboard.
-- **Lazy-loaded pages** - `MySpace`, `Competition` and `AdminSettings` are split into separate chunks; the initial bundle stays small on first paint.
+- **Lazy-loaded pages** - `MySpace`, `Competition`, `Coach` and `AdminSettings` are split into separate chunks; the initial bundle stays small on first paint.
 
 ### Browser push notifications
-You can opt in to browser/system notifications so the AI Drill Instructor pings your device whenever it comments on a workout in a competition you've enabled push for. This is independent of the Matrix integration - both can run side by side.
+You can opt in to browser/system notifications so the AI Drill Instructor pings your device whenever it comments on a workout in a competition you've enabled push for - the notification even carries the persona's profile picture as its icon.
 
 Setup:
-1. **Install the app** to your home screen (required on iOS Safari; optional elsewhere).
-2. Open the app → click **Admin → Site Settings → Browser Push Notifications → Enable**.
+1. **Install the app** to your home screen (required on iOS 16.4+; optional elsewhere).
+2. Open the app → **Coach page → "Enable coach pings"** (or **Admin → Site Settings → Browser Push Notifications**). The Coach page walks iOS users through the Add-to-Home-Screen requirement automatically.
 3. For each competition where you want push, click **AI Drill Instructor → "Browser push for participants"** on the competition page.
 
 The server uses **VAPID** to sign notifications:
 - The keypair is generated automatically on first start and persisted at `DATA_DIR/vapid.json`. **Don't lose this file** - changing it invalidates every existing subscription.
 - For production, generate a stable keypair once with `py_vapid` and pin it via `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` env vars (`VAPID_SUBJECT` is the `mailto:` contact, default `mailto:admin@example.com`).
-
-To update the service worker version (forces all clients to re-fetch the shell after a release):
-```bash
-# Edit public/sw.js and bump CACHE_VERSION, then rebuild.
-docker compose build
-```
-The app ships as a Progressive Web App:
-- **Installable** - on iOS Safari tap the Share button → "Add to Home Screen"; on Android Chrome you'll get an automatic install banner.
-- **Offline shell** - a service worker (`public/sw.js`) caches the app shell, last-viewed pages and icons so the app opens even without a network. Custom `offline.html` shows a friendly fallback.
-- **Standalone display** - no browser chrome when launched from the home screen.
-- **Safe-area handling** - iPhone notch / Dynamic Island / home indicator respected on the bottom nav and modals via `env(safe-area-inset-*)`.
-- **Mobile bottom nav** - a thumb-friendly tab bar (Home, Compete, **Log**, Me/Admin) replaces the cramped top nav on small screens. The **+ Log** button is a floating action button so adding a workout is one tap.
-- **Touch targets** - all icon-only buttons hit the iOS / Android minimum of 44×44 px.
-- **Mobile-keyboard hints** - numeric fields get `inputMode="decimal"` / `"numeric"` so phones show the right keyboard.
-- **Lazy-loaded pages** - `MySpace`, `Competition` and `AdminSettings` are split into separate chunks; the initial bundle stays small on first paint.
 
 To update the service worker version (forces all clients to re-fetch the shell after a release):
 ```bash
@@ -300,7 +353,6 @@ run React: `npm start`
 - Add option for competition admin to remove users
 - Improve README texts
 - Improve repo link preview picture
-- Add Garmin API support
 - Add Futbit API suport
 - Add friends page
 - Add more personal statistics

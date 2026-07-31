@@ -23,6 +23,26 @@ export const linkApi = createApi({
                 method: 'GET',
             }),
         }),
+        linkGarmin: builder.mutation({
+            query: ({email, password}) => ({
+                url: `garmin/link/`,
+                method: 'POST',
+                body: {email, password},
+            }),
+            invalidatesTags: [],
+        }),
+        unlinkGarmin: builder.mutation({
+            query: () => ({
+                url: `garmin/unlink/`,
+                method: 'POST',
+            }),
+        }),
+        syncGarmin: builder.query({
+            query: () => ({
+                url: `garmin/sync/`,
+                method: 'GET',
+            }),
+        }),
     }),
 });
 
@@ -30,5 +50,9 @@ export const {
     useLinkStravaMutation,
     useUnlinkStravaMutation,
     useGetSyncStravaQuery,
-    useLazySyncStravaQuery
+    useLazySyncStravaQuery,
+    useLinkGarminMutation,
+    useUnlinkGarminMutation,
+    useGetSyncGarminQuery,
+    useLazySyncGarminQuery,
 } = linkApi;

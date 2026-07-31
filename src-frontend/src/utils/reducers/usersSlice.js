@@ -21,6 +21,8 @@ export const usersApi = createApi({
                         ...user,
                         strava_last_synced_at_fmt: dateFormatter(user.strava_last_synced_at), // format datetime
                         strava_last_synced_at: convertToLocalTimezone(user.strava_last_synced_at), // convert to local timezone
+                        garmin_last_synced_at_fmt: dateFormatter(user.garmin_last_synced_at),
+                        garmin_last_synced_at: convertToLocalTimezone(user.garmin_last_synced_at),
                     };
                 });
             },
@@ -43,6 +45,8 @@ export const usersApi = createApi({
                     ...response,
                     strava_last_synced_at_fmt: dateFormatter(response.strava_last_synced_at),
                     strava_last_synced_at: convertToLocalTimezone(response.strava_last_synced_at),
+                    garmin_last_synced_at_fmt: dateFormatter(response.garmin_last_synced_at),
+                    garmin_last_synced_at: convertToLocalTimezone(response.garmin_last_synced_at),
                 };
             },
             providesTags: (result, error, id) => {
@@ -88,6 +92,19 @@ export const usersApi = createApi({
                 return tags;
             },
         }),
+        uploadProfilePicture: builder.mutation({
+            query: (file) => {
+                const formData = new FormData();
+                formData.append('profile_picture', file);
+                return {
+                    url: 'user/me/',
+                    method: 'PATCH',
+                    body: formData,
+                    headers: {'X-Skip-Content-Type': '1'},
+                };
+            },
+            invalidatesTags: [{type: 'User', id: 'me'}, 'User'],
+        }),
     }),
 });
 
@@ -97,4 +114,5 @@ export const {
     useAddUserMutation,
     useUpdateUserMutation,
     useDeleteUserMutation,
+    useUploadProfilePictureMutation,
 } = usersApi;

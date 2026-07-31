@@ -15,8 +15,8 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     readonly_fields = ("llm_api_key_masked", "strava_client_secret_masked", "email_host_password_masked", "updated_at")
     fieldsets = (
         ("LLM / AI provider", {
-            "fields": ("llm_api_key", "llm_api_key_masked", "llm_base_url", "llm_model", "llm_email_model"),
-            "description": "Used by the AI Drill Instructor and the weekly email AI fact. Leave blank to fall back to environment variables.",
+            "fields": ("llm_provider", "llm_api_key", "llm_api_key_masked", "llm_base_url", "llm_model", "llm_email_model"),
+            "description": "Used by the AI Drill Instructor and the weekly email AI fact. Pick a preset to auto-fill base URL + model; leave blank to fall back to environment variables.",
         }),
         ("Strava", {
             "fields": ("strava_client_id", "strava_client_secret", "strava_client_secret_masked", "strava_limit_15min", "strava_limit_day"),

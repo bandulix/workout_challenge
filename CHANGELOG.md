@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Celery task `post_workout_comment` is enqueued from `competition/scorer.py:trigger_workout_change` after point recalculation.
   - New REST endpoints: `/api/drill-instructor/persona/`, `/api/drill-instructor/config/`, `/api/drill-instructor/message/`, and `POST /api/drill-instructor/config/<id>/test/`.
 - **LLM provider configuration** — `OPENAI_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_EMAIL_MODEL` env vars, with the same client reused by the Drill Instructor and the weekly email AI fact. Any OpenAI-compatible provider (OpenRouter, Groq, Together, Mistral, Ollama, …) works via `base_url`.
+- **LLM provider preset** — new `llm_provider` Site Settings field (and `LLM_PROVIDER` env var) with a `MiniMax` option that auto-fills `base_url=https://api.MiniMax.chat/v1` and `model=MiniMax-M3`. The provider preset can still be overridden per-field in the admin UI.
+- **AI Drill Instructor personalities** — rewrote Drill Sergeant to roast laggards + mock the leader, and added a new "Roast Master" persona (savage but affectionate NBA-banter style). Workout prompt now includes the leader's total points and the gap to the leader so trash-talk personas can reference real standings instead of inventing numbers.
+- **Real @-mentions in Matrix** — `CustomUser.matrix_user_id` (validated `@user:host` format) lets each participant register their Matrix user ID. The Drill Instructor prompts the LLM with `@FirstName` tokens, the task rewrites them to full MXIDs, and `matrix_client.send_text_message` now attaches an `m.mentions` block plus an `org.matrix.custom.html` body so Matrix clients actually ping participants. New per-competition `DrillInstructorConfig.mention_in_matrix` toggle lets the owner switch pings off.
 - **Site Settings** — new `site_settings` Django app holding a singleton `SiteSettings` row editable at runtime.
   - Three sections in the UI: **LLM / AI provider**, **Strava**, **SMTP / Outbound Email**.
   - All secrets (`llm_api_key`, `strava_client_secret`, `email_host_password`, `matrix_access_token`) are write-only on the API; the read path returns a masked preview.
@@ -121,3 +124,35 @@ src-frontend/src/utils/bottomNav.js
 - `api_rate_limiter` is per-process; multi-worker deployments need Redis-backed counters.
 - LLM, Strava and SMTP secrets are stored plaintext in `site_settings_sitesettings`. Encryption at rest would need a key-management story.
 - `CustomUser.get_strava_auth_url` still embeds the user `pk` in the Strava `redirect_uri`; a signed state token would be safer.
+---
+
+## Fork changes (bandulix/workout_challenge), 2026-07
+The following changes were made in the fork on top of the state above
+(original project: vanalmsick/workout_challenge, SSPL v1 - see LICENSE and NOTICE).
+
+### Added
+- **Drill Instructor persona identities** — `DrillInstructorPersona.tagline`, `.avatar`, `.theme_color` (+ migration `drill_instructor/0004_persona_identity`). Built-in personas seeded with taglines/colours; avatar artwork (10 hand-crafted SVGs) ships in `src-frontend/public/personas/`. Persona serializer validates artwork key vs. single emoji and hex colour; message serializer is enriched with persona/competition/athlete/workout-summary fields; message list is filterable by `?competition=`.
+- **Coach page** (`/coach`, lazy-loaded): persona hero card with latest message speech bubble, live "coach wire" chat feed with day separators, persona roster with detail modal, platform-aware push opt-in card (iOS Add-to-Home-Screen guidance, Android `beforeinstallprompt`).
+- **Coach's Corner** on the competition page (latest messages + owner setup CTA).
+- **Profile picture upload** — `CustomUser.profile_picture` `ImageField` (+ migration `custom_user/0004`), 5 MB / image-only validation, `MEDIA_ROOT` in the data volume, nginx `/media/` location, old files auto-deleted on replacement. Editable avatar component on the dashboard and in the Me sheet.
+- **Garmin Connect import** (parallel to Strava): `custom_user/garmin.py` with Fernet-encrypted token storage (`GARMIN_TOKEN_KEY` override, password never stored), `Workout.garmin_id` (+ migrations `custom_user/0005`, `workouts/0002`), `POST /api/garmin/link|unlink`, `GET /api/garmin/sync` (hourly), daily beat task at 04:54, ~60 activity-type mappings, Settings UI section and a "Re-Sync with Garmin" button.
+- **Theme system** — `utils/theme.js` with light/dark/system modes, class-based `.dark`, boot script in `index.html` preventing flash-of-wrong-theme, toggle in the Me sheet.
+- **PWA assets** — PNG icons (192/512/**maskable**/apple-touch) and monochrome Android notification badge generated as volt-bolt artwork; self-hosted fonts (Inter variable + Archivo Black) in `public/fonts/`; manifest app shortcuts ("Log a workout", "Coach"); service worker bumped to `wc-v2` caching fonts + persona artworks and showing persona icons in push notifications.
+- `Pillow>=10.0.0`, `garminconnect>=0.2.0`, `cryptography>=41.0.0` dependencies.
+
+### Changed
+- **Full visual redesign ("volt/ink")** — tailwind theme extended (brand palette, display font, glow shadows, animations); all shared primitives (BoxSection, PageWrapper, Modal, buttons, inputs) restyled; public/auth pages re-themed (dark hero with persona strip); dashboard reordered (My Workouts directly under the welcome block); 30-day stats + personal goals redesigned as mini-cards; streak calendar replaced by a compact Streak Card (week streak, current-week dots, WHO 150-min bar).
+- **Navigation** — top `NavMenu` removed entirely; dark bottom navigation (floating dock on desktop) with the Coach persona avatar at centre; "Me" bottom sheet hosting Settings, Goal Equalizer, theme toggle, Help, Admin and Logout; competition picker bottom sheet.
+- **Push payloads** now carry persona icon/badge/tag; subscribe flow reads the VAPID key from `/api/push/status/`.
+- nginx: `/media/` location + 120 s API proxy timeouts (Garmin SSO roundtrip).
+
+### Removed
+- First-login tutorial (`HowToScreen`) and the `?welcome=` onboarding chain; registration no longer sets the welcome flag.
+- Legacy "Manage Personas / Goal Equalizer / Settings" buttons from the welcome block (moved to Coach page / Me sheet).
+- Broken `critters-webpack-plugin` (build failed with "Could not find HTML asset" on CRA 5 / webpack 5); critters dev-dependencies dropped.
+- `Dashboard.css`, `utils/navMenu.js` (dead after redesign).
+
+### Fixed
+- Drill-persona seeder survives boots before migrations are applied (was crashing the container's entrypoint in a restart loop).
+- Missing migrations committed: `custom_user/0003` (`RecalcRequest` table), plus all migrations listed above.
+- Dark-mode table row borders defaulted to `currentColor` (rendered as white lines); all separators now explicit subtle colours.

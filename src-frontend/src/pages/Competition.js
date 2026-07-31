@@ -1,6 +1,5 @@
 import {useNavigate, useNavigationType, useParams} from 'react-router-dom';
 import React, {useEffect, useState} from "react";
-import NavMenu from "../utils/navMenu";
 import {competitionsApi, useGetCompetitionByIdQuery} from "../utils/reducers/competitionsSlice";
 import {
     ArrowDownToLine,
@@ -44,6 +43,9 @@ import {useLeaveCompetitionMutation} from "../utils/reducers/joinSlice";
 import TransferOwnershipForm from "../forms/transferOwnershipForm";
 import {teamsApi} from "../utils/reducers/teamsSlice";
 import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
+import {useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
+import PersonaAvatar from "../components/PersonaAvatar";
+import {timeAgo} from "../utils/time";
 
 ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Filler, Tooltip, Legend, BarElement, ChartDataLabels);
 
@@ -98,13 +100,13 @@ function CompetitionHead({competition, feed, isOwner}) {
         <BoxSection additionalClasses="mb-4">
             <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center sm:gap-6 sm:py-4">
                 <div className="space-y-1 pl-0 sm:pl-6 pb-3 sm:pb-0 text-center sm:text-left">
-                    <p className="text-2xl font-semibold">{competition.name}</p>
+                    <p className="text-2xl font-display uppercase tracking-wide">{competition.name}</p>
                     <p className="font-small text-gray-500">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
 
                 </div>
                 <div className="flex p-3">
                     <div className="flex items-center px-4">
-                        <div className="text-5xl font-semibold pe-2">{countTotal}</div>
+                        <div className="text-5xl font-display text-volt-500 dark:text-volt-400 pe-2">{countTotal}</div>
                         <div className="uppercase text-xs tracking-wide text-gray-500">Total Competition<br/>Workouts
                         </div>
                     </div>
@@ -137,6 +139,84 @@ function CompetitionHead({competition, feed, isOwner}) {
 }
 
 
+function CoachCorner({competition, isOwner}) {
+    // The Drill Instructor's presence on the competition page: latest
+    // coach messages for this competition + a setup CTA for owners.
+    const {data: configs} = useGetDrillConfigsQuery();
+    const config = (configs || []).find((c) => c.competition === competition.id) || null;
+    const {data: messages} = useGetDrillMessagesQuery(
+        {competition: competition.id},
+        {pollingInterval: 60000, skip: !config}
+    );
+    const [showConfigModal, setShowConfigModal] = useState(false);
+
+    if (!config) {
+        if (!isOwner) return null;
+        return (
+            <div className="mb-4 relative overflow-hidden rounded-3xl bg-ink-900 text-white border border-ink-700/60 shadow-card-dark">
+                <div className="pointer-events-none absolute -top-16 -right-10 h-40 w-40 rounded-full bg-volt-400/25 blur-3xl"/>
+                <div className="relative flex items-center gap-4 p-5">
+                    <img src="/personas/megaphone.svg" alt="" className="h-14 w-14 rounded-full animate-float-slow"/>
+                    <div className="flex-1 min-w-0">
+                        <p className="font-display text-sm uppercase tracking-wider">Unleash the Drill Instructor</p>
+                        <p className="text-xs text-gray-400 mt-0.5">An AI coach that comments on every workout - with push pings to keep everyone honest.</p>
+                    </div>
+                    <button onClick={() => setShowConfigModal(true)}
+                            className="shrink-0 rounded-full bg-volt-400 text-ink-950 px-4 py-2.5 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
+                        Activate
+                    </button>
+                </div>
+                {showConfigModal && <DrillInstructorConfigForm competition={competition} setModalState={setShowConfigModal}/>}
+            </div>
+        );
+    }
+
+    const persona = config.persona_detail || {};
+    const latest = (messages || []).slice(0, 3);
+
+    return (
+        <div className="mb-4 rounded-3xl bg-white dark:bg-ink-850 dark:border dark:border-ink-700/60 shadow-card dark:shadow-card-dark overflow-hidden">
+            <div className="flex items-center gap-3 px-5 pt-4 pb-3 border-b border-gray-100 dark:border-ink-700/60">
+                <PersonaAvatar persona={persona} size={44} glow={config.enabled}/>
+                <div className="flex-1 min-w-0">
+                    <p className="font-display text-xs uppercase tracking-wider flex items-center gap-2">
+                        Coach's Corner
+                        <span className={"inline-block h-2 w-2 rounded-full " + (config.enabled ? "bg-volt-500 animate-pulse" : "bg-gray-300")}/>
+                    </p>
+                    <p className="text-xs text-gray-400 truncate">
+                        {persona.name}{config.enabled ? " is on duty" : " is benched"} · {config.messages_posted || 0} messages
+                    </p>
+                </div>
+                {isOwner && (
+                    <button onClick={() => setShowConfigModal(true)}
+                            className="text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition">
+                        Configure
+                    </button>
+                )}
+            </div>
+            {latest.length > 0 ? (
+                <ul className="px-4 py-3 space-y-3">
+                    {latest.map((m) => (
+                        <li key={m.id} className="flex items-start gap-2.5">
+                            <PersonaAvatar persona={{avatar: m.persona_avatar, theme_color: m.persona_theme_color, name: m.persona_name}} size={30}/>
+                            <div className="min-w-0">
+                                <p className="text-sm leading-snug dark:text-gray-100">{m.body}</p>
+                                <p className="text-[11px] text-gray-400 mt-0.5">
+                                    {m.athlete_name ? `→ ${m.athlete_name} · ` : ""}{timeAgo(m.posted_at)}
+                                </p>
+                            </div>
+                        </li>
+                    ))}
+                </ul>
+            ) : (
+                <p className="px-5 py-4 text-sm text-gray-400">No orders yet - the coach speaks after the next logged workout.</p>
+            )}
+            {showConfigModal && <DrillInstructorConfigForm competition={competition} setModalState={setShowConfigModal}/>}
+        </div>
+    );
+}
+
+
 function ChartThisWeek({history}) {
     const isDarkMode = useDarkMode();
     const data = {
@@ -145,7 +225,7 @@ function ChartThisWeek({history}) {
             {
                 label: 'Me',
                 data: history['Me'],
-                backgroundColor: 'rgb(99, 135, 188)',
+                backgroundColor: '#b8e62e',
                 borderRadius: 5,
                 clip: false,
             },
@@ -214,7 +294,7 @@ function ChartHistory({history}) {
             {
                 label: 'Me',
                 data: history['Me'],
-                borderColor: 'rgb(99, 135, 188)',
+                borderColor: '#b8e62e',
                 tension: 0.3, // slight smoothing
                 fill: false,
                 spanGaps: true,
@@ -295,7 +375,7 @@ function AwardsBox({competition}) {
                         <h2 className="text-gray-300 text-sm text-center">Your Text Here</h2>
                     </div>
                 </div>
-                <span className="ml-auto mx-4 flex text-light-blue font-semibold items-center justify-center"><p>View All</p></span>
+                <span className="ml-auto mx-4 flex text-volt-600 dark:text-volt-400 font-semibold items-center justify-center"><p>View All</p></span>
             </div>
         </div>
     )
@@ -315,7 +395,7 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
     return (
         <>
             <BoxSection>
-                <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b-2 pb-3">
+                <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
                     <span className="mx-4 text-gray-500 uppercase font-bold">Team Leaderboard</span>
                     {(!competition.organizer_assigns_teams || isOwner) && (
                         <div className="p-0 mt-2.5 sm:mt-0">
@@ -328,14 +408,14 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
                 <table className="min-w-full my-2">
                     <tbody>
                     {(stats.leaderboard.team.length === 0) ? (
-                        <tr className="hover:bg-gray-100 dark:hover:bg-gray-900 border-b">
+                        <tr className="hover:bg-gray-100 dark:hover:bg-ink-800 border-b">
                             <td className="py-2 px-4 pb-3 text-center text-gray-500">Create the first team!
                             </td>
                         </tr>
                     ) : (
                         stats.leaderboard.team.map((team, index) => (
                             <tr key={"leader_team" + index}
-                                className={((parseInt(teamId) === team.workout__user__my_teams__id) ? "bg-sky-50 dark:bg-sky-950 " : "") + "hover:bg-gray-100 dark:hover:bg-gray-900 border-b"}>
+                                className={((parseInt(teamId) === team.workout__user__my_teams__id) ? "bg-volt-400/10 dark:bg-volt-400/5 " : "") + "hover:bg-gray-100 dark:hover:bg-ink-800 border-b"}>
                                 <td className="py-2 px-2">
                                     <span className="font-semibold">#{team.rank}</span>
                                 </td>
@@ -379,20 +459,20 @@ function IndividualLeaderboardBox({stats, userId}) {
 
     return (
         <BoxSection>
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b-2 pb-3">
+            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
                 <span className="mx-4 text-gray-500 uppercase font-bold">Participant Leaderboard</span>
             </div>
 
             <table className="min-w-full my-2">
                 <tbody>
                 {(stats.leaderboard.individual.length === 0) ? (
-                    <tr className="hover:bg-gray-100 dark:hover:bg-gray-900 border-b">
+                    <tr className="hover:bg-gray-100 dark:hover:bg-ink-800 border-b">
                         <td className="py-2 px-4 pb-3 text-center text-gray-500">Here participants will show up!
                         </td>
                     </tr>
                 ) : (
                 stats.leaderboard.individual.map((person, index) => (
-                    <tr key={"leader_user" + index} className={((userId === person.workout__user__id) ? "bg-sky-50 dark:bg-sky-950 " : "") + "hover:bg-gray-100 dark:hover:bg-gray-900 border-b"}>
+                    <tr key={"leader_user" + index} className={((userId === person.workout__user__id) ? "bg-volt-400/10 dark:bg-volt-400/5 " : "") + "hover:bg-gray-100 dark:hover:bg-ink-800 border-b"}>
                         <td className="py-2 px-2">
                             <span className="font-semibold">#{person.rank}</span>
                         </td>
@@ -402,7 +482,10 @@ function IndividualLeaderboardBox({stats, userId}) {
                         <td className="py-2 px-2">
                             {(person.strava_allow_follow === true && person.strava_athlete_id) && (
                                 <StravaButton label={"Follow"} onClick={() => {
-                                    window.open("https://www.strava.com/athletes/" + person.strava_athlete_id, "_blank")
+                                    // Coerce to digits only so a poisoned athlete id can't turn
+                                    // the click into an open redirect.
+                                    const id = String(person.strava_athlete_id).replace(/[^0-9]/g, '');
+                                    if (id) window.open("https://www.strava.com/athletes/" + id, "_blank", "noopener,noreferrer");
                                 }}/>
                             )}
                         </td>
@@ -425,7 +508,7 @@ function FeedBox({feed, refreshCompetition, competitionIsRefreshing}) {
     return (
         <BoxSection>
 
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b-2 pb-3">
+            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
                 <span className="mx-4 text-gray-500 uppercase font-bold">Activity Feed</span>
                 <div className="p-0 mt-2.5 sm:mt-0">
                     <RefreshButton onClick={() => refreshCompetition()}
@@ -437,14 +520,14 @@ function FeedBox({feed, refreshCompetition, competitionIsRefreshing}) {
             <table className="min-w-full my-2">
                 <tbody>
                 {(feed.length === 0) ? (
-                    <tr className="hover:bg-gray-100 dark:hover:bg-gray-900 border-b">
+                    <tr className="hover:bg-gray-100 dark:hover:bg-ink-800 border-b">
                         <td className="py-2 px-4 pb-3 text-center text-gray-500">Here participants' activities will show
                             up!
                         </td>
                     </tr>
                 ) : (feed.map((entry, index) => {
                         return (
-                            <tr key={"feed" + index} className="hover:bg-gray-100 dark:hover:bg-gray-900 border-b">
+                            <tr key={"feed" + index} className="hover:bg-gray-100 dark:hover:bg-ink-800 border-b">
                                 <td className="py-2 px-4 text-sm md:text-base">
                                     <span className="font-semibold">{entry.workout__start_datetime_fmt.date_readable}</span><br/>
                                     <span className="text-sm hidden sm:block">{entry.workout__start_datetime_fmt.time_24h}</span>
@@ -465,7 +548,11 @@ function FeedBox({feed, refreshCompetition, competitionIsRefreshing}) {
                                     {(entry.workout__user__strava_allow_follow && entry.workout__strava_id) ? (
                                         <StravaButton label={"Like Activity"} additionalClasses={"hidden sm:flex"}
                                                       onClick={() => {
-                                                          window.open("https://www.strava.com/activities/" + entry.workout__strava_id, "_blank")
+                                                          // Coerce to string and strip anything that isn't a digit
+                                                          // so a poisoned strava_id (e.g. "../../evil") can't
+                                                          // turn the click into an open redirect.
+                                                          const id = String(entry.workout__strava_id).replace(/[^0-9]/g, '');
+                                                          if (id) window.open("https://www.strava.com/activities/" + id, "_blank", "noopener,noreferrer");
                                                       }}/>
                                     ) : null}
                                 </td>
@@ -569,7 +656,7 @@ function ActivityGoalsBox({user, stats, feed, competitionId, userId, isOwner}) {
 
     return (
         <BoxSection>
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b-2 pb-3">
+            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
                 <span className="mx-4 text-gray-500 uppercase font-bold">Activity Goals</span>
                 {isOwner && (
                     <div className="p-0 mt-2.5 sm:mt-0">
@@ -595,10 +682,10 @@ function ActivityGoalsBox({user, stats, feed, competitionId, userId, isOwner}) {
                                     <div className="h-4 rounded-full"
                                          style={{
                                              width: Math.min(goal.points_capped, 100) + "%",
-                                             backgroundColor: "rgb(99, 135, 188)"
+                                             backgroundColor: "#b8e62e"
                                          }}></div>
                                 </div>
-                                <div className="text-sky-800 text-right"
+                                <div className="text-volt-600 dark:text-volt-400 text-right"
                                      style={{width: "25%"}}>{Math.round(goal.points_capped).toLocaleString()} P<span
                                     className="text-sm"></span>
                                 </div>
@@ -720,7 +807,7 @@ function Activity7DaysBox({stats, userId, teamId}) {
 
     return (
         <BoxSection>
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b-2 pb-3">
+            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
                 <span className="mx-4 text-gray-500 uppercase font-bold">This Week</span>
             </div>
             <div className="my-3">
@@ -786,7 +873,7 @@ function ActivityCompetitionBox({stats, userId, teamId}) {
 
     return (
         <BoxSection>
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b-2 pb-3">
+            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
                 <span className="mx-4 text-gray-500 uppercase font-bold">The Trend</span>
             </div>
             <div className="my-3">
@@ -868,7 +955,6 @@ export default function Competition() {
 
     return (
         <PageWrapper>
-            <NavMenu page={id}/>
 
             <div className="container mx-auto p-4">
 
@@ -881,6 +967,9 @@ export default function Competition() {
                         <CompetitionHead competition={competition} feed={feed} isOwner={isOwner} />
                     )
                 }
+
+                {/* The Drill Instructor's corner */}
+                {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
 
                 {/* KPI bar */}
                 <div className="flex flex-col xl:flex-row">

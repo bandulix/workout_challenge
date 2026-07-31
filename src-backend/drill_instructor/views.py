@@ -96,19 +96,21 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         if not user.is_authenticated:
             return DrillInstructorMessage.objects.none()
-        return (
+        qs = (
             DrillInstructorMessage.objects
             .filter(Q(config__competition__owner=user) | Q(config__competition__user=user))
             .distinct()
-            .select_related("config", "config__competition", "workout")
+            .select_related("config", "config__competition", "config__persona", "workout", "workout__user")
         )
+        competition = self.request.query_params.get("competition")
+        if competition and competition.isdigit():
+            qs = qs.filter(config__competition_id=int(competition))
+        return qs
 
 
 class DrillInstructorTestMessageView(APIView):
-    """POST a one-off test message to the Matrix room of a competition.
-
-    Only the competition owner can fire this. Runs the same Celery task
-    the settings UI uses so failures surface in the same audit log.
+    """POST a one-off test message - runs the same Celery task the
+    settings UI uses so the result shows up in the audit log.
     """
 
     MAX_BODY_LEN = 1000

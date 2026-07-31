@@ -1,5 +1,4 @@
-import './Dashboard.css';
-import React, {useEffect, useState} from "react";
+import React, {useEffect, useMemo, useState} from "react";
 import {
     Check,
     CheckCheck,
@@ -15,35 +14,28 @@ import {useGetUserByIdQuery, usersApi} from "../utils/reducers/usersSlice";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import CompetitionForm from "../forms/competitionForm";
 import PersonalGoalsForm from "../forms/personalGoalsForm";
-import SettingsForm from "../forms/settingsForm";
 import {useLocation, useNavigate, useNavigationType, useSearchParams} from "react-router-dom";
-import NavMenu from "../utils/navMenu";
 import JoinCompetitionForm from "../forms/joinCompetitionForm";
-import {HowToScreen, LinkStravaScreen} from "./HowTo";
+import {LinkStravaScreen} from "./HowTo";
 import {
-    AddButton, EditButton, FairGoalsButton,
+    AddButton, EditButton,
     JoinButton,
     ModifyGoalsButton,
-    SettingsButton, StravaButton,
+    StravaButton,
     SyncStravaButton,
-    PersonaButton,
 } from "../forms/basicComponents";
 import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
 import {SectionLoader} from "../utils/loaders";
 import {useDispatch} from "react-redux";
-import GoalEqualizerForm from "../forms/equalizerForm";
-import {useLazySyncStravaQuery} from "../utils/reducers/linkSlice";
+import {useLazySyncGarminQuery, useLazySyncStravaQuery} from "../utils/reducers/linkSlice";
 import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
 import {feedApi} from "../utils/reducers/feedSlice";
 import {BeatLoader} from "react-spinners";
-import DrillInstructorPersonaModal from "../forms/drillInstructorPersonaModal";
+import ProfileAvatar from "../components/ProfileAvatar";
 
 
-function WelcomeBox({user, workouts, setLinkStrava}) {
+function WelcomeBox({user, workouts}) {
 
-    const [showEditSettingsModal, setShowEditSettingsModal] = useState(false);
-    const [showGoalEqualizerModal, setShowGoalEqualizerModal] = useState(false);
-    const [showPersonaModal, setShowPersonaModal] = useState(false);
     const [countTotal, setCountTotal] = useState(0);
     const [countGroups, setCountGroups] = useState({});
 
@@ -64,13 +56,11 @@ function WelcomeBox({user, workouts, setLinkStrava}) {
 
                 {/* Message */}
                 <div className="flex flex-col gap-2 px-5 pb-2 sm:flex-row sm:items-center sm:gap-6 sm:py-2.5">
-                    <img className="mx-auto block h-24 rounded-full sm:mx-0 sm:shrink-0"
-                         src="/profile.png"
-                         alt=""/>
+                    <ProfileAvatar user={user} size={96} editable className="mx-auto sm:mx-0"/>
                     <div className="space-y-2 text-center sm:text-left">
                         <div className="space-y-0.5">
                             <p className="font-small text-gray-500">Welcome back,</p>
-                            <p className="text-2xl font-semibold">{user.first_name}</p>
+                            <p className="text-3xl font-display uppercase tracking-wide">{user.first_name}</p>
                         </div>
                     </div>
                 </div>
@@ -78,7 +68,7 @@ function WelcomeBox({user, workouts, setLinkStrava}) {
                 {/* Workout Stats */}
                 <div className="flex p-3">
                     <div className="flex items-center px-4">
-                        <div className="text-5xl font-semibold pe-2">{countTotal}</div>
+                        <div className="text-5xl font-display text-volt-500 dark:text-volt-400 pe-2">{countTotal}</div>
                         <div className="uppercase text-xs tracking-wide text-gray-500">Total Lifetime<br/>Workouts
                         </div>
                     </div>
@@ -91,26 +81,6 @@ function WelcomeBox({user, workouts, setLinkStrava}) {
                     ))}
                 </div>
 
-                {/* Setting Buttons */}
-                <div className="p-3 sm:p-4">
-                    <SettingsButton additionalClasses="mx-auto sm:ml-auto sm:mr-0 my-1"
-                                    onClick={() => setShowEditSettingsModal(true)}/>
-                    <FairGoalsButton additionalClasses="mx-auto sm:ml-auto sm:mr-0 my-1"
-                                     onClick={() => setShowGoalEqualizerModal(true)}/>
-                    <PersonaButton additionalClasses="mx-auto sm:ml-auto sm:mr-0 my-1"
-                                   onClick={() => setShowPersonaModal(true)}/>
-                </div>
-
-                {(showEditSettingsModal) && (
-                    <SettingsForm user={user} setModalState={setShowEditSettingsModal} setLinkStrava={setLinkStrava}/>
-                )}
-                {(showGoalEqualizerModal) && (
-                    <GoalEqualizerForm user={user} setModalState={setShowGoalEqualizerModal}/>
-                )}
-                {(showPersonaModal) && (
-                    <DrillInstructorPersonaModal setModalState={setShowPersonaModal}/>
-                )}
-
             </div>
         </BoxSection>
     )
@@ -120,42 +90,52 @@ function WelcomeBox({user, workouts, setLinkStrava}) {
 function WorkoutsBox({workouts, user, setLinkStrava}) {
 
     const [showEditWorkoutModal, setShowEditWorkoutModal] = useState(false);
-    const stravaLinked = user?.strava_athlete_id !== null;
+    const stravaLinked = user?.strava_athlete_id !== null && user?.strava_athlete_id !== undefined;
+    const garminLinked = Boolean(user?.garmin_email);
     const dispatch = useDispatch();
     const [triggerStravaSync, { data: stravaSyncData, isFetching: stravaSyncIsFetching, error: stravaSyncError, isSuccess: stravaSyncIsSuccess }] = useLazySyncStravaQuery();
+    const [triggerGarminSync, { isFetching: garminSyncIsFetching, error: garminSyncError, isSuccess: garminSyncIsSuccess }] = useLazySyncGarminQuery();
 
-    useEffect(() => {
-        if (stravaSyncIsFetching !== undefined && stravaSyncIsFetching !== true) {
-            if (stravaSyncIsSuccess) {
-                dispatch(workoutsApi.util.invalidateTags(['Workout']));
-                dispatch(usersApi.util.invalidateTags(['User']));
-                dispatch(statsApi.util.invalidateTags(['Stats']));
-                dispatch(feedApi.util.invalidateTags(['Feed']));
-                console.log("Strava sync successful!");
-            } else if (stravaSyncError) {
-                dispatch(workoutsApi.util.invalidateTags(['Workout']));
-                dispatch(usersApi.util.invalidateTags(['User']));
-                if (stravaSyncError?.status === 429) {
-                    console.log("Strava sync denied! Too many requests!");
-                    window.alert(`${stravaSyncError?.data?.message}`);
-                } else {
-                    console.log("Strava sync failed!", stravaSyncError);
-                    window.alert("Strava sync failed! Unknown error. Please try again later or wait till 4 am for scheduled sync.");
-                }
+    function handleSyncResult(isSuccess, error, provider) {
+        if (isSuccess) {
+            dispatch(workoutsApi.util.invalidateTags(['Workout']));
+            dispatch(usersApi.util.invalidateTags(['User']));
+            dispatch(statsApi.util.invalidateTags(['Stats']));
+            dispatch(feedApi.util.invalidateTags(['Feed']));
+            console.log(`${provider} sync successful!`);
+        } else if (error) {
+            dispatch(workoutsApi.util.invalidateTags(['Workout']));
+            dispatch(usersApi.util.invalidateTags(['User']));
+            if (error?.status === 429) {
+                window.alert(`${error?.data?.message}`);
+            } else {
+                window.alert(`${provider} sync failed! ${error?.data?.message || "Unknown error. Please try again later."}`);
             }
         }
+    }
+
+    useEffect(() => {
+        if (stravaSyncIsFetching === false) handleSyncResult(stravaSyncIsSuccess, stravaSyncError, "Strava");
     }, [stravaSyncIsFetching]);
+
+    useEffect(() => {
+        if (garminSyncIsFetching === false) handleSyncResult(garminSyncIsSuccess, garminSyncError, "Garmin");
+    }, [garminSyncIsFetching]);
 
     return (
         <BoxSection>
 
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b-2 pb-3">
+            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3 gap-2">
                 <span className="mx-4 text-gray-500 uppercase font-bold mb-1.5 sm:mb-0">My Workouts</span>
-                <div className="p-0">
+                <div className="p-0 flex gap-2">
                     {
                         (stravaLinked) ? <SyncStravaButton additionalClasses="my-0.5 sm:my-0" isLoading={stravaSyncIsFetching} onClick={() => triggerStravaSync()}/> :
                             <StravaButton additionalClasses="my-0.5 sm:my-0" label={"Link Strava for Automatic Import"} onClick={() => setLinkStrava(true)}/>
                     }
+                    {garminLinked && (
+                        <SyncStravaButton additionalClasses="my-0.5 sm:my-0" label={"Re-Sync with Garmin"}
+                                          isLoading={garminSyncIsFetching} onClick={() => triggerGarminSync()}/>
+                    )}
                 </div>
 
                 <div className="p-0">
@@ -166,13 +146,12 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
             <table className="min-w-full my-2">
                 <tbody>
                 {(workouts.length === 0) ? (
-                    <tr className="hover:bg-gray-100 dark:hover:bg-gray-900 border-b">
-                        <td className="py-2 px-4 pb-3 text-center text-gray-500">Add workouts manually or link Strava for automatic workout import!
-                        </td>
+                    <tr className="border-b border-gray-100 dark:border-ink-700/60 hover:bg-gray-50 dark:hover:bg-ink-800">
+                        <td className="py-4 px-4 text-center text-gray-400 text-sm">No workouts yet.</td>
                     </tr>
                 ) : (
                     workouts.map((workout, iWorkout) => (
-                        <tr key={"workout" + iWorkout} className="hover:bg-gray-100 dark:hover:bg-gray-900 border-b">
+                        <tr key={"workout" + iWorkout} className="border-b border-gray-100 dark:border-ink-700/60 hover:bg-gray-50 dark:hover:bg-ink-800">
                             <td className="py-2 px-4 text-sm md:text-base">
                                 <span className="font-semibold">{workout.start_datetime_fmt.date_readable}</span><br/>
                                 <span className="text-sm hidden sm:block">{workout.start_datetime_fmt.time_24h}</span>
@@ -274,7 +253,7 @@ function CompetitionsBox({user, competitions, setJoinCompetition}) {
     return (
         <BoxSection additionalClasses={"mb-4"}>
 
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b-2 pb-3">
+            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
                 <span className="mx-4 text-gray-500 uppercase font-bold mb-1.5 sm:mb-0">My Competitions</span>
                 <div className="p-0">
                     <JoinButton additionalClasses="my-0.5 sm:my-0" onClick={() => setJoinCompetition(true)}/>
@@ -288,9 +267,8 @@ function CompetitionsBox({user, competitions, setJoinCompetition}) {
             <table className="min-w-full my-2">
                 <tbody>
                 {(competitions.length === 0) ? (
-                    <tr className="hover:bg-gray-100 dark:hover:bg-gray-900 border-b">
-                        <td className="py-2 px-4 pb-3 text-center text-gray-500">Crate or join a competition!
-                        </td>
+                    <tr className="border-b border-gray-100 dark:border-ink-700/60 hover:bg-gray-50 dark:hover:bg-ink-800">
+                        <td className="py-4 px-4 text-center text-gray-400 text-sm">No competitions yet.</td>
                     </tr>
                 ) : (
                     competitions.map((competition, iCompetition) => (
@@ -356,53 +334,44 @@ function getLast5WeeksRange() {
 function ThirtyDayStats({thirtyDayStats}) {
     return (
         <div className="w-full">
-            <div className="relative flex pb-5 pt-3 items-center text-sm">
-                <span className="flex-shrink mx-4 text-gray-500 uppercase"><span
-                    className="font-bold">30 Day Activity</span> • {thirtyDayStats.startDate} - {thirtyDayStats.endDate}</span>
-                <div className="flex-grow border-t border-gray-100 border-t-2"></div>
+            <div className="flex pb-2 items-center">
+                <span className="font-display text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    30 Day Activity <span className="font-sans normal-case font-normal">• {thirtyDayStats.startDate} - {thirtyDayStats.endDate}</span>
+                </span>
             </div>
-            <div className="flex p-3">
-                <div className="flex flex-col px-4 text-left">
-                    <div className="text-xs tracking-wide text-gray-500">Active Days</div>
-                    <div className="text-6xl text-left">{thirtyDayStats.activeDays}</div>
-                </div>
+            <div className="flex items-end px-2 pt-1 pb-3">
+                <span className="font-display text-7xl leading-none text-volt-500 dark:text-volt-400">{thirtyDayStats.activeDays}</span>
+                <span className="uppercase text-xs tracking-[0.2em] text-gray-400 pb-1.5 pl-3">active<br/>days</span>
             </div>
-            <div className="flex flex-wrap p-3 pt-1 space-y-3 space-x-1 sm:space-x-4">
-                <div className="flex items-center">
-                    <Dumbbell className="w-6 h-6 text-gray-500"/>
-                    <div className="flex flex-col px-4 text-left">
-                        <div className="text-xs tracking-wide text-gray-500">Workouts</div>
-                        <div className="text-3xl">{thirtyDayStats.workouts}</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="flex items-center gap-3 rounded-2xl bg-gray-50 dark:bg-ink-900 border border-gray-200/60 dark:border-ink-700/60 p-3">
+                    <Dumbbell className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
+                    <div className="text-left">
+                        <div className="text-[11px] tracking-wide text-gray-500">Workouts</div>
+                        <div className="text-xl font-bold leading-tight">{thirtyDayStats.workouts}</div>
                     </div>
                 </div>
-                <div className="flex items-center">
-                    <Timer className="w-6 h-6 text-gray-500"/>
-                    <div className="flex flex-col px-4 text-left">
-                        <div className="text-xs tracking-wide text-gray-500">Time</div>
-                        <div><span
-                            className="text-3xl">{Math.floor(thirtyDayStats.time / 3600).toLocaleString()}</span>hr <span
-                            className="text-3xl">{Math.floor((thirtyDayStats.time % 3600) / 60)}</span>min
-                        </div>
+                <div className="flex items-center gap-3 rounded-2xl bg-gray-50 dark:bg-ink-900 border border-gray-200/60 dark:border-ink-700/60 p-3">
+                    <Timer className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
+                    <div className="text-left">
+                        <div className="text-[11px] tracking-wide text-gray-500">Time</div>
+                        <div className="text-xl font-bold leading-tight">{Math.floor(thirtyDayStats.time / 3600).toLocaleString()}<span className="text-sm font-semibold">hr </span>{Math.floor((thirtyDayStats.time % 3600) / 60)}<span className="text-sm font-semibold">min</span></div>
                     </div>
                 </div>
-                <div className="flex items-center">
-                    <Flame className="w-6 h-6 text-gray-500"/>
-                    <div className="flex flex-col px-4 text-left">
-                        <div className="text-xs tracking-wide text-gray-500">Calories</div>
-                        <div><span className="text-3xl">{thirtyDayStats.kcal.toLocaleString()}</span>kcal</div>
+                <div className="flex items-center gap-3 rounded-2xl bg-gray-50 dark:bg-ink-900 border border-gray-200/60 dark:border-ink-700/60 p-3">
+                    <Flame className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
+                    <div className="text-left">
+                        <div className="text-[11px] tracking-wide text-gray-500">Calories</div>
+                        <div className="text-xl font-bold leading-tight">{thirtyDayStats.kcal.toLocaleString()}<span className="text-sm font-semibold">kcal</span></div>
                     </div>
                 </div>
-                <div className="flex items-center">
-                    <Ruler className="w-6 h-6 text-gray-500"/>
-                    <div className="flex flex-col px-4 text-left">
-                        <div className="text-xs tracking-wide text-gray-500">Distance</div>
-                        <div><span className="text-3xl">{Math.round(thirtyDayStats.distance).toLocaleString()}</span>km
-                        </div>
+                <div className="flex items-center gap-3 rounded-2xl bg-gray-50 dark:bg-ink-900 border border-gray-200/60 dark:border-ink-700/60 p-3">
+                    <Ruler className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
+                    <div className="text-left">
+                        <div className="text-[11px] tracking-wide text-gray-500">Distance</div>
+                        <div className="text-xl font-bold leading-tight">{Math.round(thirtyDayStats.distance).toLocaleString()}<span className="text-sm font-semibold">km</span></div>
                     </div>
                 </div>
-            </div>
-            <div className="relative flex py-5 items-center text-sm">
-                <div className="flex-grow border-t border-gray-100 border-t-2"></div>
             </div>
         </div>
     )
@@ -412,34 +381,29 @@ function SevenDayStats({sevenDayStats, user}) {
 
     const [showEditGoalsModal, setShowEditGoalsModal] = useState(false);
 
+    if (sevenDayStats.length === 0) return null;
+
     return (
-        <div className="w-full">
-            <div className="relative flex py-5 items-center text-sm xl:hidden block">
-                <div className="flex-grow border-t border-gray-100 border-t-2"></div>
+        <div className="w-full mt-5">
+            <div className="flex flex-col items-start justify-between sm:flex-row sm:items-center gap-2 pb-2">
+                <span className="font-display text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Personal Goals <span className="font-sans normal-case font-normal">• 7 Days Rolling</span>
+                </span>
+                <ModifyGoalsButton additionalClasses="sm:my-0" onClick={() => setShowEditGoalsModal(true)}
+                                   label={"Update Goals"}/>
             </div>
 
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center">
-                <span className="text-sm mx-4 text-gray-500 uppercase"><span
-                    className="font-bold">Personal Goals</span> • 7 Days Rolling</span>
-                <div className="p-0">
-                    <ModifyGoalsButton additionalClasses="mt-2.5 sm:my-0" onClick={() => setShowEditGoalsModal(true)}
-                                       label={"Update Goals"}/>
-                </div>
-            </div>
-
-            <div className="flex flex-col mt-3 sm:mt-0 sm:overflow-x-auto sm:flex-row sm:space-x-4">
+            <div className="flex flex-col sm:overflow-x-auto sm:flex-row gap-2">
                 {sevenDayStats.map((goal, idx) => (
-                    <div key={idx} className="bg-gray-100 dark:bg-gray-900 rounded-lg p-6 mb-4 sm:mb-0 sm:m-4">
-                        <div className="flex flex-col px-4 text-left" style={{width: '220px'}}>
-                            <div className="tracking-wide text-gray-500 mb-0.5">{goal.name}</div>
-                            <div className="text-2xl text-sky-800 text-left mb-2">
-                                {goal.value.toLocaleString()} / {goal.target.toLocaleString()}
-                                <span className="text-sm">{goal.unit}</span>
+                    <div key={idx} className="flex-1 rounded-2xl bg-gray-50 dark:bg-ink-900 border border-gray-200/60 dark:border-ink-700/60 p-4">
+                        <div className="flex flex-col text-left">
+                            <div className="tracking-wide text-gray-500 text-sm mb-0.5">{goal.name}</div>
+                            <div className="text-2xl font-display text-volt-500 dark:text-volt-400 text-left mb-2">
+                                {goal.value.toLocaleString()} <span className="text-lg text-gray-400">/ {goal.target.toLocaleString()}{goal.unit}</span>
                             </div>
-                            <div className="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-4">
-                                <div className="h-4 rounded-full" style={{
+                            <div className="w-full bg-gray-200 dark:bg-ink-700 rounded-full h-2.5">
+                                <div className="h-2.5 rounded-full bg-volt-500 dark:bg-volt-400 transition-all" style={{
                                     width: Math.min(goal.value / goal.target * 100, 100) + '%',
-                                    backgroundColor: '#6387bc'
                                 }}></div>
                             </div>
                         </div>
@@ -454,129 +418,86 @@ function SevenDayStats({sevenDayStats, user}) {
 }
 
 
-function splitIntoChunks(arr, chunkSize = 7) {
-    const result = [];
-    for (let i = 0; i < arr.length; i += chunkSize) {
-        result.push(arr.slice(i, i + chunkSize));
-    }
-    return result;
-}
+function StreakCard({workouts}) {
 
-
-function CalendarStats({workouts, last5Weeks}) {
-
-    const [tableDateData, setTableDateData] = useState([]);
-    const [tableStreakData, setTableStreakData] = useState({});
     const [weekStreak, setWeekStreak] = useState(0);
-
-    const today = new Date();
-    const isMonday = today.getDay() === 1;
-    const weeks = (isMonday ? 5 : 4);
+    const [activeWeekdays, setActiveWeekdays] = useState(new Set());
+    const [weekMinutes, setWeekMinutes] = useState(0);
 
     useEffect(() => {
         const filteredWorkouts = _.filter(workouts || [], item => item.sport_type !== 'Steps');
-
-        // chunked table data
-        const hasWorkout = (list, value) => list.some(obj => obj.start_datetime_fmt.days_ago === -value) ? 1 : 0;
-        const combinedData = last5Weeks.map(week => ({...week, hasWorkout: hasWorkout(filteredWorkouts, week.offset)}));
-        const chunkedData = splitIntoChunks(combinedData);
-        setTableDateData(chunkedData);
         const workoutsPerWeek = _.mapValues(_.groupBy(filteredWorkouts || [], 'start_datetime_fmt.weeksAgo'), items => _.sumBy(items, 'duration_seconds'));
-        setTableStreakData(workoutsPerWeek);
 
-        // streak number
-        let weekStreak = -1;
+        // streak number (consecutive weeks with at least one workout)
+        let streak = -1;
         let i = -1;
         let stillStreak = true;
         while (stillStreak) {
-            // workout done - add one to streak
             if (workoutsPerWeek[i + 1] > 0) {
-                weekStreak++;
-            // no workout done - break streak but only if this is not the current week
+                streak++;
             } else if (i !== -1) {
                 stillStreak = false;
             }
             i++;
         }
-        setWeekStreak(weekStreak + 1);
+        setWeekStreak(streak + 1);
 
-    }, [workouts, last5Weeks]);
+        // this week's active weekdays + minutes
+        const thisWeek = _.filter(filteredWorkouts, item => item.start_datetime_fmt.weeksAgo === 0);
+        setActiveWeekdays(new Set(thisWeek.map(w => (new Date(w.start_datetime).getDay() + 6) % 7))); // Mon=0 .. Sun=6
+        setWeekMinutes(Math.round(_.sumBy(thisWeek, item => +item.duration_seconds || 0) / 60));
+    }, [workouts]);
+
+    const whoGoalHit = weekMinutes >= 150;
 
     return (
-        <div className="w-full py-5">
-            <table className="streak-table text-center mx-auto text-xs sm:text-sm">
-                <thead>
-                <tr className="font-semibold text-gray-500">
-                    <th>M</th>
-                    <th>T</th>
-                    <th>W</th>
-                    <th>T</th>
-                    <th>F</th>
-                    <th>S</th>
-                    <th>S</th>
-                    <th className="hidden md:block">Streak</th>
-                </tr>
-                </thead>
-                <tbody>
-                {/* Iterate over weeks/rows */}
-                {tableDateData.map((week, idxWeek) => (
-                    <tr key={"week" + idxWeek}>
-                        {/* Iterate over days/cols */}
-                        {week.map((day, idxDay) => (
-                            <td key={"day" + idxDay} className="py-0 px-1 sm:px-2">
-                                {/* Month 3 letters */}
-                                <div className="mx-auto flex items-center justify-center text-gray-400 h-5">
-                                    {((idxDay === 0 && idxWeek === 0) || day.day === 1) ? day.monthStr : null}
-                                </div>
-                                {/* Day Number */}
-                                <div
-                                    className={"mx-auto flex items-center justify-center w-8 h-8 rounded-full font-semibold " + ((day.offset <= 0 && day.offset > -30) ? (day.hasWorkout > 0 ? "bg-sky-800 text-white" : "") : (day.hasWorkout > 0 ? "bg-gray-100 dark:bg-gray-700 text-gray-300 dark:text-gray-500" : "text-gray-300 dark:text-gray-500"))}>
-                                    {day.day}
-                                </div>
-                                {/* Today dot */}
-                                <div
-                                    className={"mx-auto flex items-center justify-center w-1.5 h-1.5 mt-1 rounded-full" + (day.offset === 0 ? "  bg-red-600" : null)}></div>
-                            </td>
-                        ))}
+        <div className="relative overflow-hidden rounded-3xl bg-ink-900 text-white border border-ink-700/60 shadow-card-dark p-5 w-full xl:w-72 shrink-0">
+            <div className="pointer-events-none absolute -top-14 -right-14 h-40 w-40 rounded-full bg-volt-400/25 blur-3xl"/>
+            <div className="relative">
+                <div className="flex items-center gap-4">
+                    <div className="h-14 w-14 rounded-2xl bg-volt-400/15 flex items-center justify-center">
+                        <Flame className="h-7 w-7 text-volt-400"/>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                        <span className="font-display text-5xl text-volt-400">{weekStreak}</span>
+                        <span className="uppercase text-xs tracking-[0.2em] text-gray-400">week<br/>streak</span>
+                    </div>
+                </div>
 
-                        {/* Week Streak */}
-                        <td className="py-0 px-1 sm:px-2 hidden md:block">
-                            <div
-                                className="mx-auto flex items-center justify-center text-gray-300 h-5 font-bold">
-                                {(tableStreakData[weeks - idxWeek + 1] > 0 && tableStreakData[weeks - idxWeek] > 0) ? "|" : ""}
+                {/* this week's days */}
+                <div className="mt-5 flex justify-between">
+                    {["M", "T", "W", "T", "F", "S", "S"].map((label, idx) => {
+                        const active = activeWeekdays.has(idx);
+                        const isToday = (new Date().getDay() + 6) % 7 === idx;
+                        return (
+                            <div key={idx} className="flex flex-col items-center gap-1.5">
+                                <span className="text-[10px] font-bold text-gray-500">{label}</span>
+                                <span className={"h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold transition " +
+                                    (active
+                                        ? "bg-volt-400 text-ink-950 shadow-glow-volt"
+                                        : "bg-ink-700/60 text-gray-500") +
+                                    (isToday ? " ring-2 ring-white/70 ring-offset-2 ring-offset-ink-900" : "")}>
+                                    {active ? <Check className="h-4 w-4"/> : label}
+                                </span>
                             </div>
-                            <div
-                                className={"mx-auto flex items-center justify-center w-8 h-8 rounded-full font-semibold text-white " + ((tableStreakData[weeks - idxWeek] > 0) ? "bg-streak-blue" : "bg-gray-200 dark:bg-gray-700")}>
-                                {(tableStreakData[weeks - idxWeek] >= 9000) ? // double tick: 9000 = 150 minutes as recommended by the WHO
-                                    <CheckCheck className="w-5 h-5"/> : (tableStreakData[weeks - idxWeek] > 0) ? // single tick: any workout
-                                        <Check className="w-5 h-5"/> : ""}
-                            </div>
-                            <div
-                                className="mx-auto flex items-center justify-center w-1.5 h-1.5 mt-1 rounded-full text-gray-300 font-bold">
-                                {(tableStreakData[weeks - idxWeek - 1] > 0 && tableStreakData[weeks - idxWeek] > 0) ? "|" : ""}
-                            </div>
-                        </td>
+                        );
+                    })}
+                </div>
 
-                    </tr>
-                ))}
-
-                <tr>
-                    <td colSpan="7"
-                        className="cell-mon cell-sun text-sm text-center bg-gray-100 md:bg-white dark:bg-gray-900 dark:md:bg-gray-800 py-2">
-                        <div className="md:hidden mx-auto flex items-center justify-center"><Check
-                            className="w-4 h-4 mt-1 mr-2"/> {weekStreak} Week Streak
-                        </div>
-                    </td>
-                    <td className="cell-streak hidden md:block" style={{color: '#6387bc'}}>
-                        <span className="text-xl font-semibold">{weekStreak}</span><br/>
-                        <span className="text-sm">weeks</span>
-                    </td>
-                </tr>
-
-                </tbody>
-            </table>
+                <div className="mt-4 flex items-center justify-between text-xs">
+                    <span className="text-gray-400">This week</span>
+                    <span className={"inline-flex items-center gap-1 font-bold " + (whoGoalHit ? "text-volt-400" : "text-gray-300")}>
+                        {whoGoalHit && <CheckCheck className="h-3.5 w-3.5"/>}
+                        {weekMinutes} / 150 min
+                    </span>
+                </div>
+                <div className="mt-1.5 h-1.5 rounded-full bg-ink-700/60 overflow-hidden">
+                    <div className="h-full rounded-full bg-volt-400 transition-all"
+                         style={{width: Math.min(weekMinutes / 150 * 100, 100) + "%"}}/>
+                </div>
+            </div>
         </div>
-    )
+    );
 }
 
 
@@ -584,7 +505,7 @@ function StatsBox({workouts, user}) {
 
     const [thirtyDayStats, setThirtyDayStats] = useState({activeDays: 0, workouts: 0, distance: 0, kcal: 0, time: 0});
     const [sevenDayStats, setSevenDayStats] = useState([]);
-    const last5WeeksList = getLast5WeeksRange();
+    const last5WeeksList = useMemo(getLast5WeeksRange, []);
 
     useEffect(() => {
         // 30 day stats
@@ -636,18 +557,13 @@ function StatsBox({workouts, user}) {
     }, [workouts, user]);
 
     return (
-        <>
-            <div className="w-full xl:flex-1 flex flex-col overflow-hidden mr-10">
+        <div className="w-full flex flex-col xl:flex-row gap-4">
+            <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
                 <ThirtyDayStats thirtyDayStats={thirtyDayStats}/>
-                <div className="w-full xl:hidden">
-                    <CalendarStats workouts={workouts} last5Weeks={last5WeeksList}/>
-                </div>
                 <SevenDayStats sevenDayStats={sevenDayStats} user={user}/>
             </div>
-            <div className="xl:w-fit hidden xl:block xl:flex-none">
-                <CalendarStats workouts={workouts} last5Weeks={last5WeeksList}/>
-            </div>
-        </>
+            <StreakCard workouts={workouts}/>
+        </div>
     )
 }
 
@@ -688,37 +604,21 @@ export default function MySpace() {
     const [searchParams, setSearchParams] = useSearchParams();
     const {search} = useLocation();
     const query = new URLSearchParams(search);
-    const searchTermWelcome = query.get('welcome'); // null if not present
     const searchTermJoin = query.get('join'); // null if not present
 
-    const [welcomeStep, setWelcomeStep] = useState(0);
-    const [welcomeMessage, setWelcomeMessage] = useState(false);
     const [linkStrava, setLinkStrava] = useState(false);
     const [joinCompetition, setJoinCompetition] = useState(false);
 
+    // ?action=log opens the workout form directly (PWA home-screen shortcut).
+    const [quickLog, setQuickLog] = useState(query.get('action') === 'log');
+
     useEffect(() => {
-        if (searchTermWelcome !== null && welcomeMessage === false && linkStrava === false && joinCompetition === false) {
-            // Step 1: Join competition
-            if (welcomeStep === 0) {
-                if (searchTermJoin !== null) {
-                    setJoinCompetition(searchTermJoin);
-                }
-                setWelcomeStep(1);
-            // Step 2: Welcome message
-            } else if (welcomeStep === 1) {
-                searchParams.delete('join');
-                setSearchParams(searchParams);
-                setWelcomeMessage(true);
-                setWelcomeStep(2);
-            // Step 3: Link Strava
-            } else if (welcomeStep === 2) {
-                setLinkStrava(true);
-                setWelcomeStep(3);
-                searchParams.delete('welcome');
-                setSearchParams(searchParams);
-            }
+        if (searchTermJoin !== null && joinCompetition === false) {
+            setJoinCompetition(searchTermJoin);
+            searchParams.delete('join');
+            setSearchParams(searchParams);
         }
-    }, [welcomeStep, welcomeMessage, linkStrava, joinCompetition])
+    }, [searchTermJoin, joinCompetition])
 
 
     if (userError) {
@@ -730,8 +630,6 @@ export default function MySpace() {
     return (
         <PageWrapper>
 
-            <NavMenu page={'my'}/>
-
             <div className="container mx-auto p-4">
                 <div className="w-full">
 
@@ -742,44 +640,44 @@ export default function MySpace() {
                             <ErrorBoxSection additionalClasses="mb-4"
                                              errorMsg={userError?.status + ' / ' + (userError?.error || userError?.message || userError?.data?.detail)}/>
                         ) : (
-                            <WelcomeBox user={user} workouts={workouts} setLinkStrava={setLinkStrava}/>
+                            <WelcomeBox user={user} workouts={workouts}/>
                         )
                     }
 
                 </div>
 
-
-                {
-                    (userLoading || workoutsIsLoading) ? (
-                        <SectionLoader height={"w-full h-80 mb-4"}/>
-                    ) : (workoutsError) ? (
-                        <ErrorBoxSection additionalClasses="mb-4"
-                                         errorMsg={workoutsError?.status + ' / ' + (workoutsError?.error || workoutsError?.message || workoutsError?.data?.detail)}/>
-                    ) : (
-                        <div
-                            className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 w-full flex flex-col xl:flex-row mb-4">
-                            <StatsBox workouts={workouts} user={user}/>
-                        </div>
-                    )
-                }
-
+                {/* My Workouts - directly under the welcome block */}
+                <div className="w-full mb-4">
+                    {
+                        (userLoading || workoutsIsLoading) ? (
+                            <SectionLoader height={"h-80"}/>
+                        ) : (workoutsError) ? (
+                            <ErrorBoxSection
+                                errorMsg={workoutsError?.status + ' / ' + (workoutsError?.error || workoutsError?.message || workoutsError?.data?.detail)}/>
+                        ) : (
+                            <WorkoutsBox workouts={workouts} user={user} setLinkStrava={setLinkStrava}/>
+                        )
+                    }
+                </div>
 
                 <div className="w-full flex flex-col xl:flex-row">
-                    <div className="order-2 w-full xl:order-1 xl:w-2/3 xl:mr-2">
+                    <div className="w-full xl:w-2/3 xl:mr-2 mb-4">
 
                         {
                             (userLoading || workoutsIsLoading) ? (
-                                <SectionLoader height={"h-80"}/>
+                                <SectionLoader height={"w-full h-80 mb-4"}/>
                             ) : (workoutsError) ? (
-                                <ErrorBoxSection
-                                    errorMsg={workoutsError?.status + ' / ' + (workoutsError?.error || workoutsError?.message || workoutsError?.data?.detail)}/>
+                                <ErrorBoxSection additionalClasses="mb-4"
+                                                 errorMsg={workoutsError?.status + ' / ' + (workoutsError?.error || workoutsError?.message || workoutsError?.data?.detail)}/>
                             ) : (
-                                <WorkoutsBox workouts={workouts} user={user} setLinkStrava={setLinkStrava}/>
+                                <BoxSection additionalClasses="h-full">
+                                    <StatsBox workouts={workouts} user={user}/>
+                                </BoxSection>
                             )
                         }
 
                     </div>
-                    <div className="order-1 w-full xl:order-2 xl:w-1/3 xl:ml-2">
+                    <div className="w-full xl:w-1/3 xl:ml-2 mb-4">
 
                         {
                             (userLoading || competitionLoading) ? (
@@ -796,9 +694,12 @@ export default function MySpace() {
                 </div>
             </div>
 
-            {welcomeMessage && <HowToScreen setModal={setWelcomeMessage}/>}
             {linkStrava && <LinkStravaScreen setModal={setLinkStrava}/>}
             {joinCompetition && <JoinCompetitionForm setModalState={setJoinCompetition} join_code={searchTermJoin}/>}
+            {quickLog && user && (
+                <WorkoutForm setModalState={setQuickLog}
+                             scaling_distance={parseFloat(user?.scaling_distance || "1.0")}/>
+            )}
 
         </PageWrapper>
     )

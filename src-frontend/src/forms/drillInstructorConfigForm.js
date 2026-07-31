@@ -9,6 +9,7 @@ import {
 } from "../utils/reducers/drillInstructorSlice";
 import {BeatLoader} from "react-spinners";
 import {DeleteButton, Modal, SaveButton} from "./basicComponents";
+import PersonaAvatar from "../components/PersonaAvatar";
 
 const PLACEHOLDER_BODY = "AI Drill Instructor standing by. Drop a workout to see me in action.";
 
@@ -40,10 +41,6 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
 
     const [enabled, setEnabled] = useState(false);
     const [persona, setPersona] = useState("");
-    const [matrixHomeserver, setMatrixHomeserver] = useState("https://matrix.org");
-    const [matrixAccessToken, setMatrixAccessToken] = useState("");
-    const [matrixRoomId, setMatrixRoomId] = useState("");
-    const [matrixBotDisplayName, setMatrixBotDisplayName] = useState("");
     const [commentOnActivity, setCommentOnActivity] = useState(true);
     const [sendPushOnActivity, setSendPushOnActivity] = useState(false);
     const [testBody, setTestBody] = useState(PLACEHOLDER_BODY);
@@ -54,10 +51,6 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
         if (existing) {
             setEnabled(!!existing.enabled);
             setPersona(existing.persona ?? "");
-            setMatrixHomeserver(existing.matrix_homeserver || "https://matrix.org");
-            setMatrixAccessToken(""); // never repopulate the real token
-            setMatrixRoomId(existing.matrix_room_id || "");
-            setMatrixBotDisplayName(existing.matrix_bot_display_name || "");
             setCommentOnActivity(!!existing.comment_on_activity);
             setSendPushOnActivity(!!existing.send_push_on_activity);
         }
@@ -75,13 +68,9 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             competition: competition.id,
             enabled,
             persona,
-            matrix_homeserver: matrixHomeserver,
-            matrix_room_id: matrixRoomId,
-            matrix_bot_display_name: matrixBotDisplayName,
             comment_on_activity: commentOnActivity,
             send_push_on_activity: sendPushOnActivity,
         };
-        if (matrixAccessToken) payload.matrix_access_token = matrixAccessToken;
 
         try {
             if (existing) {
@@ -121,9 +110,9 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
         try {
             const res = await runTestMessage({config_id: existing.id, body: testBody || PLACEHOLDER_BODY}).unwrap();
             if (res?.error) {
-                window.alert("Matrix rejected the test message: " + res.error);
+                window.alert("Drill Instructor could not save the test message: " + res.error);
             } else {
-                window.alert("Test message posted (event id: " + (res?.event_id || "n/a") + ").");
+                window.alert("Test message saved to the audit log (id " + (res?.id || "n/a") + ").");
             }
         } catch (err) {
             window.alert("Failed to run test task: " + JSON.stringify(err?.data || err?.message));
@@ -131,13 +120,13 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
     }
 
     const personasList = personas || [];
-    const tokenDisplay = existing?.access_token_masked || "(not set)";
 
     return (
         <Modal title="AI Drill Instructor" landscape={true} setShowModal={setModalState} isLoading={configsLoading || personasLoading || addLoading || updateLoading || deleteLoading}>
             <div className="text-sm text-gray-600 dark:text-gray-400 px-4 pb-3">
-                Connect a Matrix room and the instructor will comment on every activity logged during
-                this competition using the chosen persona.
+                Pick an AI persona and the instructor will generate a short, in-character comment
+                for every workout logged in this competition. Generated messages are stored in the
+                audit log below and (optionally) sent as a web push notification.
             </div>
 
             <Field label="Enabled" error={fieldErrors.enabled}>
@@ -153,62 +142,27 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             </Field>
 
             <Field label="Persona" required error={fieldErrors.persona} hint="Defines the voice and style.">
-                <select
-                    className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-800 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
-                    value={persona}
-                    onChange={(e) => setPersona(e.target.value)}
-                >
-                    <option value="">Select a persona</option>
-                    {personasList.map((p) => (
-                        <option key={p.id} value={p.id}>
-                            {p.name}{p.is_builtin ? " (built-in)" : ""} — {p.description}
-                        </option>
-                    ))}
-                </select>
-            </Field>
-
-            <Field label="Matrix Homeserver URL" required error={fieldErrors.matrix_homeserver} hint="e.g. https://matrix.org or your self-hosted Synapse.">
-                <input
-                    type="text"
-                    className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
-                    value={matrixHomeserver}
-                    onChange={(e) => setMatrixHomeserver(e.target.value)}
-                    placeholder="https://matrix.org"
-                />
-            </Field>
-
-            <Field label={existing ? "Matrix Access Token (leave blank to keep current)" : "Matrix Access Token"}
-                   required={!existing}
-                   error={fieldErrors.matrix_access_token}
-                   hint={`Current token stored: ${tokenDisplay}. Get a new one from Element → Settings → Help → Access Token.`}>
-                <input
-                    type="password"
-                    autoComplete="off"
-                    className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
-                    value={matrixAccessToken}
-                    onChange={(e) => setMatrixAccessToken(e.target.value)}
-                    placeholder="syt_…"
-                />
-            </Field>
-
-            <Field label="Matrix Room ID" required error={fieldErrors.matrix_room_id} hint="Looks like !abc123:matrix.org. The bot must already be a member of the room.">
-                <input
-                    type="text"
-                    className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
-                    value={matrixRoomId}
-                    onChange={(e) => setMatrixRoomId(e.target.value)}
-                    placeholder="!abcdef123456:matrix.org"
-                />
-            </Field>
-
-            <Field label="Display Name Prefix" error={fieldErrors.matrix_bot_display_name} hint="Optional. Prepended in [brackets] so people know it's the bot.">
-                <input
-                    type="text"
-                    className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
-                    value={matrixBotDisplayName}
-                    onChange={(e) => setMatrixBotDisplayName(e.target.value)}
-                    placeholder="Drill Sergeant"
-                />
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {personasList.map((p) => {
+                        const selected = String(persona) === String(p.id);
+                        return (
+                            <button key={p.id} type="button" onClick={() => setPersona(p.id)}
+                                    className={"flex flex-col items-center gap-2 rounded-2xl border p-3 text-center transition active:scale-[0.97] " +
+                                        (selected
+                                            ? "border-volt-500 bg-volt-400/15 dark:bg-volt-400/10 shadow-glow-volt"
+                                            : "border-gray-200 dark:border-ink-700/60 hover:border-volt-500/60")}>
+                                <PersonaAvatar persona={p} size={56} glow={selected}/>
+                                <div>
+                                    <p className="text-sm font-bold leading-tight">{p.name}</p>
+                                    <p className="text-[11px] text-gray-400 italic leading-tight mt-0.5">{p.tagline || p.description}</p>
+                                </div>
+                            </button>
+                        );
+                    })}
+                </div>
+                {personasList.length === 0 && (
+                    <p className="text-sm text-gray-500">No personas available yet.</p>
+                )}
             </Field>
 
             <Field label="Comment on each activity" error={fieldErrors.comment_on_activity}>
@@ -219,7 +173,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                         checked={commentOnActivity}
                         onChange={(e) => setCommentOnActivity(e.target.checked)}
                     />
-                    Post a comment in Matrix every time a participant logs a workout
+                    Generate a comment for every workout logged in this competition
                 </label>
             </Field>
 
@@ -239,9 +193,9 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             {existing && (
                 <div className="px-4 w-full mt-3">
                     <div className="text-xs text-gray-500 italic">
-                        Messages posted: {existing.messages_posted ?? 0}
+                        Messages generated: {existing.messages_posted ?? 0}
                         {existing.last_posted_at && (
-                            <> · Last posted: {new Date(existing.last_posted_at).toLocaleString()}</>
+                            <> · Last generated: {new Date(existing.last_posted_at).toLocaleString()}</>
                         )}
                         {existing.last_error && (
                             <div className="text-red-500 mt-1">Last error: {existing.last_error}</div>
@@ -253,8 +207,13 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             {existing && (
                 <div className="px-4 w-full mt-4 border-t pt-3 border-gray-200 dark:border-gray-700">
                     <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
-                        Send a test message
+                        Preview a test message
                     </label>
+                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        Pick a persona, save, then send a one-off test message here. It will be
+                        saved to the audit log so you can see exactly how the instructor would
+                        talk to your participants.
+                    </div>
                     <div className="flex flex-wrap gap-2 items-start">
                         <input
                             type="text"

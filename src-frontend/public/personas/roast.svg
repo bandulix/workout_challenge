@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="28%" r="95%">
+      <stop offset="0%" stop-color="#ffb199"/>
+      <stop offset="100%" stop-color="#f04a1d"/>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <!-- flame accents -->
+  <path d="M28 60 C20 40 34 30 30 14 C44 26 52 40 44 58 C40 66 32 66 28 60 Z" fill="#ffd23e" opacity=".8"/>
+  <path d="M226 74 C220 58 232 50 228 36 C240 46 246 58 240 72 C236 80 230 80 226 74 Z" fill="#ffd23e" opacity=".7"/>
+  <circle cx="128" cy="118" r="86" fill="#ff8a5c" opacity=".5"/>
+  <!-- shoulders: hoodie -->
+  <path d="M40 256 C40 206 78 180 128 180 C178 180 216 206 216 256 Z" fill="#2b2b31"/>
+  <path d="M96 186 C96 216 112 232 128 232 C144 232 160 216 160 186 L148 180 C146 206 138 218 128 218 C118 218 110 206 108 180 Z" fill="#1c1c21"/>
+  <!-- gold chain -->
+  <path d="M100 192 C108 216 118 226 128 226 C138 226 148 216 156 192" stroke="#ffd23e" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <circle cx="128" cy="226" r="8" fill="#ffd23e"/>
+  <!-- neck -->
+  <rect x="114" y="152" width="28" height="34" rx="9" fill="#74472c"/>
+  <!-- head -->
+  <path d="M128 46 C160 46 180 70 180 108 C180 144 158 170 128 170 C98 170 76 144 76 108 C76 70 96 46 128 46 Z" fill="#8d5a3b"/>
+  <ellipse cx="75" cy="112" rx="9" ry="12" fill="#8d5a3b"/>
+  <ellipse cx="181" cy="112" rx="9" ry="12" fill="#8d5a3b"/>
+  <!-- backwards cap -->
+  <path d="M76 96 C70 56 94 30 128 30 C162 30 186 56 180 96 C182 70 160 56 128 56 C96 56 74 70 76 96 Z" fill="#e33d17"/>
+  <path d="M70 88 C60 84 52 90 54 98 C56 106 68 106 76 100 Z" fill="#e33d17"/>
+  <rect x="120" y="26" width="16" height="10" rx="5" fill="#b82c0e"/>
+  <!-- raised eyebrow + wink -->
+  <path d="M92 92 q14 -10 28 -4" stroke="#2b1408" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M138 96 q12 -4 24 2" stroke="#2b1408" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <circle cx="106" cy="112" r="6" fill="#1c0e05"/>
+  <path d="M142 112 q10 -6 20 0" stroke="#1c0e05" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- smirk -->
+  <path d="M106 146 q22 12 40 -4" stroke="#4a2812" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <!-- mic -->
+  <rect x="188" y="196" width="14" height="44" rx="7" transform="rotate(-24 195 218)" fill="#3a3a42"/>
+  <circle cx="184" cy="196" r="17" fill="#55555e"/>
+  <path d="M172 190 a17 17 0 0 1 24 0" stroke="#7a7a84" stroke-width="3" fill="none"/>
+  <path d="M170 198 a17 17 0 0 1 28 0" stroke="#7a7a84" stroke-width="3" fill="none"/>
+</svg>

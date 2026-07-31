@@ -1,51 +1,76 @@
-version: '3.9'
-
 services:
   workoutchallenge:
     container_name: workoutchallenge
     build: .
     ports:
-      - "80:80"
-      - "5555:5555" # Celery Flower task monitoring - do not open to public - only for local network for debugging
-      - "9001:9001" # Supervisord process monitoring - do not open to public - only for local network for debugging
-      - "8000:8000" # Django admin space - do not open to public - only for local network for debugging
+      - "80:80"        # Nginx -> React (frontend) + Django (via /api)
+      - "5555:5555"    # Celery Flower task monitoring - do NOT expose publicly
+      - "9001:9001"    # Supervisord process monitoring - do NOT expose publicly
+      - "8000:8000"    # Django direct (gunicorn) - do NOT expose publicly
     volumes:
       - django_data:/workout_challenge/src-backend/data
     environment:
-      - POSTGRES_HOST=workoutchallenge-database
-      - POSTGRES_DB=workoutchallenge
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
-      - MAIN_HOST=http://your-url.com
-      - HOSTS=http://your-url.com,http://localhost,http://127.0.0.1
-      - SECRET_KEY=<your_random_string_for_encryption>
-      - TIME_ZONE=Europe/London
-      - STRAVA_CLIENT_ID=000000
-      - STRAVA_CLIENT_SECRET=<secret_key>
-      - SENTRY_DSN=https://<PUBLIC_KEY>@<HOST>/<PROJECT_ID>
-      - EMAIL_HOST=smtp.gmail.com
-      - EMAIL_PORT=465
-      - EMAIL_HOST_USER=competition@yourdomain.com
-      - EMAIL_HOST_PASSWORD=password
-      - EMAIL_USE_SSL=True
-      - EMAIL_USE_TLS=False
-      - EMAIL_FROM=competition@yourdomain.com
-      - EMAIL_REPLY_TO=support@yourdomain.com
-      - OPENAI_API_KEY=<secret_key>
-      # Optional: use any OpenAI-compatible provider by setting LLM_BASE_URL
+      # --- Core Django ---
+      - SECRET_KEY=${SECRET_KEY:-dev-only-not-for-production-CHANGE-ME-please-50chars}
+      - DEBUG=${DEBUG:-true}
+      - TIME_ZONE=${TIME_ZONE:-Europe/London}
+      - MAIN_HOST=${MAIN_HOST:-http://localhost}
+      - HOSTS=${HOSTS:-http://localhost,http://127.0.0.1}
+      # NOTE: in production set HOSTS to the comma-separated list of
+      # public origins (e.g. https://workout.example.com,https://www.workout.example.com)
+      # and DEBUG=false. There is intentionally no ALLOW_ALL_HOSTS escape
+      # hatch any more - shipping that combination made credentialed
+      # CORS requests trivially exploitable.
+
+      # --- Postgres (matches the "database" service below) ---
+      - POSTGRES_HOST=database
+      - POSTGRES_DB=${POSTGRES_DB:-workoutchallenge}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
+
+      # --- Strava OAuth ---
+      # Get these from https://www.strava.com/settings/api
+      # Leave blank to disable the Strava link button in the UI.
+      - STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID:-000000}
+      - STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET:-}
+      - STRAVA_LIMIT_15MIN=${STRAVA_LIMIT_15MIN:-100}
+      - STRAVA_LIMIT_DAY=${STRAVA_LIMIT_DAY:-1000}
+
+      # --- Email (SMTP) ---
+      # Leave host/user/password blank to disable outbound email.
+      # Outbound mail will fail silently; the app still works.
+      - EMAIL_HOST=${EMAIL_HOST:-}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER:-}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD:-}
+      - EMAIL_USE_TLS=${EMAIL_USE_TLS:-true}
+      - EMAIL_USE_SSL=${EMAIL_USE_SSL:-false}
+      - EMAIL_FROM=${EMAIL_FROM:-workout@localhost}
+      - EMAIL_REPLY_TO=${EMAIL_REPLY_TO:-}
+
+      # --- LLM / AI provider (Drill Instructor + weekly email fact) ---
+      # Either paste your API key here (and optionally pick a preset), or
+      # leave blank and set it via the admin Site Settings UI later.
       # Examples:
-      #   - https://openrouter.ai/api/v1
-      #   - https://api.groq.com/openai/v1
-      #   - http://localhost:11434/v1          # Ollama
-      # - LLM_BASE_URL=<provider_url>
-      # - LLM_MODEL=<model_name>              # default: gpt-4o-mini (Drill Instructor)
-      # - LLM_EMAIL_MODEL=<model_name>         # default: gpt-4o (weekly email fact)
-      # Optional: pin the VAPID keypair for browser push notifications.
-      # If unset, a keypair is auto-generated on first start and persisted
-      # to DATA_DIR/vapid.json.
-      # - VAPID_PUBLIC_KEY=
-      # - VAPID_PRIVATE_KEY=
-      # - VAPID_SUBJECT=mailto:admin@example.com
+      #   OpenAI:        OPENAI_API_KEY=sk-...                        (default)
+      #   MiniMax:       LLM_PROVIDER=MiniMax + OPENAI_API_KEY=...    (preset auto-fills base URL + model)
+      #   OpenRouter:    LLM_BASE_URL=https://openrouter.ai/api/v1 + OPENAI_API_KEY=sk-or-...
+      #   Ollama local:  LLM_BASE_URL=http://host.docker.internal:11434/v1 + OPENAI_API_KEY=ollama
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_EMAIL_MODEL=${LLM_EMAIL_MODEL:-gpt-4o}
+
+      # --- Sentry (optional error tracking) ---
+      - SENTRY_DSN=${SENTRY_DSN:-}
+
+      # --- Browser push (VAPID) ---
+      # If left blank, a keypair is auto-generated on first boot and
+      # persisted to django_data/vapid.json.
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@localhost}
     restart: unless-stopped
     depends_on:
       database:
@@ -55,11 +80,11 @@ services:
     image: postgres:15
     container_name: workoutchallenge-database
     environment:
-      - POSTGRES_DB=workoutchallenge
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=${POSTGRES_DB:-workoutchallenge}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
     ports:
-      - "5432:5432"
+      - "5432:5432"   # expose only on localhost; comment out for tighter prod-like security
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped

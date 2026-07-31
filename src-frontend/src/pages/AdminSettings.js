@@ -2,7 +2,6 @@ import React, {useState} from "react";
 import {Settings} from "lucide-react";
 import {SectionLoader} from "../utils/loaders";
 import {BoxSection, PageWrapper} from "../utils/miscellaneous";
-import NavMenu from "../utils/navMenu";
 import SiteSettingsForm from "../forms/siteSettingsForm";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 
@@ -14,7 +13,6 @@ export default function AdminSettings() {
     if (userLoading) {
         return (
             <PageWrapper>
-                <NavMenu page="admin"/>
                 <div className="container mx-auto p-4">
                     <SectionLoader height={"h-48"}/>
                 </div>
@@ -25,7 +23,6 @@ export default function AdminSettings() {
     if (!user?.is_staff) {
         return (
             <PageWrapper>
-                <NavMenu page="admin"/>
                 <div className="container mx-auto p-4">
                     <BoxSection>
                         <div className="text-center text-gray-600 dark:text-gray-300 py-12">
@@ -41,12 +38,11 @@ export default function AdminSettings() {
 
     return (
         <PageWrapper>
-            <NavMenu page="admin"/>
             <div className="container mx-auto p-4">
                 <BoxSection additionalClasses="mb-4">
                     <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center sm:gap-6 sm:py-4">
                         <div className="space-y-1 pl-0 sm:pl-6 pb-3 sm:pb-0 text-center sm:text-left">
-                            <p className="text-2xl font-semibold">Site Settings</p>
+                            <p className="text-2xl font-display uppercase tracking-wide">Site Settings</p>
                             <p className="font-small text-gray-500">
                                 LLM provider configuration used by the AI Drill Instructor and the weekly email.
                             </p>
@@ -54,7 +50,7 @@ export default function AdminSettings() {
                         <div className="p-3">
                             <button
                                 onClick={() => setShowEditModal(true)}
-                                className="px-5 py-2.5 rounded-full bg-sky-800 text-white hover:bg-sky-700 font-semibold text-sm flex items-center gap-2"
+                                className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 font-bold text-sm flex items-center gap-2 transition"
                             >
                                 <Settings className="h-4 w-4"/> Edit Settings
                             </button>
@@ -66,7 +62,7 @@ export default function AdminSettings() {
                     <div className="text-sm text-gray-600 dark:text-gray-400 p-4 space-y-2">
                         <p>
                             As the first registered user you have admin access. You can also manage the same
-                            settings from the <a className="text-sky-700 underline" href="/admin/site_settings/sitesettings/1/change/" target="_blank" rel="noopener noreferrer">Django admin</a>.
+                            settings from the <a className="text-volt-600 dark:text-volt-400 underline" href="/admin/site_settings/sitesettings/1/change/" target="_blank" rel="noopener noreferrer">Django admin</a>.
                         </p>
                         <p>
                             To promote other users to admin, run:

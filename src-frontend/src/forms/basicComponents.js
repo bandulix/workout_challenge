@@ -41,17 +41,17 @@ export function Modal({setShowModal, title = null, landscape = false, isLoading 
 
     return (
         <div
-            className="modal-background fixed inset-0 z-50 bg-white bg-opacity-80 dark:bg-black dark:bg-opacity-80 overflow-y-auto sm:p-4"
+            className="modal-background fixed inset-0 z-50 bg-black/50 backdrop-blur-sm overflow-y-auto sm:p-4"
             onClick={(e) => backgroundClick(e)}
         >
             <div className="modal-background min-h-screen flex items-center justify-center">
                 <div
-                    className={"relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 " + ((landscape) ? "max-w-4xl" : "max-w-2xl") +
-                        " w-full space-y-4 max-sm:w-full max-sm:min-h-screen max-sm:rounded-none max-sm:p-4 max-sm:m-0 max-sm:shadow-none max-sm:pb-[max(2rem,env(safe-area-inset-bottom))]"}
+                    className={"relative bg-white dark:bg-ink-850 dark:border dark:border-ink-700/60 rounded-3xl shadow-card-dark p-6 sm:p-8 animate-pop-in " + ((landscape) ? "max-w-4xl" : "max-w-2xl") +
+                        " w-full space-y-4 max-sm:w-full max-sm:min-h-screen max-sm:rounded-none max-sm:p-4 max-sm:m-0 max-sm:shadow-none max-sm:border-0 max-sm:pb-[max(2rem,env(safe-area-inset-bottom))]"}
                 >
                     <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-2xl font-semibold">{title}</h2>
-                        <button className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                        <h2 className="text-xl font-display uppercase tracking-wide">{title}</h2>
+                        <button className="text-gray-400 hover:text-gray-600 dark:hover:text-volt-300 text-2xl leading-none min-h-[44px] min-w-[44px]"
                                 onClick={() => closeModal()}
                         >
                             &times;
@@ -98,6 +98,7 @@ export function FormInput({
                               highlight = false,
                               errorMsg = null,
                               inputMode = null,
+                              hint = null,
                           }) {
 
 
@@ -145,7 +146,7 @@ export function FormInput({
                         <TimeField
                             value={value}
                             onChange={(e) => setValue(e.target.value)}
-                            input={<input type="text" className={"w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline" + (highlight ? " bg-blue-100 dark:bg-blue-950 ": "") + additionalClasses} />}
+                            input={<input type="text" className={"w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-300 leading-tight focus:outline-none focus:shadow-outline" + (highlight ? " bg-volt-400/20 dark:bg-volt-400/10 ": "") + additionalClasses} />}
                             showSeconds={true}
                         />
                     ) :
@@ -172,7 +173,7 @@ export function FormInput({
                         <>
                             {/* Dropdown Input Element */}
                             <select
-                                className={"w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-800 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline" + (highlight ? " bg-sky-50 dark:bg-sky-950 border border-blue-300 ": "") + additionalClasses}
+                                className={"w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-850 dark:text-gray-300 leading-tight focus:outline-none focus:shadow-outline" + (highlight ? " bg-volt-400/15 dark:bg-volt-400/10 border border-volt-500/50 ": "") + additionalClasses}
                                 name={name}
                                 tabIndex={tabIndex}
                                 required={required}
@@ -192,7 +193,7 @@ export function FormInput({
                         <>
                             {/* All Other Input Elements */}
                             <input
-                                className={"w-full shadow border rounded py-2 px-3 text-gray-700 dark:text-gray-400 dark:placeholder-gray-600 leading-tight focus:outline-none focus:shadow-outline" + (highlight ? " bg-sky-50 dark:bg-sky-950 border border-blue-300 ": " dark:bg-gray-900 ") + additionalClasses}
+                                className={"w-full shadow border rounded py-2 px-3 text-gray-700 dark:text-gray-400 dark:placeholder-gray-600 leading-tight focus:outline-none focus:shadow-outline" + (highlight ? " bg-volt-400/15 dark:bg-volt-400/10 border border-volt-500/50 ": " dark:bg-ink-900 ") + additionalClasses}
                                 name={name}
                                 type={(type === "duration") ? "time" : type}
                                 placeholder={placeholder}
@@ -223,6 +224,11 @@ export function FormInput({
                         </datalist>
                     ) : null
                 }
+
+                {/* Optional helper text rendered below the input */}
+                {hint && type !== "checkbox" ? (
+                    <p className="text-xs text-gray-500 mt-1">{hint}</p>
+                ) : null}
 
             </fieldset>
         </div>
@@ -323,7 +329,7 @@ function GenericButton({onClick, icon, label, highlighted, larger, IconObject, i
 
     return (
         <button
-            className={"flex items-center gap-2 transition hover:shadow " + tapTargetClass + " " + (larger ? (label ? " px-5 py-2.5 font-semibold rounded-full " : " px-3 py-3 rounded-2xl ") : (label ? " px-4 py-2 rounded-full " : " p-2 rounded-2xl ")) + (isLoading ? " bg-white hover:bg-white shadow-none border border-gray-200 dark:bg-gray-800 dark:hover:bg-gray-800 " : (highlighted ? " bg-sky-800 text-white  hover:bg-sky-700 " : " bg-gray-100 hover:bg-gray-300 dark:bg-gray-900 dark:hover:bg-gray-700 ")) + additionalClasses}
+            className={"flex items-center gap-2 transition hover:shadow active:scale-[0.97] " + tapTargetClass + " " + (larger ? (label ? " px-5 py-2.5 font-semibold rounded-full " : " px-3 py-3 rounded-2xl ") : (label ? " px-4 py-2 rounded-full " : " p-2 rounded-2xl ")) + (isLoading ? " bg-white hover:bg-white shadow-none border border-gray-200 dark:bg-ink-850 dark:hover:bg-ink-850 " : (highlighted ? " bg-volt-400 text-ink-950 font-bold hover:bg-volt-300 " : " bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:text-gray-200 dark:hover:bg-ink-700 ")) + additionalClasses}
             onClick={onClick}
             disabled={isLoading}
         >
@@ -559,7 +565,7 @@ export function PersonaButton({
 export function StravaButton({onClick, additionalClasses = "", label = "Strava"}) {
     return (
         <button
-            className={"flex items-center gap-1 text-orange-500 border border-strava bg-white dark:bg-gray-900 hover:bg-strava hover:text-white hover:shadow text-sm font-medium rounded-md transition p-0 " + additionalClasses}
+            className={"flex items-center gap-1 text-orange-500 border border-strava bg-white dark:bg-ink-900 hover:bg-strava hover:text-white hover:shadow text-sm font-medium rounded-md transition p-0 " + additionalClasses}
             onClick={onClick}>
             <img src="/strava_logo.png" alt="Strava" className="w-7 h-7 rounded-tl-sm rounded-bl-sm"/>
             <span className={"pl-1 pr-2 py-1 " + ((label.includes("Like") || label.includes("Follow")) ? "max-lg:hidden" : "")}>{label}</span>

@@ -12,10 +12,22 @@ from .emails.multipurpose import send_email
 class CustomUserSerializer(serializers.ModelSerializer):
     my = serializers.SerializerMethodField()
 
+    MAX_PROFILE_PICTURE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+    def validate_profile_picture(self, value):
+        if value is None:
+            return value
+        if value.size > self.MAX_PROFILE_PICTURE_BYTES:
+            raise serializers.ValidationError("Profile picture too large (max 5 MB).")
+        content_type = getattr(value, "content_type", "") or ""
+        if not content_type.startswith("image/"):
+            raise serializers.ValidationError("File must be an image.")
+        return value
+
     class Meta:
         model = CustomUser
-        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
-        read_only_fields = ['is_verified', 'strava_athlete_id', 'strava_last_synced_at', 'is_staff', 'is_superuser']
+        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'profile_picture', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
+        read_only_fields = ['is_verified', 'strava_athlete_id', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'is_staff', 'is_superuser']
         extra_kwargs = {
             'password': {'write_only': True},
         }
@@ -70,18 +82,14 @@ class CustomUserSerializer(serializers.ModelSerializer):
 class PasswordResetSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
-    def validate_email(self, value):
-        if not CustomUser.objects.filter(email=value).exists():
-            # To avoid leaking info
-            return value
-        return value
-
     def save(self, request):
-        email = self.validated_data['email']
+        # Always behave the same whether or not the address is known -
+        # the response is identical so an attacker can't enumerate
+        # registered emails by timing or by error codes.
+        email = (self.validated_data.get('email') or '').strip().lower()
         from .emails.multipurpose import email_settings_context
 
-        users = CustomUser.objects.filter(email=email)
-        for user in users:
+        for user in CustomUser.objects.filter(email=email):
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             token = default_token_generator.make_token(user)
             reset_url = f"{settings.MAIN_HOST}/password/reset/{uid}/{token}/"

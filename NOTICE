@@ -1,0 +1,30 @@
+Workout Challenge — Fork Notice
+===============================
+
+This repository (github.com/bandulix/workout_challenge) is a **fork** of the
+original project:
+
+    Workout Challenge
+    https://github.com/vanalmsick/workout_challenge
+    Copyright © 2025 github.com/vanalmsick
+
+The original project — and this fork — are licensed under the
+**Server Side Public License, Version 1 (SSPL v1)**. The unmodified license
+text, including the original copyright notice, is preserved in the file
+`LICENSE` in this repository.
+
+In accordance with the license, this notice states that this fork contains
+**modifications** to the original project. A high-level, human-readable
+summary of the changes made in this fork is documented in:
+
+  * `README.md` — section "Changes from the original"
+  * `CHANGELOG.md` — detailed, chronologically ordered list of changes
+  * the git history of this repository
+
+The modifications include, among others: the AI Drill Instructor feature
+with persona profile pictures, a coach-centred progressive-web-app redesign,
+profile picture uploads, and a Garmin Connect import connector — all of
+which are described in detail in the documents above.
+
+All modifications remain under the same Server Side Public License v1.
+Original work: Copyright © 2025 github.com/vanalmsick.

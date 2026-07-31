@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona
@@ -11,12 +13,22 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
     personas is blocked at the view layer.
     """
 
+    theme_color = serializers.RegexField(
+        regex=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
+        required=False,
+        allow_blank=True,
+        error_messages={"invalid": "Use a hex colour like #d7ff3e."},
+    )
+
     class Meta:
         model = DrillInstructorPersona
         fields = [
             "id",
             "name",
             "description",
+            "tagline",
+            "avatar",
+            "theme_color",
             "system_prompt",
             "is_builtin",
             "created_by",
@@ -25,34 +37,42 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["is_builtin", "created_by", "created_at", "updated_at"]
 
+    def validate_avatar(self, value):
+        # Either a built-in artwork key (letters/digits/dash/underscore -
+        # rendered as /personas/<key>.svg) or a single emoji character.
+        value = (value or "").strip()
+        if not value:
+            return value
+        if len(value) <= 40 and re.fullmatch(r"[a-z0-9_-]+", value):
+            return value
+        if len(value) <= 8:  # emoji (may be a surrogate pair / zwj sequence)
+            return value
+        raise serializers.ValidationError(
+            "Avatar must be an artwork key (a-z, 0-9, -, _) or a single emoji."
+        )
+
 
 class DrillInstructorConfigSerializer(serializers.ModelSerializer):
     """Per-competition Drill Instructor configuration.
 
-    ``matrix_access_token`` is write-only. GETs return only the masked
-    preview via the ``access_token_masked`` field, never the real token.
-    To update the token the client must explicitly include a non-empty
-    ``matrix_access_token`` value; leaving it blank keeps the stored one.
+    Persona + toggles. ``last_posted_at``, ``messages_posted`` and
+    ``last_error`` are read-only bookkeeping for the audit log.
     """
 
-    access_token_masked = serializers.CharField(read_only=True)
     last_posted_at = serializers.DateTimeField(read_only=True)
     messages_posted = serializers.IntegerField(read_only=True)
     last_error = serializers.CharField(read_only=True)
+    competition_name = serializers.CharField(source="competition.name", read_only=True)
 
     class Meta:
         model = DrillInstructorConfig
         fields = [
             "id",
             "competition",
+            "competition_name",
             "enabled",
             "persona",
             "persona_detail",
-            "matrix_homeserver",
-            "matrix_access_token",
-            "access_token_masked",
-            "matrix_room_id",
-            "matrix_bot_display_name",
             "comment_on_activity",
             "send_push_on_activity",
             "last_posted_at",
@@ -62,9 +82,6 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at"]
-        extra_kwargs = {
-            "matrix_access_token": {"write_only": True, "required": False, "allow_blank": True},
-        }
 
     persona_detail = DrillInstructorPersonaSerializer(source="persona", read_only=True)
 
@@ -73,31 +90,70 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
         if not enabled:
             return attrs
 
-        required = ["persona", "matrix_homeserver", "matrix_room_id"]
-        for field_name in required:
-            value = attrs.get(field_name, getattr(self.instance, field_name, None))
-            if not value:
-                raise serializers.ValidationError({field_name: "Required when the Drill Instructor is enabled."})
-
-        # On create we always need a token; on update it's optional and
-        # the existing token is preserved when blank.
-        token = attrs.get("matrix_access_token", "")
-        if self.instance is None and not token:
-            raise serializers.ValidationError({"matrix_access_token": "Required when the Drill Instructor is enabled."})
-
-        homeserver = attrs.get("matrix_homeserver", getattr(self.instance, "matrix_homeserver", ""))
-        if homeserver and not (homeserver.startswith("http://") or homeserver.startswith("https://")):
-            raise serializers.ValidationError({"matrix_homeserver": "Must be a full URL starting with http(s)://"})
-
-        room_id = attrs.get("matrix_room_id", getattr(self.instance, "matrix_room_id", ""))
-        if room_id and not room_id.startswith("!"):
-            raise serializers.ValidationError({"matrix_room_id": "Matrix room IDs start with '!' (e.g. !abc123:matrix.org)."})
+        # A persona is the only thing required to enable the instructor.
+        persona = attrs.get("persona", getattr(self.instance, "persona", None))
+        if not persona:
+            raise serializers.ValidationError(
+                {"persona": "Required when the Drill Instructor is enabled."}
+            )
 
         return attrs
 
 
 class DrillInstructorMessageSerializer(serializers.ModelSerializer):
+    """Message plus the context the Coach UI needs to render a rich feed.
+
+    Everything is denormalised into one payload so the mobile feed doesn't
+    have to fan out into N extra queries per bubble.
+    """
+
+    competition_id = serializers.IntegerField(source="config.competition_id", read_only=True)
+    competition_name = serializers.CharField(source="config.competition.name", read_only=True)
+    persona_name = serializers.CharField(source="config.persona.name", read_only=True)
+    persona_tagline = serializers.CharField(source="config.persona.tagline", read_only=True)
+    persona_avatar = serializers.CharField(source="config.persona.avatar", read_only=True)
+    persona_theme_color = serializers.CharField(source="config.persona.theme_color", read_only=True)
+    athlete_name = serializers.SerializerMethodField()
+    workout_summary = serializers.SerializerMethodField()
+
     class Meta:
         model = DrillInstructorMessage
-        fields = ["id", "config", "workout", "matrix_event_id", "body", "posted_at", "success", "error"]
+        fields = [
+            "id",
+            "config",
+            "workout",
+            "body",
+            "posted_at",
+            "success",
+            "error",
+            "competition_id",
+            "competition_name",
+            "persona_name",
+            "persona_tagline",
+            "persona_avatar",
+            "persona_theme_color",
+            "athlete_name",
+            "workout_summary",
+        ]
         read_only_fields = fields
+
+    def get_athlete_name(self, obj):
+        user = getattr(obj.workout, "user", None)
+        if user is None:
+            return None
+        return user.first_name or user.username or None
+
+    def get_workout_summary(self, obj):
+        workout = obj.workout
+        if workout is None:
+            return None
+        parts = []
+        if workout.duration is not None:
+            parts.append(f"{round(workout.duration.total_seconds() / 60)} min {workout.sport_type}")
+        else:
+            parts.append(workout.sport_type)
+        if workout.distance is not None and workout.sport_type != "Steps":
+            parts.append(f"{float(workout.distance):.2f} km")
+        if workout.kcal is not None:
+            parts.append(f"{round(float(workout.kcal))} kcal")
+        return " · ".join(parts)

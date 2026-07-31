@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="28%" r="95%">
+      <stop offset="0%" stop-color="#eaff7a"/>
+      <stop offset="100%" stop-color="#a8d41f"/>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <circle cx="128" cy="128" r="88" fill="#c8ec4a" opacity=".55"/>
+  <!-- sound waves -->
+  <path d="M196 84 a62 62 0 0 1 0 88" stroke="#161d07" stroke-width="12" fill="none" stroke-linecap="round"/>
+  <path d="M222 62 a96 96 0 0 1 0 132" stroke="#161d07" stroke-width="12" fill="none" stroke-linecap="round" opacity=".55"/>
+  <!-- megaphone body -->
+  <path d="M42 110 L150 66 L150 190 L42 146 Z" fill="#161d07"/>
+  <rect x="34" y="106" width="22" height="44" rx="10" fill="#161d07"/>
+  <ellipse cx="152" cy="128" rx="16" ry="62" fill="#2a3611"/>
+  <ellipse cx="152" cy="128" rx="8" ry="46" fill="#d7ff3e"/>
+  <!-- handle -->
+  <path d="M84 148 L96 148 L104 206 L76 206 Z" fill="#161d07"/>
+</svg>

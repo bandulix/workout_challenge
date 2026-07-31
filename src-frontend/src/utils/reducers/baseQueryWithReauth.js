@@ -14,7 +14,13 @@ const baseQuery = fetchBaseQuery({
     baseUrl: (process.env.REACT_APP_BACKEND_URL || '') + '/api/',
     prepareHeaders: (headers) => {
         const token = localStorage.getItem('access_token');
-        headers.set('Content-Type', 'application/json');
+        // Endpoints sending FormData (file uploads) mark themselves with
+        // X-Skip-Content-Type so the browser can set the multipart boundary.
+        if (headers.get('X-Skip-Content-Type')) {
+            headers.delete('X-Skip-Content-Type');
+        } else {
+            headers.set('Content-Type', 'application/json');
+        }
         if (token) {
             headers.set('Authorization', `Bearer ${token}`);
         }
@@ -27,7 +33,7 @@ const baseQuery = fetchBaseQuery({
 const REDACTED_FIELDS = new Set([
     'password', 'current_password', 'new_password',
     'llm_api_key', 'strava_client_secret', 'email_host_password',
-    'matrix_access_token', 'token', 'access_token', 'refresh_token',
+    'token', 'access_token', 'refresh_token',
     'p256dh', 'auth',  // push subscription secrets
 ]);
 
@@ -114,11 +120,31 @@ export const baseQueryWithReauth = async (args, api, extraOptions) => {
         });
     }
 
-    // if 401 forbidden error refresh the access token
+    // If 401 forbidden error refresh the access token.
+    //
+    // Bail out early if we're already on a public page (login /
+    // signup / password reset / etc). The BottomNav fires
+    // `useGetUserByIdQuery('me')` on every page, so without this
+    // guard a stale / missing token causes baseQueryWithReauth to
+    // reload the browser to `/login?redirect=<current URL>`. On the
+    // next page load the same API call returns 401 again, the redirect
+    // is recomputed against the new (already-nested) URL, and the
+    // redirect param grows by one layer of percent-encoding on every
+    // iteration - an infinite reload loop that bricks the browser.
     if (result.error && result.error.status === 401) {
+        const PUBLIC_PATHS = ['/login', '/signup', '/password'];
+        if (PUBLIC_PATHS.some((p) => window.location.pathname === p || window.location.pathname.startsWith(p + '/'))) {
+            // Already on the login flow - just propagate the 401 so
+            // the calling component can show its error UI.
+            return result;
+        }
+
         const refreshToken = localStorage.getItem('refresh_token');
+        // Only embed path + search (not hash, not an attacker-controlled
+        // query string). encodeURIComponent keeps the value URL-safe.
+        const safeRedirect = window.location.pathname + window.location.search;
+        const currentUrl = encodeURIComponent(safeRedirect);
         if (!refreshToken) {
-            const currentUrl = encodeURIComponent(window.location.pathname + window.location.search);
             window.location.href = `/login?redirect=${currentUrl}`; // force redirect
             throw throwErrorWithCode('(Error 401) The user is not authenticated (no refresh token). Please re-login.', 401);
         }
@@ -144,7 +170,6 @@ export const baseQueryWithReauth = async (args, api, extraOptions) => {
             // Retry original request
             result = await baseQuery(args, api, extraOptions);
         } else {
-            const currentUrl = encodeURIComponent(window.location.pathname + window.location.search);
             window.location.href = `/login?redirect=${currentUrl}`; // force redirect
             throw throwErrorWithCode('(Error 401) The user is not authenticated (refresh token expired). Please re-login.', 401);
         }

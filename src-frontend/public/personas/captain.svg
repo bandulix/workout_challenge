@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="28%" r="95%">
+      <stop offset="0%" stop-color="#b5e2ff"/>
+      <stop offset="100%" stop-color="#2f8fd4"/>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <circle cx="128" cy="118" r="86" fill="#7cc4f2" opacity=".5"/>
+  <!-- waves -->
+  <path d="M0 236 q32 -16 64 0 q32 16 64 0 q32 -16 64 0 q32 16 64 0 L256 256 L0 256 Z" fill="#176a9e" opacity=".55"/>
+  <!-- shoulders -->
+  <path d="M40 256 C40 206 78 180 128 180 C178 180 216 206 216 256 Z" fill="#1c2b3a"/>
+  <path d="M104 184 L128 212 L152 184 L152 178 L104 178 Z" fill="#f4f5f7"/>
+  <!-- neck -->
+  <rect x="114" y="152" width="28" height="34" rx="9" fill="#b87a4e"/>
+  <!-- head -->
+  <path d="M128 46 C160 46 180 70 180 108 C180 144 158 170 128 170 C98 170 76 144 76 108 C76 70 96 46 128 46 Z" fill="#cf9263"/>
+  <ellipse cx="75" cy="112" rx="9" ry="12" fill="#cf9263"/>
+  <ellipse cx="181" cy="112" rx="9" ry="12" fill="#cf9263"/>
+  <!-- beard -->
+  <path d="M84 118 C84 160 104 178 128 178 C152 178 172 160 172 118 C172 138 160 146 150 142 C140 152 116 152 106 142 C96 146 84 138 84 118 Z" fill="#e8e4da"/>
+  <path d="M112 148 q16 10 32 0" stroke="#8f8a7c" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <!-- friendly eyes -->
+  <circle cx="106" cy="106" r="6" fill="#241408"/>
+  <circle cx="150" cy="106" r="6" fill="#241408"/>
+  <path d="M94 92 q12 -6 24 -2 M138 90 q12 -6 24 0" stroke="#e8e4da" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- captain cap -->
+  <path d="M74 70 C74 42 98 28 128 28 C158 28 182 42 182 70 L182 76 L74 76 Z" fill="#f4f5f7"/>
+  <path d="M74 70 C60 72 50 80 52 88 C54 96 66 94 78 88 L182 84 C194 88 204 88 204 80 C204 72 192 68 182 70 L182 76 L74 76 Z" fill="#1c2b3a"/>
+  <rect x="118" y="44" width="20" height="18" rx="4" fill="#c9a227"/>
+  <path d="M128 46 l0 6 M124 50 l8 0" stroke="#f4f5f7" stroke-width="2.5"/>
+</svg>
