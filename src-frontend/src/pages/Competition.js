@@ -21,7 +21,15 @@ import {
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
-import _ from "lodash";
+import lodFilter from 'lodash/filter';
+import lodFlatmap from 'lodash/flatMap';
+import lodFrompairs from 'lodash/fromPairs';
+import lodGroupby from 'lodash/groupBy';
+import lodMapvalues from 'lodash/mapValues';
+import lodOrderby from 'lodash/orderBy';
+import lodSumby from 'lodash/sumBy';
+import lodTopairs from 'lodash/toPairs';
+import lodValues from 'lodash/values';
 import {SectionLoader} from "../utils/loaders";
 import {useGetFeedByIdQuery} from "../utils/reducers/feedSlice";
 import CompetitionForm from "../forms/competitionForm";
@@ -60,11 +68,11 @@ function CompetitionHead({competition, feed, isOwner}) {
     const [countGroups, setCountGroups] = useState({});
 
     useEffect(() => {
-        const filteredFeed = _.filter(_.values(feed), item => item.workout !== null && item.workout__sport_type !== 'Steps');
+        const filteredFeed = lodFilter(lodValues(feed), item => item.workout !== null && item.workout__sport_type !== 'Steps');
         const totalCount = filteredFeed.length;
         setCountTotal(totalCount);
-        const grouped = _.mapValues(_.groupBy(_.values(filteredFeed), 'workout__sport_type'), group => group.length);
-        const sorted = _.fromPairs(_.orderBy(_.toPairs(grouped), ([, value]) => value, 'desc'));
+        const grouped = lodMapvalues(lodGroupby(lodValues(filteredFeed), 'workout__sport_type'), group => group.length);
+        const sorted = lodFrompairs(lodOrderby(lodTopairs(grouped), ([, value]) => value, 'desc'));
         const limited = Object.fromEntries(Object.entries(sorted).slice(0, 4));
         setCountGroups(limited);
     }, [feed]);
@@ -611,10 +619,10 @@ function ActivityGoalsBox({user, stats, feed, competitionId, userId, isOwner}) {
         firstOfMonth.setHours(0, 0, 0, 0);
         const epochTimeMonth = Math.floor(firstOfMonth.getTime() / 1000); // In seconds
 
-        const filteredCompetition = _.filter(feed || [], item => item.workout__user === userId);
-        const filteredDay = _.filter(filteredCompetition, item => item.workout__start_datetime_fmt.epoch >= epochTimeToday);
-        const filteredWeek = _.filter(filteredCompetition, item => item.workout__start_datetime_fmt.epoch >= epochTimeMonday);
-        const filteredMonth = _.filter(filteredCompetition, item => item.workout__start_datetime_fmt.epoch >= epochTimeMonth);
+        const filteredCompetition = lodFilter(feed || [], item => item.workout__user === userId);
+        const filteredDay = lodFilter(filteredCompetition, item => item.workout__start_datetime_fmt.epoch >= epochTimeToday);
+        const filteredWeek = lodFilter(filteredCompetition, item => item.workout__start_datetime_fmt.epoch >= epochTimeMonday);
+        const filteredMonth = lodFilter(filteredCompetition, item => item.workout__start_datetime_fmt.epoch >= epochTimeMonth);
 
         let tmpGoals = [];
         for (const goal of goals) {
@@ -646,8 +654,8 @@ function ActivityGoalsBox({user, stats, feed, competitionId, userId, isOwner}) {
                 max_per_day: goal.max_per_day !== null ? goal.max_per_day * scaling : null,
                 min_per_week: goal.min_per_week !== null ? goal.min_per_week * scaling : null,
                 max_per_week: goal.max_per_week !== null ? goal.max_per_week * scaling : null,
-                points_capped: _.sumBy(_.flatMap(filteredList, 'details').filter(item => item.goal === goal.id), 'points_capped'),
-                points_raw: _.sumBy(_.flatMap(filteredList, 'details').filter(item => item.goal === goal.id), 'points_raw'),
+                points_capped: lodSumby(lodFlatmap(filteredList, 'details').filter(item => item.goal === goal.id), 'points_capped'),
+                points_raw: lodSumby(lodFlatmap(filteredList, 'details').filter(item => item.goal === goal.id), 'points_raw'),
             })
         }
         setFinalGoals(tmpGoals);

@@ -1,4 +1,4 @@
-import time, re, random
+import time, re, random, secrets
 from decimal import Decimal
 
 from django.db import models
@@ -94,7 +94,9 @@ class Competition(models.Model):
         """ trigger recalculation of points_capped if competition changes """
         is_create = self.pk is None
         if self.join_code == '':
-            self.join_code = re.sub(r'[^a-zA-Z0-9]', '', self.name)[:8] + str(self.owner.pk).zfill(3) + str(random.randint(10_000, 99_999))
+            # secrets.randbelow: CSPRNG - join codes must not be
+            # brute-forceable via the predictable `random` module.
+            self.join_code = re.sub(r'[^a-zA-Z0-9]', '', self.name)[:8] + str(self.owner.pk).zfill(3) + str(secrets.randbelow(90_000) + 10_000)
         self.join_code = self.join_code.upper()
         super().save(*args, **kwargs)
         changed = self.get_changed_fields()

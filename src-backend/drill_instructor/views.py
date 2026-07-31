@@ -28,18 +28,28 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return DrillInstructorPersona.objects.all().order_by("name")
 
+    def _ensure_can_modify(self, instance):
+        """Builtin personas are staff-only; custom personas only by their
+        creator (or staff). Otherwise any user could rewrite the system
+        prompt of a persona used by someone else's competition -
+        prompt-injection-as-a-service."""
+        user = self.request.user
+        if user.is_staff or user.is_superuser:
+            return
+        if instance.is_builtin:
+            raise PermissionDenied("Only staff can edit built-in personas.")
+        if instance.created_by_id != user.id:
+            raise PermissionDenied("You can only modify personas you created.")
+
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, is_builtin=False)
 
     def perform_update(self, serializer):
-        instance = serializer.instance
-        if instance.is_builtin and not (self.request.user.is_staff or self.request.user.is_superuser):
-            raise PermissionDenied("Only staff can edit built-in personas.")
+        self._ensure_can_modify(serializer.instance)
         serializer.save()
 
     def perform_destroy(self, instance):
-        if instance.is_builtin:
-            raise PermissionDenied("Built-in personas cannot be deleted.")
+        self._ensure_can_modify(instance)
         instance.delete()
 
 

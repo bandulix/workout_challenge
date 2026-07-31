@@ -161,6 +161,14 @@ class Workout(models.Model):
     def duration_seconds(self):
         return self.duration.seconds
 
+    class Meta:
+        indexes = [
+            # Every workout save runs per-user date lookups (steps
+            # dedup, recalc triggers) and the dashboards list workouts
+            # per user ordered by time.
+            models.Index(fields=["user", "start_datetime"], name="workout_user_time"),
+        ]
+
     def __str__(self):
         """str print-out of model entry"""
         return f"{self.start_datetime} - {self.sport_type} ({self.duration / (1_000 * 60)} min / {self.kcal} kcal)"

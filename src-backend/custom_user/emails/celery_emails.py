@@ -349,3 +349,34 @@ def weekly_email(user_pk):
         send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
 
     return {'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email}
+
+
+@app.task()
+def password_reset_email(user_pk, reset_url):
+    """Send the password reset email asynchronously.
+
+    Queued (rather than sent inline in the request) so the HTTP
+    response time is identical for known and unknown addresses -
+    otherwise the sync SMTP round-trip leaks which emails are
+    registered (user enumeration timing oracle).
+    """
+    CustomUser = apps.get_model("custom_user", "CustomUser")
+    user = CustomUser.objects.filter(pk=user_pk).first()
+    if user is None:
+        return f"user {user_pk} not found"
+    from django.conf import settings
+    from django.template.loader import render_to_string
+    from .multipurpose import send_email, email_settings_context
+
+    with email_settings_context():
+        email_body = render_to_string(
+            "email_password_reset.html",
+            {
+                "first_name": user.first_name,
+                "MAIN_HOST": settings.MAIN_HOST,
+                "RESET_URL": reset_url,
+                "EMAIL_REPLY_TO": settings.EMAIL_REPLY_TO,
+            },
+        )
+        send_email(subject="Workout Challenge - Reset Your Password", body=email_body, to_email=user.email)
+    return f"password reset email queued for user {user_pk}"

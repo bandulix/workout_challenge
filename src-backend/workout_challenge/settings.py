@@ -198,6 +198,19 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    # Baseline request throttling. Scoped, stricter buckets ('auth',
+    # 'join') are applied to the brute-force-sensitive endpoints
+    # (token obtain/refresh, password reset, competition joins).
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'user': '2000/hour',
+        'auth': '30/hour',
+        'join': '60/hour',
+    },
 }
 
 SIMPLE_JWT = {

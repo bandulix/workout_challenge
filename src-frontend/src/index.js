@@ -6,36 +6,34 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import store from './utils/store';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import * as Sentry from "@sentry/react";
-import {BrowserTracing} from "@sentry/tracing";
-import {ReactQueryDevtools} from '@tanstack/react-query-devtools';
 
 
-// Optional Sentry monitoring
+// Optional Sentry monitoring - dynamically imported so the (heavy)
+// Sentry bundles are only fetched when a DSN is actually configured.
 const SENTRY_DSN = window.RUNTIME_CONFIG?.REACT_APP_SENTRY_DSN;
 if (SENTRY_DSN !== undefined && SENTRY_DSN !== null && SENTRY_DSN !== '') {
     console.log('Sentry error monitoring is enabled.');
-    Sentry.init({
-        dsn: SENTRY_DSN,
-        environment: "frontend",
-        integrations: [
-            Sentry.browserTracingIntegration(),
-            Sentry.browserProfilingIntegration(),
-            Sentry.replayIntegration({
-                // Additional SDK configuration goes in here, for example:
-                maskAllText: true,
-                blockAllMedia: true,
-            }),
-            Sentry.feedbackIntegration({
-                // Additional SDK configuration goes in here, for example:
-                colorScheme: "system",
-            }),
-        ],
-        sendDefaultPii: false,
-        tracesSampleRate: 0.25,
-        replaysSessionSampleRate: 0.05,
-        replaysOnErrorSampleRate: 1.0,
-    });
+    import('@sentry/react').then((Sentry) => {
+        Sentry.init({
+            dsn: SENTRY_DSN,
+            environment: "frontend",
+            integrations: [
+                Sentry.browserTracingIntegration(),
+                Sentry.browserProfilingIntegration(),
+                Sentry.replayIntegration({
+                    maskAllText: true,
+                    blockAllMedia: true,
+                }),
+                Sentry.feedbackIntegration({
+                    colorScheme: "system",
+                }),
+            ],
+            sendDefaultPii: false,
+            tracesSampleRate: 0.25,
+            replaysSessionSampleRate: 0.05,
+            replaysOnErrorSampleRate: 1.0,
+        });
+    }).catch((err) => console.warn('Sentry failed to load:', err));
 }
 
 

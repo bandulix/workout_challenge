@@ -5,9 +5,15 @@ export const linkApi = createApi({
     reducerPath: 'linkApi',
     baseQuery: baseQueryWithReauth,
     endpoints: (builder) => ({
+        getStravaState: builder.query({
+            query: () => ({
+                url: `strava/state/`,
+                method: 'GET',
+            }),
+        }),
         linkStrava: builder.mutation({
-            query: (code) => ({
-                url: `strava/link/${code}/`,
+            query: ({code, state}) => ({
+                url: `strava/link/${code}/${encodeURIComponent(state)}/`,
                 method: 'POST',
             }),
         }),
@@ -47,6 +53,7 @@ export const linkApi = createApi({
 });
 
 export const {
+    useGetStravaStateQuery,
     useLinkStravaMutation,
     useUnlinkStravaMutation,
     useGetSyncStravaQuery,
