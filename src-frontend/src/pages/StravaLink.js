@@ -22,7 +22,8 @@ export function InitStravaLink() {
     const encodedBaseUrl = encodeURIComponent(baseUrl);
 
     const STRAVA_CLIENT_ID = window.RUNTIME_CONFIG?.REACT_APP_STRAVA_CLIENT_ID;
-    const {data: stateData, isSuccess: stateIsSuccess} = useGetStravaStateQuery();
+    const {data: stateData, isSuccess: stateIsSuccess, isError: stateIsError} = useGetStravaStateQuery();
+    const stateToken = stateData?.state || '';
     const isIOS = () => {
         return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     };
@@ -40,12 +41,14 @@ export function InitStravaLink() {
 
     useEffect(() => {
         // redirect if user valid and logged in and the OAuth state
-        // token (CSRF protection) has arrived
-        if (userIsSuccess && stateIsSuccess) {
+        // token (CSRF protection) has arrived. Never leave with an
+        // empty state - Strava drops it on the way back, which breaks
+        // the return URL and surfaces as an opaque "parsing error".
+        if (userIsSuccess && stateIsSuccess && stateToken) {
             console.log('Redirect to Strava Auth page');
             window.location.href = (urlFirstPart + urlSecondPart);
         }
-    }, [userIsSuccess, stateIsSuccess]);
+    }, [userIsSuccess, stateIsSuccess, stateToken]);
 
     // loading screen
     if (userIsLoading) return (
@@ -61,12 +64,28 @@ export function InitStravaLink() {
         </PageWrapper>
     )
 
-    // redirect screen
+    // state token could not be minted (e.g. expired session)
+    if (stateIsError) return (
+        <PageWrapper additionClasses="h-screen flex items-center justify-center">
+            <div className="text-center">
+                <p className="p-2">Could not start the Strava linking (your session may have expired).</p>
+                <p className="p-0.5"><a className="text-blue-500 hover:underline" href='/strava/link'>Click here
+                    to <b>try again</b></a></p>
+            </div>
+        </PageWrapper>
+    )
+
+    // redirect screen - only offer the manual link once the state token
+    // is actually there, never with an empty state parameter
     return (
         <PageWrapper>
-            If you are not redirected automatically, follow this <a className="text-blue-500 hover:underline"
-                                                                    href={(urlFirstPart + urlSecondPart)}>link to
-            Strava</a>.
+            {stateToken ? (
+                <>If you are not redirected automatically, follow this <a className="text-blue-500 hover:underline"
+                                                                          href={(urlFirstPart + urlSecondPart)}>link to
+                Strava</a>.</>
+            ) : (
+                <SectionLoader height={"w-2/3 h-80 mb-4"} message={"Preparing the Strava link..."}/>
+            )}
         </PageWrapper>
     )
 
@@ -100,6 +119,12 @@ export function ReturnStravaLink() {
                 console.log('No auth strava code');
                 setErrorMsg('No auth code received from Strava. Please try again.');
                 navigate('/strava/link');
+            } else if (!searchState) {
+                // Strava dropped the (or an empty) state param - the
+                // backend route can't match it and would 404 as HTML,
+                // which the frontend can only show as "parsing error".
+                console.error('No state received from Strava');
+                setErrorMsg('The Strava session got lost on the way back (missing state). Please try linking again.');
             } else {
                 linkStrava({code: searchCode, state: searchState || ''})
                     .unwrap()

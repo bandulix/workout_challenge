@@ -98,7 +98,7 @@ export const workoutsApi = createApi({
     baseQuery: baseQueryWithReauth,
     tagTypes: ['Workout'],
     keepUnusedDataFor: 60 * 60 * 12, // 12 hours cache (default is 60)
-    refetchOnMountOrArgChange: 60 * 60, // Refetch if older than 1 hour
+    refetchOnMountOrArgChange: 60, // Refetch if older than 60 seconds (multi-device sync)
     endpoints: (builder) => ({
         getWorkouts: builder.query({
             query: (params = {}) => ({

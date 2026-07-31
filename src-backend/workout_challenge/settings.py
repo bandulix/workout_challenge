@@ -226,7 +226,11 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': datetime.timedelta(minutes=5),
-    'REFRESH_TOKEN_LIFETIME': datetime.timedelta(days=5),
+    # Effective "stay logged in" duration. With rotation the refresh token
+    # is re-issued on every app use, so users only see the login screen
+    # after this much *inactivity* - default 31 days = login at most once
+    # a month. Override via JWT_REFRESH_DAYS.
+    'REFRESH_TOKEN_LIFETIME': datetime.timedelta(days=int(os.environ.get("JWT_REFRESH_DAYS", "31"))),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,

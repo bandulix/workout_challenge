@@ -6,7 +6,7 @@ export const competitionsApi = createApi({
     baseQuery: baseQueryWithReauth,
     tagTypes: ['Competition'],
     keepUnusedDataFor: 60 * 60 * 12, // 12 hours cache (default is 60s)
-    refetchOnMountOrArgChange: 60 * 60 * 3, // Refetch if older than 3 hours
+    refetchOnMountOrArgChange: 60, // Refetch if older than 60 seconds (multi-device sync)
     endpoints: (builder) => ({
         getCompetitions: builder.query({
             query: (params = {}) => ({

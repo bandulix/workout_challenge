@@ -97,7 +97,7 @@ The **first user to register** is automatically promoted to staff + superuser. T
 
 Promote another user to admin:
 ```bash
-docker compose exec workoutchallenge python manage.py promotetostaff user@example.com
+docker compose exec -w /workout_challenge/src-backend workoutchallenge python manage.py promotetostaff user@example.com
 ```
 
 ## Mobile app & push notifications

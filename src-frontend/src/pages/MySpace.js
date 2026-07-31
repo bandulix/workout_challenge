@@ -598,7 +598,7 @@ export default function MySpace() {
         refetch: refetchWorkouts,
         isFetching: workoutsIsFetching,
     } = useGetWorkoutsQuery(undefined, {
-        pollingInterval: 10800000, // 3 hours
+        pollingInterval: 60000, // 60 seconds - keep devices in sync
     });
 
     const {
@@ -607,7 +607,7 @@ export default function MySpace() {
         isLoading: competitionLoading,
         isSuccess: competitionIsSuccess
     } = useGetCompetitionsQuery(undefined, {
-        pollingInterval: 10800000, // 3 hours
+        pollingInterval: 60000, // 60 seconds - keep devices in sync
     });
 
     const [searchParams, setSearchParams] = useSearchParams();

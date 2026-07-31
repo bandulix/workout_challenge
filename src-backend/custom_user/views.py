@@ -221,10 +221,13 @@ class LinkStravaView(APIView):
     """ API post view for users to link with Strava. """
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, code, state):
+    def post(self, request, code, state=""):
         # Verify the OAuth state token: valid signature, fresh, and
         # minted for *this* user - otherwise an attacker could trick a
         # logged-in victim into linking the attacker's Strava account.
+        if not state:
+            return Response({"message": "Missing Strava session state. Please start the linking again."},
+                            status=status.HTTP_400_BAD_REQUEST)
         from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
         try:
             payload = TimestampSigner().unsign(state, max_age=StravaStateView.STATE_MAX_AGE_SECONDS)
@@ -300,6 +303,12 @@ class LinkStravaView(APIView):
                 return Response({'message': 'Access to activities denied by Strava. Not sufficient permissions to download activities.'}, status=status.HTTP_403_FORBIDDEN)
             else:
                 return Response({'message': 'Failed to import Strava activities. Please try again later.'}, status=status.HTTP_502_BAD_GATEWAY)
+        except Exception:
+            # Any other failure in the sync task (or reaching the worker)
+            # must not surface as a 500 HTML page - the frontend expects
+            # JSON and would otherwise show a bare "parsing error".
+            logger.exception("Strava activity import failed unexpectedly for user %s", user.id)
+            return Response({'message': 'Strava was linked, but the workout import failed. Please try the sync again later.'}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response({"message": "Successfully linked Strava."}, status=status.HTTP_200_OK)
 

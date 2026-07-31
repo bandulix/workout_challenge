@@ -70,6 +70,9 @@ urlpatterns = [
         path('join/team/', JoinTeamView.as_view(), name='join-team'),
         path('strava/state/', StravaStateView.as_view(), name='strava-state'),
         path('strava/link/<str:code>/<path:state>/', LinkStravaView.as_view(), name='strava-link'),
+        # Missing state must still hit the view (JSON 400) instead of
+        # falling through to a bare 404 HTML page the frontend can't parse.
+        path('strava/link/<str:code>/', LinkStravaView.as_view(), name='strava-link-no-state'),
         path('strava/unlink/', UnlinkStravaView.as_view(), name='strava-unlink'),
         path('strava/sync/', SyncStravaView.as_view(), name='strava-sync'),
         path('garmin/link/', LinkGarminView.as_view(), name='garmin-link'),

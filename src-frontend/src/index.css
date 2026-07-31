@@ -43,6 +43,18 @@ body {
 }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
+/* Installed PWA (standalone display mode): hide all scrollbars for a
+   native-app feel. Desktop/browser mode keeps the slim scrollbars. */
+@media (display-mode: standalone) {
+  * {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* legacy Edge */
+  }
+  *::-webkit-scrollbar {
+    display: none; /* Chrome / Safari / Brave */
+  }
+}
+
 .bg-strava, .hover\:bg-strava:hover {
   background-color: #fc4c02;
 }
