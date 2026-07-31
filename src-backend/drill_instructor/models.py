@@ -79,6 +79,14 @@ class DrillInstructorConfig(models.Model):
     )
 
     comment_on_activity = models.BooleanField(default=True)
+    nudge_on_inactivity = models.BooleanField(
+        default=True,
+        help_text=(
+            "If a whole day passes without any workout in a running "
+            "competition, the instructor posts one motivational nudge "
+            "to keep the group active."
+        ),
+    )
     send_push_on_activity = models.BooleanField(
         default=False,
         help_text="Also send a browser push notification to every subscribed participant.",
@@ -107,10 +115,25 @@ class DrillInstructorMessage(models.Model):
     read them back from the webapp.
     """
 
+    KIND_ACTIVITY = "activity"
+    KIND_TEST = "test"
+    KIND_NUDGE = "nudge"
+    KIND_CHOICES = [
+        (KIND_ACTIVITY, "Workout comment"),
+        (KIND_TEST, "Test message"),
+        (KIND_NUDGE, "Inactivity nudge"),
+    ]
+
     config = models.ForeignKey(
         DrillInstructorConfig,
         on_delete=models.CASCADE,
         related_name="messages",
+    )
+    kind = models.CharField(
+        max_length=12,
+        choices=KIND_CHOICES,
+        default=KIND_ACTIVITY,
+        help_text="What triggered this message (a workout, a test, or a quiet-day nudge).",
     )
     workout = models.ForeignKey(
         "workouts.Workout",

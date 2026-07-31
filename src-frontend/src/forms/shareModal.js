@@ -10,6 +10,7 @@ export default function CompetitionInviteModal({competition, setModalState}) {
             <div className="text-gray-800 dark:text-gray-200 leading-relaxed">
                 <p><b>Link to join:</b> {url}</p>
                 <p><b>Join code:</b> {competition.join_code}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Anyone opening this link can register right away - no invite token needed.</p>
             </div>
             <div className="relative bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300 rounded-xl p-4">
                 <button

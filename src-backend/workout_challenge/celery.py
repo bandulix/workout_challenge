@@ -62,6 +62,13 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="5", hour="12"),
         "args": (),
     },
+    # every early evening the drill instructor nudges competitions where
+    # nobody logged a workout yet, so the group doesn't go quiet
+    "drill_instructor_inactivity_nudge": {
+        "task": "drill_instructor.tasks.post_inactivity_nudges",
+        "schedule": crontab(minute="10", hour="17"),
+        "args": (),
+    },
 }
 
 

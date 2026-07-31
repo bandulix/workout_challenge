@@ -42,7 +42,7 @@ function BaseHome({children}) {
                         <span className="text-volt-400">Challenge</span>
                     </h1>
                     <p className="font-display text-xs md:text-sm uppercase tracking-[0.3em] text-gray-400 mb-6">
-                        Now with an AI Drill Instructor in your corner
+                        Your AI Drill Instructor
                     </p>
                     <div>
                         <p className="text-base md:text-lg text-gray-200 mb-8 leading-relaxed">
@@ -161,7 +161,7 @@ const LoadingForm = () => {
 }
 
 
-const apiCreateAccount = async (email, first_name, last_name, gender, password, invite_token) => {
+const apiCreateAccount = async (email, first_name, last_name, gender, password, invite_token, join_code) => {
     try {
         const response = await fetch((process.env.REACT_APP_BACKEND_URL || '') + '/api/user/', {
             method: 'POST',
@@ -174,7 +174,8 @@ const apiCreateAccount = async (email, first_name, last_name, gender, password, 
                 last_name: last_name,
                 gender: gender,
                 password: password,
-                invite_token: invite_token
+                invite_token: invite_token,
+                join_code: join_code || ""
             }),
         });
         
@@ -400,6 +401,9 @@ function RegisterPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState([]);
     const navigate = useNavigate();
+    // A competition invite link (?join=CODE) doubles as the registration
+    // invite - the global invite token is not needed in that case.
+    const joinCode = new URLSearchParams(location.search).get('join') || "";
 
     async function handleSubmit(e) {
         e.preventDefault();
@@ -420,7 +424,7 @@ function RegisterPage() {
             setErrorMessage(['Passwords do not match.']);
         } else {
             setIsLoading(true);
-            const [success_register, msg_register] = await apiCreateAccount(email, first_name, last_name, gender, password1, invite_token);
+            const [success_register, msg_register] = await apiCreateAccount(email, first_name, last_name, gender, password1, invite_token, joinCode);
             const [success_login, msg_login] = await apiLogin(email, password1);
             const params = new URLSearchParams(location.search);
             if (success_register && success_login) {
@@ -517,12 +521,16 @@ function RegisterPage() {
                             </div>
                             <div className="mb-6">
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="invite_token">
-                                    Invite Token*
+                                    Invite Token{joinCode ? "" : "*"}
                                 </label>
                                 <input
                                     className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                     id="invite_token" type="text" placeholder="Ask your inviter for the token" tabIndex="7"/>
-                                <p className="text-xs text-gray-500 mt-1">Registration is by invitation only.</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {joinCode
+                                        ? "You opened a competition invite link - no token needed."
+                                        : "Registration is by invitation only."}
+                                </p>
                             </div>
                             <div className="flex items-center justify-between">
                                 <button

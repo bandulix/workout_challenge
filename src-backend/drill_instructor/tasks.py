@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from workout_challenge.celery import app
 
-from .llm_client import build_workout_prompt, generate_message
+from .llm_client import build_inactivity_prompt, build_workout_prompt, generate_message
 
 try:
     from push_notifications.sender import send_push_to_user
@@ -148,6 +148,7 @@ def post_workout_comment(self, workout_id):
         # read it back from the Drill Instructor "messages" endpoint.
         message = DrillInstructorMessage(
             config=config,
+            kind=DrillInstructorMessage.KIND_ACTIVITY,
             workout=workout,
             body=body,
             posted_at=timezone.now(),
@@ -213,6 +214,7 @@ def post_test_message(self, config_id, message):
 
     record = DrillInstructorMessage(
         config=config,
+        kind=DrillInstructorMessage.KIND_TEST,
         workout=None,
         body=message,
         posted_at=timezone.now(),
@@ -228,3 +230,146 @@ def post_test_message(self, config_id, message):
         except Exception:  # pragma: no cover
             pass
         return {"error": str(exc), "config_id": config_id}
+
+
+def _competition_leader(competition):
+    """Return ``(leader_user, leader_points)`` for a competition, or
+    ``(None, 0)`` when nobody has scored yet."""
+    Points = apps.get_model("competition", "Points")
+
+    top = (
+        Points.objects
+        .filter(goal__competition=competition)
+        .values("workout__user")
+        .annotate(total=Sum("points_capped"))
+        .order_by("-total")
+        .first()
+    )
+    if not top:
+        return None, 0
+
+    CustomUser = apps.get_model("custom_user", "CustomUser")
+    leader = CustomUser.objects.filter(pk=top["workout__user"]).first()
+    return leader, top["total"] or 0
+
+
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
+def post_inactivity_nudges(self):
+    """Post one motivational nudge in every running competition that went
+    quiet today.
+
+    Scheduled daily via Celery beat. For every competition that is
+    currently running and has an enabled Drill Instructor with
+    ``nudge_on_inactivity``:
+      * if any participant logged a workout today -> skip
+      * if a nudge was already posted today -> skip (idempotent re-runs)
+      * otherwise generate one persona-voiced message addressed at the
+        whole group, store it in the audit log, and (when the config's
+        push toggle is on) push it to every subscribed participant.
+    """
+    Workout = apps.get_model("workouts", "Workout")
+    Competition = apps.get_model("competition", "Competition")
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+
+    today = timezone.localdate()
+    competitions = (
+        Competition.objects
+        .filter(
+            start_date__lte=today,
+            end_date__gte=today,
+            drill_instructor__enabled=True,
+            drill_instructor__nudge_on_inactivity=True,
+        )
+        .select_related("drill_instructor", "drill_instructor__persona")
+        .prefetch_related("user")
+    )
+
+    posted = 0
+    skipped = 0
+    for competition in competitions:
+        config = competition.drill_instructor
+        persona = config.persona
+        participants = list(competition.user.all())
+        if not participants:
+            skipped += 1
+            continue
+
+        # Any workout by any participant today? Then the group is active
+        # and no nudge is needed.
+        if Workout.objects.filter(user__in=participants, start_datetime__date=today).exists():
+            skipped += 1
+            continue
+
+        # One nudge per competition per day - re-running the beat task
+        # must not spam the feed.
+        if config.messages.filter(kind=DrillInstructorMessage.KIND_NUDGE, posted_at__date=today).exists():
+            skipped += 1
+            continue
+
+        leader, leader_points = _competition_leader(competition)
+        user_prompt = build_inactivity_prompt(
+            competition_name=competition.name,
+            participant_first_names=[(u.first_name or u.username or "Athlete") for u in participants],
+            leader_first_name=(leader.first_name or leader.username) if leader else None,
+            leader_points=float(leader_points) if leader_points else None,
+            days_left=(competition.end_date - today).days,
+        )
+
+        body = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
+        if not body:
+            body = (
+                f"{persona.name}: quiet day in {competition.name} - "
+                "nobody logged a workout. Who breaks the silence?"
+            )
+
+        message = DrillInstructorMessage(
+            config=config,
+            kind=DrillInstructorMessage.KIND_NUDGE,
+            workout=None,
+            body=body,
+            posted_at=timezone.now(),
+        )
+        try:
+            message.save()
+            config.last_posted_at = timezone.now()
+            config.messages_posted = (config.messages_posted or 0) + 1
+            config.last_error = ""
+            config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
+            posted += 1
+            logger.info("Drill Instructor: stored inactivity nudge %s for competition %s", message.id, competition.id)
+        except Exception as exc:  # noqa: BLE001 - one bad competition must not kill the sweep
+            message.success = False
+            message.error = str(exc)[:2000]
+            try:
+                message.save()
+            except Exception:  # pragma: no cover
+                pass
+            config.last_error = str(exc)[:2000]
+            config.save(update_fields=["last_error", "updated_at"])
+            logger.warning("Drill Instructor: nudge save failed for competition %s: %s", competition.id, exc)
+            continue
+
+        # Optional web push to every participant (the nudge targets the
+        # whole group, not a single athlete).
+        if config.send_push_on_activity and send_push_to_user is not None:
+            import re as _re
+            avatar_icon = (
+                f"/personas/{persona.avatar}.svg"
+                if persona.avatar and _re.fullmatch(r"[a-z0-9_-]+", persona.avatar)
+                else None
+            )
+            for participant in participants:
+                try:
+                    send_push_to_user(
+                        participant,
+                        title=f"{competition.name} - {persona.name}",
+                        body=body,
+                        url=f"/coach",
+                        icon=avatar_icon,
+                        badge="/icon-badge.png",
+                        tag=f"drill-nudge-{competition.id}",
+                    )
+                except Exception as exc:  # noqa: BLE001 - never block the sweep
+                    logger.warning("Drill Instructor: nudge push failed for user %s: %s", participant.id, exc)
+
+    return {"date": str(today), "posted": posted, "skipped": skipped, "competitions": competitions.count()}

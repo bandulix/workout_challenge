@@ -14,6 +14,11 @@ class CustomUserSerializer(serializers.ModelSerializer):
     # configured server-side. Write-only; validated in validate().
     invite_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
+    # Alternative to the invite token: a valid competition join code
+    # (from an invite link) also lets a new user register - possession
+    # of the link IS the invitation. Write-only; validated in validate().
+    join_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
     MAX_PROFILE_PICTURE_BYTES = 5 * 1024 * 1024  # 5 MB
 
     def validate_profile_picture(self, value):
@@ -28,7 +33,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'invite_token', 'profile_picture', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
+        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'invite_token', 'join_code', 'profile_picture', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
         # my_competitions / my_teams are read-only: joining happens
         # exclusively through the dedicated join views (join code +
         # participant checks). Writable M2M fields would be a
@@ -47,15 +52,25 @@ class CustomUserSerializer(serializers.ModelSerializer):
         # REGISTRATION_TOKEN configured). compare_digest to avoid a
         # timing oracle over the token bytes. Only enforced on create -
         # profile PATCHes don't re-ask for the token.
+        #
+        # A valid competition join code (from an invite link) is accepted
+        # as an alternative: being invited to a competition implies an
+        # invitation to register. The error message intentionally does not
+        # say which of the two was wrong, so the endpoint can't be used to
+        # probe for valid join codes.
         required = getattr(settings, "REGISTRATION_TOKEN", "")
         if required and self.instance is None:
             import secrets as _secrets
             provided = (attrs.get("invite_token") or "").strip()
             if not _secrets.compare_digest(provided, required):
-                raise serializers.ValidationError(
-                    {"invite_token": "Invalid invite token. Please ask the person who invited you for the correct token."}
-                )
+                from competition.models import Competition
+                join_code = (attrs.get("join_code") or "").strip().upper()
+                if not join_code or not Competition.objects.filter(join_code=join_code).exists():
+                    raise serializers.ValidationError(
+                        {"invite_token": "Invalid invite token or competition join code. Please ask the person who invited you for a valid token or invite link."}
+                    )
         attrs.pop("invite_token", None)
+        attrs.pop("join_code", None)
         return super().validate(attrs)
 
     def create(self, validated_data):
