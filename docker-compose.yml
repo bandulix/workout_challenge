@@ -21,10 +21,20 @@ services:
     labels:
       org.opencontainers.image.source: "https://github.com/bandulix/workout_challenge"
     ports:
-      - "80:80"        # Nginx -> React (frontend) + Django (via /api)
-      - "5555:5555"    # Celery Flower task monitoring - do NOT expose publicly
-      - "9001:9001"    # Supervisord process monitoring - do NOT expose publicly
-      - "8000:8000"    # Django direct (gunicorn) - do NOT expose publicly
+      # The app port (nginx serves frontend + /api) - the only port that
+      # should ever be reachable from outside. Behind a reverse proxy on
+      # the same host: APP_BIND=127.0.0.1 and APP_PORT=<proxy target port>,
+      # then point the proxy at 127.0.0.1:<APP_PORT>.
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-80}:80"
+      # Debug/monitoring ports are localhost-only by default - they have
+      # no auth of their own, so publishing them on a public host would
+      # expose Flower, supervisord and the raw Django API to the internet.
+      # Reach them from the server itself or via SSH port forwarding, e.g.
+      #   ssh -L 5555:127.0.0.1:5555 user@your-vps
+      # Set DEBUG_BIND=0.0.0.0 only on a trusted network.
+      - "${DEBUG_BIND:-127.0.0.1}:5555:5555"    # Celery Flower task monitoring
+      - "${DEBUG_BIND:-127.0.0.1}:9001:9001"    # Supervisord process monitoring
+      - "${DEBUG_BIND:-127.0.0.1}:8000:8000"    # Django direct (gunicorn)
     volumes:
       - django_data:/workout_challenge/src-backend/data
     environment:
@@ -109,7 +119,13 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
     ports:
-      - "5432:5432"   # expose only on localhost; comment out for tighter prod-like security
+      # Host-side psql access only - the app reaches Postgres over the
+      # internal compose network (POSTGRES_HOST=database), so this mapping
+      # is optional. Defaults to localhost-only for safety on public hosts.
+      # If the host already runs its own Postgres on 5432, either pick a
+      # different POSTGRES_HOST_PORT (e.g. 5433) or delete this whole
+      # `ports:` block - the stack works without it.
+      - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped

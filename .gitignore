@@ -1,7 +1,13 @@
 ### Custom
 .rdb
 src-backend/static
-src-backend/data
+# src-backend/data holds runtime state (sqlite, vapid.json, media) and is
+# volume-mounted - but the migration modules in data/db_migrations (used
+# via MIGRATION_MODULES for competition/custom_user/workouts) are source
+# code and MUST be tracked, otherwise fresh clones cannot run `migrate`.
+src-backend/data/*
+!src-backend/data/__init__.py
+!src-backend/data/db_migrations/
 
 ### venv template
 # Virtualenv
