@@ -88,6 +88,10 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
         } catch (err) {
             console.error("Config save failed", err);
             setFieldErrors(err?.data || {});
+            // A failed save must be unmistakable - e.g. enabling without
+            // picking a persona only showed a small inline error before,
+            // which read as "the app forgot my activation".
+            window.alert("Could not save the Drill Instructor config: " + JSON.stringify(err?.data || err?.message));
         }
     }
 

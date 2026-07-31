@@ -6,7 +6,7 @@ export const drillInstructorApi = createApi({
     baseQuery: baseQueryWithReauth,
     tagTypes: ['DrillPersona', 'DrillConfig', 'DrillMessage'],
     keepUnusedDataFor: 60 * 60 * 12,
-    refetchOnMountOrArgChange: 60 * 60,
+    refetchOnMountOrArgChange: 60, // 60 seconds - the drill instructor's active state must not look "forgotten" on a second device
     endpoints: (builder) => ({
         // ---- Personas ---------------------------------------------------
         getPersonas: builder.query({

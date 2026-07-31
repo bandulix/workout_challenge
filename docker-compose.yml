@@ -43,6 +43,9 @@ services:
       - DEBUG=${DEBUG:-true}
       - TIME_ZONE=${TIME_ZONE:-Europe/London}
       - REGISTRATION_TOKEN=${REGISTRATION_TOKEN:-}
+      # How long users stay logged in WITHOUT opening the app (rolling
+      # window - every app use re-extends it). Default 31 days.
+      - JWT_REFRESH_DAYS=${JWT_REFRESH_DAYS:-31}
       - MAIN_HOST=${MAIN_HOST:-http://localhost}
       - HOSTS=${HOSTS:-http://localhost,http://127.0.0.1}
       # NOTE: in production set HOSTS to the comma-separated list of
