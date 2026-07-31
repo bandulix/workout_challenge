@@ -575,6 +575,18 @@ function LogInPage() {
         const password = e.target.password.value;
         const [success, msg] = await apiLogin(email, password);
         if (success) {
+            // A fresh login must mean fresh data: drop the persisted Redux
+            // cache (localStorage 'appState') from whatever session was on
+            // this device before - otherwise a stale cache (e.g. "no coach
+            // configured") survives the login and the device looks out of
+            // sync. The JWT tokens just set by apiLogin live in their own
+            // keys and are not touched.
+            localStorage.removeItem('appState');
+            dispatch(usersApi.util.resetApiState());
+            dispatch(workoutsApi.util.resetApiState());
+            dispatch(competitionsApi.util.resetApiState());
+            dispatch(statsApi.util.resetApiState());
+            dispatch(feedApi.util.resetApiState());
             // success logging in - redirect to dashboard
             await waitForLocalStorage('access_token');
             setIsLoading(false);
