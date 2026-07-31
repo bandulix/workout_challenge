@@ -4,6 +4,8 @@
 > **Original project:** [vanalmsick/workout_challenge](https://github.com/vanalmsick/workout_challenge) — Copyright © 2025 [github.com/vanalmsick](https://github.com/vanalmsick).
 > This fork is maintained at [bandulix/workout_challenge](https://github.com/bandulix/workout_challenge).
 > Both the original and this fork are licensed under the **Server Side Public License v1 (SSPL)** — see [LICENSE](LICENSE) (unmodified, original copyright preserved). What this fork changes is documented below in [**Changes from the original**](#changes-from-the-original), in [NOTICE](NOTICE), and in [CHANGELOG.md](CHANGELOG.md).
+>
+> 🤖 Full transparency: **this fork was vibe-coded** — designed and built with AI assistance (OpenCode + LLMs), guided and reviewed by a human.
 
 No matter if a healthy close your rings competition with friends or a September steps challenge with work colleagues, this webapp enables you to compete with friends and co-workers across devices (Apple / Android / Garmin / etc.) using the metrics you want to use (km / minutes / kcal / # of times / etc.) respecting your privacy. Participants can either add their workouts and/or steps manually or link their free Strava or Garmin Connect account for automatic workout import. 
 
@@ -39,13 +41,15 @@ Create your own competition or use a friend’s invitation link to join their co
 
 **Features:**
 - Create your own competition or use a friend’s invitation link to join their competition
+- **AI Drill Instructor** — an optional per-competition AI coach with persona profile pictures that comments on every workout and (optionally) pings your phone via push notifications
+- **Coach page** — a live, chat-style feed of everything your coach has ever said, plus the persona roster
 - Enter workouts manually or import them automatically via Strava or Garmin Connect (daily at 4 AM)
-- Your personal dashboard shows workout stats and your workout streak
+- Your personal dashboard shows workout stats, your streak card, and your personal goals
 - The competition dashboards show friends’ workouts, leaderboards, and your progress towards the competition goals
 - A weekly email on Mondays shows you your spot on the competition leaderboards
 - An optional weekly email on Thursday shows your progress against your personal goals
-- Fully responsive website and emails (mobile, tablet, desktop)
-- Light and dark mode
+- Installable progressive web app (offline shell, push notifications on iOS & Android)
+- Profile picture upload, light and dark mode (manual toggle or system), fully responsive (mobile-first)
 
 **Competition Goal Choices:**  
 *Create one or several goals for your competition.*
@@ -53,12 +57,7 @@ Create your own competition or use a friend’s invitation link to join their co
 - **Period:** per day / per week / per month / during the entire competition
 - **Limits:** min / max per workout, min / max per day, min / max per week
 
-### Your Personal Dashboard:
-![Preview Dashboard](/docs/imgs/preview-myspace-light.png)
-
-### Competition Dashboards:
-![Preview Competition](/docs/imgs/preview-competition-both.png)
-
+> 📸 *The preview screenshots of the original upstream design have been removed from this README because this fork's UI is a ground-up redesign (dark "volt/ink", coach-centred). Fresh screenshots of the fork are on the roadmap — or run it locally and see for yourself.*
 
 ### Automatic Strava Workout Import:
 ![Preview Strava Import](/src-frontend/public/how_to_strava_sync.png)
@@ -74,16 +73,20 @@ Link your Garmin Connect account in **Me → Settings → Garmin Connect** and y
 <div align="center">
 
 If you like <b>Workout Challenge</b>, consider giving it a **star** ⭐!  
-Made with ❤️ in London  
+Made with ❤️ in London by <a href="https://github.com/vanalmsick">vanalmsick</a> — support the <b>original author</b>:  
 
 <a href='https://ko-fi.com/vanalmsick' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi1.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>  
 </div>
 
 
 ## Give it a quick try
+The pre-built `vanalmsick/workout_challenge` Docker image ships the **original** upstream app. To run **this fork**, build from source:
 ```
-docker run -p 80:80 -e HOSTS=http://localhost,http://127.0.0.1 -e DEBUG=true -e SECRET_KEY=some-long-random-string vanalmsick/workout_challenge
+git clone https://github.com/bandulix/workout_challenge.git
+cd workout_challenge
+docker compose build && docker compose up -d
 ```
+(Or for the original upstream image: `docker run -p 80:80 -e HOSTS=http://localhost,http://127.0.0.1 -e DEBUG=true -e SECRET_KEY=some-long-random-string vanalmsick/workout_challenge`)
 
 ## Full Production Deployment
 [**docker-compose.yml**](/docker-compose.yml)
@@ -185,16 +188,16 @@ docker compose -f /path/to/docker-compose.yml up
 | VAPID_PUBLIC_KEY      | (auto-generated)                    | VAPID public key for browser push notifications. If unset, a keypair is auto-generated on first start and persisted to `DATA_DIR/vapid.json`.                                                                                                                                                                    |
 | VAPID_PRIVATE_KEY     | (auto-generated)                    | VAPID private key. Pin it via this env var if you don't want the keypair to drift on container rebuilds.                                                                                                                                                                                                       |
  | VAPID_SUBJECT         | "mailto:admin@example.com"          | `mailto:` (or `https://`) contact used in the VAPID claims.                                                                                                                                                                                                                                                    |
+| GARMIN_TOKEN_KEY      | (derived from SECRET_KEY)           | Key used to encrypt stored Garmin OAuth tokens at rest (Fernet). Set it explicitly if you rotate `SECRET_KEY` and want existing Garmin linkages to survive.                                                                                                                                                     |
 
 ## AI Drill Instructor
 Each competition can optionally activate an **AI Drill Instructor** that generates a short, persona-voiced comment every time a participant logs an activity. Generated messages are stored in the in-app audit log so the competition owner can read them back, and (optionally) sent as a web push notification to the athlete's devices.
 
 ### How to enable it (competition owner)
-1. In My Space, click **Manage Personas** to review or edit the AI personas. The defaults (Drill Sergeant, Roast Master, Cheerleader, British Butler, Zen Master) are global and available to every competition.
-2. On the competition page, click the new **AI Drill Instructor** button (owner only).
-3. Pick a **Persona**, optionally enable browser push, and save.
-   - **Display Name Prefix** (optional) — prepended like `[Drill Sergeant]` so people know it's the bot.
-4. Toggle **Activated** and save. Use the **Send a test message** field to verify the configuration before relying on it.
+1. Open the **Coach page** (`/coach`) and click **Manage** in *The roster* to review or edit the AI personas - every persona has a profile picture, tagline and accent colour. The defaults (Drill Sergeant, Roast Master, Cheerleader, British Butler, Zen Master) are global and available to every competition.
+2. On the competition page, hit **Activate** / **Configure** in the *Coach's Corner* (owner only).
+3. Pick a **Persona** from the visual cards, optionally enable browser push, and save.
+4. Toggle **Activate the Drill Instructor** and save. Use the **Send a test message** field to verify the configuration before relying on it.
 
 ### What it does
 - For each new workout in the competition, the instructor generates a short, persona-voiced comment and records it in the in-app audit log (visible to participants of the competition via `/api/drill-instructor/message/` and to staff via Django admin).
@@ -228,7 +231,7 @@ The instructor uses any OpenAI-compatible chat-completions endpoint. To run it o
 4. The Drill Instructor and weekly email both flow through the same provider - swap once and both update.
 
 ### What the participant sees
-Participants can read every generated message from the audit log at `/api/drill-instructor/message/` (visible only for competitions they belong to). With browser push enabled, the instructor's message also shows up as a system / push notification on their subscribed devices.
+Participants read every generated message in the **Coach page's live feed** (or the competition's *Coach's Corner*), and can browse the raw audit log at `/api/drill-instructor/message/` (visible only for competitions they belong to). With browser push enabled, the instructor's message also shows up as a system / push notification - with the persona's profile picture as the icon - on their subscribed devices.
 
 ### Removing it
 Disable the toggle, or click **Remove Drill Instructor**. Generated messages remain in the audit log unless the owner deletes them.
@@ -260,7 +263,7 @@ The app ships as a Progressive Web App with a dark, athletic "volt" design langu
 - **Offline shell** - a service worker (`public/sw.js`) caches the app shell, fonts, persona avatars, last-viewed pages and icons so the app opens even without a network. Custom `offline.html` shows a friendly fallback.
 - **Standalone display** - no browser chrome when launched from the home screen.
 - **Safe-area handling** - iPhone notch / Dynamic Island / home indicator respected on the bottom nav and modals via `env(safe-area-inset-*)`.
-- **Mobile bottom nav with the Coach at centre stage** - a thumb-friendly dark tab bar (Home, Compete, **Coach**, Log, Me/Admin). The centre button carries the profile picture of the persona currently on duty and opens the **Coach page** (`/coach`).
+- **Mobile bottom nav with the Coach at centre stage** - the only navigation (no top bar): a thumb-friendly dark tab bar (Home, Compete, **Coach**, Log, Me) that floats as a dock on desktop. The centre button carries the profile picture of the persona currently on duty and opens the **Coach page** (`/coach`); **Me** opens a sheet with Settings, Goal Equalizer, theme toggle, Help, Admin (staff) and Logout.
 - **Light / dark themes** - class-based theming with a manual toggle in the top navigation (follows the OS by default, choice is persisted).
 - **Self-hosted fonts** - Inter (UI) and Archivo Black (display) ship in `public/fonts/` so the PWA works fully offline.
 - **Touch targets** - all icon-only buttons hit the iOS / Android minimum of 44×44 px.
