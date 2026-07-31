@@ -56,6 +56,12 @@ SECRET_KEY = _get_secret_key()
 # in your (git-ignored) .env - never commit the real token.
 REGISTRATION_TOKEN = os.environ.get("REGISTRATION_TOKEN", "").strip()
 
+# Optional explicit key for encrypting stored Garmin OAuth tokens at rest
+# (Fernet). Falls back to being derived from SECRET_KEY when unset - set
+# this if you rotate SECRET_KEY and want existing Garmin linkages to
+# survive the rotation.
+GARMIN_TOKEN_KEY = os.environ.get("GARMIN_TOKEN_KEY", "").strip() or None
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 print(f'Debug modus is turned {"on" if DEBUG else "off"}')

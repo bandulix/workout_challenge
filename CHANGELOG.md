@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Invite-link registration** — when `REGISTRATION_TOKEN` is set, a valid competition join code (from a shared invite link `?join=<code>`) now doubles as the registration invite: recipients can sign up without typing the global invite token and land straight in the join dialog. The 400 error intentionally does not reveal whether the token or the join code was wrong, and the 20/hour/IP registration throttle still applies. Registration form marks the token optional when an invite link is detected; the share modal notes that no token is needed.
+
+### Fixed
+- **Config plumbing gaps** — `GARMIN_TOKEN_KEY` was documented in the README but never actually read from the environment: `settings.py` now maps it (falling back to a SECRET_KEY-derived key) and `docker-compose.yml` / `.env.example` pass it through. `render_config_js.py` now also exposes `REACT_APP_VAPID_PUBLIC_KEY` via `window.RUNTIME_CONFIG` as documented (the `/api/push/status/` fallback still covers auto-generated keypairs). `docker-compose.yml` gained a header pointing at the fork repository and OCI `org.opencontainers.image.source` labels on the image and container.
 - **Quiet-day nudges** — the Drill Instructor now speaks up on its own when a running competition sees zero workouts in a day.
   - New `DrillInstructorConfig.nudge_on_inactivity` toggle (default on) and `DrillInstructorMessage.kind` (`activity` / `test` / `nudge`) with migration `drill_instructor/0006`.
   - New Celery task `drill_instructor.tasks.post_inactivity_nudges` + `build_inactivity_prompt`: daily 17:10 sweep posts one persona-voiced, group-addressed nudge per quiet competition (idempotent - one per competition per day; skipped as soon as anyone logs a workout). When the config's push toggle is on, the nudge is pushed to every subscribed participant.

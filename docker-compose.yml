@@ -1,7 +1,25 @@
+# Workout Challenge - self-hosted fitness competitions with an AI Drill Instructor.
+# Fork repository: https://github.com/bandulix/workout_challenge
+#
+# Quick start:
+#   1. cp .env.example .env   (then edit - at minimum set POSTGRES_PASSWORD)
+#   2. docker compose up -d --build
+#
+# All configuration is passed via the environment block below; every
+# variable maps 1:1 to an entry in .env.example (keep the two in sync).
 services:
   workoutchallenge:
     container_name: workoutchallenge
-    build: .
+    build:
+      context: .
+      # Link the built image back to the fork repository (shows up in
+      # `docker inspect` and registry UIs that understand OCI labels).
+      labels:
+        org.opencontainers.image.source: "https://github.com/bandulix/workout_challenge"
+        org.opencontainers.image.title: "Workout Challenge"
+        org.opencontainers.image.description: "Self-hosted fitness competitions with an AI Drill Instructor"
+    labels:
+      org.opencontainers.image.source: "https://github.com/bandulix/workout_challenge"
     ports:
       - "80:80"        # Nginx -> React (frontend) + Django (via /api)
       - "5555:5555"    # Celery Flower task monitoring - do NOT expose publicly
@@ -36,6 +54,12 @@ services:
       - STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET:-}
       - STRAVA_LIMIT_15MIN=${STRAVA_LIMIT_15MIN:-100}
       - STRAVA_LIMIT_DAY=${STRAVA_LIMIT_DAY:-1000}
+
+      # --- Garmin Connect ---
+      # Optional explicit key for encrypting stored Garmin OAuth tokens
+      # at rest. Falls back to a key derived from SECRET_KEY when unset -
+      # set it if you rotate SECRET_KEY and want Garmin linkages to survive.
+      - GARMIN_TOKEN_KEY=${GARMIN_TOKEN_KEY:-}
 
       # --- Email (SMTP) ---
       # Leave host/user/password blank to disable outbound email.
