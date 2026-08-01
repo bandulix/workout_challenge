@@ -140,7 +140,7 @@ def post_workout_comment(self, workout_id):
             target_first_name=(target_user.first_name if target_user else None),
         )
 
-        body = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
+        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
         if not body:
             body = f"{persona.name}: nice work on that {summary or workout.sport_type}!"
 
@@ -157,7 +157,9 @@ def post_workout_comment(self, workout_id):
             message.save()
             config.last_posted_at = timezone.now()
             config.messages_posted = (config.messages_posted or 0) + 1
-            config.last_error = ""
+            # Surface an LLM outage (message still posted as static
+            # fallback); cleared again on the next successful generation.
+            config.last_error = llm_error or ""
             config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
             posted += 1
             logger.info("Drill Instructor: stored message %s for competition %s", message.id, competition.id)
@@ -315,7 +317,7 @@ def post_inactivity_nudges(self):
             days_left=(competition.end_date - today).days,
         )
 
-        body = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
+        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
         if not body:
             body = (
                 f"{persona.name}: quiet day in {competition.name} - "
@@ -333,7 +335,7 @@ def post_inactivity_nudges(self):
             message.save()
             config.last_posted_at = timezone.now()
             config.messages_posted = (config.messages_posted or 0) + 1
-            config.last_error = ""
+            config.last_error = llm_error or ""
             config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
             posted += 1
             logger.info("Drill Instructor: stored inactivity nudge %s for competition %s", message.id, competition.id)

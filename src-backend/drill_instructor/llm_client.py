@@ -60,24 +60,29 @@ def _safe_base_url(url: Optional[str]) -> Optional[str]:
     return url.strip()
 
 
-def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[str] = None, max_tokens: int = 200) -> Optional[str]:
-    """Return a short persona-voiced message, or ``None`` if unavailable.
+def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[str] = None, max_tokens: int = 200) -> "tuple[Optional[str], Optional[str]]":
+    """Return ``(message, None)``, or ``(None, reason)`` when unavailable.
 
     The OpenAI Python SDK is compatible with any provider that exposes an
     OpenAI-shaped chat-completions endpoint - just set ``LLM_BASE_URL`` to
     the provider's URL (OpenRouter, Groq, Together, Mistral, Ollama, ...).
-    Failures are swallowed and logged: a missing key, a rate limit or a
-    network error must never take the request / Celery task down - the
-    Drill Instructor is a nice-to-have on top of the core app.
+    Failures never raise: a missing key, a rate limit or a network error
+    must never take the request / Celery task down - the Drill Instructor
+    is a nice-to-have on top of the core app. The caller falls back to a
+    static message and surfaces ``reason`` to the competition owner (see
+    tasks.py), so "the coach only posts static messages" is diagnosable
+    from the config UI instead of failing silently.
     """
     from site_settings.models import resolve_llm_settings
 
     config = resolve_llm_settings()
     api_key = config["api_key"]
     if not api_key:
-        return None
+        return None, "no LLM API key configured (Site Settings / OPENAI_API_KEY) - static fallback used"
 
     base_url = _safe_base_url(config["base_url"])
+    if config["base_url"] and not base_url:
+        return None, "configured LLM base URL was rejected (must be https, non-private host) - static fallback used"
 
     try:
         # Imported lazily so unit tests that mock the OpenAI client don't
@@ -85,7 +90,7 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
         from openai import OpenAI
     except ImportError:
         logger.warning("openai package not installed; skipping Drill Instructor message generation.")
-        return None
+        return None, "openai package not installed - static fallback used"
 
     # The system prompt is user-editable, so it's a soft prompt-injection
     # target: a custom persona could try to leak secrets, override the
@@ -122,10 +127,12 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
         raw = (response.choices[0].message.content or "").strip()
     except Exception as exc:  # noqa: BLE001 - OpenAI raises many subclasses
         logger.warning("Drill Instructor LLM call failed: %s", exc)
-        return None
+        # Never include request payloads here - the exception text is
+        # shown to the competition owner in the config UI (last_error).
+        return None, f"LLM call failed ({type(exc).__name__}: {str(exc)[:200]}) - static fallback used"
 
     if not raw:
-        return None
+        return None, "LLM returned an empty message - static fallback used"
 
     # Normalise whitespace and clamp length so we don't spam the
     # channel with essays. The Drill Instructor message is shown
@@ -134,7 +141,7 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
     raw = re.sub(r"\s+", " ", raw).strip()
     if len(raw) > 600:
         raw = raw[:597].rsplit(" ", 1)[0] + "..."
-    return raw
+    return raw, None
 
 
 def build_workout_prompt(*, user_first_name: str, username: str, sport_type: str, duration_minutes: int, distance_km, kcal, intensity: int, competition_name: str, points_capped, user_rank: Optional[int], total_participants: Optional[int], leader_points: Optional[float] = None, user_total_points: Optional[float] = None, target_first_name: Optional[str] = None) -> str:

@@ -182,7 +182,11 @@ def get_competition_stats(competition, last_seven_days=False):
             value['strava_athlete_id'] = None
         # values() yields the storage path ("profile_pics/x.jpg") - expose
         # the URL the frontend can render straight away (None when unset).
-        value['profile_picture'] = f"/{settings.MEDIA_URL}{value['profile_picture']}" if value['profile_picture'] else None
+        # NOTE: Django's LazySettings prepends the script prefix to
+        # MEDIA_URL, so at runtime it is "/media/" - do NOT add another
+        # leading slash or the URL becomes "//media/..." which browsers
+        # resolve as a protocol-relative URL to a host named "media".
+        value['profile_picture'] = f"{settings.MEDIA_URL}{value['profile_picture']}" if value['profile_picture'] else None
 
     # Get user rankings
     leaderboard_user = (
