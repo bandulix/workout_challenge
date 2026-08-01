@@ -134,6 +134,14 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
     if not raw:
         return None, "LLM returned an empty message - static fallback used"
 
+    # Reasoning models (MiniMax M3 with adaptive thinking, DeepSeek,
+    # etc.) embed their chain-of-thought in the content when no
+    # reasoning_split is requested - never post the model's internal
+    # monologue as the coach's message.
+    raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+    if not raw:
+        return None, "LLM returned only a <think> block - static fallback used"
+
     # Normalise whitespace and clamp length so we don't spam the
     # channel with essays. The Drill Instructor message is shown
     # inside the webapp and (optionally) sent as a web push
