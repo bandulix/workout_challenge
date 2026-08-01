@@ -8,6 +8,7 @@ import {workoutsApi} from '../utils/reducers/workoutsSlice';
 import {competitionsApi} from '../utils/reducers/competitionsSlice';
 import {statsApi} from '../utils/reducers/statsSlice';
 import {feedApi} from '../utils/reducers/feedSlice';
+import {drillInstructorApi} from '../utils/reducers/drillInstructorSlice';
 import {PageWrapper} from "../utils/miscellaneous";
 import {sentryError} from "../utils/reducers/baseQueryWithReauth";
 
@@ -98,6 +99,7 @@ function LogoutPage() {
     dispatch(competitionsApi.util.resetApiState());
     dispatch(statsApi.util.resetApiState());
     dispatch(feedApi.util.resetApiState());
+    dispatch(drillInstructorApi.util.resetApiState());
     localStorage.clear();
 
     // The service worker caches authenticated GET /api/* responses as
@@ -463,6 +465,7 @@ function RegisterPage() {
         dispatch(competitionsApi.util.resetApiState());
         dispatch(statsApi.util.resetApiState());
         dispatch(feedApi.util.resetApiState());
+        dispatch(drillInstructorApi.util.resetApiState());
         localStorage.clear();
     }, []);
 
@@ -597,6 +600,7 @@ function LogInPage() {
             dispatch(competitionsApi.util.resetApiState());
             dispatch(statsApi.util.resetApiState());
             dispatch(feedApi.util.resetApiState());
+            dispatch(drillInstructorApi.util.resetApiState());
             // success logging in - redirect to dashboard
             await waitForLocalStorage('access_token');
             setIsLoading(false);
@@ -647,6 +651,7 @@ function LogInPage() {
         dispatch(competitionsApi.util.resetApiState());
         dispatch(statsApi.util.resetApiState());
         dispatch(feedApi.util.resetApiState());
+        dispatch(drillInstructorApi.util.resetApiState());
 
         const refreshToken = localStorage.getItem('refresh_token');
         if (refreshToken !== null) {
