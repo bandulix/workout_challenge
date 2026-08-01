@@ -10,12 +10,11 @@
 Compete with friends and co-workers across devices (Apple / Android / Garmin / etc.) using the metrics you want (km / minutes / kcal / count), respecting your privacy. Workouts can be added manually or imported automatically from a linked Strava or Garmin Connect account — and an optional AI Drill Instructor keeps the banter going.
 
 <p align="center">
-  <a href="docs/imgs/preview-mobile-login-dark.png"><img src="docs/imgs/preview-mobile-login-dark.png" width="185" alt="Login - Workout Challenge PWA"></a>
-  <a href="docs/imgs/preview-mobile-myspace-dark.png"><img src="docs/imgs/preview-mobile-myspace-dark.png" width="185" alt="Home dashboard - Workout Challenge PWA"></a>
-  <a href="docs/imgs/preview-mobile-competition-dark.png"><img src="docs/imgs/preview-mobile-competition-dark.png" width="185" alt="Competition with AI Drill Instructor - Workout Challenge PWA"></a>
-  <a href="docs/imgs/preview-mobile-coach-dark.png"><img src="docs/imgs/preview-mobile-coach-dark.png" width="185" alt="Coach page - Workout Challenge PWA"></a>
+  <a href="docs/imgs/preview-mobile-login-dark.png"><img src="docs/imgs/preview-mobile-login-dark.png" width="230" alt="Login - Workout Challenge PWA"></a>
+  <a href="docs/imgs/preview-mobile-competition-dark.png"><img src="docs/imgs/preview-mobile-competition-dark.png" width="230" alt="Competition with AI Drill Instructor - Workout Challenge PWA"></a>
+  <a href="docs/imgs/preview-mobile-coach-dark.png"><img src="docs/imgs/preview-mobile-coach-dark.png" width="230" alt="Coach page - Workout Challenge PWA"></a>
 </p>
-<p align="center"><i>The PWA on a phone: login, your dashboard, the competition with its AI coach, and the coach wire.</i></p>
+<p align="center"><i>The PWA on a phone: login, the competition with its AI coach, and the coach wire.</i></p>
 
 **Contents:** [Changes from the original](#changes-from-the-original) · [How it works](#how-it-works) · [Getting started](#getting-started) · [AI Drill Instructor](#ai-drill-instructor) · [Admin & site settings](#admin--site-settings) · [Mobile app & push](#mobile-app--push-notifications) · [Strava API credentials](#strava-api-credentials)
 
