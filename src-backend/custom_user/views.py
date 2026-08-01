@@ -377,10 +377,16 @@ class LinkGarminView(APIView):
 
         try:
             token_blob = login_and_get_tokens(email, password)
-        except GarminAuthError as exc:
-            return Response({"message": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except GarminUnavailableError as exc:
-            return Response({"message": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        except GarminAuthError:
+            # Never forward upstream exception text - it can echo back the
+            # account email or internal details (CodeQL stack-trace-exposure).
+            logger.info("Garmin login failed for user %s", request.user.pk, exc_info=True)
+            return Response({"message": "Garmin login failed - check your credentials (and approve any MFA prompt in the Garmin Connect app first)."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except GarminUnavailableError:
+            logger.info("Garmin unavailable during link for user %s", request.user.pk, exc_info=True)
+            return Response({"message": "Could not reach Garmin - please try again later."},
+                            status=status.HTTP_502_BAD_GATEWAY)
 
         user = request.user
         user.garmin_email = email
@@ -429,10 +435,14 @@ class SyncGarminView(APIView):
 
         try:
             result = sync_garmin(user__id=user.id, days_back=3)
-        except GarminAuthError as exc:
-            return Response({"message": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except GarminUnavailableError as exc:
-            return Response({"message": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        except GarminAuthError:
+            logger.info("Garmin auth error during sync for user %s", user.pk, exc_info=True)
+            return Response({"message": "Garmin rejected the stored login - please re-link Garmin Connect."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except GarminUnavailableError:
+            logger.info("Garmin unavailable during sync for user %s", user.pk, exc_info=True)
+            return Response({"message": "Could not reach Garmin - please try again later."},
+                            status=status.HTTP_502_BAD_GATEWAY)
 
         return Response({"message": f"Successfully synced Garmin ({result.get('created', 0)} new activities)."},
                         status=status.HTTP_200_OK)

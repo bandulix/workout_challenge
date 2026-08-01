@@ -986,7 +986,9 @@ export default function Competition() {
     }, [drillMessages]);
 
     if (competitionError) {
-        console.log('Error retrieving competition (' + id + '):', competitionError);
+        // Constant format string: the URL param must never end up in the
+        // format position of console.log (CodeQL js/tainted-format-string).
+        console.log('Error retrieving competition:', id, competitionError);
         return <PageWrapper additionClasses="h-screen flex items-center justify-center"><ErrorBoxSection
             errorMsg={competitionError?.status + ' / ' + (competitionError?.error || competitionError?.message || competitionError?.data?.detail)}/></PageWrapper>;
     }

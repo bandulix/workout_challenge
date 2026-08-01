@@ -61,6 +61,20 @@ def send_push_to_user(
     return delivered
 
 
+# Human-readable hints per push-service status for the test-ping diagnostic.
+# Raw exception text is intentionally NOT returned: provider error bodies
+# can embed request details (CodeQL py/stack-trace-exposure). The full
+# exception still lands in the server log.
+_PUSH_ERROR_HINTS = {
+    400: "push service rejected the request (VAPID/encryption)",
+    401: "push service rejected the VAPID signature",
+    403: "push service rejected the VAPID signature",
+    404: "subscription no longer exists (removed)",
+    410: "subscription expired or unsubscribed (removed)",
+    413: "payload too large",
+}
+
+
 def send_push_to_user_detailed(
     user,
     *,
@@ -73,7 +87,7 @@ def send_push_to_user_detailed(
     ttl: int = 3600,
 ) -> list:
     """Diagnostic variant of send_push_to_user: returns one outcome dict
-    per subscription (ok / HTTP status / error text) so the test-ping
+    per subscription (ok / HTTP status / sanitised reason) so the test-ping
     button can show exactly where the push chain breaks - instead of the
     send failing silently into a log line nobody reads.
     """
@@ -85,11 +99,12 @@ def send_push_to_user_detailed(
             results.append({"endpoint": sub.endpoint[:60], "ok": True})
         except Exception as exc:  # noqa: BLE001 - diagnostic: report everything
             status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            logger.warning("Test push to %s failed: %s", sub.id, exc)
             results.append({
                 "endpoint": sub.endpoint[:60],
                 "ok": False,
                 "status": status_code,
-                "error": str(exc)[:300],
+                "error": f"{type(exc).__name__}: {_PUSH_ERROR_HINTS.get(status_code, 'network error reaching the push service')}",
             })
             if status_code in (404, 410):
                 sub.delete()
