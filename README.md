@@ -52,7 +52,15 @@ Create a competition or join one via a friend's invite link, log workouts manual
 - **Period:** per day / week / month / entire competition
 - **Limits:** min / max per workout, per day, per week
 
-> 📸 *Upstream screenshots were removed because this fork's UI is a ground-up redesign. Fresh screenshots are on the roadmap — or run it and see for yourself.*
+## Screenshots
+
+| | |
+|---|---|
+| ![Login](docs/imgs/preview-login-dark.png) | ![Home dashboard (dark)](docs/imgs/preview-myspace-dark.png) |
+| ![Competition with Drill Instructor (dark)](docs/imgs/preview-competition-dark.png) | ![Coach page (dark)](docs/imgs/preview-coach-dark.png) |
+| ![Home dashboard (light)](docs/imgs/preview-myspace-light.png) | ![Competition (light)](docs/imgs/preview-competition-light.png) |
+
+**Mobile:** [home](docs/imgs/preview-mobile-myspace-dark.png) · [competition](docs/imgs/preview-mobile-competition-dark.png) · [coach](docs/imgs/preview-mobile-coach-dark.png)
 
 ## Getting started
 All configuration lives in [`.env.example`](.env.example) (every variable, with comments) and [`docker-compose.yml`](docker-compose.yml):
