@@ -60,7 +60,7 @@ def _safe_base_url(url: Optional[str]) -> Optional[str]:
     return url.strip()
 
 
-def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[str] = None, max_tokens: int = 200) -> "tuple[Optional[str], Optional[str]]":
+def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[str] = None, max_tokens: int = 1000) -> "tuple[Optional[str], Optional[str]]":
     """Return ``(message, None)``, or ``(None, reason)`` when unavailable.
 
     The OpenAI Python SDK is compatible with any provider that exposes an
@@ -114,6 +114,14 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
         if base_url:
             client_kwargs["base_url"] = base_url
         client = OpenAI(**client_kwargs)
+        create_kwargs = {}
+        # MiniMax M3 runs "adaptive thinking" by default: the reasoning is
+        # billed as completion tokens and can consume the whole max_tokens
+        # budget, leaving only a <think> block behind. Short persona quips
+        # gain nothing from deliberation - turn it off (documented M3
+        # parameter; only sent to MiniMax endpoints).
+        if config["provider"] == "MiniMax" or "minimax" in (base_url or "").lower():
+            create_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
         response = client.chat.completions.create(
             model=model or config["model"],
             messages=[
@@ -123,6 +131,7 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
             temperature=0.9,
             top_p=1.0,
             max_tokens=max_tokens,
+            **create_kwargs,
         )
         raw = (response.choices[0].message.content or "").strip()
     except Exception as exc:  # noqa: BLE001 - OpenAI raises many subclasses
