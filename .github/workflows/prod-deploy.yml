@@ -62,3 +62,31 @@ jobs:
           platforms: linux/arm64/v8,linux/amd64
           push: true
           tags: ${{ secrets.DOCKER_USER }}/workout_challenge:latest,${{ secrets.DOCKER_USER }}/workout_challenge:${{ needs.autotag.outputs.out_tag }}
+
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [autotag, docker]
+    # The release only goes out once the image actually built and
+    # pushed - a tag without a working image would be a broken promise.
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      # Auto-generated notes from the (conventional) commit messages;
+      # docker-compose.yml + .env.example of exactly this version are
+      # attached so a release is a complete one-command install for
+      # self-hosters. Idempotent: re-runs don't fail on existing releases.
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${{ needs.autotag.outputs.out_tag }}" >/dev/null 2>&1 || \
+          gh release create "${{ needs.autotag.outputs.out_tag }}" \
+            docker-compose.yml .env.example \
+            --title "${{ needs.autotag.outputs.out_tag }}" \
+            --generate-notes
