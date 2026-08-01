@@ -117,6 +117,41 @@ export function sentryError({result, errorSource, endpointName = undefined, quer
 }
 
 
+// Deduplicate concurrent token refreshes: when a session expires, every
+// polling slice (feed/stats/drill/competitions/user) gets a 401 at roughly
+// the same time. Without a shared in-flight refresh, each fires its own
+// POST /token/refresh/ - a burst of ~10 auth 401s in seconds, which is
+// exactly what fail2ban/CrowdSec http-auth-bruteforce scenarios ban for.
+let refreshPromise = null;
+
+function refreshTokens(api, extraOptions, refreshToken) {
+    if (!refreshPromise) {
+        refreshPromise = (async () => {
+            const refreshResult = await baseQuery(
+                {
+                    url: '/token/refresh/',
+                    method: 'POST',
+                    body: {refresh: refreshToken},
+                },
+                api,
+                extraOptions
+            );
+            if (refreshResult.data?.access) {
+                // Save new tokens
+                localStorage.setItem('access_token', refreshResult.data.access);
+                if (refreshResult.data.refresh) {
+                    localStorage.setItem('refresh_token', refreshResult.data.refresh);
+                }
+            }
+            return refreshResult;
+        })().finally(() => {
+            refreshPromise = null;
+        });
+    }
+    return refreshPromise;
+}
+
+
 export const baseQueryWithReauth = async (args, api, extraOptions) => {
     let result = await baseQuery(args, api, extraOptions);
 
@@ -159,24 +194,10 @@ export const baseQueryWithReauth = async (args, api, extraOptions) => {
             throw throwErrorWithCode('(Error 401) The user is not authenticated (no refresh token). Please re-login.', 401);
         }
 
-        // Try to refresh the token
-        const refreshResult = await baseQuery(
-            {
-                url: '/token/refresh/',
-                method: 'POST',
-                body: {refresh: refreshToken},
-            },
-            api,
-            extraOptions
-        );
+        // Try to refresh the token (shared in-flight promise - see above)
+        const refreshResult = await refreshTokens(api, extraOptions, refreshToken);
 
-        if (refreshResult.data.access) {
-            // Save new tokens
-            localStorage.setItem('access_token', refreshResult.data.access);
-            if (refreshResult.data.refresh) {
-                localStorage.setItem('refresh_token', refreshResult.data.refresh);
-            }
-
+        if (refreshResult.data?.access) {
             // Retry original request
             result = await baseQuery(args, api, extraOptions);
         } else {

@@ -192,11 +192,14 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
     const [fieldErrors, setFieldErrors] = useState({});
     const [formError, setFormError] = useState('');
 
+    // The "new workout" variants open the form without an id (or with
+    // boolean true) - skip the fetch or it fires GET /api/workout/undefined/,
+    // which 404s and (repeated) looks like path probing to fail2ban/CrowdSec.
     const {
         data: initWorkout,
         error: initError,
         isLoading: iniLoading
-    } = useGetWorkoutByIdQuery(id, {skip: id === true});
+    } = useGetWorkoutByIdQuery(id, {skip: typeof id !== 'number'});
     const [updateEntry, {
         data: updateData,
         error: updateError,
