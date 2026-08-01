@@ -42,7 +42,6 @@ import ActivityGoalsForm from "../forms/activityGoalsForm";
 import {
     ChangeTeamButton,
     ModifyGoalsButton,
-    RefreshButton,
     StravaButton,
 } from "../forms/basicComponents";
 import {BoxSection, ErrorBoxSection, PageWrapper, useDarkMode} from "../utils/miscellaneous";
@@ -121,33 +120,33 @@ function CompetitionHead({competition, feed, isOwner}) {
 
     return (
         <BoxSection additionalClasses="mb-4">
-            {/* Lean one-row header: name + dates, compact workout counts,
-                and icon-only actions (Settings / AI Drill Instructor /
-                Invite, or Leave for non-owners). */}
-            <div className="flex items-center gap-3 px-1 sm:px-3">
-                <div className="flex-1 min-w-0">
-                    <p className="text-xl font-display uppercase tracking-wide truncate">{competition.name}</p>
-                    <p className="text-xs text-gray-500">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
-                </div>
-                <div className="flex items-baseline gap-1.5 shrink-0">
-                    <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
-                    <span className="uppercase text-[10px] tracking-wide text-gray-500">workouts</span>
-                </div>
-                {Object.entries(countGroups).map(([label, count], index) => (
-                    <div key={"stat" + index} className="hidden lg:flex lg:flex-col lg:items-center shrink-0 px-1">
-                        <span className="text-lg font-semibold leading-tight">{count}</span>
-                        <span className="uppercase text-[10px] tracking-wide text-gray-500">{workoutTypes[label].label_short}</span>
+            {/* Two-row header on small screens: the title gets the full
+                width first (it used to truncate between the counts and
+                the action buttons), counts + icon actions sit below. */}
+            <div className="px-1 sm:px-3">
+                <p className="text-xl font-display uppercase tracking-wide">{competition.name}</p>
+                <p className="text-xs text-gray-500">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
+                <div className="mt-2.5 flex items-center gap-3">
+                    <div className="flex items-baseline gap-1.5 shrink-0">
+                        <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
+                        <span className="uppercase text-[10px] tracking-wide text-gray-500">workouts</span>
                     </div>
-                ))}
-                <div className="flex items-center shrink-0">
-                    {
-                        (isOwner) ? <HeaderIconButton title="Settings" icon={Settings} onClick={() => setShowEditCompetitionModal(competition.id)}/> :
-                            <HeaderIconButton title="Leave Competition" icon={DoorOpen} danger onClick={() => triggerLeaveCompetition()} isLoading={leaveIsLoading}/>
-                    }
-                    {isOwner && (
-                        <HeaderIconButton title="AI Drill Instructor" icon={Megaphone} onClick={() => setShowDrillInstructorModal(true)}/>
-                    )}
-                    <HeaderIconButton title="Invite Others" icon={UserRoundPlus} onClick={() => setShowInviteCompetitionModal(true)}/>
+                    {Object.entries(countGroups).map(([label, count], index) => (
+                        <div key={"stat" + index} className="hidden lg:flex lg:flex-col lg:items-center shrink-0 px-1">
+                            <span className="text-lg font-semibold leading-tight">{count}</span>
+                            <span className="uppercase text-[10px] tracking-wide text-gray-500">{workoutTypes[label].label_short}</span>
+                        </div>
+                    ))}
+                    <div className="flex items-center shrink-0 ml-auto">
+                        {
+                            (isOwner) ? <HeaderIconButton title="Settings" icon={Settings} onClick={() => setShowEditCompetitionModal(competition.id)}/> :
+                                <HeaderIconButton title="Leave Competition" icon={DoorOpen} danger onClick={() => triggerLeaveCompetition()} isLoading={leaveIsLoading}/>
+                        }
+                        {isOwner && (
+                            <HeaderIconButton title="AI Drill Instructor" icon={Megaphone} onClick={() => setShowDrillInstructorModal(true)}/>
+                        )}
+                        <HeaderIconButton title="Invite Others" icon={UserRoundPlus} onClick={() => setShowInviteCompetitionModal(true)}/>
+                    </div>
                 </div>
             </div>
 
@@ -529,18 +528,13 @@ function IndividualLeaderboardBox({stats, userId}) {
 }
 
 
-function FeedBox({feed, refreshCompetition, competitionIsRefreshing}) {
+function FeedBox({feed}) {
 
     return (
         <BoxSection>
 
             <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
                 <span className="mx-4 text-gray-500 uppercase font-bold">Activity Feed</span>
-                <div className="p-0 mt-2.5 sm:mt-0">
-                    <RefreshButton onClick={() => refreshCompetition()}
-                                   label={"Refresh" + (competitionIsRefreshing ? "ing" : "") + " Competition"}
-                                   larger={false} isLoading={competitionIsRefreshing}/>
-                </div>
             </div>
 
             <table className="min-w-full my-2">
@@ -932,7 +926,6 @@ export default function Competition() {
         error: competitionError,
         isLoading: competitionLoading,
         refetch: refreshCompetition,
-        isFetching: competitionFetching,
     } = useGetCompetitionByIdQuery(id);
 
     const {
@@ -940,7 +933,6 @@ export default function Competition() {
         error: feedError,
         isLoading: feedLoading,
         refetch: refreshFeed,
-        isFetching: feedFetching,
     } = useGetFeedByIdQuery(id, {
         pollingInterval: 90000, // 90 seconds
     });
@@ -950,7 +942,6 @@ export default function Competition() {
         error: statsError,
         isLoading: statsLoading,
         refetch: refreshStats,
-        isFetching: statsFetching,
     } = useGetStatsByIdQuery(id, {
         pollingInterval: 90000, // 90 seconds
     });
@@ -971,6 +962,28 @@ export default function Competition() {
         refreshStats();
         dispatch(teamsApi.util.invalidateTags(['Team']));
     }
+
+    // Auto-refresh: when the Drill Instructor posts a new comment (which
+    // happens right after a workout is logged and scored), pull the fresh
+    // feed/stats so the new activity shows up without a manual refresh.
+    // Shares the messages cache with CoachCorner - no extra requests.
+    const {data: drillMessages} = useGetDrillMessagesQuery(
+        {competition: competition?.id},
+        {pollingInterval: 60000, skip: !competition?.id}
+    );
+    const lastDrillMsgId = React.useRef(null);
+    useEffect(() => {
+        const latest = drillMessages?.[0];
+        if (!latest) return;
+        if (lastDrillMsgId.current === null) {
+            lastDrillMsgId.current = latest.id; // baseline on first load
+            return;
+        }
+        if (latest.id !== lastDrillMsgId.current) {
+            lastDrillMsgId.current = latest.id;
+            refreshPage();
+        }
+    }, [drillMessages]);
 
     if (competitionError) {
         console.log('Error retrieving competition (' + id + '):', competitionError);
@@ -1074,8 +1087,7 @@ export default function Competition() {
                             <ErrorBoxSection
                                 errorMsg={feedError?.status + ' / ' + (feedError?.error || feedError?.message || feedError?.data?.detail)}/>
                         ) : (
-                            <FeedBox feed={feed} refreshCompetition={refreshPage}
-                                     competitionIsRefreshing={competitionFetching || feedFetching || statsFetching}/>
+                            <FeedBox feed={feed}/>
                         )
                     }
                 </div>
