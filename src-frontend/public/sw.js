@@ -1,17 +1,34 @@
 /* Workout Challenge service worker
  *
- * Strategy:
- *   - HTML navigations: network-first, fall back to cached shell, then /offline.html.
- *   - GET /api/* : network-first with 5s timeout, fall back to cached response if offline.
- *   - Static assets (JS/CSS/images/fonts): cache-first, revalidate in background.
+ * Strategy: "online = realtime, cache = offline fallback only".
+ *   - Every same-origin GET goes to the NETWORK FIRST, so while the
+ *     device has a connection the app always shows live data and the
+ *     current build - never a stale cached copy.
+ *   - Only when the network FAILS (offline / lie-fi) do we fall back
+ *     to the last cached copy:
+ *       HTML navigations -> cached app shell, then /offline.html
+ *       GET /api/*       -> last cached API response
+ *       static assets    -> last cached asset
+ *   - Successful responses refresh the cache in the background, so the
+ *     offline fallback is always the freshest version this device saw.
+ *   - Special case "stale chunk": if the server no longer has a static
+ *     asset (old hashed JS/CSS after a redeploy) we serve the cached
+ *     copy instead of the 404, so a long-open tab keeps working.
  *
- * Bump CACHE_VERSION on each release to invalidate stale assets.
+ * Caches are long-lived runtime caches trimmed by entry count - they are
+ * intentionally NOT deleted on each release. Purging versioned caches on
+ * activate was what broke tabs that stayed open across a deployment
+ * (their chunk URLs vanished -> "please refresh" errors).
  */
 
-const CACHE_VERSION = "wc-v2";
-const SHELL_CACHE = `${CACHE_VERSION}-shell`;
-const ASSET_CACHE = `${CACHE_VERSION}-assets`;
-const API_CACHE = `${CACHE_VERSION}-api`;
+const SHELL_CACHE = "wc-shell";
+const ASSET_CACHE = "wc-assets";
+const API_CACHE = "wc-api";
+const KNOWN_CACHES = [SHELL_CACHE, ASSET_CACHE, API_CACHE];
+
+// Hygiene limits - oldest entries are evicted beyond these counts.
+const ASSET_CACHE_LIMIT = 200;
+const API_CACHE_LIMIT = 100;
 
 const SHELL_URLS = [
     "/",
@@ -47,9 +64,12 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
     event.waitUntil(
+        // Remove only legacy/unknown caches (e.g. the old per-release
+        // "wc-v2-*" ones). The current runtime caches survive every
+        // update so long-open tabs never lose their assets mid-session.
         caches.keys().then((keys) =>
             Promise.all(
-                keys.filter((k) => !k.startsWith(CACHE_VERSION)).map((k) => caches.delete(k))
+                keys.filter((k) => !KNOWN_CACHES.includes(k)).map((k) => caches.delete(k))
             )
         ).then(() => self.clients.claim())
     );
@@ -66,47 +86,54 @@ self.addEventListener("fetch", (event) => {
     // and any future third-party APIs stay uncached).
     if (url.origin !== self.location.origin) return;
 
-    // API: network-first with short timeout, cached fallback.
+    // API: realtime while online; last cached response only when offline.
     if (url.pathname.startsWith("/api/")) {
-        event.respondWith(networkFirst(request, API_CACHE, 5000));
+        event.respondWith(apiHandler(request, event));
         return;
     }
 
-    // HTML navigations: network-first, shell fallback, offline page.
+    // HTML navigations: fresh shell while online; cached shell, then the
+    // offline page when the network is down.
     if (request.mode === "navigate" || request.headers.get("accept")?.includes("text/html")) {
-        event.respondWith(navigationHandler(request));
+        event.respondWith(navigationHandler(request, event));
         return;
     }
 
-    // Static assets: cache-first with background revalidation.
-    event.respondWith(cacheFirst(request, ASSET_CACHE));
+    // Static assets: fresh while online; cached copy when offline OR when
+    // the server no longer has the file (stale chunk after a redeploy).
+    event.respondWith(assetHandler(request, event));
 });
 
-async function navigationHandler(request) {
+async function navigationHandler(request, event) {
+    const cache = await caches.open(SHELL_CACHE);
     try {
         const fresh = await fetch(request);
-        const cache = await caches.open(SHELL_CACHE);
-        cache.put(request, fresh.clone());
+        if (fresh && fresh.ok) {
+            // All SPA routes serve the same index.html - store it under a
+            // single stable key so the cache isn't filled with one entry
+            // per route URL.
+            cache.put("/", fresh.clone());
+        }
         return fresh;
     } catch (err) {
-        const cached = await caches.match(request);
+        const cached = (await cache.match("/")) || (await cache.match("/index.html"));
         if (cached) return cached;
-        const offline = await caches.match("/offline.html");
+        const offline = await cache.match("/offline.html");
         if (offline) return offline;
         return new Response("Offline", {status: 503, statusText: "Offline"});
     }
 }
 
-async function networkFirst(request, cacheName, timeoutMs) {
-    const cache = await caches.open(cacheName);
+async function apiHandler(request, event) {
+    const cache = await caches.open(API_CACHE);
     try {
-        const fresh = await Promise.race([
-            fetch(request),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), timeoutMs)),
-        ]);
-        // Only cache successful, non-opaque responses.
+        const fresh = await fetch(request);
+        // Cache successful responses as the offline fallback. Error
+        // responses (4xx/5xx) are passed through untouched - the server
+        // is the source of truth, stale data must never mask an error.
         if (fresh && fresh.ok && fresh.type !== "opaqueredirect") {
             cache.put(request, fresh.clone());
+            event.waitUntil(trimCache(API_CACHE, API_CACHE_LIMIT));
         }
         return fresh;
     } catch (err) {
@@ -116,22 +143,40 @@ async function networkFirst(request, cacheName, timeoutMs) {
     }
 }
 
-async function cacheFirst(request, cacheName) {
-    const cache = await caches.open(cacheName);
-    const cached = await cache.match(request);
-    if (cached) {
-        // Background revalidate.
-        fetch(request).then((fresh) => {
-            if (fresh && fresh.ok) cache.put(request, fresh.clone());
-        }).catch(() => {});
-        return cached;
-    }
+async function assetHandler(request, event) {
+    const cache = await caches.open(ASSET_CACHE);
     try {
         const fresh = await fetch(request);
-        if (fresh && fresh.ok) cache.put(request, fresh.clone());
+        if (fresh && fresh.ok) {
+            cache.put(request, fresh.clone());
+            event.waitUntil(trimCache(ASSET_CACHE, ASSET_CACHE_LIMIT));
+            return fresh;
+        }
+        // Server answered but doesn't (any longer) have this asset - a
+        // long-open tab asking for its old hashed chunk after a redeploy.
+        // Keep it alive with the cached copy if we have one.
+        const cached = await cache.match(request);
+        if (cached) return cached;
         return fresh;
     } catch (err) {
+        const cached = await cache.match(request);
+        if (cached) return cached;
         return new Response("Offline", {status: 503, statusText: "Offline"});
+    }
+}
+
+// Oldest-first eviction by entry count. Cache API keys() come back in
+// insertion order, so deleting from the front approximates LRU well
+// enough for hygiene purposes.
+async function trimCache(cacheName, maxItems) {
+    try {
+        const cache = await caches.open(cacheName);
+        const keys = await cache.keys();
+        if (keys.length > maxItems) {
+            await Promise.all(keys.slice(0, keys.length - maxItems).map((k) => cache.delete(k)));
+        }
+    } catch (err) {
+        // Trimming is best-effort housekeeping - never break a request over it.
     }
 }
 

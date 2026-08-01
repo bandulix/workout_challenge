@@ -151,9 +151,11 @@ export default function BottomNav() {
         return active[0].persona_detail;
     }, [drillConfigs]);
 
-    // Hide the bar entirely on the public (logged-out) pages.
+    // Hide the bar entirely on the public pages (welcome, login, signup,
+    // password reset) - regardless of whether a token exists, so a
+    // logged-in user landing on /login never sees the menu bar there.
     const publicPaths = ["/", "/login", "/signup", "/logout", "/password"];
-    if (!localStorage.getItem("access_token") && publicPaths.some((p) => location.pathname === p || location.pathname.startsWith("/password"))) {
+    if (publicPaths.some((p) => location.pathname === p || location.pathname.startsWith("/password"))) {
         return null;
     }
 

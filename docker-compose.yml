@@ -121,14 +121,9 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-workoutchallenge}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
-    ports:
-      # Host-side psql access only - the app reaches Postgres over the
-      # internal compose network (POSTGRES_HOST=database), so this mapping
-      # is optional. Defaults to localhost-only for safety on public hosts.
-      # If the host already runs its own Postgres on 5432, either pick a
-      # different POSTGRES_HOST_PORT (e.g. 5433) or delete this whole
-      # `ports:` block - the stack works without it.
-      - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
+    # No `ports:` block - Postgres is only reachable over the internal
+    # compose network (POSTGRES_HOST=database). If you ever need host-side
+    # psql access, run: docker compose exec database psql -U postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped

@@ -65,13 +65,56 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
         navigator.serviceWorker.register('/sw.js').then(
             (reg) => {
                 console.log('Service worker registered with scope:', reg.scope);
+                // Long-open tabs: check for an updated worker periodically
+                // and whenever the tab returns to the foreground, so new
+                // deployments reach users without a manual refresh.
+                setInterval(() => reg.update(), 60 * 60 * 1000);
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'visible') reg.update();
+                });
             },
             (err) => {
                 console.warn('Service worker registration failed:', err);
             }
         );
+
+        // The new worker activates immediately (skipWaiting + claim) and
+        // everything it serves is network-first, so swapping to it is
+        // safe: reload once to run the fresh build. The hadController
+        // guard skips the very first install (no reload needed there).
+        const hadController = !!navigator.serviceWorker.controller;
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!hadController || refreshing) return;
+            refreshing = true;
+            window.location.reload();
+        });
     });
 }
+
+
+// ---- Stale-chunk rescue -------------------------------------------------
+// If a lazy-loaded bundle can't be fetched (e.g. a redeploy replaced the
+// build while this tab was open and the cache missed), reload once to
+// pick up the current build instead of leaving a broken page behind.
+function isChunkLoadError(message) {
+    return /Loading chunk \d+ failed|dynamically imported module/i.test(String(message || ''));
+}
+
+function reloadForFreshAssets() {
+    // Guard against reload loops: at most one auto-reload per minute.
+    const last = Number(sessionStorage.getItem('wc-chunk-reload') || 0);
+    if (Date.now() - last < 60 * 1000) return;
+    sessionStorage.setItem('wc-chunk-reload', String(Date.now()));
+    window.location.reload();
+}
+
+window.addEventListener('error', (event) => {
+    if (isChunkLoadError(event.message)) reloadForFreshAssets();
+});
+window.addEventListener('unhandledrejection', (event) => {
+    if (isChunkLoadError(event.reason?.message || event.reason)) reloadForFreshAssets();
+});
 
 
 // ---- Install prompt capture ------------------------------------------
