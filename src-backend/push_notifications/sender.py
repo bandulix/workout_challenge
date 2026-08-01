@@ -12,7 +12,7 @@ from typing import Iterable, Optional
 from django.utils import timezone
 
 from .models import PushSubscription
-from .vapid import get_vapid_private_key, get_vapid_public_key, get_vapid_subject
+from .vapid import get_vapid_instance, get_vapid_public_key, get_vapid_subject
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,41 @@ def send_push_to_user(
     return delivered
 
 
+def send_push_to_user_detailed(
+    user,
+    *,
+    title: str,
+    body: str,
+    url: str = "/",
+    icon: Optional[str] = None,
+    badge: Optional[str] = None,
+    tag: Optional[str] = None,
+    ttl: int = 3600,
+) -> list:
+    """Diagnostic variant of send_push_to_user: returns one outcome dict
+    per subscription (ok / HTTP status / error text) so the test-ping
+    button can show exactly where the push chain breaks - instead of the
+    send failing silently into a log line nobody reads.
+    """
+    payload = json.dumps({"title": title, "body": body, "url": url, "icon": icon, "badge": badge, "tag": tag})
+    results = []
+    for sub in user.push_subscriptions.all():
+        try:
+            _send_one(sub, payload, ttl=ttl)
+            results.append({"endpoint": sub.endpoint[:60], "ok": True})
+        except Exception as exc:  # noqa: BLE001 - diagnostic: report everything
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            results.append({
+                "endpoint": sub.endpoint[:60],
+                "ok": False,
+                "status": status_code,
+                "error": str(exc)[:300],
+            })
+            if status_code in (404, 410):
+                sub.delete()
+    return results
+
+
 def send_push_to_users(users: Iterable, *, title: str, body: str, url: str = "/") -> int:
     total = 0
     for u in users:
@@ -96,7 +131,7 @@ def _send_one(subscription: PushSubscription, payload: str, ttl: int = 60) -> No
         webpush(
             subscription_info=info,
             data=payload,
-            vapid_private_key=get_vapid_private_key(),
+            vapid_private_key=get_vapid_instance(),
             vapid_claims={"sub": get_vapid_subject()},
             ttl=ttl,
         )

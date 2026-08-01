@@ -98,6 +98,29 @@ class PushUnsubscribeView(APIView):
         return Response({"deleted": bool(deleted)}, status=status.HTTP_200_OK)
 
 
+class PushTestView(APIView):
+    """Send a real test push to the current user's subscriptions.
+
+    Diagnostic: returns per-subscription delivery outcomes (ok / HTTP
+    status / error) so the "Send test ping" button can pinpoint where
+    the chain breaks - no subscription, VAPID/signing error, dead
+    endpoint, or device-side (battery/blocked notifications).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .sender import send_push_to_user_detailed
+        results = send_push_to_user_detailed(
+            request.user,
+            title="Workout Challenge",
+            body="Test ping from your Drill Instructor - if you can read this, push works!",
+            url="/coach",
+            tag="push-test",
+        )
+        return Response({"results": results}, status=status.HTTP_200_OK)
+
+
 class PushStatusView(APIView):
     """Lightweight introspection: does this user have any push subscriptions?"""
 

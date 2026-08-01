@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from "react";
 import {Bell, BellOff, BellRing, Share, PlusSquare, Download, Smartphone} from "lucide-react";
-import {useGetPushStatusQuery, useSubscribePushMutation, useUnsubscribePushMutation} from "../utils/reducers/pushSlice";
+import {useGetPushStatusQuery, useSubscribePushMutation, useUnsubscribePushMutation, useTestPushMutation} from "../utils/reducers/pushSlice";
 import {subscribeToPush, unsubscribeFromPush, promptInstall} from "../index";
 
 // Platform-aware push opt-in card. Handles the iOS "install to home
@@ -26,6 +26,7 @@ function PushOptInCard({compact = false}) {
     const {data: status, refetch} = useGetPushStatusQuery(undefined, {pollingInterval: 60000});
     const [subscribePush] = useSubscribePushMutation();
     const [unsubscribePush] = useUnsubscribePushMutation();
+    const [testPush] = useTestPushMutation();
 
     useEffect(() => {
         const update = () => setPlatform(detectPlatform());
@@ -77,6 +78,28 @@ function PushOptInCard({compact = false}) {
             await refetch();
         } catch (err) {
             setError(err?.data?.detail || err?.message || "Could not disable notifications.");
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function handleTestPing() {
+        setBusy(true);
+        setError(null);
+        try {
+            const res = await testPush().unwrap();
+            const results = res?.results || [];
+            const failed = results.filter((r) => !r.ok);
+            if (results.length === 0) {
+                window.alert("No subscription is stored on the server for this account. Turn pings off and on again, then retry.");
+            } else if (failed.length > 0) {
+                const f = failed[0];
+                window.alert(`The server could not deliver the ping: HTTP ${f.status || "?"} - ${f.error || "unknown error"}`);
+            } else {
+                window.alert(`Ping sent to ${results.length} device(s). If nothing shows up, the block is on the device (notification permission / battery optimization / Brave push setting).`);
+            }
+        } catch (err) {
+            window.alert("Test ping failed: " + JSON.stringify(err?.data || err?.message));
         } finally {
             setBusy(false);
         }
@@ -142,13 +165,22 @@ function PushOptInCard({compact = false}) {
                     Notifications are blocked in your browser settings. Allow them for this site, then come back.
                 </p>
             ) : subscribed ? (
-                <button
-                    onClick={handleUnsubscribe}
-                    disabled={busy}
-                    className="mt-3 w-full flex items-center justify-center gap-2 rounded-2xl bg-ink-700 text-gray-200 py-2.5 text-sm font-semibold hover:bg-ink-600 transition disabled:opacity-50"
-                >
-                    <BellOff className="h-4 w-4"/> {busy ? "Turning off…" : "Turn off coach pings"}
-                </button>
+                <>
+                    <button
+                        onClick={handleUnsubscribe}
+                        disabled={busy}
+                        className="mt-3 w-full flex items-center justify-center gap-2 rounded-2xl bg-ink-700 text-gray-200 py-2.5 text-sm font-semibold hover:bg-ink-600 transition disabled:opacity-50"
+                    >
+                        <BellOff className="h-4 w-4"/> {busy ? "Turning off…" : "Turn off coach pings"}
+                    </button>
+                    <button
+                        onClick={handleTestPing}
+                        disabled={busy}
+                        className="mt-2 w-full flex items-center justify-center gap-2 rounded-2xl border border-volt-400/40 text-volt-300 py-2 text-xs font-semibold hover:bg-volt-400/10 transition disabled:opacity-50"
+                    >
+                        <BellRing className="h-3.5 w-3.5"/> Send test ping
+                    </button>
+                </>
             ) : (
                 <button
                     onClick={handleSubscribe}

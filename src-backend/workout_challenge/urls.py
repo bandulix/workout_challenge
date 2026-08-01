@@ -48,6 +48,7 @@ from push_notifications.views import (
     PushSubscribeView,
     PushUnsubscribeView,
     PushStatusView,
+    PushTestView,
 )
 
 router = DefaultRouter()
@@ -86,6 +87,7 @@ urlpatterns = [
         path('push/status/', PushStatusView.as_view(), name='push-status'),
         path('push/subscribe/', PushSubscribeView.as_view(), name='push-subscribe'),
         path('push/unsubscribe/', PushUnsubscribeView.as_view(), name='push-unsubscribe'),
+        path('push/test/', PushTestView.as_view(), name='push-test'),
         path('token/', ThrottledTokenObtainPairView.as_view(), name='token-initial'),
         path('token/refresh/', ThrottledTokenRefreshView.as_view(), name='token-refresh'),
         path('password-reset/request/', PasswordResetView.as_view(), name='password-reset'),

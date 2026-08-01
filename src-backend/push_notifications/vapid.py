@@ -137,6 +137,24 @@ def get_vapid_private_key() -> str:
     return _VAPID_CACHE.get("private", "") if _VAPID_CACHE else ""
 
 
+def get_vapid_instance():
+    """Return a ready-to-sign ``py_vapid.Vapid`` for webpush().
+
+    The stored/env private key may be PEM text (auto-generated pairs
+    are persisted that way) or base64url DER. pywebpush hands any
+    non-file string to ``Vapid.from_string()``, which only understands
+    base64url DER - so a PEM string made EVERY send die with "Could not
+    deserialize key data". Normalise the format here instead.
+    """
+    from py_vapid import Vapid
+    key = get_vapid_private_key()
+    if not key:
+        return None
+    if "-----BEGIN" in key:
+        return Vapid.from_pem(key.encode())
+    return Vapid.from_string(private_key=key)
+
+
 def get_vapid_subject() -> str:
     if _VAPID_CACHE is None:
         ensure_vapid_keys()
