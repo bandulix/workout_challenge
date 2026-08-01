@@ -27,6 +27,12 @@ export const pushApi = createApi({
             }),
             invalidatesTags: ['PushStatus'],
         }),
+        testPush: builder.mutation({
+            query: () => ({
+                url: 'push/test/',
+                method: 'POST',
+            }),
+        }),
     }),
 });
 
@@ -34,4 +40,5 @@ export const {
     useGetPushStatusQuery,
     useSubscribePushMutation,
     useUnsubscribePushMutation,
+    useTestPushMutation,
 } = pushApi;
