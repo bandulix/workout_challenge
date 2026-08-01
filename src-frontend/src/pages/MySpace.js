@@ -105,6 +105,14 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
     const [triggerStravaSync, { data: stravaSyncData, isFetching: stravaSyncIsFetching, error: stravaSyncError, isSuccess: stravaSyncIsSuccess }] = useLazySyncStravaQuery();
     const [triggerGarminSync, { isFetching: garminSyncIsFetching, error: garminSyncError, isSuccess: garminSyncIsSuccess }] = useLazySyncGarminQuery();
 
+    // Only the 5 most recent workouts, newest first.
+    const recentWorkouts = useMemo(
+        () => [...(workouts || [])]
+            .sort((a, b) => (b.start_datetime_fmt?.epoch || 0) - (a.start_datetime_fmt?.epoch || 0))
+            .slice(0, 5),
+        [workouts]
+    );
+
     function handleSyncResult(isSuccess, error, provider) {
         if (isSuccess) {
             dispatch(workoutsApi.util.invalidateTags(['Workout']));
@@ -135,7 +143,7 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
         <BoxSection>
 
             <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3 gap-2">
-                <span className="mx-4 text-gray-500 uppercase font-bold mb-1.5 sm:mb-0">My Workouts</span>
+                <span className="mx-4 text-gray-500 uppercase font-bold mb-1.5 sm:mb-0">My Workouts <span className="normal-case font-normal text-gray-400">· latest 5</span></span>
                 <div className="p-0 flex gap-2">
                     {
                         (stravaLinked) ? <SyncStravaButton additionalClasses="my-0.5 sm:my-0" isLoading={stravaSyncIsFetching} onClick={() => triggerStravaSync()}/> :
@@ -154,12 +162,12 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
 
             <table className="min-w-full my-2">
                 <tbody>
-                {(workouts.length === 0) ? (
+                {(recentWorkouts.length === 0) ? (
                     <tr className="border-b border-gray-100 dark:border-ink-700/60 hover:bg-gray-50 dark:hover:bg-ink-800">
                         <td className="py-4 px-4 text-center text-gray-400 text-sm">No workouts yet.</td>
                     </tr>
                 ) : (
-                    workouts.map((workout, iWorkout) => (
+                    recentWorkouts.map((workout, iWorkout) => (
                         <tr key={"workout" + iWorkout} className="border-b border-gray-100 dark:border-ink-700/60 hover:bg-gray-50 dark:hover:bg-ink-800">
                             <td className="py-2 px-4 text-sm md:text-base">
                                 <span className="font-semibold">{workout.start_datetime_fmt.date_readable}</span><br/>
@@ -655,20 +663,9 @@ export default function MySpace() {
 
                 </div>
 
-                {/* My Workouts - directly under the welcome block */}
-                <div className="w-full mb-4">
-                    {
-                        (userLoading || workoutsIsLoading) ? (
-                            <SectionLoader height={"h-80"}/>
-                        ) : (workoutsError) ? (
-                            <ErrorBoxSection
-                                errorMsg={workoutsError?.status + ' / ' + (workoutsError?.error || workoutsError?.message || workoutsError?.data?.detail)}/>
-                        ) : (
-                            <WorkoutsBox workouts={workouts} user={user} setLinkStrava={setLinkStrava}/>
-                        )
-                    }
-                </div>
-
+                {/* Stats (30 Day Activity, goals, streak) + Competitions -
+                    above the workout list so the activity summary is the
+                    first thing after the welcome block */}
                 <div className="w-full flex flex-col xl:flex-row">
                     <div className="w-full xl:w-2/3 xl:mr-2 mb-4">
 
@@ -700,6 +697,20 @@ export default function MySpace() {
                         }
 
                     </div>
+                </div>
+
+                {/* My Workouts - the 5 most recent trainings */}
+                <div className="w-full mb-4">
+                    {
+                        (userLoading || workoutsIsLoading) ? (
+                            <SectionLoader height={"h-80"}/>
+                        ) : (workoutsError) ? (
+                            <ErrorBoxSection
+                                errorMsg={workoutsError?.status + ' / ' + (workoutsError?.error || workoutsError?.message || workoutsError?.data?.detail)}/>
+                        ) : (
+                            <WorkoutsBox workouts={workouts} user={user} setLinkStrava={setLinkStrava}/>
+                        )
+                    }
                 </div>
             </div>
 
