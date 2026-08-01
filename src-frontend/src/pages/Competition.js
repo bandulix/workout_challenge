@@ -4,6 +4,10 @@ import {competitionsApi, useGetCompetitionByIdQuery} from "../utils/reducers/com
 import {
     ArrowDownToLine,
     ArrowUpToLine,
+    DoorOpen,
+    Megaphone,
+    Settings,
+    UserRoundPlus,
     UsersRound,
 } from "lucide-react";
 import {Bar, Line} from 'react-chartjs-2';
@@ -36,12 +40,10 @@ import CompetitionForm from "../forms/competitionForm";
 import JoinTeamForm from "../forms/joinTeamForm";
 import ActivityGoalsForm from "../forms/activityGoalsForm";
 import {
-    ChangeTeamButton, LeaveButton,
+    ChangeTeamButton,
     ModifyGoalsButton,
     RefreshButton,
-    SettingsButton, ShareButton,
     StravaButton,
-    DrillInstructorButton,
 } from "../forms/basicComponents";
 import {BoxSection, ErrorBoxSection, PageWrapper, useDarkMode} from "../utils/miscellaneous";
 import {workoutTypes} from "../forms/workoutForm";
@@ -53,9 +55,22 @@ import {teamsApi} from "../utils/reducers/teamsSlice";
 import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
 import {useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
 import PersonaAvatar from "../components/PersonaAvatar";
+import ProfileAvatar from "../components/ProfileAvatar";
 import {timeAgo} from "../utils/time";
 
 ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Filler, Tooltip, Legend, BarElement, ChartDataLabels);
+
+
+function HeaderIconButton({onClick, title, icon: Icon, danger = false, isLoading = false}) {
+    return (
+        <button onClick={onClick} title={title} aria-label={title} disabled={isLoading}
+                className={"p-2 rounded-full min-h-[40px] min-w-[40px] flex items-center justify-center transition active:scale-95 " +
+                    (danger ? "text-gray-400 hover:text-red-500 hover:bg-red-500/10"
+                            : "text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 hover:bg-gray-100 dark:hover:bg-ink-800")}>
+            <Icon className={"h-5 w-5 " + (isLoading ? "animate-pulse" : "")}/>
+        </button>
+    );
+}
 
 
 function CompetitionHead({competition, feed, isOwner}) {
@@ -106,34 +121,33 @@ function CompetitionHead({competition, feed, isOwner}) {
 
     return (
         <BoxSection additionalClasses="mb-4">
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center sm:gap-6 sm:py-4">
-                <div className="space-y-1 pl-0 sm:pl-6 pb-3 sm:pb-0 text-center sm:text-left">
-                    <p className="text-2xl font-display uppercase tracking-wide">{competition.name}</p>
-                    <p className="font-small text-gray-500">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
-
+            {/* Lean one-row header: name + dates, compact workout counts,
+                and icon-only actions (Settings / AI Drill Instructor /
+                Invite, or Leave for non-owners). */}
+            <div className="flex items-center gap-3 px-1 sm:px-3">
+                <div className="flex-1 min-w-0">
+                    <p className="text-xl font-display uppercase tracking-wide truncate">{competition.name}</p>
+                    <p className="text-xs text-gray-500">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
                 </div>
-                <div className="flex p-3">
-                    <div className="flex items-center px-4">
-                        <div className="text-5xl font-display text-volt-500 dark:text-volt-400 pe-2">{countTotal}</div>
-                        <div className="uppercase text-xs tracking-wide text-gray-500">Total Competition<br/>Workouts
-                        </div>
+                <div className="flex items-baseline gap-1.5 shrink-0">
+                    <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
+                    <span className="uppercase text-[10px] tracking-wide text-gray-500">workouts</span>
+                </div>
+                {Object.entries(countGroups).map(([label, count], index) => (
+                    <div key={"stat" + index} className="hidden lg:flex lg:flex-col lg:items-center shrink-0 px-1">
+                        <span className="text-lg font-semibold leading-tight">{count}</span>
+                        <span className="uppercase text-[10px] tracking-wide text-gray-500">{workoutTypes[label].label_short}</span>
                     </div>
-                    {Object.entries(countGroups).map(([label, count], index) => (
-                        <div key={"stat" + index} className="flex flex-col px-4 text-center hidden lg:block">
-                            <div className="text-3xl font-semibold text-left">{count}</div>
-                            <div className="uppercase text-xs tracking-wide text-gray-500">{workoutTypes[label].label_short}</div>
-                        </div>
-                    ))}
-                </div>
-                <div className="p-2 sm:p-4">
+                ))}
+                <div className="flex items-center shrink-0">
                     {
-                        (isOwner) ? <SettingsButton  additionalClasses="mx-auto sm:ml-auto sm:mr-0 my-1" onClick={() => setShowEditCompetitionModal(competition.id)}/> :
-                            <LeaveButton additionalClasses="mx-auto sm:ml-auto sm:mr-0 my-1" onClick={() => triggerLeaveCompetition()} isLoading={leaveIsLoading} />
+                        (isOwner) ? <HeaderIconButton title="Settings" icon={Settings} onClick={() => setShowEditCompetitionModal(competition.id)}/> :
+                            <HeaderIconButton title="Leave Competition" icon={DoorOpen} danger onClick={() => triggerLeaveCompetition()} isLoading={leaveIsLoading}/>
                     }
                     {isOwner && (
-                        <DrillInstructorButton additionalClasses="mx-auto sm:ml-auto sm:mr-0 my-1" onClick={() => setShowDrillInstructorModal(true)}/>
+                        <HeaderIconButton title="AI Drill Instructor" icon={Megaphone} onClick={() => setShowDrillInstructorModal(true)}/>
                     )}
-                    <ShareButton  additionalClasses="mx-auto sm:ml-auto sm:mr-0 my-1" onClick={() => setShowInviteCompetitionModal(true)} />
+                    <HeaderIconButton title="Invite Others" icon={UserRoundPlus} onClick={() => setShowInviteCompetitionModal(true)}/>
                 </div>
             </div>
 
@@ -463,49 +477,53 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
     )
 }
 
+const RANK_STYLES = {
+    1: "text-yellow-500 dark:text-yellow-400",   // gold
+    2: "text-gray-400 dark:text-gray-300",       // silver
+    3: "text-amber-600 dark:text-amber-500",     // bronze
+};
+
 function IndividualLeaderboardBox({stats, userId}) {
 
     return (
         <BoxSection>
             <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
-                <span className="mx-4 text-gray-500 uppercase font-bold">Participant Leaderboard</span>
+                <span className="mx-4 text-gray-500 uppercase font-bold">Leaderboard</span>
             </div>
 
-            <table className="min-w-full my-2">
-                <tbody>
-                {(stats.leaderboard.individual.length === 0) ? (
-                    <tr className="hover:bg-gray-100 dark:hover:bg-ink-800 border-b">
-                        <td className="py-2 px-4 pb-3 text-center text-gray-500">Here participants will show up!
-                        </td>
-                    </tr>
-                ) : (
-                stats.leaderboard.individual.map((person, index) => (
-                    <tr key={"leader_user" + index} className={((userId === person.workout__user__id) ? "bg-volt-400/10 dark:bg-volt-400/5 " : "") + "hover:bg-gray-100 dark:hover:bg-ink-800 border-b"}>
-                        <td className="py-2 px-2">
-                            <span className="font-semibold">#{person.rank}</span>
-                        </td>
-                        <td className="py-2 px-2">
-                            <span className="font-semibold">{person.username}</span>
-                        </td>
-                        <td className="py-2 px-2">
-                            {(person.strava_allow_follow === true && person.strava_athlete_id) && (
-                                <StravaButton label={"Follow"} onClick={() => {
-                                    // Coerce to digits only so a poisoned athlete id can't turn
-                                    // the click into an open redirect.
-                                    const id = String(person.strava_athlete_id).replace(/[^0-9]/g, '');
-                                    if (id) window.open("https://www.strava.com/athletes/" + id, "_blank", "noopener,noreferrer");
-                                }}/>
-                            )}
-                        </td>
-                        <td className="py-2 px-2 text-right">
-                            <span
-                                className="font-semibold">{Math.round(person.total_capped, 0).toLocaleString()}P</span>
-                        </td>
-                    </tr>
-                ))
-                )}
-                </tbody>
-            </table>
+            {(stats.leaderboard.individual.length === 0) ? (
+                <p className="py-4 px-4 text-center text-gray-500">Here participants will show up!</p>
+            ) : (
+                <ul className="my-1">
+                    {stats.leaderboard.individual.map((person, index) => (
+                        <li key={"leader_user" + index}
+                            className={"flex items-center gap-3 px-3 py-2.5 " + ((userId === person.workout__user__id) ? "bg-volt-400/10 dark:bg-volt-400/5 " : "")}>
+                            {/* Rank - medal colours for the podium */}
+                            <span className={"w-8 shrink-0 text-center font-display text-lg " + (RANK_STYLES[person.rank] || "text-gray-400")}>
+                                {person.rank !== null ? `#${person.rank}` : "–"}
+                            </span>
+
+                            {/* Profile picture with the points badge hovering
+                                partly over its bottom-right corner */}
+                            <div className="relative shrink-0 mr-1.5">
+                                <ProfileAvatar user={person} size={46}/>
+                                <span className="absolute -bottom-1 -right-2 rounded-full bg-volt-400 text-ink-950 text-[10px] font-extrabold px-1.5 py-0.5 shadow-glow-volt whitespace-nowrap">
+                                    {Math.round(person.total_capped ?? 0).toLocaleString()}P
+                                </span>
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                                <p className="font-semibold truncate">{person.username}</p>
+                                {(person.rank !== null && person.days_on_rank > 0) && (
+                                    <p className="text-[11px] text-gray-400">
+                                        on #{person.rank} for {person.days_on_rank} {person.days_on_rank === 1 ? "day" : "days"}
+                                    </p>
+                                )}
+                            </div>
+                        </li>
+                    ))}
+                </ul>
+            )}
         </BoxSection>
     )
 }
@@ -976,6 +994,36 @@ export default function Competition() {
                     )
                 }
 
+                {/* Leaderboards - the first box after the header */}
+                <div className="flex flex-col md:flex-row mb-4">
+                    <div className={"w-full mb-4 md:mb-0 " + (competition?.has_teams === false ? "" : "md:w-1/2 md:pr-2")}>
+                        {
+                            (statsLoading) ? (
+                                <SectionLoader/>
+                            ) : (statsError) ? (
+                                <ErrorBoxSection
+                                    errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
+                            ) : (
+                                <IndividualLeaderboardBox stats={stats} userId={user?.id}/>
+                            )
+                        }
+                    </div>
+                    {(competition?.has_teams === false) ? null : (
+                    <div className="w-full md:w-1/2 md:pl-2">
+                        {
+                            (statsLoading || competitionLoading) ? (
+                                <SectionLoader/>
+                            ) : (statsError) ? (
+                                <ErrorBoxSection
+                                    errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
+                            ) : (
+                                <TeamLeaderboardBox stats={stats} competition={competition} user={user} teamId={teamId} isOwner={isOwner}/>
+                            )
+                        }
+                    </div>
+                    )}
+                </div>
+
                 {/* The Drill Instructor's corner */}
                 {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
 
@@ -1019,51 +1067,17 @@ export default function Competition() {
                     </div>
                 </div>
 
-                {/* Leaderboards & Activity */}
-                <div className="flex flex-col xl:flex-row mt-4">
-
-                    {/* Activity Feed – left on xl, below otherwise */}
-                    <div className="order-2 xl:order-1 w-full xl:w-2/3 xl:pr-2">
-                        {
-                            (feedLoading) ? <SectionLoader height={"h-80"}/> : (feedError) ? (
-                                <ErrorBoxSection
-                                    errorMsg={feedError?.status + ' / ' + (feedError?.error || feedError?.message || feedError?.data?.detail)}/>
-                            ) : (
-                                <FeedBox feed={feed} refreshCompetition={refreshPage}
-                                         competitionIsRefreshing={competitionFetching || feedFetching || statsFetching}/>
-                            )
-                        }
-                    </div>
-
-                    {/* Leaderboards – above Activity on sm/md/lg, right on xl */}
-                    <div className="order-1 xl:order-2 w-full xl:w-1/3 mb-1 xl:mb-0 flex flex-col md:flex-row xl:flex-col xl:pl-2">
-                        { (competition?.has_teams === false) ? null : (
-                        <div className="w-full md:w-1/2 xl:w-full pr-0 md:pr-2 xl:pr-0 mb-4">
-                            {
-                                (statsLoading || competitionLoading) ? (
-                                    <SectionLoader/>
-                                ) : (statsError) ? (
-                                    <ErrorBoxSection
-                                        errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
-                                ) : (
-                                    <TeamLeaderboardBox stats={stats} competition={competition} user={user} teamId={teamId} isOwner={isOwner}/>
-                                )
-                            }
-                        </div>
-                        )}
-                        <div className="w-full md:w-1/2 xl:w-full pl-0 md:pl-2 xl:pl-0 mb-4">
-                            {
-                                (statsLoading) ? (
-                                    <SectionLoader/>
-                                ) : (statsError) ? (
-                                    <ErrorBoxSection
-                                        errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
-                                ) : (
-                                    <IndividualLeaderboardBox stats={stats} userId={user?.id}/>
-                                )
-                            }
-                        </div>
-                    </div>
+                {/* Activity Feed - full width below everything else */}
+                <div className="mt-4">
+                    {
+                        (feedLoading) ? <SectionLoader height={"h-80"}/> : (feedError) ? (
+                            <ErrorBoxSection
+                                errorMsg={feedError?.status + ' / ' + (feedError?.error || feedError?.message || feedError?.data?.detail)}/>
+                        ) : (
+                            <FeedBox feed={feed} refreshCompetition={refreshPage}
+                                     competitionIsRefreshing={competitionFetching || feedFetching || statsFetching}/>
+                        )
+                    }
                 </div>
             </div>
 

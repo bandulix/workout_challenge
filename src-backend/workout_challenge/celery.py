@@ -20,16 +20,19 @@ app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
 
 app.conf.beat_schedule = {
-    # every morning import users strava workouts
+    # hourly import users strava workouts (beat uses DatabaseScheduler -
+    # the live schedule lives in the PeriodicTask DB rows; this static
+    # dict is documentation-only)
     "strava_sync": {
         "task": "custom_user.strava.daily_strava_sync",
-        "schedule": crontab(minute="44", hour="4"),
+        "schedule": crontab(minute="44", hour="*"),
         "args": (),
     },
-    # every morning import users garmin workouts
+    # hourly import users garmin workouts (10 min after strava, so both
+    # syncs never compete for the worker at the same time)
     "garmin_sync": {
         "task": "custom_user.garmin.daily_garmin_sync",
-        "schedule": crontab(minute="54", hour="4"),
+        "schedule": crontab(minute="54", hour="*"),
         "args": (),
     },
     # not needed - just fallback - do all pending point recalc tasks in the morning

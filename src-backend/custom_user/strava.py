@@ -44,8 +44,12 @@ def daily_strava_sync(self, refresh_all=False):
         is_active=True
     )
     if refresh_all is False:
+        # Per-user throttle: beat runs this task hourly, so users synced
+        # within the last 55 minutes are skipped (55 < 60 guarantees nobody
+        # misses a cycle to scheduler jitter). Effect: everyone syncs
+        # roughly every 60 minutes.
         user_lst = user_lst.filter(
-            Q(strava_last_synced_at__lt=timezone.now() - datetime.timedelta(hours=6)) |
+            Q(strava_last_synced_at__lt=timezone.now() - datetime.timedelta(minutes=55)) |
             Q(strava_last_synced_at__isnull=True)
         )
     user_lst = user_lst.order_by('strava_last_synced_at', 'pk')

@@ -295,7 +295,9 @@ def daily_garmin_sync(self):
 
     print(f"Syncing Garmin for {user_lst.count()} users")
     for user in user_lst:
-        if user.garmin_last_synced_at and user.garmin_last_synced_at > timezone.now() - datetime.timedelta(hours=6):
+        # Per-user throttle matching the hourly beat schedule (55 < 60 so
+        # scheduler jitter can't push anyone to a two-hour cadence).
+        if user.garmin_last_synced_at and user.garmin_last_synced_at > timezone.now() - datetime.timedelta(minutes=55):
             continue
         try:
             sync_garmin(user__id=user.id, days_back=3)

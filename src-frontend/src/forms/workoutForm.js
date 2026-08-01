@@ -174,7 +174,7 @@ function formatTime(totalSeconds) {
 }
 
 
-export default function WorkoutForm({id, setModalState, scaling_distance}) {
+export default function WorkoutForm({id = true, setModalState, scaling_distance}) {
     const dispatch = useDispatch();
 
     const yesterday = new Date();

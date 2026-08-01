@@ -29,6 +29,76 @@ def _add_rank(data, key, enhance_dict, id_field, rank_field='rank', reverse=True
     return sorted_data
 
 
+def _rank_map(totals):
+    """Rank a {user_id: points} mapping competition-style: sorted
+    descending, ties share the better rank (1, 2, 2, 4 ...)."""
+    ranked = {}
+    rank = 0
+    last_value = None
+    for idx, (uid, value) in enumerate(sorted(totals.items(), key=lambda kv: kv[1], reverse=True), start=1):
+        if value != last_value:
+            rank = idx
+            last_value = value
+        ranked[uid] = rank
+    return ranked
+
+
+def _compute_days_on_rank(competition_obj, timeseries_user, leaderboard_user, user_dict):
+    """For how many consecutive days each participant has held their
+    CURRENT rank ("on rank 1 for 12 days").
+
+    Rebuilds the cumulative standings day by day from the daily points
+    timeseries and counts backwards from the most recent day for as long
+    as the user's daily rank equals today's rank. Days on which nobody
+    had scored yet are skipped (an all-zero tie makes ranks meaningless -
+    it neither extends nor breaks a streak). Only users with a current
+    rank get an entry in the returned {user_id: days} mapping.
+    """
+    current_rank = {i['id']: i['rank'] for i in leaderboard_user if i.get('rank') is not None}
+    if not current_rank:
+        return {}
+
+    today = datetime.date.today()
+    first_day = competition_obj.start_date
+    last_day = min(today, competition_obj.end_date)  # ranks freeze at the end date
+    total_days = (last_day - first_day).days + 1
+    if total_days <= 0:
+        return {}
+
+    member_ids = list(user_dict.keys())
+
+    # Cumulative point totals per user per day (day 0 = competition start).
+    cumulative = {}
+    for uid in member_ids:
+        per_day = timeseries_user.get(uid, {})
+        running = 0
+        totals = []
+        for day_offset in range(total_days):
+            days_ago = (today - (first_day + datetime.timedelta(days=day_offset))).days
+            entry = per_day.get(days_ago)
+            running += (entry['total'] or 0) if entry else 0
+            totals.append(running)
+        cumulative[uid] = totals
+
+    # Walk backwards from the most recent day and extend each streak
+    # while the daily rank matches the current one.
+    still_counting = set(current_rank.keys())
+    streaks = {uid: 0 for uid in still_counting}
+    for day_offset in reversed(range(total_days)):
+        if not still_counting:
+            break
+        day_totals = {uid: cumulative[uid][day_offset] for uid in member_ids}
+        if all(t == 0 for t in day_totals.values()):
+            continue
+        ranked = _rank_map(day_totals)
+        for uid in list(still_counting):
+            if ranked.get(uid) == current_rank[uid]:
+                streaks[uid] += 1
+            else:
+                still_counting.discard(uid)
+    return streaks
+
+
 def get_competition_stats(competition, last_seven_days=False):
     CustomUser = apps.get_model('custom_user', 'CustomUser')
     Competition = apps.get_model('competition', 'Competition')
@@ -106,10 +176,13 @@ def get_competition_stats(competition, last_seven_days=False):
         timeseries_team[team_id][days_ago] = i
 
     # Get user data
-    user_dict = {i['id']: i for i in CustomUser.objects.filter(my_competitions=competition).values('id', 'username', 'strava_allow_follow', 'strava_athlete_id').order_by('username', 'id')}
+    user_dict = {i['id']: i for i in CustomUser.objects.filter(my_competitions=competition).values('id', 'username', 'strava_allow_follow', 'strava_athlete_id', 'profile_picture').order_by('username', 'id')}
     for key, value in user_dict.items():
         if value['strava_allow_follow'] is False:
             value['strava_athlete_id'] = None
+        # values() yields the storage path ("profile_pics/x.jpg") - expose
+        # the URL the frontend can render straight away (None when unset).
+        value['profile_picture'] = f"/{settings.MEDIA_URL}{value['profile_picture']}" if value['profile_picture'] else None
 
     # Get user rankings
     leaderboard_user = (
@@ -119,6 +192,12 @@ def get_competition_stats(competition, last_seven_days=False):
         .order_by('-total_capped')
     )
     leaderboard_user = _add_rank(leaderboard_user, key="total_capped", enhance_dict=user_dict, id_field='workout__user__id')
+
+    # "On rank N for X days" streak for every ranked participant.
+    days_on_rank = _compute_days_on_rank(competition_obj, timeseries_user, leaderboard_user, user_dict)
+    for entry in leaderboard_user:
+        entry['days_on_rank'] = days_on_rank.get(entry['id'])
+
     leaderboard_user_dict = {i['id']: i for i in leaderboard_user}
 
     # Get team data
