@@ -61,35 +61,24 @@ function WelcomeBox({user, workouts}) {
 
     return (
         <BoxSection additionalClasses={"mb-4"}>
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center sm:gap-6 sm:py-4">
-
-                {/* Message */}
-                <div className="flex flex-col gap-2 px-5 pb-2 sm:flex-row sm:items-center sm:gap-6 sm:py-2.5">
-                    <ProfileAvatar user={user} size={96} editable className="mx-auto sm:mx-0"/>
-                    <div className="space-y-2 text-center sm:text-left">
-                        <div className="space-y-0.5">
-                            <p className="font-small text-gray-500">Welcome back,</p>
-                            <p className="text-3xl font-display uppercase tracking-wide">{user.first_name}</p>
-                        </div>
-                    </div>
+            {/* Compact one-row header: small avatar with the name beside
+                it, lifetime total and top sport counts on the right. */}
+            <div className="flex items-center gap-4 px-1 sm:px-3">
+                <ProfileAvatar user={user} size={64} editable className="shrink-0"/>
+                <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-500">Welcome back,</p>
+                    <p className="text-xl font-display uppercase tracking-wide truncate">{user.first_name}</p>
                 </div>
-
-                {/* Workout Stats */}
-                <div className="flex p-3">
-                    <div className="flex items-center px-4">
-                        <div className="text-5xl font-display text-volt-500 dark:text-volt-400 pe-2">{countTotal}</div>
-                        <div className="uppercase text-xs tracking-wide text-gray-500">Total Lifetime<br/>Workouts
-                        </div>
-                    </div>
-                    {Object.entries(countGroups).map(([label, count], index) => (
-                        <div key={"stat" + index} className="flex flex-col px-4 text-center hidden lg:block">
-                            <div className="text-3xl font-semibold text-left">{count}</div>
-                            <div
-                                className="uppercase text-xs tracking-wide text-gray-500">{workoutTypes[label].label_short}</div>
-                        </div>
-                    ))}
+                <div className="flex items-baseline gap-1.5 shrink-0">
+                    <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
+                    <span className="uppercase text-[10px] tracking-wide text-gray-500">workouts</span>
                 </div>
-
+                {Object.entries(countGroups).map(([label, count], index) => (
+                    <div key={"stat" + index} className="hidden lg:flex lg:flex-col lg:items-center shrink-0 px-1">
+                        <span className="text-lg font-semibold leading-tight">{count}</span>
+                        <span className="uppercase text-[10px] tracking-wide text-gray-500">{workoutTypes[label].label_short}</span>
+                    </div>
+                ))}
             </div>
         </BoxSection>
     )
