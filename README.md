@@ -7,7 +7,7 @@
 >
 > 🤖 Full transparency: **this fork was vibe-coded** — designed and built with AI assistance (OpenCode + LLMs), guided and reviewed by a human.
 
-Compete with friends and co-workers across devices (Apple / Android / Garmin / etc.) using the metrics you want (km / minutes / kcal / count), respecting your privacy. Workouts can be added manually or imported automatically from a linked Strava or Garmin Connect account — and an optional AI Drill Instructor keeps the banter going.
+Turn staying active into a rivalry your friends actually care about. Compete with friends and co-workers on the metrics you choose — kilometres, minutes, calories, steps — from any device, with your privacy fully intact. Workouts import themselves from Strava or Garmin Connect, teams and leaderboards keep the score honest, and your personal **AI Drill Instructor** — voiced by a persona you pick — comments on every workout, nudges quiet groups, and pings your lock screen when the banter demands it. Self-hosted. Installable as a PWA. Entirely yours.
 
 <p align="center">
   <a href="docs/imgs/preview-mobile-login-dark.png"><img src="docs/imgs/preview-mobile-login-dark.png" width="230" alt="Login - Workout Challenge PWA"></a>
