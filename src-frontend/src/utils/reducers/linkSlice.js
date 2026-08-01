@@ -13,7 +13,7 @@ export const linkApi = createApi({
         }),
         linkStrava: builder.mutation({
             query: ({code, state}) => ({
-                url: `strava/link/${code}/${encodeURIComponent(state)}/`,
+                url: `strava/link/${encodeURIComponent(code)}/${encodeURIComponent(state)}/`,
                 method: 'POST',
             }),
         }),

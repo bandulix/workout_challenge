@@ -12,8 +12,13 @@ jobs:
   merge-master-back-to-dev:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    # Explicit minimal token scope: this job pushes the back-merge to dev.
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v2
+      # Pinned to a commit SHA: mutable tags can be repointed to
+      # malicious code (supply-chain). actions/checkout v4.2.2.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Set Git config
         run: |
           git config --local user.email "actions@github.com"

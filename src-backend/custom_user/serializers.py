@@ -146,9 +146,12 @@ class PasswordResetSerializer(serializers.Serializer):
         # Always behave the same whether or not the address is known -
         # the response is identical so an attacker can't enumerate
         # registered emails by timing or by error codes.
-        email = (self.validated_data.get('email') or '').strip().lower()
+        email = (self.validated_data.get('email') or '').strip()
 
-        for user in CustomUser.objects.filter(email=email):
+        # iexact: normalize_email() only lowercases the domain part, so
+        # users who registered with a mixed-case local part would
+        # otherwise never receive their reset email.
+        for user in CustomUser.objects.filter(email__iexact=email):
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             token = default_token_generator.make_token(user)
             reset_url = f"{settings.MAIN_HOST}/password/reset/{uid}/{token}/"

@@ -161,7 +161,7 @@ export default function GoalEqualizerForm({user, setModalState}) {
     return (
         <Modal title="Equalize Goals" landscape={false} setShowModal={setModalState} isLoading={updateIsLoading}>
             <p className="text-gray-700 dark:text-gray-300">Everyone has a unique <b>Basal Metabolic Rate (BMR)</b>, dependent on factors like age, gender, height, and weight. To ensure a fair competition, the calculator below estimates your personal equalizing factors, which will be used to scale the competition goals. Your inputs <u>stay on your device</u> — only the final two equalizing percent factors (blue fields) are saved to equalize your points.</p>
-            <p className="text-gray-500 text-sm italic">You still don't trust it? Check the <a className="text-blue-500 hover:underline" target="_blank" href="https://github.com/vanalmsick/workout_challenge/blob/main/src-frontend/src/forms/equalizerForm.js#L149">public source code yourself (here)</a>!</p>
+            <p className="text-gray-500 text-sm italic">You still don't trust it? Check the <a className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick/workout_challenge/blob/main/src-frontend/src/forms/equalizerForm.js#L149">public source code yourself (here)</a>!</p>
             <SingleForm fields={fields} values={values} setValues={setValues} errors={fieldErrors}/>
             <div className="text-center text-red-500 text-xs italic">{formError}</div>
             <div className="text-center text-gray-700 dark:text-gray-300 text-xs italic"><b>Current Effort Factor:</b> {Math.round(user.scaling_kcal * 100)}% / <b>Current Distance Factor:</b> {Math.round(user.scaling_distance * 100)}%</div>

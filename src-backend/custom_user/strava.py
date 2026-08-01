@@ -13,6 +13,19 @@ from django.db.models import Q
 
 from workouts.models import Workout
 from .api_rate_limiter import strava_api_monitor, RateLimitExceeded  # Import to trigger initialization
+from .token_crypto import decrypt_token, encrypt_token
+
+# Every outbound Strava request gets a hard timeout so a hung Strava
+# API can't park a Celery worker (or the gunicorn worker serving the
+# interactive link/sync endpoints) forever.
+STRAVA_HTTP_TIMEOUT = 15
+
+
+def _get_refresh_token(user):
+    """Return the user's Strava refresh token, transparently handling
+    both encrypted-at-rest values and legacy plaintext ones (pre-
+    encryption rows are re-saved encrypted on first successful use)."""
+    return decrypt_token(user.strava_refresh_token)
 
 
 def _seconds_until_next_interval():
@@ -54,7 +67,9 @@ def daily_strava_sync(self, refresh_all=False):
         )
     user_lst = user_lst.order_by('strava_last_synced_at', 'pk')
 
-    user_lst_names = [{'pk': i.pk, 'username': i.username, 'email': i.email} for i in user_lst]
+    # Log pks/usernames only - email addresses are PII and shouldn't
+    # land in container logs.
+    user_lst_names = [{'pk': i.pk, 'username': i.username} for i in user_lst]
     print(f'Syncing Strava for {len(user_lst)} users: {user_lst_names}')
 
     for user in user_lst:
@@ -65,7 +80,7 @@ def daily_strava_sync(self, refresh_all=False):
             print(f'Strava sync rate limit exceeded - sleeping for {sleep_time // 60 } mins')
             raise self.retry(exc=exc, countdown=sleep_time)  # retry in next Strava 15min api period
         except Exception as exc:
-            print(f'Strava sync failed for user {user.email} - {exc}')
+            print(f'Strava sync failed for user {user.pk} - {exc}')
 
     print('Finished syncing Strava.')
     return user_lst_names
@@ -88,7 +103,7 @@ def sync_strava(self, user__id, start_datetime=None):
 
     # refresh access token if expired
     if access_token is None:
-        refresh_token = user.strava_refresh_token
+        refresh_token = _get_refresh_token(user)
         from site_settings.models import resolve_strava_settings
         strava_cfg = resolve_strava_settings()
         client_id = strava_cfg["client_id"]
@@ -101,7 +116,8 @@ def sync_strava(self, user__id, start_datetime=None):
                 'client_secret': client_secret,
                 'grant_type': 'refresh_token',
                 'refresh_token': refresh_token,
-            }
+            },
+            timeout=STRAVA_HTTP_TIMEOUT,
         )
         strava_api_monitor.log_request(response)
         response.raise_for_status()
@@ -109,6 +125,15 @@ def sync_strava(self, user__id, start_datetime=None):
         strava_tokens = response.json()
         access_token = strava_tokens.get('access_token', None)
         cache.set(f"strava_access_token_{user__id}", access_token, int(strava_tokens.get('expires_in', 21600)) - 60)
+
+        # Persist the (possibly rotated) refresh token encrypted at
+        # rest, transparently upgrading legacy plaintext rows on their
+        # first successful use.
+        new_refresh_token = strava_tokens.get('refresh_token') or refresh_token
+        stored = user.strava_refresh_token or ''
+        if new_refresh_token and (new_refresh_token != refresh_token or not stored.startswith('gAAAAA')):
+            user.strava_refresh_token = encrypt_token(new_refresh_token)
+            user.save(update_fields=['strava_refresh_token'])
 
 
     # get activities
@@ -127,7 +152,8 @@ def sync_strava(self, user__id, start_datetime=None):
                 'after': None if start_datetime is None else int(start_datetime.timestamp()),
                 'page': page,
                 'per_page': per_page,
-            }
+            },
+            timeout=STRAVA_HTTP_TIMEOUT,
         )
         strava_api_monitor.log_request(response)
         response.raise_for_status()
@@ -148,10 +174,17 @@ def sync_strava(self, user__id, start_datetime=None):
             # if existing workout - update activity details
             if activity_id in all_existing_strava_activities:
                 workout = Workout.objects.get(strava_id=activity_id)
-                for key, value in props.items():
-                    setattr(workout, key, value)
-                workout.save()
-                cnt_updated_strava_activities += 1
+                # Never touch another user's workout: `strava_id` is
+                # unique across the whole table, so without this guard a
+                # sync would reassign (`props` contains `'user': user`)
+                # a workout owned by a different account to the
+                # currently syncing user - a cross-account workout
+                # takeover for any duplicated/legacy Strava linkage.
+                if workout.user_id == user.id:
+                    for key, value in props.items():
+                        setattr(workout, key, value)
+                    workout.save()
+                    cnt_updated_strava_activities += 1
 
             # if a new workout - get activity details
             else:
@@ -163,6 +196,7 @@ def sync_strava(self, user__id, start_datetime=None):
                     headers={
                         'Authorization': f'Bearer {access_token}',
                     },
+                    timeout=STRAVA_HTTP_TIMEOUT,
                 )
                 strava_api_monitor.log_request(response)
                 response.raise_for_status()

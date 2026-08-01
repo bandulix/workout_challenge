@@ -91,8 +91,15 @@ class ActivityGoalViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
-class PointsViewSet(viewsets.ModelViewSet):
-    #queryset = Points.objects.all()
+class PointsViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only: Points rows are computed exclusively by the scorer
+    (``competition.scorer``) from workouts and goals. Previously this was
+    a full ModelViewSet and ``IsOwnerOrReadOnly.has_permission`` allows
+    any authenticated user through, while ``create()`` never runs
+    object-level permission checks - so any user could POST arbitrary
+    ``points_raw``/``points_capped`` values for any goal/workout and
+    mint points (or attach forged points to someone else's workout).
+    """
     serializer_class = PointsSerializer
 
     permission_classes = [IsOwnerOrReadOnly]
@@ -106,15 +113,24 @@ class PointsViewSet(viewsets.ModelViewSet):
 class StatsPermissions(BasePermission):
     def has_permission(self, request, view):
         # Only authenticated users
-        if request.user.is_authenticated:
-            return True
-        return False
+        if not request.user.is_authenticated:
+            return False
+        # The competition-membership check MUST live here (not only in
+        # has_object_permission): ``CompetitionStatsQueryView.get`` is
+        # wrapped in ``cache_page(30)``, so on a cache hit the view body
+        # - and its ``check_object_permissions`` call - never executes.
+        # DRF always runs has_permission before the handler, cache hit
+        # or not. Without this, any authenticated user could read the
+        # cached stats of a competition they don't participate in.
+        return self._is_participant(request, view)
+
+    def _is_participant(self, request, view):
+        return Competition.objects.filter(
+            Q(pk=view.kwargs.get('competition', 0)) & (Q(owner=request.user) | Q(user=request.user))
+        ).exists()
 
     def has_object_permission(self, request, view, obj):
-        competition_lst = Competition.objects.filter(
-            Q(pk=view.kwargs.get('competition', 0)) & (Q(owner=request.user) | Q(user=request.user))
-        )
-        return len(competition_lst) > 0
+        return self._is_participant(request, view)
 
 
 class IsAdmin(BasePermission):

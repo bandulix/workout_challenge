@@ -10,7 +10,7 @@ python manage.py makemigrations
 echo "Run migrate"
 python manage.py migrate
 
-if [ $DEBUG == "true" ] || [ $DEBUG == "True" ]; then
+if [ "$DEBUG" = "true" ] || [ "$DEBUG" = "True" ]; then
 	echo "Run Django Server";
 	python ./manage.py runserver 0.0.0.0:8000;
 else

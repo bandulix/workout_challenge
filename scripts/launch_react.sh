@@ -2,7 +2,7 @@
 
 # Working dir is "src-frontend"
 
-if [ $DEBUG == "true" ] || [ $DEBUG == "True" ]; then
+if [ "$DEBUG" = "true" ] || [ "$DEBUG" = "True" ]; then
 	echo "Run React Dev-Server";
 	npm start;
 else
