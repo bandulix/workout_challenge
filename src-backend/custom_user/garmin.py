@@ -18,17 +18,15 @@ Sync mirrors the Strava flow: recent activities are mapped onto
 Celery beat job plus a manual (rate-limited) re-sync button.
 """
 
-import base64
 import datetime
-import hashlib
 import logging
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from workout_challenge.celery import app, is_task_already_executing
 from workouts.models import Workout
+from .token_crypto import decrypt_token, encrypt_token
 
 logger = logging.getLogger(__name__)
 
@@ -36,22 +34,15 @@ MAX_HR_ESTIMATE = 180
 
 
 # ---------------------------------------------------------------------------
-# Token encryption
+# Token encryption (shared with the Strava integration - see token_crypto)
 # ---------------------------------------------------------------------------
 
-def _fernet():
-    from cryptography.fernet import Fernet
-    key_material = getattr(settings, "GARMIN_TOKEN_KEY", None) or settings.SECRET_KEY
-    digest = hashlib.sha256(key_material.encode()).digest()
-    return Fernet(base64.urlsafe_b64encode(digest))
-
-
 def encrypt_tokens(token_blob: str) -> str:
-    return _fernet().encrypt(token_blob.encode()).decode()
+    return encrypt_token(token_blob)
 
 
 def decrypt_tokens(enc_blob: str) -> str:
-    return _fernet().decrypt(enc_blob.encode()).decode()
+    return decrypt_token(enc_blob)
 
 
 # ---------------------------------------------------------------------------

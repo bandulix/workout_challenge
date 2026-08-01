@@ -76,7 +76,7 @@ export function LinkStravaScreen({setModal}) {
                                 <li>––– That's it – nothing more! –––</li>
                             </ul>
                             <p className="text-gray-500 text-sm italic">You still don't trust it? Check the <a
-                                className="text-blue-500 hover:underline" target="_blank"
+                                className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer"
                                 href="https://github.com/vanalmsick/workout_challenge/blob/main/src-backend/custom_user/strava.py#L126-L162">public
                                 source code yourself (here)</a>!</p>
                         </>
@@ -91,7 +91,7 @@ export function LinkStravaScreen({setModal}) {
                             </div>
                             <p className="text-gray-600 dark:text-gray-400">Or <a
                                 className="text-blue-500 hover:underline" href={url}
-                                target="_blank">click this link</a></p>
+                                target="_blank" rel="noopener noreferrer">click this link</a></p>
                         </>
                     )
                 }

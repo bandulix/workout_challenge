@@ -37,9 +37,16 @@ except Exception:
     echo "entrypoint: Postgres reachable."
 fi
 
-# Migrations (idempotent). Never run `makemigrations` here.
+# The workers run as the unprivileged `app` user (see supervisord.conf).
+# Make sure the data volume (SQLite db, media uploads, vapid.json) is
+# writable by it - named volumes already inherit the image ownership,
+# but bind mounts arrive root-owned.
+chown -R app:app /workout_challenge/src-backend/data
+
+# Migrations (idempotent). Never run `makemigrations` here. Run as the
+# app user so a SQLite database file is created with the right owner.
 echo "entrypoint: applying migrations..."
-python3 manage.py migrate --noinput
+su app -s /bin/sh -c "python3 manage.py migrate --noinput"
 
 # Static files for the admin / DRF browsable API.
 echo "entrypoint: collecting static files..."

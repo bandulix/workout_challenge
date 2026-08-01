@@ -26,21 +26,29 @@ services:
       # the same host: APP_BIND=127.0.0.1 and APP_PORT=<proxy target port>,
       # then point the proxy at 127.0.0.1:<APP_PORT>.
       - "${APP_BIND:-0.0.0.0}:${APP_PORT:-80}:80"
-      # Debug/monitoring ports are localhost-only by default - they have
-      # no auth of their own, so publishing them on a public host would
-      # expose Flower, supervisord and the raw Django API to the internet.
-      # Reach them from the server itself or via SSH port forwarding, e.g.
+      # Celery Flower task monitoring (basic-auth protected, see below).
+      # Localhost-only by default - reach it from the server itself or
+      # via SSH port forwarding, e.g.
       #   ssh -L 5555:127.0.0.1:5555 user@your-vps
       # Set DEBUG_BIND=0.0.0.0 only on a trusted network.
       - "${DEBUG_BIND:-127.0.0.1}:5555:5555"    # Celery Flower task monitoring
-      - "${DEBUG_BIND:-127.0.0.1}:9001:9001"    # Supervisord process monitoring
-      - "${DEBUG_BIND:-127.0.0.1}:8000:8000"    # Django direct (gunicorn)
+      # NOT published, deliberately:
+      #   9001 supervisord web UI - unauthenticated process control;
+      #        loopback-only in the container now. Use
+      #        `docker compose exec workoutchallenge supervisorctl -c /etc/supervisord.conf status`
+      #   8000 gunicorn direct - bypasses the nginx security headers;
+      #        binds loopback inside the container for nginx only.
     volumes:
       - django_data:/workout_challenge/src-backend/data
     environment:
       # --- Core Django ---
-      - SECRET_KEY=${SECRET_KEY:-dev-only-not-for-production-CHANGE-ME-please-50chars}
-      - DEBUG=${DEBUG:-true}
+      # SECRET_KEY is required (like POSTGRES_PASSWORD): a known default
+      # would let attackers forge sessions and password-reset tokens.
+      # Generate one with:
+      #   python3 -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY env var is required - see .env.example}
+      # DEBUG defaults to false; opt into it explicitly for development.
+      - DEBUG=${DEBUG:-false}
       - TIME_ZONE=${TIME_ZONE:-Europe/London}
       - REGISTRATION_TOKEN=${REGISTRATION_TOKEN:-}
       # How long users stay logged in WITHOUT opening the app (rolling
@@ -109,7 +117,28 @@ services:
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@localhost}
+
+      # --- Celery Flower (task monitoring on 127.0.0.1:5555) ---
+      # Basic auth is mandatory - Flower exposes task payloads and
+      # controls. Defaults the password to SECRET_KEY so no extra secret
+      # needs managing; set FLOWER_USER/FLOWER_PASSWORD to override.
+      - FLOWER_USER=${FLOWER_USER:-admin}
+      - FLOWER_PASSWORD=${FLOWER_PASSWORD:-${SECRET_KEY:?SECRET_KEY env var is required}}
     restart: unless-stopped
+    # Drop all capabilities and add back only what the stack needs:
+    # NET_BIND_SERVICE (nginx on :80), SETUID/SETGID (supervisord
+    # spawning workers as app/redis), CHOWN + DAC_OVERRIDE (entrypoint
+    # fixing data-volume ownership).
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       database:
         condition: service_healthy
@@ -127,8 +156,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres}" ]
       interval: 5s
       timeout: 5s
       retries: 5

@@ -287,7 +287,12 @@ class LinkStravaView(APIView):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-        setattr(user, 'strava_refresh_token', strava_tokens.get('refresh_token', None))
+        # Encrypt the refresh token before it touches the DB - a leaked
+        # database dump must not hand out live Strava credentials (same
+        # treatment the Garmin tokens already get).
+        from .token_crypto import encrypt_token
+        refresh_token = strava_tokens.get('refresh_token', None)
+        setattr(user, 'strava_refresh_token', encrypt_token(refresh_token) if refresh_token else None)
         setattr(user, 'strava_athlete_id', new_athlete_id)
         user.save()
 

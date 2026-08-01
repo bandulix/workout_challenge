@@ -22,17 +22,8 @@
     <link rel="preload" href="%PUBLIC_URL%/fonts/Inter-var.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
     <link rel="preload" href="%PUBLIC_URL%/fonts/ArchivoBlack-400.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
     <script src="%PUBLIC_URL%/config.js"></script>
-    <script>
-        // Apply the stored theme before first paint (class-based dark mode).
-        (function () {
-            try {
-                var t = localStorage.getItem("wc-theme") || "system";
-                var dark = t === "dark" || (t === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-                document.documentElement.classList.toggle("dark", dark);
-                document.documentElement.style.colorScheme = dark ? "dark" : "light";
-            } catch (e) { /* never block rendering */ }
-        })();
-    </script>
+    <!-- External file so CSP can run without script-src 'unsafe-inline'. -->
+    <script src="%PUBLIC_URL%/theme-init.js"></script>
     <title>Workout Challenge</title>
     <style>
         /* Reserve safe-area for the iPhone notch / home indicator so

@@ -7,7 +7,9 @@ export const joinApi = createApi({
     endpoints: (builder) => ({
         joinCompetition: builder.mutation({
             query: (join_code) => ({
-                url: `join/competition/${join_code}/`,
+                // Encode user-supplied input: a raw value containing
+                // '/', '..' or '#' would rewrite the request path.
+                url: `join/competition/${encodeURIComponent(join_code)}/`,
                 method: 'POST',
             }),
         }),

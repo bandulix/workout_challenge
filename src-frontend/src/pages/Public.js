@@ -100,6 +100,14 @@ function LogoutPage() {
     dispatch(feedApi.util.resetApiState());
     localStorage.clear();
 
+    // The service worker caches authenticated GET /api/* responses as
+    // its offline fallback (see public/sw.js). Purge them on logout so
+    // the previous user's data isn't readable in Cache Storage (or
+    // servable offline) on a shared device.
+    if ('caches' in window) {
+        caches.delete('wc-api').catch(() => { /* best effort */ });
+    }
+
     const matched = useWaitForLocalStorage("refresh_token", null);
     if (matched) {
         navigate("/login");
@@ -429,7 +437,9 @@ function RegisterPage() {
             const params = new URLSearchParams(location.search);
             if (success_register && success_login) {
                 await waitForLocalStorage('access_token');
-                console.log('Register and Login Successful - redirect ', localStorage.getItem('access_token'));
+                // Never log token values - console output ends up in
+                // Sentry breadcrumbs and shared-device devtools.
+                console.log('Register and Login Successful - redirect');
                 navigate(`/dashboard/?${params.toString()}`);
             } else if (!success_register) {
                 setErrorMessage(msg_register.split(", "));
@@ -590,7 +600,7 @@ function LogInPage() {
             // success logging in - redirect to dashboard
             await waitForLocalStorage('access_token');
             setIsLoading(false);
-            console.log('redirect', localStorage.getItem('access_token'));
+            console.log('redirect');
             if (params.has('redirect')) {
                 // Only honour the redirect param when it points at a
                 // same-origin path. Anything else (absolute URL, scheme
@@ -621,7 +631,7 @@ function LogInPage() {
         if (success) {
             // success refreshing access_token - redirecting to dashboard
             await waitForLocalStorage('access_token');
-            console.log('refresh_token exists and is valid - redirect ', localStorage.getItem('access_token'));
+            console.log('refresh_token exists and is valid - redirect');
             navigate(`/dashboard/${location.search}`);
         } else {
             // error refreshing access_token - manual login required
