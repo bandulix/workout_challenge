@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.db.models import Q
 from django.core.exceptions import PermissionDenied
@@ -12,6 +14,8 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.permissions import BasePermission
 
 from django.db.models import Sum
+
+logger = logging.getLogger(__name__)
 
 from custom_user.views import IsOwnerOrReadOnly
 from custom_user.models import CustomUser
@@ -156,9 +160,12 @@ class CeleryQueryView(APIView):
                     'result': task.result if task.successful() else None,
                     'error': str(task.result) if task.failed() else None
                 })
-            except Exception as e:
+            except Exception:
+                # Exception text can leak internals (paths, broker URLs) -
+                # log it, return a generic message (CodeQL stack-trace-exposure).
+                logger.exception("Error retrieving celery task status")
                 return Response(
-                    {"error": f"Error retrieving task status: {str(e)}"}, 
+                    {"error": "Error retrieving task status."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
         else:
@@ -170,9 +177,10 @@ class CeleryQueryView(APIView):
                     if not name.startswith('celery.')
                 ]
                 return Response(registered_tasks)
-            except Exception as e:
+            except Exception:
+                logger.exception("Error listing celery tasks")
                 return Response(
-                    {"error": f"Error retrieving tasks: {str(e)}"}, 
+                    {"error": "Error retrieving tasks."},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
@@ -211,9 +219,10 @@ class CeleryQueryView(APIView):
                 {"error": f"Task '{task}' not found"}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("Error starting celery task %s", task)
             return Response(
-                {"error": str(e)}, 
+                {"error": "Could not start the task."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
