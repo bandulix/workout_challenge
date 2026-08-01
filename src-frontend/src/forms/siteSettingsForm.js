@@ -150,7 +150,7 @@ export default function SiteSettingsForm({setModalState}) {
 
     const LLM_PROVIDER_PRESETS = {
         custom: {base_url: "", model: ""},
-        MiniMax: {base_url: "https://api.MiniMax.chat/v1", model: "MiniMax-M3"},
+        MiniMax: {base_url: "https://api.minimax.io/v1", model: "MiniMax-M3"},
         openai: {base_url: "", model: "gpt-4o-mini"},
     };
 

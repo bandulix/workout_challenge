@@ -25,7 +25,9 @@ LLM_PROVIDER_DEFAULTS = {
     # providers we pre-configure. Users can still override base_url /
     # model manually if they want a different model on the same provider.
     "MiniMax": {
-        "base_url": "https://api.MiniMax.chat/v1",
+        # Official OpenAI-compatible endpoint (platform.minimax.io docs).
+        # Mainland-China accounts use https://api.minimaxi.com/v1 instead.
+        "base_url": "https://api.minimax.io/v1",
         "model": "MiniMax-M3",
     },
 }
