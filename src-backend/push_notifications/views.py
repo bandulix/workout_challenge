@@ -75,14 +75,23 @@ class PushSubscribeView(APIView):
 
 
 class PushUnsubscribeView(APIView):
-    """Remove a previously registered push subscription."""
+    """Remove a previously registered push subscription.
+
+    Without an endpoint, ALL of the user's subscriptions are removed:
+    the browser may have silently lost its local subscription (FCM
+    endpoint rotation, service-worker reset, site-data cleanup) while
+    stale rows linger server-side. A "turn notifications off" action
+    that only works when the browser still holds its endpoint would
+    leave the server thinking the user is subscribed forever.
+    """
 
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         endpoint = (request.data.get("endpoint") or "").strip()
         if not endpoint:
-            return Response({"endpoint": "Required."}, status=status.HTTP_400_BAD_REQUEST)
+            deleted, _ = PushSubscription.objects.filter(user=request.user).delete()
+            return Response({"deleted": deleted, "all": True}, status=status.HTTP_200_OK)
         if not _ENDPOINT_RE.match(endpoint):
             return Response({"endpoint": "Invalid endpoint."}, status=status.HTTP_400_BAD_REQUEST)
         deleted, _ = PushSubscription.objects.filter(user=request.user, endpoint=endpoint).delete()

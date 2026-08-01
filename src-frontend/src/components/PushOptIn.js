@@ -67,7 +67,13 @@ function PushOptInCard({compact = false}) {
         setError(null);
         try {
             const sub = await unsubscribeFromPush();
-            if (sub?.endpoint) await unsubscribePush({endpoint: sub.endpoint}).unwrap();
+            // Always clear server-side rows too: the browser may have
+            // silently lost its local subscription (FCM endpoint
+            // rotation, service-worker reset, site-data cleanup) while
+            // stale rows linger on the server - without this the status
+            // stays "on" forever and pushes route to dead endpoints.
+            // No endpoint -> the backend removes all of the user's rows.
+            await unsubscribePush(sub?.endpoint ? {endpoint: sub.endpoint} : {}).unwrap();
             await refetch();
         } catch (err) {
             setError(err?.data?.detail || err?.message || "Could not disable notifications.");

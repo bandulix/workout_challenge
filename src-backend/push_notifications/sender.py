@@ -29,7 +29,10 @@ def send_push_to_user(
     icon: Optional[str] = None,
     badge: Optional[str] = None,
     tag: Optional[str] = None,
-    ttl: int = 60,
+    # One hour: a dozing Android device must still get the ping when it
+    # wakes. The previous 60s TTL meant FCM dropped most notifications
+    # before delivery on battery-saving phones.
+    ttl: int = 3600,
 ) -> int:
     """Send a push notification to every active subscription of ``user``.
 
