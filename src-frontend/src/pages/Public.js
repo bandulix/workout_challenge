@@ -12,7 +12,7 @@ import {drillInstructorApi} from '../utils/reducers/drillInstructorSlice';
 import {PageWrapper} from "../utils/miscellaneous";
 import {sentryError} from "../utils/reducers/baseQueryWithReauth";
 
-function BaseHome({children}) {
+function BaseHome({children, tagline}) {
     const navType = useNavigationType();
     useEffect(() => {
         if (navType === "POP") {
@@ -46,12 +46,14 @@ function BaseHome({children}) {
                         Your AI Drill Instructor
                     </p>
                     <div>
-                        <p className="text-base md:text-lg text-gray-200 mb-8 leading-relaxed">
-                            Compete with friends and co-workers <b className="text-volt-300">across devices</b>,
-                            using the <b className="text-volt-300">metrics you want</b>,
-                            <b className="text-volt-300"> respecting your privacy</b> —
-                            while your personal AI coach keeps the banter coming.
-                        </p>
+                        {tagline ?? (
+                            <p className="text-base md:text-lg text-gray-200 mb-8 leading-relaxed">
+                                Compete with friends and co-workers <b className="text-volt-300">across devices</b>,
+                                using the <b className="text-volt-300">metrics you want</b>,
+                                <b className="text-volt-300"> respecting your privacy</b> —
+                                while your personal AI coach keeps the banter coming.
+                            </p>
+                        )}
                     </div>
 
                     {children}
@@ -662,7 +664,13 @@ function LogInPage() {
 
 
     return (
-        <BaseHome children={
+        <BaseHome tagline={
+            <p className="text-base md:text-lg text-gray-200 mb-8 leading-relaxed">
+                Welcome back, challenger. While you were away, your <b className="text-volt-300">rivals kept
+                training</b>, the <b className="text-volt-300">leaderboard kept moving</b> —
+                and your Drill Instructor <b className="text-volt-300">kept score</b>. Time to answer for it.
+            </p>
+        } children={
             <div className="flex justify-center">
                 {
                     isLoading ? <LoadingForm/> : (
