@@ -9,6 +9,14 @@
 
 Compete with friends and co-workers across devices (Apple / Android / Garmin / etc.) using the metrics you want (km / minutes / kcal / count), respecting your privacy. Workouts can be added manually or imported automatically from a linked Strava or Garmin Connect account — and an optional AI Drill Instructor keeps the banter going.
 
+<p align="center">
+  <a href="docs/imgs/preview-mobile-login-dark.png"><img src="docs/imgs/preview-mobile-login-dark.png" width="185" alt="Login - Workout Challenge PWA"></a>
+  <a href="docs/imgs/preview-mobile-myspace-dark.png"><img src="docs/imgs/preview-mobile-myspace-dark.png" width="185" alt="Home dashboard - Workout Challenge PWA"></a>
+  <a href="docs/imgs/preview-mobile-competition-dark.png"><img src="docs/imgs/preview-mobile-competition-dark.png" width="185" alt="Competition with AI Drill Instructor - Workout Challenge PWA"></a>
+  <a href="docs/imgs/preview-mobile-coach-dark.png"><img src="docs/imgs/preview-mobile-coach-dark.png" width="185" alt="Coach page - Workout Challenge PWA"></a>
+</p>
+<p align="center"><i>The PWA on a phone: login, your dashboard, the competition with its AI coach, and the coach wire.</i></p>
+
 **Contents:** [Changes from the original](#changes-from-the-original) · [How it works](#how-it-works) · [Getting started](#getting-started) · [AI Drill Instructor](#ai-drill-instructor) · [Admin & site settings](#admin--site-settings) · [Mobile app & push](#mobile-app--push-notifications) · [Strava API credentials](#strava-api-credentials)
 
 ## Changes from the original
@@ -60,7 +68,7 @@ Create a competition or join one via a friend's invite link, log workouts manual
 | ![Competition with Drill Instructor (dark)](docs/imgs/preview-competition-dark.png) | ![Coach page (dark)](docs/imgs/preview-coach-dark.png) |
 | ![Home dashboard (light)](docs/imgs/preview-myspace-light.png) | ![Competition (light)](docs/imgs/preview-competition-light.png) |
 
-**Mobile:** [home](docs/imgs/preview-mobile-myspace-dark.png) · [competition](docs/imgs/preview-mobile-competition-dark.png) · [coach](docs/imgs/preview-mobile-coach-dark.png)
+**Mobile:** [login](docs/imgs/preview-mobile-login-dark.png) · [home](docs/imgs/preview-mobile-myspace-dark.png) · [competition](docs/imgs/preview-mobile-competition-dark.png) · [coach](docs/imgs/preview-mobile-coach-dark.png)
 
 ## Getting started
 All configuration lives in [`.env.example`](.env.example) (every variable, with comments) and [`docker-compose.yml`](docker-compose.yml):
