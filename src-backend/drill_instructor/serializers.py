@@ -75,6 +75,7 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
             "persona_detail",
             "comment_on_activity",
             "nudge_on_inactivity",
+            "random_push",
             "send_push_on_activity",
             "last_posted_at",
             "messages_posted",

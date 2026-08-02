@@ -82,6 +82,7 @@ Each competition can optionally activate an AI coach that generates a short, per
 
 **What it does:**
 - Comments on every workout in the competition, in the persona's voice.
+- **Random daily push:** 1-2 times per day at random times (07:00–22:00) the instructor posts a pep talk pushing the whole group (toggleable per competition).
 - **Quiet-day nudge:** if a whole day passes without any workout in a running competition, the instructor posts one motivational nudge to the group (toggleable per competition).
 - With browser push enabled, messages are also dispatched to subscribed devices (nudges go to every participant).
 

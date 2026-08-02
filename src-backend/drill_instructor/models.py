@@ -91,6 +91,19 @@ class DrillInstructorConfig(models.Model):
         default=False,
         help_text="Also send a browser push notification to every subscribed participant.",
     )
+    random_push = models.BooleanField(
+        default=True,
+        help_text=(
+            "The instructor pushes the group 1-2 times per day at random "
+            "times (waking hours, 07:00-22:00) with a persona-voiced pep "
+            "talk - independent of whether anyone trained."
+        ),
+    )
+    # Bookkeeping for the random daily push: the day's random slot(s) are
+    # drawn once (list of "HH:MM" strings) and reused for the rest of the
+    # day, so re-running the beat task never re-rolls the dice.
+    push_plan_date = models.DateField(null=True, blank=True)
+    push_plan = models.JSONField(default=list, blank=True)
 
     last_error = models.TextField(blank=True, default="")
     last_posted_at = models.DateTimeField(null=True, blank=True)
@@ -118,10 +131,12 @@ class DrillInstructorMessage(models.Model):
     KIND_ACTIVITY = "activity"
     KIND_TEST = "test"
     KIND_NUDGE = "nudge"
+    KIND_PUSH = "push"
     KIND_CHOICES = [
         (KIND_ACTIVITY, "Workout comment"),
         (KIND_TEST, "Test message"),
         (KIND_NUDGE, "Inactivity nudge"),
+        (KIND_PUSH, "Random group push"),
     ]
 
     config = models.ForeignKey(
@@ -133,7 +148,7 @@ class DrillInstructorMessage(models.Model):
         max_length=12,
         choices=KIND_CHOICES,
         default=KIND_ACTIVITY,
-        help_text="What triggered this message (a workout, a test, or a quiet-day nudge).",
+        help_text="What triggered this message (a workout, a test, a quiet-day nudge, or a random group push).",
     )
     workout = models.ForeignKey(
         "workouts.Workout",

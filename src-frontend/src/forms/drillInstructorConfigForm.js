@@ -43,6 +43,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
     const [persona, setPersona] = useState("");
     const [commentOnActivity, setCommentOnActivity] = useState(true);
     const [nudgeOnInactivity, setNudgeOnInactivity] = useState(true);
+    const [randomPush, setRandomPush] = useState(true);
     const [sendPushOnActivity, setSendPushOnActivity] = useState(false);
     const [testBody, setTestBody] = useState(PLACEHOLDER_BODY);
     const [fieldErrors, setFieldErrors] = useState({});
@@ -54,6 +55,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             setPersona(existing.persona ?? "");
             setCommentOnActivity(!!existing.comment_on_activity);
             setNudgeOnInactivity(existing.nudge_on_inactivity !== false);
+            setRandomPush(existing.random_push !== false);
             setSendPushOnActivity(!!existing.send_push_on_activity);
         }
     }, [existing]);
@@ -72,6 +74,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             persona,
             comment_on_activity: commentOnActivity,
             nudge_on_inactivity: nudgeOnInactivity,
+            random_push: randomPush,
             send_push_on_activity: sendPushOnActivity,
         };
 
@@ -194,6 +197,19 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                         onChange={(e) => setNudgeOnInactivity(e.target.checked)}
                     />
                     Post a daily nudge when nobody logged a workout
+                </label>
+            </Field>
+
+            <Field label="Push the group at random times" error={fieldErrors.random_push}
+                   hint="The instructor posts 1-2 persona-voiced pep talks per day at random times (between 07:00 and 22:00), independent of whether anyone trained.">
+                <label className="inline-flex items-center text-gray-700 dark:text-gray-300 text-sm">
+                    <input
+                        type="checkbox"
+                        className="mr-2 leading-tight"
+                        checked={randomPush}
+                        onChange={(e) => setRandomPush(e.target.checked)}
+                    />
+                    Daily pep talks at random times (1-2 per day)
                 </label>
             </Field>
 
