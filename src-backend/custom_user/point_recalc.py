@@ -19,6 +19,22 @@ def trigger_recalc_points():
         print('Recalc points task skipped because it was triggered less than 30 seconds ago')
 
 
+def bump_stats_generation(competition_ids):
+    """Invalidate the cached competition-stats snapshots.
+
+    The stats endpoint caches its response under a key that contains this
+    generation (see CompetitionStatsQueryView); bumping it makes every
+    old snapshot unreachable, so the next stats request recomputes
+    instead of serving up-to-30s-old data after a workout/point change.
+    """
+    for competition_id in set(competition_ids):
+        key = f"stats-generation:{competition_id}"
+        try:
+            cache.incr(key)
+        except ValueError:
+            cache.add(key, 1, None)
+
+
 @app.task(bind=True, time_limit=60 * 30, max_retries=3)  # 30 min time limit
 def recalc_points(self):
     if is_task_already_executing('recalc_points'):
@@ -46,7 +62,16 @@ def recalc_points(self):
             setattr(points, 'points_capped', earned_points)
             points.save()
 
+    # Evaluate before the delete below empties the queryset.
+    goal_ids = {task_group['goal'] for task_group in grouped_tasks}
+
     all_tasks.delete()
+
+    # The capped points just changed: bust the stats snapshots so the
+    # leaderboard refetch right after a workout shows the final numbers.
+    competition_ids = ActivityGoal.objects.filter(pk__in=goal_ids).values_list('competition_id', flat=True)
+    bump_stats_generation(competition_ids)
+
     print('All points recalculated.')
     return [{k: str(v) for k, v in i.items()} for i in grouped_tasks]
 

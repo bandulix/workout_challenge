@@ -9,6 +9,21 @@ import {statsApi} from "../utils/reducers/statsSlice";
 import {feedApi} from "../utils/reducers/feedSlice";
 import {useDispatch} from "react-redux";
 
+// After a workout save the challenge page must catch up without a manual
+// refresh: feed/stats are invalidated immediately, and the server's
+// capped-points recalculation is async (~10s later, throttled to 30s),
+// so two delayed re-invalidations pick up the final numbers instead of
+// waiting for the 90s poll. The stats endpoint busts its own cache on
+// these changes, so every refetch here is actually fresh.
+function refreshChallengeSoon(dispatch) {
+    const invalidateStatsAndFeed = () => {
+        dispatch(statsApi.util.invalidateTags(['Stats']));
+        dispatch(feedApi.util.invalidateTags(['Feed']));
+    };
+    setTimeout(invalidateStatsAndFeed, 15000);
+    setTimeout(() => dispatch(statsApi.util.invalidateTags(['Stats'])), 35000);
+}
+
 export const workoutTypes = {
     "Steps": {"label": "Total Daily Steps", "label_short": "Steps"},
     "Badminton": {"label": "Badminton", "label_short": "Badminton"},
@@ -272,6 +287,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
         }
         dispatch(statsApi.util.invalidateTags(['Stats']));
         dispatch(feedApi.util.invalidateTags(['Feed']));
+        refreshChallengeSoon(dispatch);
     }
 
     // form action button right
@@ -310,6 +326,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
         }
         dispatch(statsApi.util.invalidateTags(['Stats']));
         dispatch(feedApi.util.invalidateTags(['Feed']));
+        refreshChallengeSoon(dispatch);
     }
 
     const [activeFields, setActiveFields] = useState(fields);

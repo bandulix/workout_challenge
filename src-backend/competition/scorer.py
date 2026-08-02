@@ -3,7 +3,7 @@ import logging
 
 from django.apps import apps
 
-from custom_user.point_recalc import trigger_recalc_points
+from custom_user.point_recalc import bump_stats_generation, trigger_recalc_points
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +37,20 @@ def _calculate_points_raw(goal, workout, user):
     return points * 100
 
 
+def _bust_stats_cache_for(user):
+    """Invalidate the cached stats snapshots of every competition the
+    user participates in - a logged/changed/deleted workout must show up
+    on the challenge page immediately, not after the 30s cache window."""
+    bump_stats_generation(user.my_competitions.values_list("pk", flat=True))
+
+
 def trigger_workout_delete(instance):
     RecalcRequest = apps.get_model('custom_user', 'RecalcRequest')
     for points in instance.points_set.all():
         RecalcRequest(user=instance.user, goal=points.goal, start_datetime=instance.start_datetime).save()
     print(f"Workout ({instance.pk}) deletion triggered point cap recalc - after {instance.start_datetime.isoformat()}")
 
+    _bust_stats_cache_for(instance.user)
     trigger_recalc_points()
 
 
@@ -99,6 +107,7 @@ def trigger_workout_change(instance, new, changes):
         logger.info("Workout (%s) update triggered point cap recalc - EXISTING CHANGED (%s)",
                     instance.pk, changed_fields)
 
+    _bust_stats_cache_for(instance.user)
     trigger_recalc_points()
 
 

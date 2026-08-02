@@ -8,8 +8,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
-from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_page
+from django.core.cache import cache
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.permissions import BasePermission
 
@@ -120,9 +119,9 @@ class StatsPermissions(BasePermission):
         if not request.user.is_authenticated:
             return False
         # The competition-membership check MUST live here (not only in
-        # has_object_permission): ``CompetitionStatsQueryView.get`` is
-        # wrapped in ``cache_page(30)``, so on a cache hit the view body
-        # - and its ``check_object_permissions`` call - never executes.
+        # has_object_permission): ``CompetitionStatsQueryView.get`` serves
+        # cached snapshots, so on a cache hit the view body - and its
+        # ``check_object_permissions`` call - is the only line of defence.
         # DRF always runs has_permission before the handler, cache hit
         # or not. Without this, any authenticated user could read the
         # cached stats of a competition they don't participate in.
@@ -230,9 +229,20 @@ class CeleryQueryView(APIView):
 class CompetitionStatsQueryView(APIView):
     permission_classes = [StatsPermissions]
 
-    @method_decorator(cache_page(30))  # cache for 30 seconds
+    STATS_CACHE_TTL = 30  # seconds - burst absorption between changes
+
     def get(self, request, competition):
-        response_obj = get_competition_stats(competition)
+        # Generation-keyed cache: workout/point changes bump the
+        # generation (scorer + recalc task), making old snapshots
+        # unreachable within seconds - a logged workout shows up on the
+        # challenge page immediately instead of after the cache window.
+        # Between changes the 30s TTL still absorbs request bursts.
+        generation = cache.get(f"stats-generation:{competition}", 0)
+        cache_key = f"competition-stats:{competition}:gen{generation}"
+        response_obj = cache.get(cache_key)
+        if response_obj is None:
+            response_obj = get_competition_stats(competition)
+            cache.set(cache_key, response_obj, self.STATS_CACHE_TTL)
         self.check_object_permissions(request, response_obj)
         return Response(response_obj)
 
