@@ -212,6 +212,49 @@ def build_workout_prompt(*, user_first_name: str, username: str, sport_type: str
     return "\n".join(parts)
 
 
+def build_group_push_prompt(*, competition_name: str, participant_first_names, leader_first_name: Optional[str] = None, leader_points: Optional[float] = None, days_left: Optional[int] = None, workouts_today: int = 0) -> str:
+    """Compose the user-message for the random daily group push.
+
+    Unlike the quiet-day nudge this fires regardless of activity, at a
+    random time - a persona-voiced pep talk that pushes the whole group:
+    fire them up, reference the standings, keep the competition alive.
+    """
+    parts = [
+        f"Competition: {competition_name}",
+        "Situation: you are checking in on the group unannounced, at a "
+        "random moment - your job is to push them, keep the pressure on "
+        "and make everyone want to train today.",
+    ]
+    names = [n for n in (participant_first_names or []) if n]
+    if names:
+        parts.append("Participants: " + ", ".join(f"@{n}" for n in names[:8]))
+    if workouts_today > 0:
+        parts.append(f"Workouts logged today so far: {workouts_today}")
+    else:
+        parts.append("Nobody has logged a workout yet today.")
+    if leader_first_name:
+        if leader_points:
+            parts.append(f"Current leader: @{leader_first_name} with {round(leader_points)} total points")
+        else:
+            parts.append(f"Current leader: @{leader_first_name}")
+    if days_left is not None:
+        if days_left <= 0:
+            parts.append("The competition ends TODAY.")
+        elif days_left == 1:
+            parts.append("Only 1 day left in the competition.")
+        else:
+            parts.append(f"{days_left} days left in the competition.")
+    parts.append(
+        "Write one short pep talk (max 220 chars) addressed to the WHOLE "
+        "group in your persona's voice, calling out one or two athletes by "
+        "their @FirstName tokens. Push the group: fire them up, challenge "
+        "the laggards, keep the leader honest. React to the situation "
+        "above instead of reciting it. Never invent other names."
+    )
+    parts.append("Write your message now.")
+    return "\n".join(parts)
+
+
 def build_inactivity_prompt(*, competition_name: str, participant_first_names, leader_first_name: Optional[str] = None, leader_points: Optional[float] = None, days_left: Optional[int] = None) -> str:
     """Compose the user-message for a quiet-day (inactivity) nudge.
 

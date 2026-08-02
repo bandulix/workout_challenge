@@ -72,6 +72,13 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="10", hour="17"),
         "args": (),
     },
+    # every 30 min: fire the drill instructor's random daily group push
+    # (1-2 pep talks per competition at per-day drawn random times)
+    "drill_instructor_random_push": {
+        "task": "drill_instructor.tasks.post_random_pushes",
+        "schedule": crontab(minute="*/30"),
+        "args": (),
+    },
 }
 
 

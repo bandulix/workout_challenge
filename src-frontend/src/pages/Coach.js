@@ -101,6 +101,11 @@ function FeedBubble({message}) {
                                 quiet-day nudge
                             </span>
                         )}
+                        {message.kind === "push" && (
+                            <span className="rounded-full bg-volt-400/15 text-volt-600 dark:text-volt-300 px-2 py-0.5 font-semibold uppercase tracking-wide text-[10px]">
+                                pep talk
+                            </span>
+                        )}
                         {message.athlete_name && (
                             <span className="font-semibold text-gray-500 dark:text-gray-300">
                                 → {message.athlete_name}{message.workout_summary ? ` · ${message.workout_summary}` : ""}

@@ -1,5 +1,6 @@
 import datetime
 import logging
+import random
 
 from django.apps import apps
 from django.db.models import Sum
@@ -7,7 +8,7 @@ from django.utils import timezone
 
 from workout_challenge.celery import app
 
-from .llm_client import build_inactivity_prompt, build_workout_prompt, generate_message
+from .llm_client import build_group_push_prompt, build_inactivity_prompt, build_workout_prompt, generate_message
 
 try:
     from push_notifications.sender import send_push_to_user
@@ -373,5 +374,159 @@ def post_inactivity_nudges(self):
                     )
                 except Exception as exc:  # noqa: BLE001 - never block the sweep
                     logger.warning("Drill Instructor: nudge push failed for user %s: %s", participant.id, exc)
+
+    return {"date": str(today), "posted": posted, "skipped": skipped, "competitions": competitions.count()}
+
+
+# Random group pushes land in waking hours only - nobody wants the
+# sergeant yelling at 03:00.
+PUSH_WINDOW_START_HOUR = 7
+PUSH_WINDOW_END_HOUR = 22
+PUSH_MAX_PER_DAY = 2
+
+
+def _draw_push_plan():
+    """Draw today's random push slot(s): always exactly one, plus a 50%
+    chance of a second one (kept at least 90 minutes from the first so
+    they don't clump). Returns a sorted list of "HH:MM" strings."""
+    start = PUSH_WINDOW_START_HOUR * 60
+    end = PUSH_WINDOW_END_HOUR * 60
+    first = random.randrange(start, end)
+    slots = [first]
+    if random.random() < 0.5:
+        for _ in range(10):
+            second = random.randrange(start, end)
+            if abs(second - first) >= 90:
+                slots.append(second)
+                break
+    return sorted(f"{m // 60:02d}:{m % 60:02d}" for m in slots)
+
+
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
+def post_random_pushes(self):
+    """Post the instructor's random daily pep talk in every running
+    competition that has it enabled (``random_push``).
+
+    Scheduled every 30 min via Celery beat. Each competition draws its
+    own random slot(s) once per day (stored on the config): always at
+    least one, at most two, inside waking hours (07:00-22:00). When a
+    drawn slot is due and not yet posted, generate one persona-voiced
+    message addressed at the whole group, store it in the audit log, and
+    (when the config's push toggle is on) push it to every subscribed
+    participant. Re-runs are idempotent: the plan is drawn only once per
+    day and already-posted slots are counted from the audit log.
+    """
+    Workout = apps.get_model("workouts", "Workout")
+    Competition = apps.get_model("competition", "Competition")
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+
+    now = timezone.localtime()
+    today = now.date()
+    now_hhmm = f"{now.hour:02d}:{now.minute:02d}"
+    competitions = (
+        Competition.objects
+        .filter(
+            start_date__lte=today,
+            end_date__gte=today,
+            drill_instructor__enabled=True,
+            drill_instructor__random_push=True,
+        )
+        .select_related("drill_instructor", "drill_instructor__persona")
+        .prefetch_related("user")
+    )
+
+    posted = 0
+    skipped = 0
+    for competition in competitions:
+        config = competition.drill_instructor
+        persona = config.persona
+        participants = list(competition.user.all())
+        if not participants:
+            skipped += 1
+            continue
+
+        # Draw today's random slot(s) once, then reuse them all day.
+        if config.push_plan_date != today:
+            config.push_plan = _draw_push_plan()
+            config.push_plan_date = today
+            config.save(update_fields=["push_plan", "push_plan_date", "updated_at"])
+        plan = config.push_plan if isinstance(config.push_plan, list) else []
+
+        # Hard cap + idempotency: what already went out today stays counted.
+        posted_today = config.messages.filter(kind=DrillInstructorMessage.KIND_PUSH, posted_at__date=today).count()
+        due_slots = [slot for slot in plan if slot <= now_hhmm]
+        remaining = min(len(due_slots), PUSH_MAX_PER_DAY) - posted_today
+        if remaining <= 0:
+            skipped += 1
+            continue
+
+        leader, leader_points = _competition_leader(competition)
+        user_prompt = build_group_push_prompt(
+            competition_name=competition.name,
+            participant_first_names=[(u.first_name or u.username or "Athlete") for u in participants],
+            leader_first_name=(leader.first_name or leader.username) if leader else None,
+            leader_points=float(leader_points) if leader_points else None,
+            days_left=(competition.end_date - today).days,
+            workouts_today=Workout.objects.filter(user__in=participants, start_datetime__date=today).count(),
+        )
+
+        for _ in range(remaining):
+            body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
+            if not body:
+                body = (
+                    f"{persona.name}: checking in on {competition.name} - "
+                    "the day isn't over yet. Get a workout in!"
+                )
+
+            message = DrillInstructorMessage(
+                config=config,
+                kind=DrillInstructorMessage.KIND_PUSH,
+                workout=None,
+                body=body,
+                posted_at=timezone.now(),
+            )
+            try:
+                message.save()
+                config.last_posted_at = timezone.now()
+                config.messages_posted = (config.messages_posted or 0) + 1
+                config.last_error = llm_error or ""
+                config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
+                posted += 1
+                logger.info("Drill Instructor: stored random push %s for competition %s", message.id, competition.id)
+            except Exception as exc:  # noqa: BLE001 - one bad competition must not kill the sweep
+                message.success = False
+                message.error = str(exc)[:2000]
+                try:
+                    message.save()
+                except Exception:  # pragma: no cover
+                    pass
+                config.last_error = str(exc)[:2000]
+                config.save(update_fields=["last_error", "updated_at"])
+                logger.warning("Drill Instructor: random push save failed for competition %s: %s", competition.id, exc)
+                break
+
+            # Optional web push to every participant (the pep talk targets
+            # the whole group, not a single athlete). The tag carries the
+            # date so the two daily pushes don't replace each other.
+            if config.send_push_on_activity and send_push_to_user is not None:
+                import re as _re
+                avatar_icon = (
+                    f"/personas/{persona.avatar}.svg"
+                    if persona.avatar and _re.fullmatch(r"[a-z0-9_-]+", persona.avatar)
+                    else None
+                )
+                for participant in participants:
+                    try:
+                        send_push_to_user(
+                            participant,
+                            title=f"{competition.name} - {persona.name}",
+                            body=body,
+                            url=f"/coach",
+                            icon=avatar_icon,
+                            badge="/icon-badge.png",
+                            tag=f"drill-push-{competition.id}-{today}",
+                        )
+                    except Exception as exc:  # noqa: BLE001 - never block the sweep
+                        logger.warning("Drill Instructor: random push notification failed for user %s: %s", participant.id, exc)
 
     return {"date": str(today), "posted": posted, "skipped": skipped, "competitions": competitions.count()}
