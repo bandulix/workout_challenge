@@ -219,7 +219,7 @@ function CoachCorner({competition, isOwner}) {
                 <ul className="px-4 py-3 space-y-3">
                     {latest.map((m) => (
                         <li key={m.id} className="flex items-start gap-2.5">
-                            <PersonaAvatar persona={{avatar: m.persona_avatar, theme_color: m.persona_theme_color, name: m.persona_name}} size={30}/>
+                            <PersonaAvatar persona={{avatar: m.persona_avatar, profile_picture: m.persona_profile_picture, theme_color: m.persona_theme_color, name: m.persona_name}} size={30}/>
                             <div className="min-w-0">
                                 <p className="text-sm leading-snug dark:text-gray-100">{m.body}</p>
                                 <p className="text-[11px] text-gray-400 mt-0.5">
