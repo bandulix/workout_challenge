@@ -66,12 +66,12 @@ All configuration lives in [`.env.example`](.env.example) (every variable, with 
 git clone https://github.com/bandulix/workout_challenge.git
 cd workout_challenge
 cp .env.example .env    # then edit: at minimum POSTGRES_PASSWORD and SECRET_KEY
-docker compose up -d --build
+docker compose up -d    # pulls the pre-built image - no local build needed
 ```
 
 The stack starts nginx (app on port 80), Django/gunicorn, Celery worker + beat, Redis and Postgres. In production set `HOSTS` / `MAIN_HOST` to your public URL and `DEBUG=false`. Migrations and static files are handled automatically at container start.
 
-*(The pre-built `vanalmsick/workout_challenge` Docker image ships the original upstream app, not this fork.)*
+The pre-built multi-arch image (amd64 + arm64) comes from [`ghcr.io/bandulix/workout_challenge`](https://github.com/bandulix/workout_challenge/pkgs/container/workout_challenge) and is rebuilt on every release. Use `docker compose up -d --build` to build from source instead (e.g. after changing code). *(The `vanalmsick/workout_challenge` image on DockerHub ships the original upstream app, not this fork.)*
 
 ## AI Drill Instructor
 Each competition can optionally activate an AI coach that generates a short, persona-voiced comment for every logged activity, stores it in an in-app audit log, and optionally pushes it to athletes' devices.

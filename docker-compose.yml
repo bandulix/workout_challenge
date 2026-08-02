@@ -3,13 +3,20 @@
 #
 # Quick start:
 #   1. cp .env.example .env   (then edit - at minimum set POSTGRES_PASSWORD)
-#   2. docker compose up -d --build
+#   2. docker compose up -d     (pulls the pre-built image from ghcr.io;
+#                                add --build to build from source instead)
 #
 # All configuration is passed via the environment block below; every
 # variable maps 1:1 to an entry in .env.example (keep the two in sync).
 services:
   workoutchallenge:
     container_name: workoutchallenge
+    # Pre-built multi-arch image (amd64 + arm64) published by CI on every
+    # release - pull_policy:missing prefers pulling over building, so a
+    # plain `docker compose up -d` skips the lengthy local build.
+    # `docker compose build` / `--build` still builds from source.
+    image: ghcr.io/bandulix/workout_challenge:latest
+    pull_policy: missing
     build:
       context: .
       # Link the built image back to the fork repository (shows up in
