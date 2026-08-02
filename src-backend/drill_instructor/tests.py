@@ -324,6 +324,38 @@ class PostInactivityNudgesTests(TestCase):
         self.assertIn("NOT A SINGLE participant", prompt)
         self.assertIn("@Alex", prompt)
 
+    def test_prompt_includes_previous_two_messages_newest_first(self):
+        base = timezone.now()
+        DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
+            body="First blood!", posted_at=base - datetime.timedelta(minutes=2),
+        )
+        DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PUSH,
+            body="Second wind!", posted_at=base - datetime.timedelta(minutes=1),
+        )
+        # Test messages are previews, not conversation - never referenced.
+        DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_TEST,
+            body="preview only", posted_at=base,
+        )
+
+        post_inactivity_nudges()
+
+        _, kwargs = self.generate_message.call_args
+        prompt = kwargs["user_prompt"]
+        self.assertIn("most recent messages", prompt)
+        self.assertIn("Second wind!", prompt)
+        self.assertIn("First blood!", prompt)
+        self.assertLess(prompt.index("Second wind!"), prompt.index("First blood!"))
+        self.assertNotIn("preview only", prompt)
+
+    def test_prompt_without_history_has_no_history_block(self):
+        post_inactivity_nudges()
+
+        _, kwargs = self.generate_message.call_args
+        self.assertNotIn("most recent messages", kwargs["user_prompt"])
+
     def test_skips_when_workout_logged_today(self):
         self._workout_today(self.athlete)
 
@@ -443,6 +475,19 @@ class PostRandomPushesTests(TestCase):
             self.assertEqual(result["posted"], 0)
             self.assertEqual(DrillInstructorMessage.objects.count(), 1)
 
+    def test_push_prompt_includes_previous_messages(self):
+        DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
+            body="Yesterday's roast",
+        )
+
+        with mock.patch("drill_instructor.tasks._draw_push_plan", return_value=["00:00"]):
+            post_random_pushes()
+
+        _, kwargs = self.generate_message.call_args
+        self.assertIn("most recent messages", kwargs["user_prompt"])
+        self.assertIn("Yesterday's roast", kwargs["user_prompt"])
+
     def test_posts_nothing_before_slot(self):
         with mock.patch("drill_instructor.tasks._draw_push_plan", return_value=["23:59"]):
             result = post_random_pushes()
@@ -545,6 +590,39 @@ class RandomPushPeriodicTaskTests(TestCase):
         self.assertEqual(task.task, "drill_instructor.tasks.post_random_pushes")
         self.assertTrue(task.enabled)
         self.assertEqual(task.crontab.minute, "*/30")
+
+
+class PromptHistoryTests(TestCase):
+    """The prompt builders append the persona's recent messages as
+    context - placed before the closing instruction so the model reads
+    the stats, then the history, then the task."""
+
+    def test_build_workout_prompt_includes_history_before_instruction(self):
+        from .llm_client import build_workout_prompt
+
+        prompt = build_workout_prompt(
+            user_first_name="Alex", username="alex", sport_type="Run",
+            duration_minutes=30, distance_km=None, kcal=None, intensity=2,
+            competition_name="Cup", points_capped=None, user_rank=2,
+            total_participants=3, previous_messages=["older one", "newer one"],
+        )
+
+        self.assertIn("most recent messages", prompt)
+        self.assertIn('1. "older one"', prompt)
+        self.assertIn('2. "newer one"', prompt)
+        self.assertLess(prompt.index("most recent messages"), prompt.index("Write your comment now"))
+
+    def test_build_workout_prompt_without_history(self):
+        from .llm_client import build_workout_prompt
+
+        prompt = build_workout_prompt(
+            user_first_name="Alex", username="alex", sport_type="Run",
+            duration_minutes=30, distance_km=None, kcal=None, intensity=2,
+            competition_name="Cup", points_capped=None, user_rank=2,
+            total_participants=3,
+        )
+
+        self.assertNotIn("most recent messages", prompt)
 
 
 class InactivityNudgePeriodicTaskTests(TestCase):

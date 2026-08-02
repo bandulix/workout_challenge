@@ -30,6 +30,23 @@ def _persona_icon(persona):
     return None
 
 
+def _recent_bodies(config, limit=2):
+    """The persona's last ``limit`` message bodies for this config.
+
+    Passed into the prompt builders so the instructor can refer back to
+    its own recent messages (continuity, callbacks) and avoid repeating
+    itself. Test messages are previews, not conversation; failed
+    generations never reached the group - both are excluded.
+    """
+    return list(
+        config.messages
+        .exclude(kind="test")
+        .filter(success=True)
+        .order_by("-posted_at")
+        .values_list("body", flat=True)[:limit]
+    )
+
+
 def _format_workout_summary(workout):
     """Build a human-readable one-liner of the workout (used as a fallback)."""
     parts = []
@@ -151,6 +168,7 @@ def post_workout_comment(self, workout_id):
             leader_points=leader_total,
             user_total_points=my_total,
             target_first_name=(target_user.first_name if target_user else None),
+            previous_messages=_recent_bodies(config),
         )
 
         body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
@@ -322,6 +340,7 @@ def post_inactivity_nudges(self):
             leader_first_name=(leader.first_name or leader.username) if leader else None,
             leader_points=float(leader_points) if leader_points else None,
             days_left=(competition.end_date - today).days,
+            previous_messages=_recent_bodies(config),
         )
 
         body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
@@ -461,16 +480,19 @@ def post_random_pushes(self):
             continue
 
         leader, leader_points = _competition_leader(competition)
-        user_prompt = build_group_push_prompt(
-            competition_name=competition.name,
-            participant_first_names=[(u.first_name or u.username or "Athlete") for u in participants],
-            leader_first_name=(leader.first_name or leader.username) if leader else None,
-            leader_points=float(leader_points) if leader_points else None,
-            days_left=(competition.end_date - today).days,
-            workouts_today=Workout.objects.filter(user__in=participants, start_datetime__date=today).count(),
-        )
 
         for _ in range(remaining):
+            # History is rebuilt per message so a same-run second push
+            # sees the first one (and won't echo it).
+            user_prompt = build_group_push_prompt(
+                competition_name=competition.name,
+                participant_first_names=[(u.first_name or u.username or "Athlete") for u in participants],
+                leader_first_name=(leader.first_name or leader.username) if leader else None,
+                leader_points=float(leader_points) if leader_points else None,
+                days_left=(competition.end_date - today).days,
+                workouts_today=Workout.objects.filter(user__in=participants, start_datetime__date=today).count(),
+                previous_messages=_recent_bodies(config),
+            )
             body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
             if not body:
                 body = (
