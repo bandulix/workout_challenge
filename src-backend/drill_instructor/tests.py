@@ -247,6 +247,78 @@ class PersonaPictureEndpointTests(TestCase):
         self.assertIsNone(payload["Plain Coach"]["profile_picture"])
 
 
+class PersonaPictureUploadTests(TestCase):
+    """The multipart upload itself: the write-only profile_picture_upload
+    field must land on the model's profile_picture field. A silently
+    dropped file leaves the roster showing the fallback artwork after
+    save - exactly the regression this guards against."""
+
+    FIELDS = {
+        "name": "Upload Coach",
+        "tagline": "t",
+        "description": "d",
+        "avatar": "megaphone",
+        "theme_color": "#d7ff3e",
+        "system_prompt": "be loud",
+    }
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        # Redirect uploads into a throwaway dir so tests never touch the
+        # real MEDIA_ROOT.
+        self._media_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._media_tmp.cleanup)
+        media_override = override_settings(MEDIA_ROOT=self._media_tmp.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+        self.client = APIClient()
+        # The very first user auto-becomes the admin (see CustomUser.save).
+        self.admin = _user("admin@example.com", "Ada")
+        self.client.force_authenticate(self.admin)
+
+    def _upload(self):
+        return SimpleUploadedFile("pic.png", PNG_1PX, content_type="image/png")
+
+    def test_patch_multipart_upload_sticks(self):
+        persona = DrillInstructorPersona.objects.create(**self.FIELDS)
+
+        response = self.client.patch(
+            f"/api/drill-instructor/persona/{persona.id}/",
+            {**self.FIELDS, "profile_picture_upload": self._upload()},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        persona.refresh_from_db()
+        self.assertTrue(
+            persona.profile_picture.name.startswith("persona_pics/"),
+            f"upload ignored - profile_picture is {persona.profile_picture.name!r}",
+        )
+        self.assertIn("/picture/", response.json()["profile_picture"])
+
+    def test_post_multipart_upload_sticks(self):
+        response = self.client.post(
+            "/api/drill-instructor/persona/",
+            {**self.FIELDS, "profile_picture_upload": self._upload()},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201, response.content)
+        persona = DrillInstructorPersona.objects.get(name="Upload Coach")
+        self.assertTrue(
+            persona.profile_picture.name.startswith("persona_pics/"),
+            f"upload ignored - profile_picture is {persona.profile_picture.name!r}",
+        )
+
+
 class PostInactivityNudgesTests(TestCase):
     """The quiet-day sweep: one persona-voiced nudge per running
     competition that saw zero workouts today."""
