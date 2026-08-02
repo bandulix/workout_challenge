@@ -18,6 +18,18 @@ except ImportError:  # pragma: no cover - keeps the module importable for tests
 logger = logging.getLogger(__name__)
 
 
+def _persona_icon(persona):
+    """Push-notification icon for a persona. Custom uploaded pictures are
+    NOT used: they live behind the authenticated picture endpoint, and the
+    browser fetches notification icons without credentials. Built-in
+    artwork key, else no icon."""
+    import re as _re
+
+    if persona.avatar and _re.fullmatch(r"[a-z0-9_-]+", persona.avatar):
+        return f"/personas/{persona.avatar}.svg"
+    return None
+
+
 def _format_workout_summary(workout):
     """Build a human-readable one-liner of the workout (used as a fallback)."""
     parts = []
@@ -178,18 +190,12 @@ def post_workout_comment(self, workout_id):
         # Optional web push for the athlete.
         if config.send_push_on_activity and send_push_to_user is not None:
             try:
-                import re as _re
-                avatar_icon = (
-                    f"/personas/{persona.avatar}.svg"
-                    if persona.avatar and _re.fullmatch(r"[a-z0-9_-]+", persona.avatar)
-                    else None
-                )
                 send_push_to_user(
                     workout.user,
                     title=f"{competition.name} - {persona.name}",
                     body=body,
                     url=f"/coach",
-                    icon=avatar_icon,
+                    icon=_persona_icon(persona),
                     badge="/icon-badge.png",
                     tag=f"drill-{competition.id}",
                 )
@@ -355,12 +361,6 @@ def post_inactivity_nudges(self):
         # Optional web push to every participant (the nudge targets the
         # whole group, not a single athlete).
         if config.send_push_on_activity and send_push_to_user is not None:
-            import re as _re
-            avatar_icon = (
-                f"/personas/{persona.avatar}.svg"
-                if persona.avatar and _re.fullmatch(r"[a-z0-9_-]+", persona.avatar)
-                else None
-            )
             for participant in participants:
                 try:
                     send_push_to_user(
@@ -368,7 +368,7 @@ def post_inactivity_nudges(self):
                         title=f"{competition.name} - {persona.name}",
                         body=body,
                         url=f"/coach",
-                        icon=avatar_icon,
+                        icon=_persona_icon(persona),
                         badge="/icon-badge.png",
                         tag=f"drill-nudge-{competition.id}",
                     )
@@ -509,12 +509,6 @@ def post_random_pushes(self):
             # the whole group, not a single athlete). The tag carries the
             # date so the two daily pushes don't replace each other.
             if config.send_push_on_activity and send_push_to_user is not None:
-                import re as _re
-                avatar_icon = (
-                    f"/personas/{persona.avatar}.svg"
-                    if persona.avatar and _re.fullmatch(r"[a-z0-9_-]+", persona.avatar)
-                    else None
-                )
                 for participant in participants:
                     try:
                         send_push_to_user(
@@ -522,7 +516,7 @@ def post_random_pushes(self):
                             title=f"{competition.name} - {persona.name}",
                             body=body,
                             url=f"/coach",
-                            icon=avatar_icon,
+                            icon=_persona_icon(persona),
                             badge="/icon-badge.png",
                             tag=f"drill-push-{competition.id}-{today}",
                         )

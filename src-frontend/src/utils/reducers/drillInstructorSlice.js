@@ -24,18 +24,22 @@ export const drillInstructorApi = createApi({
             providesTags: (result, error, id) => [{type: 'DrillPersona', id}],
         }),
         addPersona: builder.mutation({
+            // Body is plain JSON, or FormData when a custom profile
+            // picture file rides along (multipart boundary via browser).
             query: (newPersona) => ({
                 url: 'drill-instructor/persona/',
                 method: 'POST',
                 body: newPersona,
+                ...(newPersona instanceof FormData ? {headers: {'X-Skip-Content-Type': '1'}} : {}),
             }),
             invalidatesTags: ['DrillPersona'],
         }),
         updatePersona: builder.mutation({
-            query: ({id, ...patch}) => ({
+            query: ({id, body}) => ({
                 url: `drill-instructor/persona/${id}/`,
                 method: 'PATCH',
-                body: patch,
+                body,
+                ...(body instanceof FormData ? {headers: {'X-Skip-Content-Type': '1'}} : {}),
             }),
             invalidatesTags: (result, error, {id}) => [{type: 'DrillPersona', id}, 'DrillPersona'],
         }),

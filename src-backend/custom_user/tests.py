@@ -1,6 +1,9 @@
+import base64
 import datetime
+import tempfile
 from unittest import mock
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -8,6 +11,12 @@ from rest_framework.test import APIClient
 from competition.models import Competition
 
 from .models import CustomUser
+
+
+# 1x1 transparent PNG - the smallest valid upload for ImageField tests.
+PNG_1PX = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+)
 
 
 # The registration throttle reads the Django cache - use LocMem so the
@@ -98,3 +107,111 @@ class RegistrationInviteGateTests(TestCase):
     def test_open_registration_when_no_token_configured(self):
         response = self._register("h@example.com")
         self.assertEqual(response.status_code, 201, response.content)
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class ProfilePictureEndpointTests(TestCase):
+    """Profile pictures are not public: they are only served through the
+    authenticated picture endpoint (to the owner and co-participants) -
+    never from the open /media/ path."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        self._media_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._media_tmp.cleanup)
+        media_override = override_settings(MEDIA_ROOT=self._media_tmp.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+        self.client = APIClient()
+        today = timezone.localdate()
+        self.owner = CustomUser.objects.create_user(
+            email="owner@example.com", password="test-pw", first_name="Olivia", last_name="",
+        )
+        self.mate = CustomUser.objects.create_user(
+            email="mate@example.com", password="test-pw", first_name="Max", last_name="",
+        )
+        self.outsider = CustomUser.objects.create_user(
+            email="outsider@example.com", password="test-pw", first_name="Otto", last_name="",
+        )
+        competition = Competition.objects.create(
+            owner=self.owner,
+            name="Picture Cup",
+            start_date=today - datetime.timedelta(days=1),
+            end_date=today + datetime.timedelta(days=7),
+        )
+        self.mate.my_competitions.add(competition)
+
+        self.owner.profile_picture.save(
+            "me.png", SimpleUploadedFile("me.png", PNG_1PX, content_type="image/png")
+        )
+        self.url = f"/api/user/{self.owner.id}/picture/"
+
+    def test_anonymous_gets_401(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 401)
+
+    def test_owner_gets_own_picture_via_internal_redirect(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response["X-Accel-Redirect"],
+            f"/protected-media/{self.owner.profile_picture.name}",
+        )
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertIn("noindex", response["X-Robots-Tag"])
+        self.assertIn("private", response["Cache-Control"])
+
+    def test_me_alias_works(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.get("/api/user/me/picture/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_co_participant_gets_picture(self):
+        self.client.force_authenticate(self.mate)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+
+    def test_outsider_gets_404(self):
+        self.client.force_authenticate(self.outsider)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 404)
+
+    def test_404_when_user_has_no_picture(self):
+        self.client.force_authenticate(self.mate)
+        response = self.client.get(f"/api/user/{self.mate.id}/picture/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_payload_uses_authenticated_url(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.get("/api/user/me/")
+
+        self.assertIn(self.url, response.json()["profile_picture"])
+        self.assertNotIn("/media/", response.json()["profile_picture"])
+
+    def test_upload_via_profile_picture_upload(self):
+        self.client.force_authenticate(self.mate)
+        upload = SimpleUploadedFile("new.png", PNG_1PX, content_type="image/png")
+
+        response = self.client.patch(
+            "/api/user/me/", {"profile_picture_upload": upload}, format="multipart"
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.mate.refresh_from_db()
+        self.assertTrue(self.mate.profile_picture.name.startswith("profile_pics/"))
+        self.assertIn(
+            f"/api/user/{self.mate.id}/picture/",
+            response.json()["profile_picture"],
+        )

@@ -1,7 +1,12 @@
+import mimetypes
+
+from django.conf import settings
 from django.db.models import Q
+from django.http import FileResponse, Http404, HttpResponse
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -16,41 +21,56 @@ from .serializers import (
 class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
     """Global CRUD on personas.
 
-    Any authenticated user can list/retrieve. Any authenticated user can
-    create / delete their own (non-builtin) personas. Builtin personas
-    can only be edited by staff - regular users editing the system
-    prompt of a built-in persona would be a prompt-injection vector.
+    Any authenticated user can list/retrieve (competition owners need the
+    library to pick one). Writes are admin-only: a regular user editing
+    the system prompt of a persona used by someone else's competition
+    would be a prompt-injection vector.
     """
 
     serializer_class = DrillInstructorPersonaSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve", "picture"):
+            return [IsAuthenticated()]
+        return [IsAdminUser()]
 
     def get_queryset(self):
         return DrillInstructorPersona.objects.all().order_by("name")
 
-    def _ensure_can_modify(self, instance):
-        """Builtin personas are staff-only; custom personas only by their
-        creator (or staff). Otherwise any user could rewrite the system
-        prompt of a persona used by someone else's competition -
-        prompt-injection-as-a-service."""
-        user = self.request.user
-        if user.is_staff or user.is_superuser:
-            return
-        if instance.is_builtin:
-            raise PermissionDenied("Only staff can edit built-in personas.")
-        if instance.created_by_id != user.id:
-            raise PermissionDenied("You can only modify personas you created.")
-
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, is_builtin=False)
 
-    def perform_update(self, serializer):
-        self._ensure_can_modify(serializer.instance)
-        serializer.save()
+    @action(detail=True, methods=["get"])
+    def picture(self, request, pk=None):
+        """Serve the persona's custom profile picture - authenticated only.
 
-    def perform_destroy(self, instance):
-        self._ensure_can_modify(instance)
-        instance.delete()
+        Uploaded artwork must not be publicly reachable (copyright): it is
+        never served from the public /media/ path. Django checks the JWT
+        here and, in production, hands the actual file delivery to nginx
+        via X-Accel-Redirect (an internal, non-public location). In bare
+        Django dev (DEBUG) the file is streamed directly.
+        """
+        persona = self.get_object()
+        if not persona.profile_picture:
+            raise Http404("No custom profile picture.")
+
+        content_type = (
+            mimetypes.guess_type(persona.profile_picture.name)[0]
+            or "application/octet-stream"
+        )
+        if settings.DEBUG:
+            response = FileResponse(
+                persona.profile_picture.open("rb"), content_type=content_type
+            )
+        else:
+            response = HttpResponse(content_type=content_type)
+            response["X-Accel-Redirect"] = f"/protected-media/{persona.profile_picture.name}"
+        # The URL is stable per persona, so it must revalidate on every
+        # use (ETag → cheap 304) - otherwise a changed picture would stay
+        # stale in browser caches. Private: never stored by shared caches.
+        response["Cache-Control"] = "private, no-cache"
+        response["X-Robots-Tag"] = "noindex, nofollow"
+        return response
 
 
 class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
