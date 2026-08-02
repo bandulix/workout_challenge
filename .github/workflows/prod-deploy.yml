@@ -25,8 +25,9 @@ concurrency:
 jobs:
 
   autotag:
-    # push events have no pull_request payload - run on either trigger.
-    if: github.event_name == 'push' || github.event.pull_request.merged == true
+    # Runs for push/workflow_dispatch; for pull_request only when merged
+    # (push and dispatch events have no pull_request payload at all).
+    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
     runs-on: ubuntu-22.04
     permissions:
       contents: write
