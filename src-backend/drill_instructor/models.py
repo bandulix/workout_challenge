@@ -30,6 +30,12 @@ class DrillInstructorPersona(models.Model):
             "the frontend (/personas/<key>.svg) or a custom emoji character."
         ),
     )
+    profile_picture = models.ImageField(
+        upload_to="persona_pics/",
+        null=True,
+        blank=True,
+        help_text="Custom uploaded profile picture. Takes precedence over the avatar artwork/emoji when set.",
+    )
     theme_color = models.CharField(
         max_length=7,
         blank=True,

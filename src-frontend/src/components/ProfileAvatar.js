@@ -2,18 +2,26 @@ import React, {useRef, useState} from "react";
 import {Camera} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {useUploadProfilePictureMutation} from "../utils/reducers/usersSlice";
+import {useProtectedImage} from "../utils/protectedMedia";
 
 // The user's profile picture with an optional camera-badge edit affordance.
 // Uploads go straight to PATCH /api/user/me/ as multipart form data.
+//
+// Profile pictures are not public: the API hands out an authenticated
+// endpoint URL, which <img> can't load directly (no JWT header) - it is
+// fetched with credentials and rendered from an object URL.
 
 const ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+const FALLBACK = "/profile.png";
 
 function ProfileAvatar({user, size = 96, editable = false, className = ""}) {
     const fileInput = useRef(null);
     const [upload, {isLoading}] = useUploadProfilePictureMutation();
     const [error, setError] = useState(null);
 
-    const src = user?.profile_picture || "/profile.png";
+    const pictureUrl = user?.profile_picture;
+    const {src: fetchedSrc} = useProtectedImage(pictureUrl || null);
+    const src = fetchedSrc || FALLBACK;
 
     async function handleFile(e) {
         const file = e.target.files?.[0];
@@ -27,7 +35,7 @@ function ProfileAvatar({user, size = 96, editable = false, className = ""}) {
         try {
             await upload(file).unwrap();
         } catch (err) {
-            const msg = err?.data?.profile_picture;
+            const msg = err?.data?.profile_picture_upload;
             setError(Array.isArray(msg) ? msg[0] : "Upload failed - please try again.");
         }
     }

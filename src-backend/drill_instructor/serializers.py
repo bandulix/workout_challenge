@@ -1,23 +1,46 @@
 import re
 
+from django.urls import reverse
 from rest_framework import serializers
 
 from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona
+
+
+def _persona_picture_url(persona, request):
+    """URL of the persona's custom profile picture - always the
+    authenticated endpoint, never the raw /media/ path (uploaded artwork
+    must not be publicly reachable)."""
+    if not persona.profile_picture:
+        return None
+    url = reverse("drill-persona-picture", kwargs={"pk": persona.pk})
+    return request.build_absolute_uri(url) if request else url
 
 
 class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
     """Persona serializer.
 
     Read: anyone authenticated can list/retrieve (the library is global).
-    Write: any authenticated user can create / edit. Deletion of builtin
-    personas is blocked at the view layer.
+    Write: admin-only (enforced at the view layer) - a user-controlled
+    system prompt would be a prompt-injection vector for competitions
+    the user doesn't own. For the same reason the ``system_prompt``
+    (the voice & style briefing) is only serialized for staff.
     """
+
+    MAX_PROFILE_PICTURE_BYTES = 5 * 1024 * 1024  # 5 MB
 
     theme_color = serializers.RegexField(
         regex=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
         required=False,
         allow_blank=True,
         error_messages={"invalid": "Use a hex colour like #d7ff3e."},
+    )
+
+    # Read path: the authenticated endpoint URL (see _persona_picture_url).
+    # Write path: uploads arrive as ``profile_picture_upload`` (multipart)
+    # and map onto the model's profile_picture field.
+    profile_picture = serializers.SerializerMethodField()
+    profile_picture_upload = serializers.ImageField(
+        write_only=True, required=False, allow_null=True, source="profile_picture"
     )
 
     class Meta:
@@ -28,6 +51,8 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
             "description",
             "tagline",
             "avatar",
+            "profile_picture",
+            "profile_picture_upload",
             "theme_color",
             "system_prompt",
             "is_builtin",
@@ -36,6 +61,32 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["is_builtin", "created_by", "created_at", "updated_at"]
+
+    # The voice & style briefing is the admin's prompt-engineering
+    # know-how and a prompt-injection surface - regular users never see it.
+    STAFF_ONLY_FIELDS = ["system_prompt"]
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not (user and (user.is_staff or user.is_superuser)):
+            for field in self.STAFF_ONLY_FIELDS:
+                rep.pop(field, None)
+        return rep
+
+    def get_profile_picture(self, obj):
+        return _persona_picture_url(obj, self.context.get("request"))
+
+    def validate_profile_picture_upload(self, value):
+        if value is None:
+            return value
+        if value.size > self.MAX_PROFILE_PICTURE_BYTES:
+            raise serializers.ValidationError("Profile picture too large (max 5 MB).")
+        content_type = getattr(value, "content_type", "") or ""
+        if not content_type.startswith("image/"):
+            raise serializers.ValidationError("File must be an image.")
+        return value
 
     def validate_avatar(self, value):
         # Either a built-in artwork key (letters/digits/dash/underscore -
@@ -114,6 +165,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     persona_name = serializers.CharField(source="config.persona.name", read_only=True)
     persona_tagline = serializers.CharField(source="config.persona.tagline", read_only=True)
     persona_avatar = serializers.CharField(source="config.persona.avatar", read_only=True)
+    persona_profile_picture = serializers.SerializerMethodField()
     persona_theme_color = serializers.CharField(source="config.persona.theme_color", read_only=True)
     athlete_name = serializers.SerializerMethodField()
     workout_summary = serializers.SerializerMethodField()
@@ -134,11 +186,15 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             "persona_name",
             "persona_tagline",
             "persona_avatar",
+            "persona_profile_picture",
             "persona_theme_color",
             "athlete_name",
             "workout_summary",
         ]
         read_only_fields = fields
+
+    def get_persona_profile_picture(self, obj):
+        return _persona_picture_url(obj.config.persona, self.context.get("request"))
 
     def get_athlete_name(self, obj):
         user = getattr(obj.workout, "user", None)

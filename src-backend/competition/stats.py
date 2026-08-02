@@ -180,13 +180,10 @@ def get_competition_stats(competition, last_seven_days=False):
     for key, value in user_dict.items():
         if value['strava_allow_follow'] is False:
             value['strava_athlete_id'] = None
-        # values() yields the storage path ("profile_pics/x.jpg") - expose
-        # the URL the frontend can render straight away (None when unset).
-        # NOTE: Django's LazySettings prepends the script prefix to
-        # MEDIA_URL, so at runtime it is "/media/" - do NOT add another
-        # leading slash or the URL becomes "//media/..." which browsers
-        # resolve as a protocol-relative URL to a host named "media".
-        value['profile_picture'] = f"{settings.MEDIA_URL}{value['profile_picture']}" if value['profile_picture'] else None
+        # Profile pictures are not public: expose the authenticated
+        # endpoint URL (same-origin relative path is enough - the
+        # frontend fetches it with the JWT), never the raw /media/ path.
+        value['profile_picture'] = f"/api/user/{value['id']}/picture/" if value['profile_picture'] else None
 
     # Get user rankings
     leaderboard_user = (

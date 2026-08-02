@@ -95,7 +95,7 @@ export const usersApi = createApi({
         uploadProfilePicture: builder.mutation({
             query: (file) => {
                 const formData = new FormData();
-                formData.append('profile_picture', file);
+                formData.append('profile_picture_upload', file);
                 return {
                     url: 'user/me/',
                     method: 'PATCH',

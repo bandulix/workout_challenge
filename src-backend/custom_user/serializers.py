@@ -1,10 +1,21 @@
 from rest_framework import serializers
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
+from django.urls import reverse
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes
 
 from .models import CustomUser
+
+
+def user_picture_url(user, request):
+    """URL of the user's profile picture - always the authenticated
+    endpoint, never the raw /media/ path (profile pictures must not be
+    publicly reachable)."""
+    if not user.profile_picture:
+        return None
+    url = reverse("cutomuser-picture", kwargs={"pk": user.pk})
+    return request.build_absolute_uri(url) if request else url
 
 
 class CustomUserSerializer(serializers.ModelSerializer):
@@ -21,7 +32,18 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
     MAX_PROFILE_PICTURE_BYTES = 5 * 1024 * 1024  # 5 MB
 
-    def validate_profile_picture(self, value):
+    # Read path: the authenticated endpoint URL (see user_picture_url).
+    # Write path: uploads arrive as ``profile_picture_upload``
+    # (multipart) and map onto the model's profile_picture field.
+    profile_picture = serializers.SerializerMethodField()
+    profile_picture_upload = serializers.ImageField(
+        write_only=True, required=False, allow_null=True, source='profile_picture'
+    )
+
+    def get_profile_picture(self, obj):
+        return user_picture_url(obj, self.context.get('request'))
+
+    def validate_profile_picture_upload(self, value):
         if value is None:
             return value
         if value.size > self.MAX_PROFILE_PICTURE_BYTES:
@@ -33,7 +55,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'invite_token', 'join_code', 'profile_picture', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
+        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'invite_token', 'join_code', 'profile_picture', 'profile_picture_upload', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
         # my_competitions / my_teams are read-only: joining happens
         # exclusively through the dedicated join views (join code +
         # participant checks). Writable M2M fields would be a

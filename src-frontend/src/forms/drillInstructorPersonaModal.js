@@ -1,4 +1,5 @@
-import React, {useEffect, useState} from "react";
+import React, {useEffect, useRef, useState} from "react";
+import {Camera} from "lucide-react";
 import {
     useAddPersonaMutation,
     useDeletePersonaMutation,
@@ -13,6 +14,13 @@ import {
     SaveButton,
 } from "./basicComponents";
 import PersonaAvatar from "../components/PersonaAvatar";
+
+// Only admins reach this modal (the Coach page gates the entry point and
+// the API rejects non-staff writes); the persona library itself is global
+// so every competition owner can pick from it.
+
+const PICTURE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+const MAX_PICTURE_BYTES = 5 * 1024 * 1024; // 5 MB - mirrors the API validation
 
 // Artwork shipped in /public/personas - custom personas pick one of these
 // (or type a single emoji) plus an accent colour.
@@ -30,6 +38,10 @@ function PersonaEditModal({persona, setModalState}) {
     const [values, setValues] = useState({});
     const [fieldErrors, setFieldErrors] = useState({});
     const [formError, setFormError] = useState("");
+    const [pictureFile, setPictureFile] = useState(null);
+    const [picturePreview, setPicturePreview] = useState(null);
+    const [pictureError, setPictureError] = useState(null);
+    const fileInput = useRef(null);
 
     const [addPersona, {isLoading: addLoading, error: addError, isSuccess: addSuccess}] = useAddPersonaMutation();
     const [updatePersona, {isLoading: updateLoading, error: updateError, isSuccess: updateSuccess}] = useUpdatePersonaMutation();
@@ -44,8 +56,16 @@ function PersonaEditModal({persona, setModalState}) {
                 theme_color: persona.theme_color || PERSONA_COLORS[0],
                 system_prompt: persona.system_prompt || "",
             });
+            setPicturePreview(persona.profile_picture || null);
         }
     }, [persona]);
+
+    // Free the object URL once the modal is gone or the file is replaced.
+    useEffect(() => {
+        return () => {
+            if (picturePreview && picturePreview.startsWith("blob:")) URL.revokeObjectURL(picturePreview);
+        };
+    }, [picturePreview]);
 
     useEffect(() => {
         if (addError) setFormError("Create Error: " + JSON.stringify(addError?.data || addError?.message));
@@ -59,15 +79,40 @@ function PersonaEditModal({persona, setModalState}) {
         }
     }, [addSuccess, updateSuccess]);
 
+    function handlePictureFile(e) {
+        const file = e.target.files?.[0];
+        e.target.value = ""; // allow re-picking the same file
+        if (!file) return;
+        setPictureError(null);
+        if (file.size > MAX_PICTURE_BYTES) {
+            setPictureError("Image too large (max 5 MB).");
+            return;
+        }
+        if (picturePreview && picturePreview.startsWith("blob:")) URL.revokeObjectURL(picturePreview);
+        setPictureFile(file);
+        setPicturePreview(URL.createObjectURL(file));
+    }
+
     async function handleSubmit() {
         setFieldErrors({});
         setFormError("");
-        const payload = {...values};
+        // With a custom picture on board the payload goes as multipart
+        // form data; otherwise plain JSON (the slice sets the headers).
+        let payload;
+        if (pictureFile) {
+            payload = new FormData();
+            for (const [key, value] of Object.entries(values)) {
+                payload.append(key, value ?? "");
+            }
+            payload.append("profile_picture_upload", pictureFile);
+        } else {
+            payload = {...values};
+        }
         try {
             if (isNew) {
                 await addPersona(payload).unwrap();
             } else {
-                await updatePersona({id: persona.id, ...payload}).unwrap();
+                await updatePersona({id: persona.id, body: payload}).unwrap();
             }
         } catch (err) {
             console.error("Persona save failed", err);
@@ -79,12 +124,26 @@ function PersonaEditModal({persona, setModalState}) {
 
     return (
         <Modal title={isNew ? "New Persona" : "Edit Persona"} setShowModal={setModalState} isLoading={addLoading || updateLoading}>
-            {/* identity preview */}
+            {/* identity preview - click the picture to upload a custom one */}
             <div className="flex items-center gap-4 px-4 pb-2">
-                <PersonaAvatar persona={values} size={72} glow/>
+                <button type="button" onClick={() => fileInput.current?.click()}
+                        className="group relative shrink-0 rounded-full focus:outline-none"
+                        aria-label="Upload a custom profile picture">
+                    <PersonaAvatar persona={{...values, profile_picture: picturePreview}} size={72} glow/>
+                    <span className="absolute inset-0 rounded-full bg-ink-950/45 opacity-0 group-hover:opacity-100 group-active:opacity-100 transition flex items-center justify-center">
+                        <Camera className="h-6 w-6 text-volt-400"/>
+                    </span>
+                    <span className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-volt-400 text-ink-950 flex items-center justify-center shadow-glow-volt pointer-events-none">
+                        <Camera className="h-3 w-3"/>
+                    </span>
+                </button>
+                <input ref={fileInput} type="file" accept={PICTURE_ACCEPT} className="hidden" onChange={handlePictureFile}/>
                 <div>
                     <p className="font-bold">{values.name || "Unnamed coach"}</p>
                     <p className="text-sm text-gray-400 italic">{values.tagline || "No tagline yet."}</p>
+                    <p className="text-xs text-gray-400 mt-1">Click the picture to upload a custom one{pictureFile ? `: ${pictureFile.name}` : "."}</p>
+                    {pictureError && <p className="text-xs text-red-500 mt-1">{pictureError}</p>}
+                    {fieldErrors.profile_picture_upload && <p className="text-xs text-red-500 mt-1">{fieldErrors.profile_picture_upload}</p>}
                 </div>
             </div>
 
@@ -127,7 +186,9 @@ function PersonaEditModal({persona, setModalState}) {
                             </button>
                         ))}
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">…or type a single emoji:</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                        Fallback artwork when no custom picture is uploaded{picturePreview ? " (currently overridden by the uploaded picture above)" : ""} — or type a single emoji:
+                    </p>
                     <input type="text" className={inputClass + " mt-1 w-24 text-center"} value={PERSONA_ARTWORK.includes(values.avatar) ? "" : values.avatar || ""}
                            placeholder="🔥" maxLength={8}
                            onChange={(e) => setValues({...values, avatar: e.target.value || "megaphone"})}/>
@@ -183,7 +244,8 @@ export default function DrillInstructorPersonaModal({setModalState}) {
         <Modal title="AI Drill Instructor Personas" landscape={true} setShowModal={setModalState} isLoading={isLoading || deleteLoading}>
             <div className="text-sm text-gray-600 dark:text-gray-400 px-4 pb-2">
                 Personas define the voice and style of the AI Drill Instructor. Any competition owner can pick
-                any persona when configuring their Drill Instructor. Built-in personas can be edited but not deleted.
+                any persona when configuring their Drill Instructor, but only admins can create, edit or delete
+                personas here. Built-in personas can be edited but not deleted.
             </div>
             <div className="grid gap-2 sm:grid-cols-2 px-2">
                 {(personas?.length ?? 0) === 0 ? (

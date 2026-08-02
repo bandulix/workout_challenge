@@ -1,13 +1,16 @@
 import time, datetime
 import logging
+import mimetypes
 import requests
 
 logger = logging.getLogger(__name__)
 from rest_framework import viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import BasePermission, IsAdminUser, SAFE_METHODS, AllowAny
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.throttling import BaseThrottle, ScopedRateThrottle
 from django.db.models import Q
+from django.http import FileResponse, Http404, HttpResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -173,6 +176,39 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         _blacklist_user_tokens(instance)
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=["get"], permission_classes=[IsAuthenticated])
+    def picture(self, request, pk=None):
+        """Serve the user's profile picture - authenticated only.
+
+        Profile pictures must not be publicly reachable: they are never
+        served from the public /media/ path. Django checks the JWT and
+        the caller's visibility (self or co-participant, via the
+        viewset's queryset) and, in production, hands the actual file
+        delivery to nginx via X-Accel-Redirect (an internal, non-public
+        location). In bare Django dev (DEBUG) the file is streamed.
+        """
+        user = self.get_object()
+        if not user.profile_picture:
+            raise Http404("No profile picture.")
+
+        content_type = (
+            mimetypes.guess_type(user.profile_picture.name)[0]
+            or "application/octet-stream"
+        )
+        if settings.DEBUG:
+            response = FileResponse(
+                user.profile_picture.open("rb"), content_type=content_type
+            )
+        else:
+            response = HttpResponse(content_type=content_type)
+            response["X-Accel-Redirect"] = f"/protected-media/{user.profile_picture.name}"
+        # The URL is stable per user, so it must revalidate on every use
+        # (ETag → cheap 304) - otherwise a changed picture would stay
+        # stale in browser caches. Private: never stored by shared caches.
+        response["Cache-Control"] = "private, no-cache"
+        response["X-Robots-Tag"] = "noindex, nofollow"
+        return response
 
 
 class PasswordResetView(APIView):
