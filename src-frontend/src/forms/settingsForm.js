@@ -2,7 +2,7 @@ import {useDeleteUserMutation, usersApi, useUpdateUserMutation} from "../utils/r
 import React, {useEffect, useState} from "react";
 import {DeleteButton, Modal, SaveButton, SingleForm, StravaButton} from "./basicComponents";
 import {useNavigate} from "react-router-dom";
-import {useUnlinkStravaMutation, useLinkGarminMutation, useUnlinkGarminMutation} from "../utils/reducers/linkSlice";
+import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, useUnlinkGarminMutation} from "../utils/reducers/linkSlice";
 import {useDispatch} from "react-redux";
 import {Watch} from "lucide-react";
 import {BeatLoader} from "react-spinners";
@@ -211,6 +211,10 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
         isLoading: unlinkIsLoading,
         isSuccess: unlinkIsSuccess
     }] = useUnlinkStravaMutation();
+    const [resetStrava, {
+        error: resetError,
+        isLoading: resetIsLoading,
+    }] = useResetStravaMutation();
 
     // Overall form error message
     useEffect(() => {
@@ -220,8 +224,10 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
             setFormError('Delete Error (' + deleteError?.status?.toLocaleString() + ' ' + deleteError?.originalStatus?.toLocaleString() + '): ' + deleteError?.message);
         } else if (unlinkError !== undefined) {
             setFormError('Strava Unlink Error (' + unlinkError?.status?.toLocaleString() + ' ' + unlinkError?.originalStatus?.toLocaleString() + '): ' + unlinkError?.message);
+        } else if (resetError !== undefined) {
+            setFormError('Strava Reset Error (' + resetError?.status?.toLocaleString() + ' ' + resetError?.originalStatus?.toLocaleString() + '): ' + resetError?.message);
         }
-    }, [updateError, deleteError, unlinkError])
+    }, [updateError, deleteError, unlinkError, resetError])
 
     // load current form values
     useEffect(() => {
@@ -266,6 +272,24 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
         }
     }
 
+    // Repair path for a broken Strava connection: wipe the connection
+    // state server-side, then the user links again from scratch.
+    async function handleStravaReset() {
+        const confirmation = window.confirm('Reset the Strava connection? This removes the stored linkage and sync state so you can link Strava again from scratch. Your workouts are kept.');
+        if (!confirmation) return;
+        try {
+            const result = await resetStrava().unwrap();
+            console.log('Reset Strava success:', result);
+            dispatch(usersApi.util.invalidateTags(['User']));
+            setModalState(false);
+            document.body.classList.remove('body-no-scroll');
+            window.alert('Strava connection reset. Open the settings again and use "Link Strava Account" to connect from scratch.');
+        } catch (err) {
+            console.error('Reset Strava failed', err);
+            setFieldErrors(err.data);
+        }
+    }
+
     // form action button Strava linkage
     async function handleStravaLinkage({linked}) {
         if (linked) {
@@ -289,7 +313,7 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
     }
 
     return (
-        <Modal title="Personal Setting" landscape={true} setShowModal={setModalState} isLoading={updateIsLoading || deleteIsLoading || unlinkIsLoading}>
+        <Modal title="Personal Setting" landscape={true} setShowModal={setModalState} isLoading={updateIsLoading || deleteIsLoading || unlinkIsLoading || resetIsLoading}>
             <SingleForm fields={fields} values={values} setValues={setValues} errors={fieldErrors}/>
             <div className="text-center text-red-500 text-xs italic">{formError}</div>
             <div className="px-4">
@@ -297,6 +321,14 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
                     label={(user.strava_athlete_id ? "Unlink" : "Link") + " Strava Account"}
                     onClick={() => handleStravaLinkage({linked: user.strava_athlete_id !== null && user.strava_athlete_id !== undefined && user.strava_athlete_id !== ''})}
                 />
+                {(user.strava_athlete_id !== null && user.strava_athlete_id !== undefined && user.strava_athlete_id !== '') && (
+                    <div className="mt-2">
+                        <button type="button" onClick={handleStravaReset}
+                                className="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline">
+                            Strava connection problems? Reset the connection
+                        </button>
+                    </div>
+                )}
             </div>
             <GarminSection user={user} onChanged={() => dispatch(usersApi.util.invalidateTags(['User']))}/>
             <div className="relative flex justify-between items-center">

@@ -3,6 +3,7 @@ import datetime
 import tempfile
 from unittest import mock
 
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -215,3 +216,46 @@ class ProfilePictureEndpointTests(TestCase):
             f"/api/user/{self.mate.id}/picture/",
             response.json()["profile_picture"],
         )
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class ResetStravaTests(TestCase):
+    """The Strava reset is the repair path for a broken connection: it
+    wipes the whole connection state (including the cached access token
+    and the sync timestamp) but keeps the user logged in."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            email="runner@example.com", password="test-pw", first_name="Rita", last_name="",
+        )
+        self.user.strava_refresh_token = "gAAAAAencrypted"
+        self.user.strava_athlete_id = 123456
+        self.user.strava_last_synced_at = timezone.now()
+        self.user.save()
+        cache.set(f"strava_access_token_{self.user.id}", "cached-access-token", 3600)
+
+    def test_anonymous_gets_401(self):
+        response = self.client.post("/api/strava/reset/")
+        self.assertEqual(response.status_code, 401)
+
+    def test_reset_clears_everything(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post("/api/strava/reset/")
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.strava_refresh_token)
+        self.assertIsNone(self.user.strava_athlete_id)
+        self.assertIsNone(self.user.strava_last_synced_at)
+        self.assertIsNone(cache.get(f"strava_access_token_{self.user.id}"))

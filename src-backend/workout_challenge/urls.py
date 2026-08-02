@@ -24,7 +24,7 @@ from rest_framework_simplejwt.views import (
 from rest_framework.routers import DefaultRouter
 from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView
 from workouts.views import WorkoutViewSet
-from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, LinkGarminView, UnlinkGarminView, SyncGarminView
+from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, ResetStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, LinkGarminView, UnlinkGarminView, SyncGarminView
 
 
 # Token endpoints with a strict throttle bucket (online brute-force
@@ -75,6 +75,7 @@ urlpatterns = [
         # falling through to a bare 404 HTML page the frontend can't parse.
         path('strava/link/<str:code>/', LinkStravaView.as_view(), name='strava-link-no-state'),
         path('strava/unlink/', UnlinkStravaView.as_view(), name='strava-unlink'),
+        path('strava/reset/', ResetStravaView.as_view(), name='strava-reset'),
         path('strava/sync/', SyncStravaView.as_view(), name='strava-sync'),
         path('garmin/link/', LinkGarminView.as_view(), name='garmin-link'),
         path('garmin/unlink/', UnlinkGarminView.as_view(), name='garmin-unlink'),
