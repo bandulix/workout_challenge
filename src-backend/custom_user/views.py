@@ -372,6 +372,30 @@ class UnlinkStravaView(APIView):
         return Response({"message": "Successfully unlinked Strava."}, status=status.HTTP_200_OK)
 
 
+class ResetStravaView(APIView):
+    """Reset the Strava connection to a clean slate.
+
+    The repair path for a broken linkage (e.g. Strava invalidated the
+    stored refresh token, so every sync fails): wipes every piece of
+    connection state - including the cached access token and the sync
+    timestamp, which ``UnlinkStravaView`` leaves behind - so the user
+    can link again from scratch. Unlike unlink this is not a security
+    action, so the user stays logged in (no token blacklisting).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        user.strava_refresh_token = None
+        user.strava_athlete_id = None
+        user.strava_last_synced_at = None
+        user.save(update_fields=['strava_refresh_token', 'strava_athlete_id', 'strava_last_synced_at'])
+        cache.delete(f"strava_access_token_{user.id}")
+
+        return Response({"message": "Strava connection reset. You can now link Strava again from scratch."},
+                        status=status.HTTP_200_OK)
+
+
 class SyncStravaView(APIView):
     """ API get view for users to sync Strava. """
     permission_classes = [IsAuthenticated]

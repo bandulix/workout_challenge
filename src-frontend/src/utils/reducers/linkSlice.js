@@ -23,6 +23,12 @@ export const linkApi = createApi({
                 method: 'POST',
             }),
         }),
+        resetStrava: builder.mutation({
+            query: () => ({
+                url: `strava/reset/`,
+                method: 'POST',
+            }),
+        }),
         syncStrava: builder.query({
             query: () => ({
                 url: `strava/sync/`,
@@ -56,6 +62,7 @@ export const {
     useGetStravaStateQuery,
     useLinkStravaMutation,
     useUnlinkStravaMutation,
+    useResetStravaMutation,
     useGetSyncStravaQuery,
     useLazySyncStravaQuery,
     useLinkGarminMutation,
