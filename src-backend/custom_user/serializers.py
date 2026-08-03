@@ -8,14 +8,21 @@ from django.utils.encoding import force_bytes
 from .models import CustomUser
 
 
-def user_picture_url(user, request):
+def user_picture_url(user):
     """URL of the user's profile picture - always the authenticated
     endpoint, never the raw /media/ path (profile pictures must not be
-    publicly reachable)."""
+    publicly reachable).
+
+    Deliberately a RELATIVE path (no scheme/host): the app can sit
+    behind a reverse proxy that rewrites the Host header, so an
+    absolute URL built from the request would point at the internal
+    host (e.g. ``http://localhost/...``) - unreachable for the browser
+    and blocked by CSP ``connect-src 'self'`` anyway. A relative path
+    resolves against the page origin, which is always correct.
+    """
     if not user.profile_picture:
         return None
-    url = reverse("cutomuser-picture", kwargs={"pk": user.pk})
-    return request.build_absolute_uri(url) if request else url
+    return reverse("cutomuser-picture", kwargs={"pk": user.pk})
 
 
 class CustomUserSerializer(serializers.ModelSerializer):
@@ -41,7 +48,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
     )
 
     def get_profile_picture(self, obj):
-        return user_picture_url(obj, self.context.get('request'))
+        return user_picture_url(obj)
 
     def validate_profile_picture_upload(self, value):
         if value is None:

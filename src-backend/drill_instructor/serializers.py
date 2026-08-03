@@ -6,14 +6,21 @@ from rest_framework import serializers
 from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona
 
 
-def _persona_picture_url(persona, request):
+def _persona_picture_url(persona):
     """URL of the persona's custom profile picture - always the
     authenticated endpoint, never the raw /media/ path (uploaded artwork
-    must not be publicly reachable)."""
+    must not be publicly reachable).
+
+    Deliberately a RELATIVE path (no scheme/host): the app can sit
+    behind a reverse proxy that rewrites the Host header, so an
+    absolute URL built from the request would point at the internal
+    host (e.g. ``http://localhost/...``) - unreachable for the browser
+    and blocked by CSP ``connect-src 'self'`` anyway. A relative path
+    resolves against the page origin, which is always correct.
+    """
     if not persona.profile_picture:
         return None
-    url = reverse("drill-persona-picture", kwargs={"pk": persona.pk})
-    return request.build_absolute_uri(url) if request else url
+    return reverse("drill-persona-picture", kwargs={"pk": persona.pk})
 
 
 class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
@@ -76,7 +83,7 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
         return rep
 
     def get_profile_picture(self, obj):
-        return _persona_picture_url(obj, self.context.get("request"))
+        return _persona_picture_url(obj)
 
     def validate_profile_picture_upload(self, value):
         if value is None:
@@ -194,7 +201,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_persona_profile_picture(self, obj):
-        return _persona_picture_url(obj.config.persona, self.context.get("request"))
+        return _persona_picture_url(obj.config.persona)
 
     def get_athlete_name(self, obj):
         user = getattr(obj.workout, "user", None)
