@@ -1,4 +1,4 @@
-import React, {useState} from "react";
+import React, {useEffect, useState} from "react";
 import {ChevronDown, ChevronUp, MessageCircle, Send} from "lucide-react";
 import {useDispatch} from "react-redux";
 import {BeatLoader} from "react-spinners";
@@ -15,8 +15,13 @@ import {timeAgo} from "../utils/time";
 // Coach bubbles use the persona's avatar/accent, participant bubbles the
 // user's profile picture + first name, so it is always clear who spoke.
 
-function CoachThread({message, persona, canReply = true}) {
-    const [open, setOpen] = useState(false);
+function CoachThread({message, persona, canReply = true, defaultOpen = false}) {
+    const [open, setOpen] = useState(defaultOpen);
+    // Deep links pass defaultOpen; the messages query usually resolves
+    // after the first render, so sync the prop in when it flips true.
+    useEffect(() => {
+        if (defaultOpen) setOpen(true);
+    }, [defaultOpen]);
     const [text, setText] = useState("");
     const [error, setError] = useState(null);
     const [sendReply, {isLoading}] = useReplyToDrillMessageMutation();
@@ -64,7 +69,10 @@ function CoachThread({message, persona, canReply = true}) {
                                 <ProfileAvatar user={{profile_picture: r.author_profile_picture, first_name: r.author_name}} size={24}/>
                             )}
                             <div className="min-w-0">
-                                <p className="text-sm leading-snug dark:text-gray-100">{r.body}</p>
+                                {/* break-words: pasted URLs / unbreakable strings wrap
+                                    instead of overflowing the viewport (page scrolled
+                                    sideways on smartphones). */}
+                                <p className="text-sm leading-snug break-words dark:text-gray-100">{r.body}</p>
                                 <p className="text-[11px] text-gray-400 mt-0.5">
                                     {r.is_coach ? (persona?.name || "Coach") : (r.author_name || "Participant")} · {timeAgo(r.posted_at)}
                                 </p>

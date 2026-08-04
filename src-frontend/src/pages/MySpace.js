@@ -61,15 +61,18 @@ function WelcomeBox({user, workouts}) {
 
     return (
         <BoxSection additionalClasses={"mb-4"}>
-            {/* Compact one-row header: small avatar with the name beside
-                it, lifetime total and top sport counts on the right. */}
-            <div className="flex items-center gap-4 px-1 sm:px-3">
+            {/* Compact header: small avatar with the name beside it,
+                lifetime total and top sport counts on the right. On narrow
+                (smartphone) widths the count block wraps to a second row
+                (flex-wrap + basis on the name) so a longer first name is
+                no longer crushed between the avatar and the counter. */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 sm:px-3">
                 <ProfileAvatar user={user} size={64} editable className="shrink-0"/>
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 basis-40">
                     <p className="text-xs text-gray-500">Welcome back,</p>
                     <p className="text-xl font-display uppercase tracking-wide truncate">{user.first_name}</p>
                 </div>
-                <div className="flex items-baseline gap-1.5 shrink-0">
+                <div className="flex items-baseline gap-1.5 shrink-0 ml-auto sm:ml-0">
                     <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
                     <span className="uppercase text-[10px] tracking-wide text-gray-500">workouts</span>
                 </div>

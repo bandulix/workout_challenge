@@ -1,4 +1,4 @@
-import {useNavigate, useNavigationType, useParams} from 'react-router-dom';
+import {useNavigate, useNavigationType, useParams, useSearchParams} from 'react-router-dom';
 import React, {useEffect, useState} from "react";
 import {competitionsApi, useGetCompetitionByIdQuery} from "../utils/reducers/competitionsSlice";
 import {
@@ -172,6 +172,18 @@ function CoachCorner({competition, isOwner}) {
     );
     const [showConfigModal, setShowConfigModal] = useState(false);
 
+    // Deep link from the Coach page's "Respond" button
+    // (/competition/<id>?reply=<messageId>): scroll Coach's Corner into
+    // view and open the matching thread (defaultOpen below).
+    const [searchParams] = useSearchParams();
+    const replyTargetId = parseInt(searchParams.get("reply") || "", 10) || null;
+    const cornerRef = React.useRef(null);
+    useEffect(() => {
+        if (replyTargetId && config && cornerRef.current) {
+            cornerRef.current.scrollIntoView({behavior: "smooth", block: "start"});
+        }
+    }, [replyTargetId, config]);
+
     if (!config) {
         if (!isOwner) return null;
         return (
@@ -197,7 +209,7 @@ function CoachCorner({competition, isOwner}) {
     const latest = (messages || []).slice(0, 3);
 
     return (
-        <div className="mb-4 rounded-3xl bg-white dark:bg-ink-850 dark:border dark:border-ink-700/60 shadow-card dark:shadow-card-dark overflow-hidden">
+        <div ref={cornerRef} className="mb-4 rounded-3xl bg-white dark:bg-ink-850 dark:border dark:border-ink-700/60 shadow-card dark:shadow-card-dark overflow-hidden">
             <div className="flex items-center gap-3 px-5 pt-4 pb-3 border-b border-gray-100 dark:border-ink-700/60">
                 <PersonaAvatar persona={persona} size={44} glow={config.enabled}/>
                 <div className="flex-1 min-w-0">
@@ -224,11 +236,14 @@ function CoachCorner({competition, isOwner}) {
                             <li key={m.id} className="flex items-start gap-2.5">
                                 <PersonaAvatar persona={threadPersona} size={30}/>
                                 <div className="min-w-0 flex-1">
-                                    <p className="text-sm leading-snug dark:text-gray-100">{m.body}</p>
+                                    {/* break-words: long unbreakable strings (URLs, hashtag
+                                        chains from the LLM) must wrap instead of pushing
+                                        the page wider than the viewport. */}
+                                    <p className="text-sm leading-snug break-words dark:text-gray-100">{m.body}</p>
                                     <p className="text-[11px] text-gray-400 mt-0.5">
                                         {m.athlete_name ? `→ ${m.athlete_name} · ` : ""}{timeAgo(m.posted_at)}
                                     </p>
-                                    <CoachThread message={m} persona={threadPersona} canReply={config.enabled}/>
+                                    <CoachThread message={m} persona={threadPersona} canReply={config.enabled} defaultOpen={m.id === replyTargetId}/>
                                 </div>
                             </li>
                         );
