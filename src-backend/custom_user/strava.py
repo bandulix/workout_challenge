@@ -11,9 +11,20 @@ from django.db import IntegrityError
 from workout_challenge.celery import app, is_task_already_executing
 from django.db.models import Q
 
-from workouts.models import Workout
+from workouts.models import Workout, SPORT_TYPES, find_duplicate_workout
 from .api_rate_limiter import strava_api_monitor, RateLimitExceeded  # Import to trigger initialization
 from .token_crypto import decrypt_token, encrypt_token
+
+# Strava keeps adding sport types faster than we do (e.g. Basketball,
+# Cricket, Dance, Padel, Physical Therapy, Volleyball in 2026). The
+# `choices` on Workout.sport_type are not DB-enforced, so without this
+# guard unknown values would land in the table verbatim - and a frontend
+# label lookup that expects a known type then crashes the whole page.
+_VALID_SPORT_TYPES = {key for key, _label in SPORT_TYPES}
+
+
+def _map_sport_type(strava_sport_type):
+    return strava_sport_type if strava_sport_type in _VALID_SPORT_TYPES else 'Workout'
 
 # Every outbound Strava request gets a hard timeout so a hung Strava
 # API can't park a Celery worker (or the gunicorn worker serving the
@@ -89,14 +100,23 @@ def daily_strava_sync(self, refresh_all=False):
 
 @app.task(bind=True)
 def sync_strava(self, user__id, start_datetime=None):
-    access_token = cache.get(f"strava_access_token_{user__id}")
     CustomUser = get_user_model()
     user = CustomUser.objects.get(id=user__id)
+
+    # One activity source per user: when Garmin is the selected provider,
+    # Strava must not import - the same activities would arrive twice.
+    # Checked before any cache/Strava API access so it costs nothing.
+    if user.get_activity_source() != 'strava':
+        print(f'User {user__id} - Strava sync skipped: Strava is not the selected activity source')
+        return {'user': user__id, 'skipped': 'strava is not the selected activity source'}
+
+    access_token = cache.get(f"strava_access_token_{user__id}")
 
     all_existing_strava_activities = set(Workout.objects.all().values_list('strava_id', flat=True))
 
     cnt_new_strava_activities = 0
     cnt_updated_strava_activities = 0
+    cnt_duplicate_strava_activities = 0
 
     if strava_api_monitor.ok_workout_requests() is False:
         raise RateLimitExceeded("No Strava Workout API requests allowed anymore to keep enough balance for user linkage")
@@ -165,7 +185,7 @@ def sync_strava(self, user__id, start_datetime=None):
             props = {
                 'user': user,
                 'strava_id': activity_id,
-                'sport_type': activity.get('sport_type'),
+                'sport_type': _map_sport_type(activity.get('sport_type')),
                 'start_datetime': datetime.datetime.fromisoformat(activity.get('start_date')),
                 'duration': datetime.timedelta(seconds=activity.get('moving_time')),
                 'distance': None if activity.get('distance') == 0 else activity.get('distance') / 1_000,
@@ -188,6 +208,14 @@ def sync_strava(self, user__id, start_datetime=None):
 
             # if a new workout - get activity details
             else:
+                # Cross-provider duplicate guard: the same activity may
+                # already exist from Garmin or as a manual entry. Checked
+                # before the details request so a duplicate also costs no
+                # Strava API quota.
+                if find_duplicate_workout(user, props['start_datetime'], props['duration'], provider='strava') is not None:
+                    cnt_duplicate_strava_activities += 1
+                    continue
+
                 if strava_api_monitor.ok_workout_requests() is False:
                     raise RateLimitExceeded("No Strava Workout API requests allowed anymore to keep enough balance for user linkage")
 
@@ -229,6 +257,6 @@ def sync_strava(self, user__id, start_datetime=None):
     if start_datetime is None:
         setattr(user, 'strava_last_synced_at', strava_last_synced_at)
         user.save()
-    print(f'User {user__id} - fetched {cnt_new_strava_activities} new strava activities and updated {cnt_updated_strava_activities} existing strava activities')
+    print(f'User {user__id} - fetched {cnt_new_strava_activities} new strava activities, updated {cnt_updated_strava_activities} existing strava activities and skipped {cnt_duplicate_strava_activities} cross-provider duplicates')
 
-    return {'user': user__id, 'total_activities': (page - 1) * per_page + len(activities), 'new_activities': cnt_new_strava_activities, 'updated_activities': cnt_updated_strava_activities, 'sync_time': strava_last_synced_at}
+    return {'user': user__id, 'total_activities': (page - 1) * per_page + len(activities), 'new_activities': cnt_new_strava_activities, 'updated_activities': cnt_updated_strava_activities, 'duplicates_skipped': cnt_duplicate_strava_activities, 'sync_time': strava_last_synced_at}

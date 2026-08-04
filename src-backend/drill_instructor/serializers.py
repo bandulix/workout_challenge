@@ -160,11 +160,49 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
         return attrs
 
 
+def _user_picture_url(user):
+    """Profile picture URL for a thread author - the authenticated
+    endpoint (never the raw /media/ path), shared helper shape with
+    custom_user.serializers.user_picture_url."""
+    from custom_user.serializers import user_picture_url
+    return user_picture_url(user)
+
+
+class DrillInstructorReplySerializer(serializers.ModelSerializer):
+    """One entry inside a coach-message thread: a participant's reply
+    (``is_coach=false``) or the coach's reaction to it (``is_coach=true``,
+    rendered with the thread root's persona fields).
+    """
+
+    is_coach = serializers.SerializerMethodField()
+    author_name = serializers.SerializerMethodField()
+    author_profile_picture = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DrillInstructorMessage
+        fields = ["id", "kind", "body", "posted_at", "is_coach", "author_name", "author_profile_picture"]
+        read_only_fields = fields
+
+    def get_is_coach(self, obj):
+        return obj.user_id is None
+
+    def get_author_name(self, obj):
+        if obj.user_id is None:
+            return None
+        return obj.user.first_name or obj.user.username or None
+
+    def get_author_profile_picture(self, obj):
+        if obj.user_id is None:
+            return None
+        return _user_picture_url(obj.user)
+
+
 class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     """Message plus the context the Coach UI needs to render a rich feed.
 
     Everything is denormalised into one payload so the mobile feed doesn't
-    have to fan out into N extra queries per bubble.
+    have to fan out into N extra queries per bubble. Thread replies are
+    nested oldest-first so the conversation reads top to bottom.
     """
 
     competition_id = serializers.IntegerField(source="config.competition_id", read_only=True)
@@ -176,6 +214,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     persona_theme_color = serializers.CharField(source="config.persona.theme_color", read_only=True)
     athlete_name = serializers.SerializerMethodField()
     workout_summary = serializers.SerializerMethodField()
+    replies = serializers.SerializerMethodField()
 
     class Meta:
         model = DrillInstructorMessage
@@ -197,8 +236,15 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             "persona_theme_color",
             "athlete_name",
             "workout_summary",
+            "replies",
         ]
         read_only_fields = fields
+
+    def get_replies(self, obj):
+        if obj.parent_id is not None:
+            return []  # replies themselves are never listed standalone
+        qs = obj.replies.select_related("user").order_by("posted_at")
+        return DrillInstructorReplySerializer(qs, many=True, context=self.context).data
 
     def get_persona_profile_picture(self, obj):
         return _persona_picture_url(obj.config.persona)

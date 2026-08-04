@@ -5,6 +5,7 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import store from './utils/store';
+import {ErrorBoundary} from './utils/miscellaneous';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 
 
@@ -44,7 +45,11 @@ root.render(
     <React.StrictMode>
         <QueryClientProvider client={queryClient}>
             <Provider store={store}>
-                <App/>
+                {/* Render-time errors anywhere in the tree land here instead
+                    of leaving a dead white screen - with a reload button. */}
+                <ErrorBoundary>
+                    <App/>
+                </ErrorBoundary>
             </Provider>
         </QueryClientProvider>
     </React.StrictMode>

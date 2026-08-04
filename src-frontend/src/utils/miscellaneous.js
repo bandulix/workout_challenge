@@ -92,6 +92,52 @@ function ErrorBoxSection({errorMsg, additionalClasses = ''}) {
     )
 }
 
+// Top-level error boundary: without one, any render-time exception (e.g.
+// unexpected API data) unmounts the entire React tree and leaves the user
+// staring at a white screen with no way out. The fallback offers a reload
+// button so the user can recover directly - no need to know how to kill
+// and restart the PWA.
+class ErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = {hasError: false};
+    }
+
+    static getDerivedStateFromError() {
+        return {hasError: true};
+    }
+
+    componentDidCatch(error, info) {
+        console.error('Unhandled UI error caught by the error boundary:', error, info);
+    }
+
+    render() {
+        if (!this.state.hasError) return this.props.children;
+
+        return (
+            <div className="min-h-screen bg-[#f2f4ec] dark:bg-ink-950 flex items-center justify-center p-6">
+                <div className="bg-white dark:bg-ink-850 rounded-3xl shadow-card dark:shadow-card-dark dark:border dark:border-ink-700/60 p-8 max-w-md w-full text-center space-y-4">
+                    <AlertCircle className="w-12 h-12 mx-auto text-red-500"/>
+                    <p className="font-display text-lg uppercase tracking-wide dark:text-white">Something went wrong</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                        The app hit an unexpected error. Reloading usually fixes it.
+                    </p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="w-full px-5 py-3 rounded-full bg-volt-400 text-ink-950 font-bold uppercase tracking-wide text-sm hover:bg-volt-300 transition shadow-glow-volt">
+                        Reload the app
+                    </button>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                        If the problem keeps coming back, <a href="/logout" className="text-blue-500 hover:underline">log out</a> and
+                        log back in. If it still persists, contact the administrator.
+                    </p>
+                </div>
+            </div>
+        );
+    }
+}
+
+
 function PageWrapper({additionClasses = '', children}) {
     // pb-24 reserves space at the bottom so content isn't covered by the
     // fixed bottom navigation (bar on mobile, floating dock on desktop).
@@ -111,4 +157,4 @@ function useDarkMode() {
 }
 
 
-export {throwErrorWithCode, deepDiff, compareDictLists, PageWrapper, BoxSection, ErrorBoxSection, useDarkMode};
+export {throwErrorWithCode, deepDiff, compareDictLists, PageWrapper, BoxSection, ErrorBoxSection, ErrorBoundary, useDarkMode};

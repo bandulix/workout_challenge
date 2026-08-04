@@ -2,6 +2,7 @@ import React, {useState} from "react";
 import {Link, useLocation, useNavigate} from "react-router-dom";
 import {Flag, Home, Plus, User2, Settings, Scale, BadgeHelp, Shield, LogOut, Sun, Moon, ChevronRight} from "lucide-react";
 import WorkoutForm from "../forms/workoutForm";
+import {Modal} from "../forms/basicComponents";
 import SettingsForm from "../forms/settingsForm";
 import GoalEqualizerForm from "../forms/equalizerForm";
 import SupportModal from "../forms/supportModal";
@@ -134,7 +135,7 @@ export default function BottomNav() {
     const [linkStrava, setLinkStrava] = useState(false);
 
     const location = useLocation();
-    const {data: user} = useGetUserByIdQuery('me');
+    const {data: user, error: userError, refetch: refetchUser} = useGetUserByIdQuery('me');
     const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: !user});
     const isStaff = !!user?.is_staff;
     const onDashboard = location.pathname === "/dashboard" || location.pathname === "/";
@@ -220,7 +221,22 @@ export default function BottomNav() {
                          onSupport={() => setShowSupport(true)}/>
             )}
 
-            {showSettings && user && <SettingsForm user={user} setModalState={setShowSettings} setLinkStrava={setLinkStrava}/>}
+            {/* SettingsForm needs the profile. While it is still loading
+                (or after a failed fetch) show feedback inside the modal
+                instead of the tap on "Settings" silently doing nothing. */}
+            {showSettings && (user ? (
+                <SettingsForm user={user} setModalState={setShowSettings} setLinkStrava={setLinkStrava}/>
+            ) : (
+                <Modal title="Personal Setting" landscape={true} setShowModal={setShowSettings} isLoading={!userError}>
+                    <div className="text-center space-y-3 px-4">
+                        <p className="text-red-500 text-sm">Your profile could not be loaded.</p>
+                        <button onClick={() => refetchUser()}
+                                className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition">
+                            Try again
+                        </button>
+                    </div>
+                </Modal>
+            ))}
             {showEqualizer && user && <GoalEqualizerForm user={user} setModalState={setShowEqualizer}/>}
             {showSupport && <SupportModal setModalState={setShowSupport}/>}
             {linkStrava && <LinkStravaScreen setModal={setLinkStrava}/>}

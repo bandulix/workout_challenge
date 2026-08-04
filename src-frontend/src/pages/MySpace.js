@@ -8,7 +8,7 @@ import {
     Ruler,
 } from 'lucide-react';
 import {useGetWorkoutsQuery, workoutsApi} from "../utils/reducers/workoutsSlice";
-import WorkoutForm, {workoutTypes} from "../forms/workoutForm";
+import WorkoutForm, {sportLabelShort} from "../forms/workoutForm";
 import lodFilter from 'lodash/filter';
 import lodFind from 'lodash/find';
 import lodFrompairs from 'lodash/fromPairs';
@@ -76,7 +76,7 @@ function WelcomeBox({user, workouts}) {
                 {Object.entries(countGroups).map(([label, count], index) => (
                     <div key={"stat" + index} className="hidden lg:flex lg:flex-col lg:items-center shrink-0 px-1">
                         <span className="text-lg font-semibold leading-tight">{count}</span>
-                        <span className="uppercase text-[10px] tracking-wide text-gray-500">{workoutTypes[label].label_short}</span>
+                        <span className="uppercase text-[10px] tracking-wide text-gray-500">{sportLabelShort(label)}</span>
                     </div>
                 ))}
             </div>
@@ -90,6 +90,12 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
     const [showEditWorkoutModal, setShowEditWorkoutModal] = useState(false);
     const stravaLinked = user?.strava_athlete_id !== null && user?.strava_athlete_id !== undefined;
     const garminLinked = Boolean(user?.garmin_email);
+    // With both providers linked only the selected source imports (the
+    // other would double every activity) - hide its re-sync button.
+    // `activity_source_effective` is undefined on pre-selector backends,
+    // which keeps the old show-both behaviour until the API catches up.
+    const bothLinked = stravaLinked && garminLinked;
+    const activeSource = user?.activity_source_effective;
     const dispatch = useDispatch();
     const [triggerStravaSync, { data: stravaSyncData, isFetching: stravaSyncIsFetching, error: stravaSyncError, isSuccess: stravaSyncIsSuccess }] = useLazySyncStravaQuery();
     const [triggerGarminSync, { isFetching: garminSyncIsFetching, error: garminSyncError, isSuccess: garminSyncIsSuccess }] = useLazySyncGarminQuery();
@@ -135,10 +141,11 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
                 <span className="mx-4 text-gray-500 uppercase font-bold mb-1.5 sm:mb-0">My Workouts <span className="normal-case font-normal text-gray-400">· latest 5</span></span>
                 <div className="p-0 flex gap-2">
                     {
-                        (stravaLinked) ? <SyncStravaButton additionalClasses="my-0.5 sm:my-0" isLoading={stravaSyncIsFetching} onClick={() => triggerStravaSync()}/> :
+                        (stravaLinked) ? ((!bothLinked || activeSource !== 'garmin') &&
+                            <SyncStravaButton additionalClasses="my-0.5 sm:my-0" isLoading={stravaSyncIsFetching} onClick={() => triggerStravaSync()}/>) :
                             <StravaButton additionalClasses="my-0.5 sm:my-0" label={"Link Strava for Automatic Import"} onClick={() => setLinkStrava(true)}/>
                     }
-                    {garminLinked && (
+                    {garminLinked && (!bothLinked || activeSource !== 'strava') && (
                         <SyncStravaButton additionalClasses="my-0.5 sm:my-0" label={"Re-Sync with Garmin"}
                                           isLoading={garminSyncIsFetching} onClick={() => triggerGarminSync()}/>
                     )}
@@ -165,11 +172,11 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
                             <td className="py-2 px-4 text-sm md:text-base">
                                 {/* Mobile view (stacked) */}
                                 <div className="md:hidden">
-                                    <div className="font-base">{(workout.sport_type === "Steps") ? workout.steps?.toLocaleString() : workout.duration.substring(0, 5)} <span className="font-semibold">{workoutTypes[workout.sport_type].label_short}</span></div>
+                                    <div className="font-base">{(workout.sport_type === "Steps") ? workout.steps?.toLocaleString() : workout.duration.substring(0, 5)} <span className="font-semibold">{sportLabelShort(workout.sport_type)}</span></div>
                                     {(workout.sport_type !== "Steps") && <div className="text-sm text-gray-600 dark:text-gray-400">{Math.round(workout.kcal).toLocaleString()}<span className="text-sm"> kcal < /span></div>}
                                 </div>
                                 {/* Desktop view (normal) */}
-                                <div className="hidden md:block">{(workout.sport_type === "Steps") ? workout.steps?.toLocaleString() : workout.duration.substring(0, 5)} <span className="font-semibold text-base">{workoutTypes[workout.sport_type].label_short}</span> {(workout.distance && workout.sport_type !== "Steps") ? (<span className="hidden sm:inline">({workout.distance}km)</span>) : (null)}</div>
+                                <div className="hidden md:block">{(workout.sport_type === "Steps") ? workout.steps?.toLocaleString() : workout.duration.substring(0, 5)} <span className="font-semibold text-base">{sportLabelShort(workout.sport_type)}</span> {(workout.distance && workout.sport_type !== "Steps") ? (<span className="hidden sm:inline">({workout.distance}km)</span>) : (null)}</div>
                             </td>
                             <td className="py-2 px-4 hidden md:table-cell">
                                 {(workout.kcal) ? (

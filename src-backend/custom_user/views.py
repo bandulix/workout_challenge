@@ -330,9 +330,21 @@ class LinkStravaView(APIView):
         refresh_token = strava_tokens.get('refresh_token', None)
         setattr(user, 'strava_refresh_token', encrypt_token(refresh_token) if refresh_token else None)
         setattr(user, 'strava_athlete_id', new_athlete_id)
+        # The first linked provider becomes the activity source; linking a
+        # second provider never changes it (the user switches it in the
+        # personal settings).
+        if not user.activity_source:
+            user.activity_source = 'strava'
         user.save()
 
         cache.set(f"strava_access_token_{user.id}", strava_tokens.get('access_token', None), int(strava_tokens.get('expires_in', 21600)) - 60)
+
+        # Only import when Strava is the user's activity source - with
+        # Garmin selected, an import would double every activity that
+        # exists in both ecosystems.
+        if user.get_activity_source() != 'strava':
+            return Response({"message": "Successfully linked Strava. Garmin is currently your activity source, so no Strava activities were imported - you can switch the source in the personal settings."}, status=status.HTTP_200_OK)
+
         try:
             running_task = sync_strava.delay(user__id=user.id, start_datetime=datetime.datetime.now() - datetime.timedelta(days=43))
             try:
@@ -406,6 +418,9 @@ class SyncStravaView(APIView):
         if user.strava_refresh_token is None or user.strava_refresh_token == '':
             return Response({"message": "Strava is not linked."}, status=status.HTTP_400_BAD_REQUEST)
 
+        if user.get_activity_source() != 'strava':
+            return Response({"message": "Garmin is your selected activity source - Strava import is disabled so activities don't get doubled. You can switch the source in the personal settings."}, status=status.HTTP_400_BAD_REQUEST)
+
         if user.strava_last_synced_at is None or user.strava_last_synced_at == '' or user.strava_last_synced_at < (timezone.now() - datetime.timedelta(minutes=59)):
             sync_strava(user__id=user.id)
             return Response({"message": f"Successfully synced Strava."}, status=status.HTTP_200_OK)
@@ -452,7 +467,19 @@ class LinkGarminView(APIView):
         user.garmin_email = email
         user.garmin_tokens_enc = encrypt_tokens(token_blob)
         user.garmin_last_synced_at = None
+        # The first linked provider becomes the activity source; linking a
+        # second provider never changes it (the user switches it in the
+        # personal settings).
+        if not user.activity_source:
+            user.activity_source = 'garmin'
         user.save()
+
+        # Only import when Garmin is the user's activity source - with
+        # Strava selected, an import would double every activity that
+        # exists in both ecosystems.
+        if user.get_activity_source() != 'garmin':
+            return Response({"message": "Successfully linked Garmin. Strava is currently your activity source, so no Garmin activities were imported - you can switch the source in the personal settings."},
+                            status=status.HTTP_200_OK)
 
         # Initial import of the last ~6 weeks runs in the background -
         # the Garmin SSO roundtrip is slow enough already.
@@ -488,6 +515,10 @@ class SyncGarminView(APIView):
         user = request.user
         if not user.garmin_tokens_enc:
             return Response({"message": "Garmin is not linked."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if user.get_activity_source() != 'garmin':
+            return Response({"message": "Strava is your selected activity source - Garmin import is disabled so activities don't get doubled. You can switch the source in the personal settings."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         if user.garmin_last_synced_at and user.garmin_last_synced_at > (timezone.now() - datetime.timedelta(minutes=59)):
             return Response({"message": "Too many requests! You can only request a Garmin sync every 60 minutes."},

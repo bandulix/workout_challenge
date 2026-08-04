@@ -276,3 +276,41 @@ class Workout(models.Model):
                     setattr(steps, 'kcal', None)
                     setattr(steps, 'duration', datetime.timedelta(seconds=0))
                     steps.save()
+
+
+def find_duplicate_workout(user, start_datetime, duration, provider=None):
+    """Cross-provider duplicate guard for sync imports.
+
+    The same physical activity often exists in both ecosystems (recorded
+    on a Garmin watch, auto-synced to Strava), and each sync only
+    de-duplicates by its OWN provider id - so importing both providers
+    (or re-importing after the user switched sources) would double every
+    workout. This matches an existing workout of the same user by start
+    time (±10 min) and duration (±5 min).
+
+    Rows already carrying THIS provider's id are excluded: those are the
+    provider's own duplicates (same activity re-uploaded) which the
+    caller's id-based de-dup handles, not cross-provider copies.
+    Manual entries (no provider id at all) DO count as duplicates - a
+    manually logged workout must not be re-imported by a sync either.
+
+    Returns the matching Workout or None.
+    """
+    if start_datetime is None or duration is None:
+        return None
+    qs = Workout.objects.filter(
+        user=user,
+        start_datetime__range=(
+            start_datetime - datetime.timedelta(minutes=10),
+            start_datetime + datetime.timedelta(minutes=10),
+        ),
+        duration__range=(
+            duration - datetime.timedelta(minutes=5),
+            duration + datetime.timedelta(minutes=5),
+        ),
+    )
+    if provider == 'strava':
+        qs = qs.filter(strava_id__isnull=True)
+    elif provider == 'garmin':
+        qs = qs.filter(garmin_id__isnull=True)
+    return qs.order_by('start_datetime').first()

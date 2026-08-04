@@ -101,6 +101,16 @@ export const drillInstructorApi = createApi({
                 ? [...result.map(({id}) => ({type: 'DrillMessage', id})), {type: 'DrillMessage'}]
                 : [{type: 'DrillMessage'}],
         }),
+        replyToDrillMessage: builder.mutation({
+            // Participant's reply under a coach message; the coach's
+            // reaction is generated server-side in the background.
+            query: ({id, body}) => ({
+                url: `drill-instructor/message/${id}/reply/`,
+                method: 'POST',
+                body: {body},
+            }),
+            invalidatesTags: ['DrillMessage'],
+        }),
 
         // ---- Test message (Celery task runner) -------------------------
         runTestMessage: builder.mutation({
@@ -125,5 +135,6 @@ export const {
     useUpdateDrillConfigMutation,
     useDeleteDrillConfigMutation,
     useGetDrillMessagesQuery,
+    useReplyToDrillMessageMutation,
     useRunTestMessageMutation,
 } = drillInstructorApi;

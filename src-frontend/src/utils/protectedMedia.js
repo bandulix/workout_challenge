@@ -9,6 +9,13 @@ import {useEffect, useState} from "react";
 const cache = new Map(); // url -> Promise<objectURL | null>
 
 export function fetchProtectedImage(url) {
+    // The URL comes from an API payload. The request carries the JWT, so
+    // it must only ever go to same-origin relative paths - otherwise a
+    // malicious payload could point the authenticated fetch at an
+    // attacker-controlled host and leak the token.
+    if (typeof url !== "string" || !url.startsWith("/") || url.startsWith("//")) {
+        return Promise.resolve(null);
+    }
     if (!cache.has(url)) {
         const token = localStorage.getItem("access_token");
         const promise = fetch(url, {

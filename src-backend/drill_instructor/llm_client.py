@@ -276,6 +276,39 @@ def build_group_push_prompt(*, competition_name: str, participant_first_names, l
     return "\n".join(parts)
 
 
+def build_reply_prompt(*, competition_name: str, coach_message: str, reply_first_name: str, reply_body: str, thread_history=None) -> str:
+    """Compose the user-message for the coach's reaction to a reply.
+
+    A participant publicly answered one of the coach's messages in the
+    thread - the coach reacts in persona: answer questions, take the
+    banter, push them back to training. The thread history (oldest
+    first, clamped) gives continuity without letting the conversation
+    blow up the prompt.
+    """
+    parts = [
+        f"Competition: {competition_name}",
+        "Situation: a participant publicly replied to one of your messages. React to it.",
+        f"Your message they replied to: \"{coach_message[:400]}\"",
+    ]
+    history = [h for h in (thread_history or []) if h.get("body")]
+    if history:
+        lines = ["The thread so far (oldest first):"]
+        for entry in history[:4]:
+            speaker = "You" if entry.get("is_coach") else f"@{entry.get('author')}"
+            lines.append(f"- {speaker}: \"{str(entry['body'])[:120]}\"")
+        parts.extend(lines)
+    parts.append(f"@{reply_first_name} now replied: \"{reply_body[:500]}\"")
+    parts.append(
+        "Write one short reaction (max 220 chars) in your persona's voice, "
+        f"addressing @{reply_first_name} by their @FirstName token. React "
+        "to what they actually said - answer questions, take the banter, "
+        "call back to the thread if useful, and push them back to training. "
+        "Never invent other names."
+    )
+    parts.append("Write your reaction now.")
+    return "\n".join(parts)
+
+
 def build_inactivity_prompt(*, competition_name: str, participant_first_names, leader_first_name: Optional[str] = None, leader_points: Optional[float] = None, days_left: Optional[int] = None, previous_messages=None) -> str:
     """Compose the user-message for a quiet-day (inactivity) nudge.
 

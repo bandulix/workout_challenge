@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from workout_challenge.celery import app
 
-from .llm_client import build_group_push_prompt, build_inactivity_prompt, build_workout_prompt, generate_message
+from .llm_client import build_group_push_prompt, build_inactivity_prompt, build_reply_prompt, build_workout_prompt, generate_message
 
 try:
     from push_notifications.sender import send_push_to_user
@@ -40,7 +40,7 @@ def _recent_bodies(config, limit=2):
     """
     return list(
         config.messages
-        .exclude(kind="test")
+        .exclude(kind__in=["test", "reply"])
         .filter(success=True)
         .order_by("-posted_at")
         .values_list("body", flat=True)[:limit]
@@ -257,6 +257,112 @@ def post_test_message(self, config_id, message):
         except Exception:  # pragma: no cover
             pass
         return {"error": str(exc), "config_id": config_id}
+
+
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=120)
+def post_reply_reaction(self, reply_id):
+    """Generate the coach's reaction to a participant's thread reply.
+
+    Triggered by the reply endpoint: the participant's reply is stored
+    synchronously, then this task answers it in the persona's voice -
+    stored as a ``reaction`` message under the same thread root, with a
+    push ping to the replier when the config's push toggle is on.
+    """
+    DrillInstructorConfig = apps.get_model("drill_instructor", "DrillInstructorConfig")
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+
+    try:
+        reply = (
+            DrillInstructorMessage.objects
+            .select_related("config", "config__competition", "config__persona", "parent", "user")
+            .get(pk=reply_id)
+        )
+    except DrillInstructorMessage.DoesNotExist:
+        logger.info("Drill Instructor: reply %s no longer exists, skipping reaction.", reply_id)
+        return {"skipped": "reply_missing"}
+
+    # Sanity: only ever react to a participant's reply with a thread root.
+    if reply.kind != DrillInstructorMessage.KIND_REPLY or reply.user_id is None or reply.parent_id is None:
+        return {"skipped": "not_a_reply"}
+
+    config = reply.config
+    persona = config.persona
+    root = reply.parent
+    replier_first_name = reply.user.first_name or reply.user.username or "Athlete"
+
+    # Thread context (the few messages before this reply, oldest first)
+    # so the reaction can call back to the conversation.
+    prior = list(
+        root.replies
+        .filter(posted_at__lt=reply.posted_at)
+        .select_related("user")
+        .order_by("-posted_at")[:4]
+    )
+    history = [
+        {
+            "is_coach": m.user_id is None,
+            "author": (m.user.first_name or m.user.username) if m.user_id is not None else None,
+            "body": m.body,
+        }
+        for m in reversed(prior)
+    ]
+
+    user_prompt = build_reply_prompt(
+        competition_name=config.competition.name,
+        coach_message=root.body,
+        reply_first_name=replier_first_name,
+        reply_body=reply.body,
+        thread_history=history,
+    )
+
+    body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
+    if not body:
+        body = f"{persona.name}: heard loud and clear, @{replier_first_name}!"
+
+    message = DrillInstructorMessage(
+        config=config,
+        kind=DrillInstructorMessage.KIND_REACTION,
+        parent=root,
+        user=None,
+        body=body,
+        posted_at=timezone.now(),
+    )
+    try:
+        message.save()
+        config.last_posted_at = timezone.now()
+        config.messages_posted = (config.messages_posted or 0) + 1
+        config.last_error = llm_error or ""
+        config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
+        logger.info("Drill Instructor: stored reaction %s for reply %s", message.id, reply_id)
+    except Exception as exc:  # noqa: BLE001 - reaction is nice-to-have
+        message.success = False
+        message.error = str(exc)[:2000]
+        try:
+            message.save()
+        except Exception:  # pragma: no cover
+            pass
+        config.last_error = str(exc)[:2000]
+        config.save(update_fields=["last_error", "updated_at"])
+        logger.warning("Drill Instructor: reaction save failed for reply %s: %s", reply_id, exc)
+        return {"error": str(exc), "reply_id": reply_id}
+
+    # Push ping to the replier only - it's a personal reaction, not a
+    # group announcement.
+    if config.send_push_on_activity and send_push_to_user is not None:
+        try:
+            send_push_to_user(
+                reply.user,
+                title=f"{config.competition.name} - {persona.name}",
+                body=body,
+                url=f"/competition/{config.competition_id}",
+                icon=_persona_icon(persona),
+                badge="/icon-badge.png",
+                tag=f"drill-reply-{reply.id}",
+            )
+        except Exception as exc:  # noqa: BLE001 - never block the reaction
+            logger.warning("Drill Instructor: reaction push failed for user %s: %s", reply.user_id, exc)
+
+    return {"reply_id": reply_id, "reaction_id": message.id}
 
 
 def _competition_leader(competition):

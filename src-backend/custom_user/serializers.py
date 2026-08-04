@@ -28,6 +28,11 @@ def user_picture_url(user):
 class CustomUserSerializer(serializers.ModelSerializer):
     my = serializers.SerializerMethodField()
 
+    # Read-only mirror of the model's source resolution - the frontend
+    # uses it to show which provider is actually importing, without
+    # duplicating the fallback logic.
+    activity_source_effective = serializers.SerializerMethodField()
+
     # Invite token required at registration when REGISTRATION_TOKEN is
     # configured server-side. Write-only; validated in validate().
     invite_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
@@ -62,7 +67,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'invite_token', 'join_code', 'profile_picture', 'profile_picture_upload', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
+        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'invite_token', 'join_code', 'profile_picture', 'profile_picture_upload', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'activity_source', 'activity_source_effective', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
         # my_competitions / my_teams are read-only: joining happens
         # exclusively through the dedicated join views (join code +
         # participant checks). Writable M2M fields would be a
@@ -75,6 +80,9 @@ class CustomUserSerializer(serializers.ModelSerializer):
     def get_my(self, obj):
         user = self.context['request'].user
         return obj.pk == user.pk
+
+    def get_activity_source_effective(self, obj):
+        return obj.get_activity_source()
 
     def validate(self, attrs):
         # Registration invite gate (only active when the server has a
@@ -136,6 +144,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
     PRIVATE_FIELDS = [
         'email', 'first_name', 'last_name', 'gender', 'password',
         'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at',
+        'activity_source', 'activity_source_effective',
         'email_mid_week', 'is_verified', 'is_staff', 'is_superuser',
         'my_competitions', 'my_teams',
         'goal_active_days', 'goal_workout_minutes', 'goal_distance',

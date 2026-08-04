@@ -26,7 +26,7 @@ class DrillInstructorConfigAdmin(admin.ModelAdmin):
 
 @admin.register(DrillInstructorMessage)
 class DrillInstructorMessageAdmin(admin.ModelAdmin):
-    list_display = ("posted_at", "config", "kind", "success", "workout")
+    list_display = ("posted_at", "config", "kind", "user", "parent", "success", "workout")
     list_filter = ("success", "kind", "config__competition")
-    search_fields = ("body", "config__competition__name")
+    search_fields = ("body", "config__competition__name", "user__email")
     readonly_fields = tuple(f.name for f in DrillInstructorMessage._meta.fields)

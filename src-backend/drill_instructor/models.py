@@ -138,11 +138,15 @@ class DrillInstructorMessage(models.Model):
     KIND_TEST = "test"
     KIND_NUDGE = "nudge"
     KIND_PUSH = "push"
+    KIND_REPLY = "reply"
+    KIND_REACTION = "reaction"
     KIND_CHOICES = [
         (KIND_ACTIVITY, "Workout comment"),
         (KIND_TEST, "Test message"),
         (KIND_NUDGE, "Inactivity nudge"),
         (KIND_PUSH, "Random group push"),
+        (KIND_REPLY, "Participant reply"),
+        (KIND_REACTION, "Coach reaction"),
     ]
 
     config = models.ForeignKey(
@@ -154,7 +158,26 @@ class DrillInstructorMessage(models.Model):
         max_length=12,
         choices=KIND_CHOICES,
         default=KIND_ACTIVITY,
-        help_text="What triggered this message (a workout, a test, a quiet-day nudge, or a random group push).",
+        help_text="What triggered this message (a workout, a test, a quiet-day nudge, a random group push, a participant reply, or the coach's reaction to one).",
+    )
+    # Threading: replies (and the coach's reactions to them) hang under a
+    # top-level coach message. One level deep on purpose - sub-threads
+    # would only confuse the chat UI.
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="replies",
+    )
+    # Who wrote this message. NULL = the coach (persona); set for
+    # participant replies.
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="drill_instructor_replies",
     )
     workout = models.ForeignKey(
         "workouts.Workout",

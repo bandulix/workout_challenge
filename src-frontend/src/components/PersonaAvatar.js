@@ -17,6 +17,17 @@ export function personaAvatarSrc(avatar) {
     return null;
 }
 
+// Only browser-minted object URLs (blob:) and same-origin relative paths
+// may ever reach <img src>. The persona payload is server data (and the
+// editor preview is a DOM-derived string), so anything else - e.g. a
+// protocol-relative //host or an exotic scheme - is refused outright.
+export function safeImageSrc(url) {
+    if (typeof url !== "string") return null;
+    if (url.startsWith("blob:")) return url;
+    if (url.startsWith("/") && !url.startsWith("//")) return url;
+    return null;
+}
+
 function PersonaAvatar({persona, size = 48, ring = true, glow = false, className = ""}) {
     const avatar = persona?.avatar;
     const picture = persona?.profile_picture;
@@ -41,7 +52,7 @@ function PersonaAvatar({persona, size = 48, ring = true, glow = false, className
     else requested = fetchedSrc; // null while the protected fetch is in flight
 
     const [failedSrc, setFailedSrc] = useState(null);
-    const src = requested && failedSrc === requested ? FALLBACK_ART : requested;
+    const src = safeImageSrc(requested && failedSrc === requested ? FALLBACK_ART : requested);
 
     const ringStyle = ring
         ? {boxShadow: `0 0 0 2px ${color}${glow ? `, 0 0 18px ${color}66` : ""}`}
