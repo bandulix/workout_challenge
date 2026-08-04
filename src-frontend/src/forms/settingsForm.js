@@ -379,6 +379,11 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
                     label={(user.strava_athlete_id ? "Unlink" : "Link") + " Strava Account"}
                     onClick={() => handleStravaLinkage({linked: user.strava_athlete_id !== null && user.strava_athlete_id !== undefined && user.strava_athlete_id !== ''})}
                 />
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    Heads up: since June 2026 Strava requires an <b>active paid Strava subscription</b> to
+                    connect third-party apps like this one. If the linking fails on Strava's side,
+                    that is the most likely cause - not a problem with this app.
+                </p>
                 {(user.strava_athlete_id !== null && user.strava_athlete_id !== undefined && user.strava_athlete_id !== '') && (
                     <div className="mt-2">
                         <button type="button" onClick={handleStravaReset}
