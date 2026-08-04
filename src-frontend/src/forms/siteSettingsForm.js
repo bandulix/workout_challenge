@@ -129,6 +129,7 @@ export default function SiteSettingsForm({setModalState}) {
                 llm_api_key: "",
                 strava_client_secret: "",
                 email_host_password: "",
+                health_api_key: "",
                 // Plain fields.
                 llm_provider: settings.llm_provider || "custom",
                 llm_base_url: settings.llm_base_url || "",
@@ -137,6 +138,7 @@ export default function SiteSettingsForm({setModalState}) {
                 strava_client_id: settings.strava_client_id ?? "",
                 strava_limit_15min: settings.strava_limit_15min ?? "",
                 strava_limit_day: settings.strava_limit_day ?? "",
+                health_base_url: settings.health_base_url || "",
                 email_host: settings.email_host || "",
                 email_port: settings.email_port ?? "",
                 email_host_user: settings.email_host_user || "",
@@ -176,7 +178,7 @@ export default function SiteSettingsForm({setModalState}) {
         const payload = {...values};
 
         // Empty secrets are omitted so the server keeps the existing value.
-        for (const secret of ["llm_api_key", "strava_client_secret", "email_host_password"]) {
+        for (const secret of ["llm_api_key", "strava_client_secret", "email_host_password", "health_api_key"]) {
             if (!payload[secret]) delete payload[secret];
         }
         // Coerce empty numeric strings to null.
@@ -303,6 +305,30 @@ export default function SiteSettingsForm({setModalState}) {
                                value={values.strava_limit_day ?? ""}
                                onChange={(e) => setField("strava_limit_day", e.target.value)}
                                placeholder="1000"/>
+                    </Field>
+                </div>
+            </Section>
+
+            <Section title="Health (Open Wearables)"
+                     description="Apple Health / Google Health Connect import via a self-hosted Open Wearables instance. Both fields are required to enable the connector; users then see the Health link section in their personal settings.">
+                <div className="px-4 w-full sm:w-1/2">
+                    <Field label="Base URL" error={fieldErrors.health_base_url}
+                           hint="The Open Wearables instance, e.g. https://health.your-domain.com">
+                        <input type="text"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               value={values.health_base_url || ""}
+                               onChange={(e) => setField("health_base_url", e.target.value)}
+                               placeholder="https://health.your-domain.com"/>
+                    </Field>
+                </div>
+                <div className="px-4 w-full sm:w-1/2">
+                    <Field label="API Key" error={fieldErrors.health_api_key}
+                           hint={<>Currently stored: <code>{settings?.health_api_key_masked || "(not set)"}</code></>}>
+                        <input type="password" autoComplete="off"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               value={values.health_api_key || ""}
+                               onChange={(e) => setField("health_api_key", e.target.value)}
+                               placeholder="leave blank to keep current"/>
                     </Field>
                 </div>
             </Section>

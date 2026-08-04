@@ -23,6 +23,8 @@ export const usersApi = createApi({
                         strava_last_synced_at: convertToLocalTimezone(user.strava_last_synced_at), // convert to local timezone
                         garmin_last_synced_at_fmt: dateFormatter(user.garmin_last_synced_at),
                         garmin_last_synced_at: convertToLocalTimezone(user.garmin_last_synced_at),
+                        health_last_synced_at_fmt: dateFormatter(user.health_last_synced_at),
+                        health_last_synced_at: convertToLocalTimezone(user.health_last_synced_at),
                     };
                 });
             },
@@ -47,6 +49,8 @@ export const usersApi = createApi({
                     strava_last_synced_at: convertToLocalTimezone(response.strava_last_synced_at),
                     garmin_last_synced_at_fmt: dateFormatter(response.garmin_last_synced_at),
                     garmin_last_synced_at: convertToLocalTimezone(response.garmin_last_synced_at),
+                    health_last_synced_at_fmt: dateFormatter(response.health_last_synced_at),
+                    health_last_synced_at: convertToLocalTimezone(response.health_last_synced_at),
                 };
             },
             providesTags: (result, error, id) => {

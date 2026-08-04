@@ -55,6 +55,24 @@ export const linkApi = createApi({
                 method: 'GET',
             }),
         }),
+        linkHealth: builder.mutation({
+            query: () => ({
+                url: `health/link/`,
+                method: 'POST',
+            }),
+        }),
+        unlinkHealth: builder.mutation({
+            query: () => ({
+                url: `health/unlink/`,
+                method: 'POST',
+            }),
+        }),
+        syncHealth: builder.query({
+            query: () => ({
+                url: `health/sync/`,
+                method: 'GET',
+            }),
+        }),
     }),
 });
 
@@ -69,4 +87,8 @@ export const {
     useUnlinkGarminMutation,
     useGetSyncGarminQuery,
     useLazySyncGarminQuery,
+    useLinkHealthMutation,
+    useUnlinkHealthMutation,
+    useGetSyncHealthQuery,
+    useLazySyncHealthQuery,
 } = linkApi;
