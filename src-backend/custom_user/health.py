@@ -353,9 +353,7 @@ def _sync_user_workouts(user, start_datetime=None) -> dict:
     since = start_datetime or (timezone.now() - datetime.timedelta(days=3))
     ow_workouts = _fetch_workouts(user.health_user_id, since)
 
-    existing = set(
-        Workout.objects.filter(health_id__isnull=False).values_list("health_id", flat=True)
-    )
+    existing_map = Workout.objects.filter(health_id__isnull=False).in_bulk(field_name='health_id')
     created = updated = skipped = duplicates = 0
     for ow_workout in ow_workouts:
         props = workout_to_props(user, ow_workout)
@@ -363,8 +361,8 @@ def _sync_user_workouts(user, start_datetime=None) -> dict:
             skipped += 1
             continue
         health_id = props["health_id"]
-        if health_id in existing:
-            workout = Workout.objects.filter(health_id=health_id).first()
+        if health_id in existing_map:
+            workout = existing_map[health_id]
             if workout is not None and workout.user_id == user.id:
                 for key, value in props.items():
                     setattr(workout, key, value)

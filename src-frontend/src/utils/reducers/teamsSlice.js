@@ -51,7 +51,6 @@ export const teamsApi = createApi({
 
 export const {
     useGetTeamsQuery,
-    useGetTeamByIdQuery,
     useAddTeamMutation,
     useUpdateTeamMutation,
     useDeleteTeamMutation,

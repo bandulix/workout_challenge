@@ -2,7 +2,7 @@ import React, {useEffect, useState} from "react";
 import {Link, useLocation, useNavigationType, useParams} from "react-router-dom";
 import {useDispatch} from 'react-redux';
 import {useNavigate} from 'react-router-dom';
-import {BarLoader, MoonLoader} from "react-spinners";
+import {BarLoader} from "react-spinners";
 import {usersApi} from '../utils/reducers/usersSlice';
 import {workoutsApi} from '../utils/reducers/workoutsSlice';
 import {competitionsApi} from '../utils/reducers/competitionsSlice';
@@ -95,29 +95,35 @@ function useWaitForLocalStorage(key, expectedValue, interval = 500) {
 function LogoutPage() {
     const dispatch = useDispatch();
     const navigate = useNavigate();
-
-    console.log('Clear localStorage as new user wants to register');
-    dispatch(usersApi.util.resetApiState());
-    dispatch(workoutsApi.util.resetApiState());
-    dispatch(competitionsApi.util.resetApiState());
-    dispatch(statsApi.util.resetApiState());
-    dispatch(feedApi.util.resetApiState());
-    dispatch(drillInstructorApi.util.resetApiState());
-    localStorage.clear();
-
-    // The service worker caches authenticated GET /api/* responses as
-    // its offline fallback (see public/sw.js). Purge them on logout so
-    // the previous user's data isn't readable in Cache Storage (or
-    // servable offline) on a shared device.
-    if ('caches' in window) {
-        caches.delete('wc-api').catch(() => { /* best effort */ });
-    }
-
     const matched = useWaitForLocalStorage("refresh_token", null);
-    if (matched) {
-        navigate("/login");
-    }
-    ;
+
+    // Side effects belong in useEffect, not in the render body (they ran
+    // twice under StrictMode and triggered update-during-render warnings).
+    useEffect(() => {
+        console.log('Clear localStorage as new user wants to register');
+        dispatch(usersApi.util.resetApiState());
+        dispatch(workoutsApi.util.resetApiState());
+        dispatch(competitionsApi.util.resetApiState());
+        dispatch(statsApi.util.resetApiState());
+        dispatch(feedApi.util.resetApiState());
+        dispatch(drillInstructorApi.util.resetApiState());
+        localStorage.clear();
+
+        // The service worker caches authenticated GET /api/* responses as
+        // its offline fallback (see public/sw.js). Purge them on logout so
+        // the previous user's data isn't readable in Cache Storage (or
+        // servable offline) on a shared device.
+        if ('caches' in window) {
+            caches.delete('wc-api').catch(() => { /* best effort */ });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        if (matched) {
+            navigate("/login");
+        }
+    }, [matched, navigate]);
 
     return (
         <BaseHome>
@@ -683,7 +689,7 @@ function LogInPage() {
     async function checkRefreshToken(refreshToken) {
         console.log('refresh_token already exists - check if still valid');
         setIsLoading(true);
-        const [success, msg] = await apiRefreshToken(refreshToken);
+        const [success] = await apiRefreshToken(refreshToken);
         if (success) {
             // success refreshing access_token - redirecting to dashboard
             await waitForLocalStorage('access_token');

@@ -16,8 +16,10 @@ class CompetitionSerializer(serializers.ModelSerializer):
         read_only_fields = ['join_code', 'user', 'user_info']
 
     def get_user_info(self, obj):
-        # Assuming `obj.user` is a ManyToMany or related manager
-        users = obj.user.all().order_by('username') if hasattr(obj.user, 'all') else [obj.user]
+        # Iterates the prefetch cache (viewsets prefetch `user`); a DB
+        # order_by here would defeat it and N+1 every row - sort in
+        # Python instead (identical output).
+        users = sorted(obj.user.all(), key=lambda u: (u.username or "")) if hasattr(obj.user, 'all') else [obj.user]
         return [{'id': u.id, 'username': u.username} for u in users]
 
 
@@ -31,15 +33,16 @@ class TeamSerializer(serializers.ModelSerializer):
         read_only_fields = ['user', 'user_info', 'my']
 
     def get_user_info(self, obj):
-        # Assuming `obj.user` is a ManyToMany or related manager
-        users = obj.user.all().order_by('username') if hasattr(obj.user, 'all') else [obj.user]
+        # Same prefetch-cache iteration as CompetitionSerializer.
+        users = sorted(obj.user.all(), key=lambda u: (u.username or "")) if hasattr(obj.user, 'all') else [obj.user]
         return [{'id': u.id, 'username': u.username} for u in users]
 
     def get_my(self, obj):
-        # if it is the user's team
+        # if it is the user's team - membership test on the prefetched
+        # list, not a filter() per row.
         request = self.context.get('request')
         if request and hasattr(request, "user"):
-            return obj.user.filter(id=request.user.id).exists()
+            return any(u.id == request.user.id for u in obj.user.all())
         return False
 
 

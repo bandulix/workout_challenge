@@ -167,8 +167,11 @@ def trigger_competition_change(instance, new, changes):
             points_to_delete = Points.objects.filter(goal__competition=instance, workout__start_datetime__lt=changes['start_date'][1])
             CustomUser = apps.get_model('custom_user', 'CustomUser')
             ActivityGoal = apps.get_model('competition', 'ActivityGoal')
-            for user in [CustomUser.objects.get(pk=i) for i in set(points_to_delete.values_list('workout__user', flat=True))]:
-                for goal in [ActivityGoal.objects.get(pk=i) for i in set(points_to_delete.values_list('goal', flat=True))]:
+            # in_bulk: one query per model instead of one get() per row.
+            users = CustomUser.objects.in_bulk(set(points_to_delete.values_list('workout__user', flat=True)))
+            goals = ActivityGoal.objects.in_bulk(set(points_to_delete.values_list('goal', flat=True)))
+            for user in users.values():
+                for goal in goals.values():
                     RecalcRequest(user=user, goal=goal, start_datetime=changes['start_date'][1]).save()
             points_to_delete.delete()
             print(f"Competition ({instance.pk}) start_date was shortened from {changes['start_date'][0]} to {changes['start_date'][1]} triggering point cap recalc")

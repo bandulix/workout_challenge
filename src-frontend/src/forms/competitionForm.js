@@ -60,21 +60,16 @@ export default function CompetitionForm({competition, setModalState, setShowTran
     const [formError, setFormError] = useState('');
 
     const [updateEntry, {
-        data: updateData,
         error: updateError,
         isLoading: updateIsLoading,
-        isSuccess: updateIsSuccess
     }] = useUpdateCompetitionMutation();
     const [createEntry, {
-        data: createData,
         error: createError,
         isLoading: createIsLoading,
-        isSuccess: createIsSuccess
     }] = useAddCompetitionMutation();
     const [deleteEntry, {
         error: deleteError,
         isLoading: deleteIsLoading,
-        isSuccess: deleteIsSuccess
     }] = useDeleteCompetitionMutation();
 
     // Overall form error message

@@ -191,12 +191,6 @@ const steps_fields = {
 }
 
 
-function formatTime(totalSeconds) {
-    const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
-    const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
-    const seconds = String(Math.round(totalSeconds % 60)).padStart(2, '0');
-    return `${hours}:${minutes}:${seconds}`;
-}
 
 
 export default function WorkoutForm({id = true, setModalState, scaling_distance}) {
@@ -226,21 +220,16 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
         isLoading: iniLoading
     } = useGetWorkoutByIdQuery(id, {skip: typeof id !== 'number'});
     const [updateEntry, {
-        data: updateData,
         error: updateError,
         isLoading: updateIsLoading,
-        isSuccess: updateIsSuccess
     }] = useUpdateWorkoutMutation();
     const [createEntry, {
-        data: createData,
         error: createError,
         isLoading: createIsLoading,
-        isSuccess: createIsSuccess
     }] = useAddWorkoutMutation();
     const [deleteEntry, {
         error: deleteError,
         isLoading: deleteIsLoading,
-        isSuccess: deleteIsSuccess
     }] = useDeleteWorkoutMutation();
 
     // Overall form error message

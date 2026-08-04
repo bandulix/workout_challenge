@@ -1,7 +1,6 @@
 from django.contrib import admin
 
 from .models import Competition, ActivityGoal, Team, Award
-from custom_user.models import CustomUser
 
 # Register your models here.
 class ActivityGoalInline(admin.TabularInline):

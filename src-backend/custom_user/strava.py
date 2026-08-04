@@ -5,9 +5,6 @@ from django.core.cache import cache
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.utils import timezone
-from rest_framework.response import Response
-from rest_framework import status
-from django.db import IntegrityError
 from workout_challenge.celery import app, is_task_already_executing
 from django.db.models import Q
 
@@ -112,7 +109,13 @@ def sync_strava(self, user__id, start_datetime=None):
 
     access_token = cache.get(f"strava_access_token_{user__id}")
 
-    all_existing_strava_activities = set(Workout.objects.all().values_list('strava_id', flat=True))
+    # Only strava-tagged rows matter - not the whole table (Garmin/
+    # Health/manual rows are all NULL here). Deliberately NOT scoped to
+    # the syncing user: the cross-account takeover guard below relies
+    # on seeing other users' ids.
+    all_existing_strava_activities = set(
+        Workout.objects.filter(strava_id__isnull=False).values_list('strava_id', flat=True)
+    )
 
     cnt_new_strava_activities = 0
     cnt_updated_strava_activities = 0
@@ -179,6 +182,12 @@ def sync_strava(self, user__id, start_datetime=None):
         response.raise_for_status()
         activities = response.json()
 
+        # One bulk query per page instead of one get() per activity
+        # (hourly syncs re-fetched every existing row individually).
+        existing_map = Workout.objects.filter(
+            strava_id__in=[a.get('id') for a in activities]
+        ).in_bulk(field_name='strava_id')
+
         for activity in activities:
             activity_id = activity.get('id')
 
@@ -193,14 +202,14 @@ def sync_strava(self, user__id, start_datetime=None):
 
             # if existing workout - update activity details
             if activity_id in all_existing_strava_activities:
-                workout = Workout.objects.get(strava_id=activity_id)
+                workout = existing_map.get(activity_id)
                 # Never touch another user's workout: `strava_id` is
                 # unique across the whole table, so without this guard a
                 # sync would reassign (`props` contains `'user': user`)
                 # a workout owned by a different account to the
                 # currently syncing user - a cross-account workout
                 # takeover for any duplicated/legacy Strava linkage.
-                if workout.user_id == user.id:
+                if workout is not None and workout.user_id == user.id:
                     for key, value in props.items():
                         setattr(workout, key, value)
                     workout.save()

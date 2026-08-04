@@ -33,15 +33,10 @@ export default function TransferOwnershipForm({competition, setModalState}) {
 
     const {
         data: users,
-        error: userError,
-        isLoading: userLoading,
-        isFetching: userFetching,
     } = useGetUsersQuery();
     const [updateEntry, {
-        data: updateData,
         error: updateError,
         isLoading: updateIsLoading,
-        isSuccess: updateIsSuccess
     }] = useUpdateCompetitionMutation();
 
     // Overall form error message

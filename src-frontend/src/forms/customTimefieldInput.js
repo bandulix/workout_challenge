@@ -22,7 +22,8 @@ export function validateTimeAndCursor(
     colon = DEFAULT_COLON,
     cursorPosition = 0
 ) {
-    const [oldH, oldM, oldS] = defaultValue.split(colon);
+
+    const [, oldM, oldS] = defaultValue.split(colon);
 
     let newCursorPosition = Number(cursorPosition);
     let [newH, newM, newS] = String(value).split(colon);

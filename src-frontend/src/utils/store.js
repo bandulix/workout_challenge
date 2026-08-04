@@ -1,15 +1,11 @@
 import {combineReducers, configureStore} from '@reduxjs/toolkit';
 import {loadState, saveState} from './localStorage';
-import counterReducer from './reducers/counterSlice';
-import authReducer from './reducers/authSlice';
-import modalQueueReducer from './reducers/modalSlice';
 import {setupListeners} from "@reduxjs/toolkit/query";
 import {workoutsApi} from './reducers/workoutsSlice';
 import {usersApi} from './reducers/usersSlice';
 import {competitionsApi} from "./reducers/competitionsSlice";
 import {teamsApi} from "./reducers/teamsSlice";
 import {goalsApi} from "./reducers/goalsSlice";
-import {pointsApi} from "./reducers/pointsSlice";
 import {statsApi} from "./reducers/statsSlice";
 import {feedApi} from "./reducers/feedSlice";
 import {joinApi} from "./reducers/joinSlice";
@@ -19,15 +15,11 @@ import {siteSettingsApi} from "./reducers/siteSettingsSlice";
 import {pushApi} from "./reducers/pushSlice";
 
 const appReducer = combineReducers({
-    counter: counterReducer,
-    auth: authReducer,
-    modalQueue: modalQueueReducer,
     [workoutsApi.reducerPath]: workoutsApi.reducer,
     [usersApi.reducerPath]: usersApi.reducer,
     [competitionsApi.reducerPath]: competitionsApi.reducer,
     [teamsApi.reducerPath]: teamsApi.reducer,
     [goalsApi.reducerPath]: goalsApi.reducer,
-    [pointsApi.reducerPath]: pointsApi.reducer,
     [statsApi.reducerPath]: statsApi.reducer,
     [feedApi.reducerPath]: feedApi.reducer,
     [joinApi.reducerPath]: joinApi.reducer,
@@ -56,7 +48,6 @@ const store = configureStore({
             .concat(competitionsApi.middleware)
             .concat(teamsApi.middleware)
             .concat(goalsApi.middleware)
-            .concat(pointsApi.middleware)
             .concat(statsApi.middleware)
             .concat(feedApi.middleware)
             .concat(joinApi.middleware)
@@ -67,8 +58,18 @@ const store = configureStore({
     preloadedState,
 });
 
+// Persisted-state writes are throttled: saveState serializes the whole
+// store (all RTK caches) on EVERY dispatched action - with several
+// polling loops that's many full JSON.stringify+setItem per minute on
+// the main thread. 2s is plenty for a warm-start cache (login/logout
+// paths clear appState explicitly anyway).
+let saveStateTimer = null;
 store.subscribe(() => {
-    saveState(store.getState());
+    if (saveStateTimer !== null) return;
+    saveStateTimer = setTimeout(() => {
+        saveStateTimer = null;
+        saveState(store.getState());
+    }, 2000);
 });
 
 setupListeners(store.dispatch);

@@ -404,21 +404,16 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
     const [formError, setFormError] = useState('');
 
     const [updateEntry, {
-        data: updateData,
         error: updateError,
         isLoading: updateIsLoading,
-        isSuccess: updateIsSuccess
     }] = useUpdateUserMutation();
     const [deleteEntry, {
         error: deleteError,
         isLoading: deleteIsLoading,
-        isSuccess: deleteIsSuccess
     }] = useDeleteUserMutation();
     const [unlinkStrava, {
-        data: unlinkData,
         error: unlinkError,
         isLoading: unlinkIsLoading,
-        isSuccess: unlinkIsSuccess
     }] = useUnlinkStravaMutation();
     const [resetStrava, {
         error: resetError,

@@ -6,7 +6,6 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import store from './utils/store';
 import {ErrorBoundary} from './utils/miscellaneous';
-import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 
 
 // Optional Sentry monitoring - dynamically imported so the (heavy)
@@ -38,20 +37,16 @@ if (SENTRY_DSN !== undefined && SENTRY_DSN !== null && SENTRY_DSN !== '') {
 }
 
 
-const queryClient = new QueryClient();
-
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
     <React.StrictMode>
-        <QueryClientProvider client={queryClient}>
-            <Provider store={store}>
-                {/* Render-time errors anywhere in the tree land here instead
-                    of leaving a dead white screen - with a reload button. */}
-                <ErrorBoundary>
-                    <App/>
-                </ErrorBoundary>
-            </Provider>
-        </QueryClientProvider>
+        <Provider store={store}>
+            {/* Render-time errors anywhere in the tree land here instead
+                of leaving a dead white screen - with a reload button. */}
+            <ErrorBoundary>
+                <App/>
+            </ErrorBoundary>
+        </Provider>
     </React.StrictMode>
 );
 

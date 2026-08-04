@@ -1,8 +1,7 @@
 import {useGetUserByIdQuery, usersApi} from "../utils/reducers/usersSlice";
-import {ClipLoader} from "react-spinners";
 import React, {useEffect} from "react";
 import {useLocation, useNavigate} from "react-router-dom";
-import {useDeleteWorkoutMutation, workoutsApi} from "../utils/reducers/workoutsSlice";
+import {workoutsApi} from "../utils/reducers/workoutsSlice";
 import {useGetStravaStateQuery, useLinkStravaMutation} from "../utils/reducers/linkSlice";
 import {useDispatch} from "react-redux";
 import {ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
@@ -12,7 +11,6 @@ import {SectionLoader} from "../utils/loaders";
 export function InitStravaLink() {
 
     const {
-        data: user,
         error: userError,
         isLoading: userIsLoading,
         isSuccess: userIsSuccess
@@ -98,7 +96,6 @@ export function ReturnStravaLink() {
     const dispatch = useDispatch();
 
     const [linkStrava, {
-        data: linkStravaData,
         error: linkStravaError,
         isLoading: linkStravaIsLoading,
         isSuccess: linkStravaIsSuccess,

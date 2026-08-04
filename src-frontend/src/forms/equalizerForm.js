@@ -101,10 +101,8 @@ export default function GoalEqualizerForm({user, setModalState}) {
     const [formError, setFormError] = useState('');
 
     const [updateEntry, {
-        data: updateData,
         error: updateError,
         isLoading: updateIsLoading,
-        isSuccess: updateIsSuccess
     }] = useUpdateUserMutation();
 
     // Overall form error message

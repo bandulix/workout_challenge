@@ -96,9 +96,7 @@ function CompetitionHead({competition, feed, isOwner}) {
     const dispatch = useDispatch();
 
     const [leaveCompetition, {
-        error: leaveError,
         isLoading: leaveIsLoading,
-        isSuccess: leaveIsSuccess
     }] = useLeaveCompetitionMutation();
 
     async function triggerLeaveCompetition() {
@@ -260,7 +258,9 @@ function CoachCorner({competition, isOwner}) {
 
 function ChartThisWeek({history}) {
     const isDarkMode = useDarkMode();
-    const data = {
+    // Memoized: without it react-chartjs-2 re-processes data+options on
+    // every poll tick even though nothing changed.
+    const data = React.useMemo(() => ({
         labels: history['Legend'],
         datasets: [
             {
@@ -287,9 +287,9 @@ function ChartThisWeek({history}) {
                 hidden: true,
             },
         ],
-    };
+    }), [history, isDarkMode]);
 
-    const options = {
+    const options = React.useMemo(() => ({
         scales: {
             x: {
                 display: true,
@@ -320,7 +320,7 @@ function ChartThisWeek({history}) {
                 font: {weight: 'bold'},
             },
         },
-    };
+    }), [isDarkMode]);
 
     return (
         <Bar data={data} options={options} plugins={[ChartDataLabels]}/>
@@ -329,7 +329,7 @@ function ChartThisWeek({history}) {
 
 
 function ChartHistory({history}) {
-    const data = {
+    const data = React.useMemo(() => ({
         labels: history['Legend'],
         datasets: [
             {
@@ -357,9 +357,9 @@ function ChartHistory({history}) {
                 spanGaps: true,
             },
         ],
-    };
+    }), [history]);
 
-    const options = {
+    const options = React.useMemo(() => ({
         scales: {
             x: {display: false},
             y: {
@@ -390,37 +390,13 @@ function ChartHistory({history}) {
             },
             datalabels: {display: false},
         },
-    };
+    }), []);
     return (
         <Line data={data} options={options}/>
     )
 }
 
 
-function AwardsBox({competition}) {
-    return (
-        <div className="bg-white rounded-lg shadow-md p-6 mr-2 mb-4">
-            <div className="flex flex-row">
-                <span
-                    className="mx-4 flex text-gray-500 uppercase font-bold items-center justify-center"><p>My Awards</p></span>
-                <div className="h-full w-px bg-gray-300"></div>
-                <div className="relative h-full w-[80px]">
-                    <img src="/gold_medal.png" alt="Background" className="w-full h-full object-cover"/>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <h2 className="text-gray-500 text-sm text-center">Your Text Here</h2>
-                    </div>
-                </div>
-                <div className="relative h-full w-[80px]">
-                    <img src="/bronce_medal.png" alt="Background" className="w-full h-full object-cover"/>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <h2 className="text-gray-300 text-sm text-center">Your Text Here</h2>
-                    </div>
-                </div>
-                <span className="ml-auto mx-4 flex text-volt-600 dark:text-volt-400 font-semibold items-center justify-center"><p>View All</p></span>
-            </div>
-        </div>
-    )
-}
 
 function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
     const dispatch = useDispatch();
@@ -455,7 +431,7 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
                         </tr>
                     ) : (
                         stats.leaderboard.team.map((team, index) => (
-                            <tr key={"leader_team" + index}
+                            <tr key={team.workout__user__my_teams__id}
                                 className={((parseInt(teamId) === team.workout__user__my_teams__id) ? "bg-volt-400/10 dark:bg-volt-400/5 " : "") + "hover:bg-gray-100 dark:hover:bg-ink-800 border-b"}>
                                 <td className="py-2 px-2">
                                     <span className="font-semibold">#{team.rank}</span>
@@ -515,7 +491,7 @@ function IndividualLeaderboardBox({stats, userId}) {
             ) : (
                 <ul className="my-1">
                     {stats.leaderboard.individual.map((person, index) => (
-                        <li key={"leader_user" + index}
+                        <li key={person.workout__user__id}
                             className={"flex items-center gap-3 px-3 py-2.5 " + ((userId === person.workout__user__id) ? "bg-volt-400/10 dark:bg-volt-400/5 " : "")}>
                             {/* Rank - medal colours for the podium */}
                             <span className={"w-8 shrink-0 text-center font-display text-lg " + (RANK_STYLES[person.rank] || "text-gray-400")}>
@@ -567,7 +543,7 @@ function FeedBox({feed}) {
                     </tr>
                 ) : (feed.map((entry, index) => {
                         return (
-                            <tr key={"feed" + index} className="hover:bg-gray-100 dark:hover:bg-ink-800 border-b">
+                            <tr key={entry.workout} className="hover:bg-gray-100 dark:hover:bg-ink-800 border-b">
                                 <td className="py-2 px-4 text-sm md:text-base">
                                     <span className="font-semibold">{entry.workout__start_datetime_fmt.date_readable}</span><br/>
                                     <span className="text-sm hidden sm:block">{entry.workout__start_datetime_fmt.time_24h}</span>
@@ -706,7 +682,7 @@ function ActivityGoalsBox({user, stats, feed, competitionId, userId, isOwner}) {
             </div>
             <div className="flex flex-col">
                 {finalGoals.map((goal, index) => (
-                    <div key={"activitygoal" + index}
+                    <div key={goal.id}
                          className="bg-gray-100 dark:bg-gray-900 rounded-lg p-5 m-4 mb-1 group relative">
                         <div className="flex flex-col px-4 text-left">
                             <div className="flex flex-row justify-between items-center text-gray-500 mb-0.5">
@@ -937,7 +913,6 @@ export default function Competition() {
 
     const {
         data: user,
-        error: userError,
         isLoading: userLoading,
     } = useGetUserByIdQuery('me');
 

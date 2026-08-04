@@ -125,12 +125,10 @@ export const drillInstructorApi = createApi({
 
 export const {
     useGetPersonasQuery,
-    useGetPersonaByIdQuery,
     useAddPersonaMutation,
     useUpdatePersonaMutation,
     useDeletePersonaMutation,
     useGetDrillConfigsQuery,
-    useGetDrillConfigByIdQuery,
     useAddDrillConfigMutation,
     useUpdateDrillConfigMutation,
     useDeleteDrillConfigMutation,

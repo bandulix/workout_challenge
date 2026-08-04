@@ -121,10 +121,6 @@ class Team(models.Model):
 
     name = models.CharField(null=False, max_length=60)
 
-    def clean(self):
-        super().clean()
-        #self.validate_members()
-
 
     # ToDo: Check if user is participant in competition he/she whats to join the team of
     #def validate_members(self):

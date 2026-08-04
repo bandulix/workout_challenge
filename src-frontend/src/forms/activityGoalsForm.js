@@ -1,16 +1,13 @@
-import React, {use, useEffect, useState} from "react";
-import {Modal, MultiForm, SaveButton, DeleteButton, PlaceholderModal} from "./basicComponents";
-import {useAddTeamMutation, useDeleteTeamMutation, useGetTeamsQuery} from "../utils/reducers/teamsSlice";
-import _ from "lodash";
+import React, {useEffect, useState} from "react";
+import {Modal, MultiForm, SaveButton, DeleteButton} from "./basicComponents";
+import lodFilter from 'lodash/filter';
 import {
     useAddGoalMutation,
     useDeleteGoalMutation,
     useGetGoalsQuery,
     useUpdateGoalMutation
 } from "../utils/reducers/goalsSlice";
-import {BarLoader, BeatLoader} from "react-spinners";
-import {deepDiff, compareDictLists} from "../utils/miscellaneous";
-import {useDispatch} from "react-redux";
+import {compareDictLists} from "../utils/miscellaneous";
 
 const fields = {
 
@@ -161,30 +158,19 @@ export default function ActivityGoalsForm({competitionId, setModalState}) {
 
     const {
         data: goals,
-        refetch: goalsRefetch,
-        error: goalsError,
         isLoading: goalsLoading,
         isSuccess: goalsIsSuccess,
-        isFetching: goalsIsFetching,
     } = useGetGoalsQuery();
     const [updateGoal, {
-        data: updateGoalData,
-        error: updateGoalError,
         isLoading: updateGoalIsLoading,
-        isSuccess: updateGoalIsSuccess
     }] = useUpdateGoalMutation();
     const [createGoal, {
-        data: createGoalData,
-        error: createGoalError,
         isLoading: createGoalIsLoading,
-        isSuccess: createGoalIsSuccess
     }] = useAddGoalMutation();
     const [deleteGoal, {
-        error: deleteGoalError,
         isLoading: deleteGoalIsLoading,
-        isSuccess: deleteGoalIsSuccess
     }] = useDeleteGoalMutation();
-    const filteredGoals = _.filter(goals || [], item => item?.competition == competitionId).map((item, index) => ({ ...item, index }));
+    const filteredGoals = lodFilter(goals || [], item => item?.competition == competitionId).map((item, index) => ({ ...item, index }));
 
     const [values, setValues] = useState(undefined);
     const [fieldErrors, setFieldErrors] = useState({});

@@ -21,7 +21,6 @@ from sentry_sdk.integrations.celery import CeleryIntegration
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
-QR_CODE_PATH = BASE_DIR.parent / "src-frontend" / "public"
 
 
 # Quick-start development settings - unsuitable for production
@@ -112,7 +111,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
-    'django.middleware.common.CommonMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',

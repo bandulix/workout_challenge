@@ -51,7 +51,6 @@ export const goalsApi = createApi({
 
 export const {
     useGetGoalsQuery,
-    useGetGoalByIdQuery,
     useAddGoalMutation,
     useUpdateGoalMutation,
     useDeleteGoalMutation,

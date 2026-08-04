@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from "react";
+import React from "react";
 import {useJoinTeamMutation} from "../utils/reducers/joinSlice";
 import {useAddTeamMutation, useDeleteTeamMutation, useGetTeamsQuery} from "../utils/reducers/teamsSlice";
 import {PlusIcon, UsersRound, Trash2} from "lucide-react";
@@ -11,27 +11,14 @@ export default function JoinTeamForm({competition, setModalState, user, isOwner}
     const {
         data: teams,
         refetch: teamsRefetch,
-        error: teamsError,
         isLoading: teamsLoading,
-        isSuccess: teamsIsSuccess,
         isFetching: teamsIsFetching,
     } = useGetTeamsQuery();
     const [createTeam, {
-        data: createData,
-        error: createError,
-        isLoading: createIsLoading,
-        isSuccess: createIsSuccess
     }] = useAddTeamMutation();
     const [deleteTeam, {
-        error: deleteError,
-        isLoading: deleteIsLoading,
-        isSuccess: deleteIsSuccess
     }] = useDeleteTeamMutation();
     const [joinTeam, {
-        data: joinData,
-        error: joinError,
-        isLoading: joinIsLoading,
-        isSuccess: joinIsSuccess
     }] = useJoinTeamMutation();
 
     const filteredTeams = teams?.filter(item => item.competition === competition?.id);

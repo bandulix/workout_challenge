@@ -14,12 +14,3 @@ export function timeAgo(iso) {
     return then.toLocaleDateString(undefined, {day: "numeric", month: "short"});
 }
 
-export function dayLabel(iso) {
-    const then = new Date(iso);
-    const today = new Date();
-    const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    const days = Math.round((startOfDay(today) - startOfDay(then)) / 86400000);
-    if (days === 0) return "Today";
-    if (days === 1) return "Yesterday";
-    return then.toLocaleDateString(undefined, {weekday: "long", day: "numeric", month: "short"});
-}
