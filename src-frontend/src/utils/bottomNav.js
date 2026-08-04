@@ -11,6 +11,7 @@ import PersonaAvatar from "../components/PersonaAvatar";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {useTheme} from "./theme";
 import {isNativeHealthAvailable, nativeHealthSetSource} from "./nativeHealth";
+import {startNativeCoachPings} from "./nativeCoachPings";
 import {useGetUserByIdQuery} from "./reducers/usersSlice";
 import {useGetCompetitionsQuery} from "./reducers/competitionsSlice";
 import {useGetDrillConfigsQuery} from "./reducers/drillInstructorSlice";
@@ -148,6 +149,13 @@ export default function BottomNav() {
             nativeHealthSetSource(user.activity_source_effective);
         }
     }, [user?.activity_source_effective]);
+
+    // Native coach pings: Android notifications for new coach messages
+    // (Web Push does not work inside the WebView) - runs while logged in.
+    useEffect(() => {
+        if (!user) return undefined;
+        return startNativeCoachPings();
+    }, [user?.id]);
     const onDashboard = location.pathname === "/dashboard" || location.pathname === "/";
     const onCompetition = location.pathname.startsWith("/competition/");
     const onCoach = location.pathname.startsWith("/coach");
