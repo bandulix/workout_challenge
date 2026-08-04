@@ -82,6 +82,9 @@ jobs:
           platforms: linux/arm64/v8,linux/amd64
           push: true
           tags: ghcr.io/${{ github.repository }}:latest,ghcr.io/${{ github.repository }}:${{ needs.autotag.outputs.out_tag }}
+          # Baked into the image as APP_VERSION - the "What's new" popup
+          # compares it against the user's last-seen release.
+          build-args: APP_VERSION=${{ needs.autotag.outputs.out_tag }}
           # Links the ghcr package back to this repo (shows on repo page).
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 

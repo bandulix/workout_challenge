@@ -15,6 +15,7 @@ import {
     LogoutPage
 } from "./pages/Public";
 import BottomNav from "./utils/bottomNav";
+import WhatsNew from "./components/WhatsNew";
 import {InitStravaLink, ReturnStravaLink} from "./pages/StravaLink";
 
 // Lazy-loaded heavy pages - keeps the initial bundle small on mobile.
@@ -57,6 +58,8 @@ function App() {
             </Routes>
 
             <BottomNav/>
+            {/* Release popup: one changelog + reload prompt per release. */}
+            <WhatsNew/>
         </Router>
     );
 }

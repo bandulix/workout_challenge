@@ -25,7 +25,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from workout_challenge.celery import app, is_task_already_executing
-from workouts.models import Workout
+from workouts.models import Workout, find_duplicate_workout
 from .token_crypto import decrypt_token, encrypt_token
 
 logger = logging.getLogger(__name__)
@@ -241,7 +241,7 @@ def _sync_user_activities(user, days_back=3) -> dict:
     existing = set(
         Workout.objects.filter(garmin_id__isnull=False).values_list("garmin_id", flat=True)
     )
-    created = updated = skipped = 0
+    created = updated = skipped = duplicates = 0
     for activity in activities or []:
         props = activity_to_workout_props(user, activity)
         if props is None:
@@ -256,18 +256,30 @@ def _sync_user_activities(user, days_back=3) -> dict:
                 workout.save()
                 updated += 1
             continue
+        # Cross-provider duplicate guard: the same activity may already
+        # exist from Strava or as a manual entry - never import it twice.
+        if find_duplicate_workout(user, props["start_datetime"], props["duration"], provider="garmin") is not None:
+            duplicates += 1
+            continue
         Workout.objects.create(**props)
         created += 1
 
     user.garmin_last_synced_at = timezone.now()
     user.save(update_fields=["garmin_last_synced_at"])
-    return {"fetched": len(activities or []), "created": created, "updated": updated, "skipped": skipped}
+    return {"fetched": len(activities or []), "created": created, "updated": updated, "skipped": skipped, "duplicates_skipped": duplicates}
 
 
 @app.task(bind=True, time_limit=60 * 30)
 def sync_garmin(self, user__id, days_back=3):
     CustomUser = get_user_model()
     user = CustomUser.objects.get(id=user__id)
+
+    # One activity source per user: when Strava is the selected provider,
+    # Garmin must not import - the same activities would arrive twice.
+    if user.get_activity_source() != 'garmin':
+        logger.info("Garmin sync user %s skipped: Garmin is not the selected activity source", user__id)
+        return {"user": user__id, "skipped": "garmin is not the selected activity source"}
+
     result = _sync_user_activities(user, days_back=days_back)
     logger.info("Garmin sync user %s: %s", user__id, result)
     return {"user": user__id, **result}

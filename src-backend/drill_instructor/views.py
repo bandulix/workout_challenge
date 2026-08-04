@@ -1,8 +1,10 @@
+import datetime
 import mimetypes
 
 from django.conf import settings
 from django.db.models import Q
 from django.http import FileResponse, Http404, HttpResponse
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -15,6 +17,7 @@ from .serializers import (
     DrillInstructorConfigSerializer,
     DrillInstructorMessageSerializer,
     DrillInstructorPersonaSerializer,
+    DrillInstructorReplySerializer,
 )
 
 
@@ -117,10 +120,20 @@ class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
 
 
 class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
-    """Read-only history of Drill Instructor messages for debugging / UI."""
+    """History of Drill Instructor messages for the Coach UI.
+
+    Only thread roots are listed; replies (participants' and the coach's
+    reactions) come nested inside their root message. Posting a reply is
+    the single write action - every other message is written by the
+    instructor's own tasks.
+    """
 
     serializer_class = DrillInstructorMessageSerializer
     permission_classes = [IsAuthenticated]
+
+    # Anti-spam / LLM-cost cap: each reply queues one coach reaction.
+    MAX_REPLIES_PER_HOUR = 10
+    MAX_REPLY_LEN = 500
 
     def get_queryset(self):
         user = self.request.user
@@ -129,13 +142,65 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         qs = (
             DrillInstructorMessage.objects
             .filter(Q(config__competition__owner=user) | Q(config__competition__user=user))
+            .filter(parent__isnull=True)
             .distinct()
             .select_related("config", "config__competition", "config__persona", "workout", "workout__user")
+            .prefetch_related("replies", "replies__user")
         )
         competition = self.request.query_params.get("competition")
         if competition and competition.isdigit():
             qs = qs.filter(config__competition_id=int(competition))
         return qs
+
+    @action(detail=True, methods=["post"])
+    def reply(self, request, pk=None):
+        """Post a participant's reply under a coach message.
+
+        The message must be visible to the user (owner or participant of
+        the competition), a thread root, and the coach must be on duty.
+        The coach's reaction is generated asynchronously by the
+        ``post_reply_reaction`` task, so the response is the created
+        reply itself - the reaction arrives with the next feed poll.
+        """
+        root = self.get_object()  # 404 unless owner/participant; roots only
+        config = root.config
+
+        if not config.enabled:
+            return Response({"body": "The coach is benched for this competition - it can't react right now."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        body = (request.data.get("body") or "").strip()
+        if not body:
+            return Response({"body": "Reply text is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(body) > self.MAX_REPLY_LEN:
+            return Response({"body": f"Reply too long (max {self.MAX_REPLY_LEN} characters)."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        hour_ago = timezone.now() - datetime.timedelta(hours=1)
+        recent = DrillInstructorMessage.objects.filter(
+            kind=DrillInstructorMessage.KIND_REPLY, user=request.user, posted_at__gte=hour_ago,
+        ).count()
+        if recent >= self.MAX_REPLIES_PER_HOUR:
+            return Response(
+                {"body": f"Easy there - max {self.MAX_REPLIES_PER_HOUR} replies per hour. Give the coach a breather."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        reply = DrillInstructorMessage.objects.create(
+            config=config,
+            kind=DrillInstructorMessage.KIND_REPLY,
+            parent=root,
+            user=request.user,
+            body=body,
+        )
+
+        from .tasks import post_reply_reaction
+        post_reply_reaction.delay(reply.id)
+
+        return Response(
+            DrillInstructorReplySerializer(reply, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class DrillInstructorTestMessageView(APIView):

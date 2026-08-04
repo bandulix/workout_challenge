@@ -8,6 +8,59 @@ import {Watch} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 
 
+// Only shown when BOTH providers are linked: picks which one actually
+// imports activities, so the same activity never arrives twice (it
+// usually exists in both ecosystems - e.g. recorded on a Garmin watch
+// and auto-synced to Strava).
+function SyncSourceSection({user, onChanged}) {
+    const [updateSource, {isLoading}] = useUpdateUserMutation();
+    const [error, setError] = useState(null);
+    const active = user?.activity_source_effective;
+
+    async function choose(source) {
+        if (source === active || isLoading) return;
+        setError(null);
+        try {
+            await updateSource({id: 'me', activity_source: source}).unwrap();
+            onChanged();
+        } catch (err) {
+            console.error('Switch activity source failed', err);
+            setError("Could not switch the activity source - please try again.");
+        }
+    }
+
+    const optionClass = (source) =>
+        "flex-1 px-4 py-2.5 rounded-full text-sm font-bold uppercase tracking-wide transition disabled:opacity-50 " +
+        (source === active
+            ? "bg-volt-400 text-ink-950 shadow-glow-volt"
+            : "bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-gray-600 dark:text-gray-300");
+
+    return (
+        <div className="px-4 w-full">
+            <div className="rounded-2xl border border-gray-200/70 dark:border-ink-700/60 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                    <Watch className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                    <span className="font-display text-xs uppercase tracking-wider">Activity import source</span>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Strava and Garmin are both linked. Only the selected source imports your activities,
+                    so nothing gets doubled.
+                </p>
+                <div className="flex gap-2">
+                    <button onClick={() => choose('strava')} disabled={isLoading} className={optionClass('strava')}>
+                        Strava
+                    </button>
+                    <button onClick={() => choose('garmin')} disabled={isLoading} className={optionClass('garmin')}>
+                        Garmin
+                    </button>
+                </div>
+                {error && <p className="text-xs text-red-500">{error}</p>}
+            </div>
+        </div>
+    );
+}
+
+
 function GarminSection({user, onChanged}) {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -257,9 +310,14 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
     async function handleSubmit() {
         // update personal details
         try {
+            // The import source is changed exclusively via its own
+            // selector (which saves immediately). `values` is a snapshot
+            // from mount time - sending its stale copy here would
+            // silently revert a source switch made in between.
+            const {activity_source, activity_source_effective, ...profileValues} = values;
             const result = await updateEntry({
                 id: 'me',
-                ...values,
+                ...profileValues,
                 email: values.email.toLowerCase()
             }).unwrap();
             console.log('Update Personal Settings success:', result);
@@ -330,6 +388,9 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
                     </div>
                 )}
             </div>
+            {(user.strava_athlete_id && user.garmin_email) && (
+                <SyncSourceSection user={user} onChanged={() => dispatch(usersApi.util.invalidateTags(['User']))}/>
+            )}
             <GarminSection user={user} onChanged={() => dispatch(usersApi.util.invalidateTags(['User']))}/>
             <div className="relative flex justify-between items-center">
                 <DeleteButton onClick={handleDelete} label="Delete Account" highlighted={false} larger={true} />

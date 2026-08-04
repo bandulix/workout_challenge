@@ -45,7 +45,8 @@ import {
     StravaButton,
 } from "../forms/basicComponents";
 import {BoxSection, ErrorBoxSection, PageWrapper, useDarkMode} from "../utils/miscellaneous";
-import {workoutTypes} from "../forms/workoutForm";
+import {sportLabelShort} from "../forms/workoutForm";
+import CoachThread from "../components/CoachThread";
 import CompetitionInviteModal from "../forms/shareModal";
 import {useDispatch} from "react-redux";
 import {useLeaveCompetitionMutation} from "../utils/reducers/joinSlice";
@@ -134,7 +135,7 @@ function CompetitionHead({competition, feed, isOwner}) {
                     {Object.entries(countGroups).map(([label, count], index) => (
                         <div key={"stat" + index} className="hidden lg:flex lg:flex-col lg:items-center shrink-0 px-1">
                             <span className="text-lg font-semibold leading-tight">{count}</span>
-                            <span className="uppercase text-[10px] tracking-wide text-gray-500">{workoutTypes[label].label_short}</span>
+                            <span className="uppercase text-[10px] tracking-wide text-gray-500">{sportLabelShort(label)}</span>
                         </div>
                     ))}
                     <div className="flex items-center shrink-0 ml-auto">
@@ -217,17 +218,21 @@ function CoachCorner({competition, isOwner}) {
             </div>
             {latest.length > 0 ? (
                 <ul className="px-4 py-3 space-y-3">
-                    {latest.map((m) => (
-                        <li key={m.id} className="flex items-start gap-2.5">
-                            <PersonaAvatar persona={{avatar: m.persona_avatar, profile_picture: m.persona_profile_picture, theme_color: m.persona_theme_color, name: m.persona_name}} size={30}/>
-                            <div className="min-w-0">
-                                <p className="text-sm leading-snug dark:text-gray-100">{m.body}</p>
-                                <p className="text-[11px] text-gray-400 mt-0.5">
-                                    {m.athlete_name ? `→ ${m.athlete_name} · ` : ""}{timeAgo(m.posted_at)}
-                                </p>
-                            </div>
-                        </li>
-                    ))}
+                    {latest.map((m) => {
+                        const threadPersona = {avatar: m.persona_avatar, profile_picture: m.persona_profile_picture, theme_color: m.persona_theme_color, name: m.persona_name};
+                        return (
+                            <li key={m.id} className="flex items-start gap-2.5">
+                                <PersonaAvatar persona={threadPersona} size={30}/>
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm leading-snug dark:text-gray-100">{m.body}</p>
+                                    <p className="text-[11px] text-gray-400 mt-0.5">
+                                        {m.athlete_name ? `→ ${m.athlete_name} · ` : ""}{timeAgo(m.posted_at)}
+                                    </p>
+                                    <CoachThread message={m} persona={threadPersona} canReply={config.enabled}/>
+                                </div>
+                            </li>
+                        );
+                    })}
                 </ul>
             ) : (
                 <p className="px-5 py-4 text-sm text-gray-400">No orders yet - the coach speaks after the next logged workout.</p>
@@ -556,13 +561,13 @@ function FeedBox({feed}) {
                                     {/* Mobile view (stacked) */}
                                     <div className="md:hidden">
                                         <div className="font-medium">{entry.workout__user__username}</div>
-                                        <div className="text-sm text-gray-600 dark:text-gray-400">{(entry.workout__sport_type === "Steps") ? entry.workout__steps?.toLocaleString() : Math.round(parseFloat(entry.workout__duration) / 60, 0).toLocaleString() + "min"}<span className="font-semibold"> {workoutTypes[entry.workout__sport_type].label_short}</span></div>
+                                        <div className="text-sm text-gray-600 dark:text-gray-400">{(entry.workout__sport_type === "Steps") ? entry.workout__steps?.toLocaleString() : Math.round(parseFloat(entry.workout__duration) / 60, 0).toLocaleString() + "min"}<span className="font-semibold"> {sportLabelShort(entry.workout__sport_type)}</span></div>
                                     </div>
                                     {/* Desktop view (normal) */}
                                     <div className="hidden md:block">{entry.workout__user__username}</div>
                                 </td>
                                 <td className="py-2 px-4 hidden md:table-cell">{(entry.workout__sport_type === "Steps") ? entry.workout__steps?.toLocaleString() : Math.round(parseFloat(entry.workout__duration) / 60, 0).toLocaleString() + "min"}<span
-                                    className="font-semibold"> {workoutTypes[entry.workout__sport_type].label_short}</span>
+                                    className="font-semibold"> {sportLabelShort(entry.workout__sport_type)}</span>
                                 </td>
                                 <td className="py-2 px-0 sm:px-4">
                                     {(entry.workout__user__strava_allow_follow && entry.workout__strava_id) ? (

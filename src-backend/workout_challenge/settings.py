@@ -56,6 +56,11 @@ SECRET_KEY = _get_secret_key()
 # in your (git-ignored) .env - never commit the real token.
 REGISTRATION_TOKEN = os.environ.get("REGISTRATION_TOKEN", "").strip()
 
+# Release identifier for the "What's new" popup. Baked into the image at
+# build time (CI passes the git tag as a build-arg); "dev" disables the
+# popup so local development never nags.
+APP_VERSION = os.environ.get("APP_VERSION", "dev").strip()
+
 # Optional explicit key for encrypting stored Garmin OAuth tokens at rest
 # (Fernet). Falls back to being derived from SECRET_KEY when unset - set
 # this if you rotate SECRET_KEY and want existing Garmin linkages to

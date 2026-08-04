@@ -697,6 +697,175 @@ class PromptHistoryTests(TestCase):
         self.assertNotIn("most recent messages", prompt)
 
 
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class CoachThreadReplyTests(TestCase):
+    """Participants reply to coach messages thread-style; the coach
+    reacts to every reply asynchronously (post_reply_reaction task)."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "drill_instructor.tasks.post_workout_comment.delay",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        reaction_patcher = mock.patch("drill_instructor.tasks.post_reply_reaction.delay")
+        self.addCleanup(reaction_patcher.stop)
+        self.reaction_delay = reaction_patcher.start()
+
+        self.persona = DrillInstructorPersona.objects.create(
+            name="Thread Sergeant",
+            system_prompt="You are a test sergeant.",
+        )
+        self.owner = _user("thread-owner@example.com", "Olivia")
+        self.athlete = _user("thread-athlete@example.com", "Alex")
+        self.outsider = _user("thread-outsider@example.com", "Nina")
+        today = timezone.localdate()
+        self.competition = Competition.objects.create(
+            owner=self.owner,
+            name="Thread Cup",
+            start_date=today - datetime.timedelta(days=3),
+            end_date=today + datetime.timedelta(days=4),
+        )
+        self.athlete.my_competitions.add(self.competition)
+        self.config = DrillInstructorConfig.objects.create(
+            competition=self.competition,
+            enabled=True,
+            persona=self.persona,
+        )
+        self.root = DrillInstructorMessage.objects.create(
+            config=self.config,
+            kind=DrillInstructorMessage.KIND_PUSH,
+            body="Get moving, platoon!",
+        )
+        self.client = APIClient()
+
+    def _reply(self, user, body="Sarge, I already ran 10k today!", root=None):
+        self.client.force_authenticate(user)
+        return self.client.post(f"/api/drill-instructor/message/{(root or self.root).id}/reply/", {"body": body}, format="json")
+
+    # ---- endpoint permissions & validation ----------------------------
+
+    def test_anonymous_gets_401(self):
+        response = self.client.post(f"/api/drill-instructor/message/{self.root.id}/reply/", {"body": "hi"}, format="json")
+        self.assertEqual(response.status_code, 401)
+
+    def test_outsider_gets_404(self):
+        response = self._reply(self.outsider)
+        self.assertEqual(response.status_code, 404)
+
+    def test_participant_can_reply_and_reaction_is_queued(self):
+        response = self._reply(self.athlete)
+        self.assertEqual(response.status_code, 201, response.content)
+        reply = DrillInstructorMessage.objects.get(pk=response.json()["id"])
+        self.assertEqual(reply.kind, DrillInstructorMessage.KIND_REPLY)
+        self.assertEqual(reply.parent, self.root)
+        self.assertEqual(reply.user, self.athlete)
+        self.reaction_delay.assert_called_once_with(reply.id)
+
+    def test_owner_can_reply_too(self):
+        response = self._reply(self.owner)
+        self.assertEqual(response.status_code, 201, response.content)
+
+    def test_reply_requires_body(self):
+        response = self._reply(self.athlete, body="   ")
+        self.assertEqual(response.status_code, 400)
+
+    def test_reply_too_long(self):
+        response = self._reply(self.athlete, body="x" * 501)
+        self.assertEqual(response.status_code, 400)
+
+    def test_reply_to_benched_coach_rejected(self):
+        self.config.enabled = False
+        self.config.save()
+        response = self._reply(self.athlete)
+        self.assertEqual(response.status_code, 400)
+
+    def test_reply_throttled(self):
+        for _ in range(10):
+            DrillInstructorMessage.objects.create(
+                config=self.config, kind=DrillInstructorMessage.KIND_REPLY,
+                parent=self.root, user=self.athlete, body="spam!",
+            )
+        response = self._reply(self.athlete)
+        self.assertEqual(response.status_code, 429)
+
+    # ---- feed nesting -------------------------------------------------
+
+    def test_feed_nests_replies_and_lists_roots_only(self):
+        DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REPLY,
+            parent=self.root, user=self.athlete, body="first!",
+        )
+        DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REACTION,
+            parent=self.root, user=None, body="second!",
+        )
+        self.client.force_authenticate(self.athlete)
+        response = self.client.get("/api/drill-instructor/message/")
+        self.assertEqual(response.status_code, 200)
+        results = response.json()
+        self.assertEqual(len(results), 1)  # the reply is not a top-level entry
+        replies = results[0]["replies"]
+        self.assertEqual([r["body"] for r in replies], ["first!", "second!"])  # oldest first
+        self.assertFalse(replies[0]["is_coach"])
+        self.assertTrue(replies[1]["is_coach"])
+        self.assertEqual(replies[0]["author_name"], "Alex")
+
+    # ---- the coach's reaction task -------------------------------------
+
+    def _make_reply(self):
+        return DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REPLY,
+            parent=self.root, user=self.athlete, body="But Sarge, rest day!",
+        )
+
+    def test_reaction_task_creates_coach_reaction(self):
+        from .tasks import post_reply_reaction
+        reply = self._make_reply()
+        with mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - rest is for the weak!", None)) as gen:
+            result = post_reply_reaction(reply.id)
+        reaction = DrillInstructorMessage.objects.get(pk=result["reaction_id"])
+        self.assertEqual(reaction.kind, DrillInstructorMessage.KIND_REACTION)
+        self.assertEqual(reaction.parent, self.root)
+        self.assertIsNone(reaction.user)
+        self.assertEqual(reaction.body, "@Alex - rest is for the weak!")
+        _, kwargs = gen.call_args
+        self.assertIn("@Alex", kwargs["user_prompt"])
+        self.assertIn("rest day", kwargs["user_prompt"])
+
+    def test_reaction_task_static_fallback_on_llm_outage(self):
+        from .tasks import post_reply_reaction
+        reply = self._make_reply()
+        with mock.patch("drill_instructor.tasks.generate_message", return_value=(None, "outage")):
+            result = post_reply_reaction(reply.id)
+        reaction = DrillInstructorMessage.objects.get(pk=result["reaction_id"])
+        self.assertIn("Thread Sergeant", reaction.body)
+        self.assertIn("@Alex", reaction.body)
+
+    def test_reaction_task_ignores_non_reply_messages(self):
+        from .tasks import post_reply_reaction
+        result = post_reply_reaction(self.root.id)
+        self.assertEqual(result.get("skipped"), "not_a_reply")
+
+    def test_reaction_pings_only_the_replier_when_push_enabled(self):
+        from .tasks import post_reply_reaction
+        self.config.send_push_on_activity = True
+        self.config.save()
+        reply = self._make_reply()
+        with mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - noted!", None)), \
+                mock.patch("drill_instructor.tasks.send_push_to_user") as push:
+            post_reply_reaction(reply.id)
+        push.assert_called_once()
+        self.assertEqual(push.call_args[0][0], self.athlete)
+        self.assertIn(f"/competition/{self.competition.id}", push.call_args[1]["url"])
+
+
 class InactivityNudgePeriodicTaskTests(TestCase):
     """Migration 0007 seeds the PeriodicTask row the DatabaseScheduler
     needs - without it the celery.py beat entry alone would never fire."""

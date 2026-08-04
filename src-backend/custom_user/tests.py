@@ -10,6 +10,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from competition.models import Competition
+from workouts.models import Workout
 
 from .models import CustomUser
 
@@ -259,3 +260,257 @@ class ResetStravaTests(TestCase):
         self.assertIsNone(self.user.strava_athlete_id)
         self.assertIsNone(self.user.strava_last_synced_at)
         self.assertIsNone(cache.get(f"strava_access_token_{self.user.id}"))
+
+
+class MapStravaSportTypeTests(TestCase):
+    """Strava adds sport types faster than we support them (e.g.
+    Basketball, Cricket, Dance, Padel, Physical Therapy, Volleyball in
+    2026). Workout.sport_type choices are not DB-enforced, so unknown
+    values must be mapped to 'Workout' before they reach the table -
+    a verbatim unknown type crashes the frontend's label lookups."""
+
+    def test_known_types_pass_through(self):
+        from .strava import _map_sport_type
+        self.assertEqual(_map_sport_type("Run"), "Run")
+        self.assertEqual(_map_sport_type("Pickleball"), "Pickleball")
+        self.assertEqual(_map_sport_type("Workout"), "Workout")
+
+    def test_unknown_types_fall_back_to_workout(self):
+        from .strava import _map_sport_type
+        for unknown in ("Basketball", "Cricket", "Dance", "Padel", "Volleyball", "PhysicalTherapy", "", None):
+            with self.subTest(unknown=unknown):
+                self.assertEqual(_map_sport_type(unknown), "Workout")
+
+
+# DRF throttling and the Strava access-token cache read the Django cache
+# - use LocMem so the tests don't need a running Redis.
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class ActivitySourceTests(TestCase):
+    """One activity source per user: the same physical activity usually
+    exists in both ecosystems (recorded on a Garmin watch, auto-synced
+    to Strava), so syncing both providers would double every workout."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            email="both@example.com", password="test-pw", first_name="Bo", last_name="",
+        )
+
+    def _link_strava(self):
+        self.user.strava_refresh_token = "gAAAAAencrypted"
+        self.user.strava_athlete_id = 4242
+        self.user.save()
+
+    def _link_garmin(self):
+        self.user.garmin_email = "both@example.com"
+        self.user.garmin_tokens_enc = "gAAAAAencrypted"
+        self.user.save()
+
+    # ---- source resolution -------------------------------------------
+
+    def test_nothing_linked(self):
+        self.assertIsNone(self.user.get_activity_source())
+
+    def test_only_strava_linked(self):
+        self._link_strava()
+        self.assertEqual(self.user.get_activity_source(), "strava")
+
+    def test_only_garmin_linked_with_stale_strava_choice(self):
+        # Stale stored choice from an earlier Strava link must not
+        # matter while Strava is unlinked.
+        self._link_garmin()
+        self.user.activity_source = "strava"
+        self.user.save()
+        self.assertEqual(self.user.get_activity_source(), "garmin")
+
+    def test_both_linked_explicit_choice_wins(self):
+        self._link_strava()
+        self._link_garmin()
+        self.user.activity_source = "garmin"
+        self.user.save()
+        self.assertEqual(self.user.get_activity_source(), "garmin")
+
+    def test_both_linked_without_choice_falls_back_to_strava(self):
+        # Legacy rows predate the selector: Strava was the only
+        # integration back then.
+        self._link_strava()
+        self._link_garmin()
+        self.assertEqual(self.user.get_activity_source(), "strava")
+
+    # ---- sync task guards ---------------------------------------------
+
+    def test_strava_task_skips_when_garmin_selected(self):
+        from .strava import sync_strava
+        self._link_strava()
+        self._link_garmin()
+        self.user.activity_source = "garmin"
+        self.user.save()
+
+        result = sync_strava(user__id=self.user.id)
+        self.assertEqual(result.get("skipped"), "strava is not the selected activity source")
+
+    def test_garmin_task_skips_when_strava_selected(self):
+        from .garmin import sync_garmin
+        self._link_strava()
+        self._link_garmin()
+        self.user.activity_source = "strava"
+        self.user.save()
+
+        result = sync_garmin(user__id=self.user.id)
+        self.assertEqual(result.get("skipped"), "garmin is not the selected activity source")
+
+    # ---- manual sync view guards ---------------------------------------
+
+    def test_strava_sync_view_blocked_when_garmin_selected(self):
+        self._link_strava()
+        self._link_garmin()
+        self.user.activity_source = "garmin"
+        self.user.save()
+        self.client.force_authenticate(self.user)
+
+        response = self.client.get("/api/strava/sync/")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Garmin", response.json()["message"])
+
+    def test_garmin_sync_view_blocked_when_strava_selected(self):
+        self._link_strava()
+        self._link_garmin()
+        self.user.activity_source = "strava"
+        self.user.save()
+        self.client.force_authenticate(self.user)
+
+        response = self.client.get("/api/garmin/sync/")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Strava", response.json()["message"])
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class CrossProviderDuplicateGuardTests(TestCase):
+    """The syncs must never create a second row for an activity that is
+    already in the DB from the other provider (or a manual entry)."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        self.user = CustomUser.objects.create_user(
+            email="dedup@example.com", password="test-pw", first_name="Dee", last_name="",
+        )
+        self.other_user = CustomUser.objects.create_user(
+            email="someoneelse@example.com", password="test-pw", first_name="Sam", last_name="",
+        )
+        self.start = timezone.now().replace(microsecond=0) - datetime.timedelta(hours=5)
+        self.duration = datetime.timedelta(minutes=30)
+        self.existing = Workout.objects.create(
+            user=self.user,
+            sport_type="Run",
+            start_datetime=self.start,
+            duration=self.duration,
+            intensity_category=2,
+            strava_id=987654,
+        )
+
+    def test_matches_same_user_within_tolerance(self):
+        from workouts.models import find_duplicate_workout
+        found = find_duplicate_workout(
+            self.user,
+            self.start + datetime.timedelta(minutes=7),
+            self.duration - datetime.timedelta(minutes=3),
+        )
+        self.assertEqual(found, self.existing)
+
+    def test_ignores_other_users_and_distant_times(self):
+        from workouts.models import find_duplicate_workout
+        self.assertIsNone(find_duplicate_workout(self.other_user, self.start, self.duration))
+        self.assertIsNone(find_duplicate_workout(
+            self.user, self.start + datetime.timedelta(minutes=25), self.duration))
+
+    def test_provider_rows_are_not_their_own_duplicates(self):
+        from workouts.models import find_duplicate_workout
+        # The Strava sync must not treat a Strava-sourced row as a
+        # cross-provider duplicate of itself (id-based de-dup handles
+        # that path); the Garmin sync must treat it as one.
+        self.assertIsNone(find_duplicate_workout(self.user, self.start, self.duration, provider="strava"))
+        self.assertEqual(
+            find_duplicate_workout(self.user, self.start, self.duration, provider="garmin"),
+            self.existing,
+        )
+
+    def test_garmin_sync_skips_duplicate_from_strava(self):
+        from .garmin import _sync_user_activities
+        activity = {
+            "activityId": 112233,
+            "activityType": {"typeKey": "running"},
+            "startTimeGMT": self.start.isoformat().replace("+00:00", "Z"),
+            "duration": self.duration.total_seconds(),
+            "distance": 8000,
+            "calories": 400,
+        }
+        client = mock.Mock()
+        client.get_activities_by_date.return_value = [activity]
+
+        with mock.patch("custom_user.garmin.get_client_for_user", return_value=client):
+            result = _sync_user_activities(self.user)
+
+        self.assertEqual(result["created"], 0)
+        self.assertEqual(result["duplicates_skipped"], 1)
+        self.assertEqual(Workout.objects.filter(user=self.user).count(), 1)
+        self.assertFalse(Workout.objects.filter(garmin_id="112233").exists())
+
+    def test_strava_sync_skips_duplicate_from_manual_entry(self):
+        from . import strava as strava_module
+        from workouts.models import Workout as WorkoutModel
+
+        manual = WorkoutModel.objects.create(
+            user=self.user,
+            sport_type="Run",
+            start_datetime=self.start + datetime.timedelta(minutes=2),
+            duration=self.duration,
+            intensity_category=2,
+        )
+        self.user.strava_refresh_token = "gAAAAAencrypted"
+        self.user.save()
+        cache.set(f"strava_access_token_{self.user.id}", "cached-token", 3600)
+
+        activity = {
+            "id": 246810,
+            "sport_type": "Run",
+            "start_date": (self.start + datetime.timedelta(minutes=5)).isoformat(),
+            "moving_time": self.duration.total_seconds(),
+            "distance": 8000,
+        }
+        list_response = mock.Mock()
+        list_response.status_code = 200
+        list_response.json.return_value = [activity]
+
+        monitor = mock.Mock()
+        monitor.ok_workout_requests.return_value = True
+
+        with mock.patch.object(strava_module, "strava_api_monitor", monitor), \
+                mock.patch.object(strava_module.requests, "get", return_value=list_response) as mock_get:
+            result = strava_module.sync_strava(user__id=self.user.id)
+
+        self.assertEqual(result["new_activities"], 0)
+        self.assertEqual(result["duplicates_skipped"], 1)
+        # Only the activities LIST was fetched - the duplicate never
+        # cost an activity-details request.
+        self.assertEqual(mock_get.call_count, 1)
+        self.assertFalse(WorkoutModel.objects.filter(strava_id=246810).exists())
+        self.assertTrue(WorkoutModel.objects.filter(pk=manual.pk).exists())

@@ -78,6 +78,16 @@ export const workoutTypes = {
     "Workout": {"label": "Other Workout", "label_short": "Other"}
 }
 
+// Safe display label for ANY sport type. The DB can contain sport types
+// this map doesn't know (Strava adds new ones over time - e.g. Basketball,
+// Padel, Volleyball in 2026 - and the sync stores them verbatim), so a
+// direct `workoutTypes[type].label_short` lookup throws a TypeError that,
+// without an error boundary, unmounts the whole app (white screen).
+// Unknown types fall back to their raw name, then to "Other".
+export function sportLabelShort(sportType) {
+    return workoutTypes[sportType]?.label_short ?? sportType ?? "Other";
+}
+
 
 const fields = {
 

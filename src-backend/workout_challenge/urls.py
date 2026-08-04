@@ -50,6 +50,7 @@ from push_notifications.views import (
     PushStatusView,
     PushTestView,
 )
+from .views import ReleaseVersionView
 
 router = DefaultRouter()
 router.register(r'competition', CompetitionViewSet, basename='competition')
@@ -89,6 +90,7 @@ urlpatterns = [
         path('push/subscribe/', PushSubscribeView.as_view(), name='push-subscribe'),
         path('push/unsubscribe/', PushUnsubscribeView.as_view(), name='push-unsubscribe'),
         path('push/test/', PushTestView.as_view(), name='push-test'),
+        path('version/', ReleaseVersionView.as_view(), name='release-version'),
         path('token/', ThrottledTokenObtainPairView.as_view(), name='token-initial'),
         path('token/refresh/', ThrottledTokenRefreshView.as_view(), name='token-refresh'),
         path('password-reset/request/', PasswordResetView.as_view(), name='password-reset'),

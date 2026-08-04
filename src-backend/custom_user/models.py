@@ -105,6 +105,15 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     garmin_tokens_enc = models.TextField(null=True, blank=True)
     garmin_last_synced_at = models.DateTimeField(null=True, blank=True)
 
+    # Which linked provider imports activities. Activities often exist in
+    # BOTH ecosystems (e.g. recorded on a Garmin watch and auto-synced to
+    # Strava), so syncing both providers would double every workout.
+    # Only ever relevant when both providers are linked - see
+    # get_activity_source(). Set automatically at link time (first linked
+    # provider wins); the user can switch it in the personal settings.
+    ACTIVITY_SOURCE_CHOICES = [('strava', 'Strava'), ('garmin', 'Garmin')]
+    activity_source = models.CharField(max_length=10, choices=ACTIVITY_SOURCE_CHOICES, null=True, blank=True, default=None)
+
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     date_joined = models.DateTimeField(default=timezone.now)
@@ -140,6 +149,26 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
             for k, v in self._original.items()
             if v != current.get(k)
         }
+
+    def get_activity_source(self):
+        """The provider that is allowed to import activities for this user.
+
+        - Only one provider linked  -> that provider (selector irrelevant).
+        - Both providers linked     -> the explicit choice; falls back to
+          'strava' for legacy rows that predate the selector (Strava was
+          the only integration back then, so this matches their previous
+          behaviour minus the Garmin doubling).
+        - Nothing linked            -> None.
+        """
+        strava_linked = bool(self.strava_refresh_token)
+        garmin_linked = bool(self.garmin_tokens_enc)
+        if strava_linked and garmin_linked:
+            return self.activity_source if self.activity_source in ('strava', 'garmin') else 'strava'
+        if strava_linked:
+            return 'strava'
+        if garmin_linked:
+            return 'garmin'
+        return None
 
 
     def save(self, *args, **kwargs):
