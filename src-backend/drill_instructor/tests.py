@@ -878,3 +878,92 @@ class InactivityNudgePeriodicTaskTests(TestCase):
         self.assertTrue(task.enabled)
         self.assertEqual(task.crontab.hour, "17")
         self.assertEqual(task.crontab.minute, "10")
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class WorkoutCommentIdempotencyTests(TestCase):
+    """One coach comment per competition per workout. Double enqueues
+    (double submit, sync edge cases, broker redelivery) must never
+    produce a second, identical coach message."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        llm_patcher = mock.patch(
+            "drill_instructor.tasks.generate_message",
+            return_value=("Sarge says: solid run!", None),
+        )
+        self.addCleanup(llm_patcher.stop)
+        llm_patcher.start()
+
+        self.persona = DrillInstructorPersona.objects.create(
+            name="Idem Sergeant", system_prompt="You are a test sergeant.",
+        )
+        self.athlete = _user("idem-athlete@example.com", "Ivy")
+        today = timezone.localdate()
+        self.competition = Competition.objects.create(
+            owner=self.athlete,
+            name="Idem Cup",
+            start_date=today - datetime.timedelta(days=3),
+            end_date=today + datetime.timedelta(days=4),
+        )
+        self.athlete.my_competitions.add(self.competition)
+        self.config = DrillInstructorConfig.objects.create(
+            competition=self.competition,
+            enabled=True,
+            persona=self.persona,
+            comment_on_activity=True,
+        )
+        self.workout = Workout.objects.create(
+            user=self.athlete,
+            sport_type="Run",
+            start_datetime=timezone.now(),
+            duration=datetime.timedelta(minutes=30),
+            intensity_category=2,
+        )
+
+    def test_double_enqueue_posts_only_once(self):
+        from .tasks import post_workout_comment
+
+        first = post_workout_comment(self.workout.id)
+        second = post_workout_comment(self.workout.id)
+
+        self.assertEqual(first["posted"], 1)
+        self.assertEqual(second["posted"], 0)
+        self.assertEqual(
+            DrillInstructorMessage.objects.filter(
+                config=self.config, workout=self.workout,
+                kind=DrillInstructorMessage.KIND_ACTIVITY,
+            ).count(),
+            1,
+        )
+
+    def test_db_constraint_blocks_concurrent_duplicates(self):
+        from django.db import IntegrityError
+
+        DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
+            workout=self.workout, body="first",
+        )
+        from django.db import transaction
+        with self.assertRaises(IntegrityError):
+            # Own atomic block: the expected failure must not poison the
+            # outer test transaction for the following reply insert.
+            with transaction.atomic():
+                DrillInstructorMessage.objects.create(
+                    config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
+                    workout=self.workout, body="duplicate",
+                )
+        # Other kinds on the same workout are unaffected.
+        DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REPLY,
+            workout=self.workout, body="reply is fine",
+        )
