@@ -1,6 +1,6 @@
 import React, {useMemo, useState} from "react";
 import {Link} from "react-router-dom";
-import {Megaphone, Bot, ChevronRight, Radio, Sparkles, PencilLine, Flag} from "lucide-react";
+import {Megaphone, Bot, ChevronRight, Radio, Sparkles, PencilLine, Flag, MessageCircle} from "lucide-react";
 import {PageWrapper, BoxSection} from "../utils/miscellaneous";
 import {SectionLoader} from "../utils/loaders";
 import PersonaAvatar from "../components/PersonaAvatar";
@@ -48,7 +48,7 @@ function CoachHero({persona, config, latestMessage, ownedCompetitions}) {
                     <div className="absolute -top-2 left-12 h-4 w-4 rotate-45 bg-white/10"/>
                     {latestMessage ? (
                         <>
-                            <p className="text-[15px] leading-relaxed">{latestMessage.body}</p>
+                            <p className="text-[15px] leading-relaxed break-words">{latestMessage.body}</p>
                             <p className="mt-2 text-xs text-gray-400">
                                 {latestMessage.competition_name} · {timeAgo(latestMessage.posted_at)}
                             </p>
@@ -65,6 +65,15 @@ function CoachHero({persona, config, latestMessage, ownedCompetitions}) {
                         </p>
                     )}
                 </div>
+
+                {/* Straight into the thread on the competition page - the
+                    reply param deep-links to Coach's Corner and opens it. */}
+                {config && latestMessage && (
+                    <Link to={`/competition/${latestMessage.competition_id}?reply=${latestMessage.id}`}
+                          className="mt-5 inline-flex items-center gap-2 rounded-full bg-volt-400 text-ink-950 px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
+                        <MessageCircle className="h-4 w-4"/> Respond <ChevronRight className="h-4 w-4"/>
+                    </Link>
+                )}
 
                 {!config && ownedCompetitions.length > 0 && (
                     <Link to={`/competition/${ownedCompetitions[0].id}`}
