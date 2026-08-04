@@ -16,7 +16,7 @@ Turn staying active into a rivalry your friends actually care about. Compete wit
 </p>
 <p align="center"><i>The PWA on a phone: login, the competition with its AI coach, and the coach wire.</i></p>
 
-**Contents:** [Changes from the original](#changes-from-the-original) · [How it works](#how-it-works) · [Getting started](#getting-started) · [AI Drill Instructor](#ai-drill-instructor) · [Admin & site settings](#admin--site-settings) · [Mobile app & push](#mobile-app--push-notifications) · [Strava API credentials](#strava-api-credentials)
+**Contents:** [Changes from the original](#changes-from-the-original) · [How it works](#how-it-works) · [Getting started](#getting-started) · [AI Drill Instructor](#ai-drill-instructor) · [Admin & site settings](#admin--site-settings) · [Mobile app & push](#mobile-app--push-notifications) · [Apple / Google Health](#apple--google-health-open-wearables) · [Android app](#android-app-sideload-apk) · [Strava API credentials](#strava-api-credentials)
 
 ## Changes from the original
 This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/workout_challenge) (base: `main` @ `256e5b1`). Everything remains under the same SSPL v1 license; the original copyright is untouched.
@@ -41,6 +41,9 @@ This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/w
 
 **🍎🤖 Apple Health / Health Connect import (new connector, Strava-optional)**
 - Import workouts **straight from Apple Health or Google Health Connect** — no Strava account (or subscription) needed. Since Apple/Google expose no cloud API, a self-hosted [Open Wearables](https://github.com/the-momentum/open-wearables) instance (MIT) receives the on-device data from a health app on the athlete's phone; this connector polls it hourly, like the other providers. Same one-source-per-user selector, same cross-provider duplicate guard. See [Apple / Google Health](#apple--google-health-open-wearables).
+
+**🤖 Native Android app (sideload APK, Health Connect built in)**
+- The PWA also ships as a Capacitor **Android app** with the Open Wearables SDK bridged in: Health Connect linking is one tap, coach pings arrive as real Android notifications, the activity-source selector drives the phone-side sync, and an in-app banner announces updates. Every GitHub Release builds and attaches a matching generic APK (works on any instance after a one-time server entry); see [Android app](#android-app-sideload-apk).
 
 **🔐 Access & invites**
 - Optional `REGISTRATION_TOKEN` invite gate; a competition invite link (`?join=<code>`) doubles as the registration invite, so invitees sign up token-free.
@@ -116,6 +119,7 @@ docker compose exec -w /workout_challenge/src-backend workoutchallenge python ma
   2. **Coach page → "Enable coach pings"**.
   3. Per competition: **AI Drill Instructor → "Browser push for participants"**.
 - VAPID keys are auto-generated on first start (`DATA_DIR/vapid.json` — don't lose it) or pinned via env vars.
+- **Inside the Android app**, coach pings arrive as **native Android notifications** instead (Web Push doesn't work in a WebView): the app polls the coach feed and notifies on new coach messages — no Firebase, no server config.
 
 ## Apple / Google Health (Open Wearables)
 Apple HealthKit and Google Health Connect keep workouts **on the phone** — there is no cloud API any server could poll. This stack therefore bundles a full [Open Wearables](https://github.com/the-momentum/open-wearables) instance (MIT, self-hosted) as an **opt-in compose profile** — same `docker-compose.yml`, nothing separate to deploy:
@@ -159,9 +163,13 @@ Toolchain (once per build machine): JDK 21 (e.g. `~/jdk21`) + Android SDK platfo
 - **Install:** the script also **publishes the APK onto your stack** — nginx serves it at `/download/workout-challenge.apk` (volume-backed, survives recreations), and *Settings → Apple / Google Health* offers that download to Android browsers automatically. Manual alternative: copy the APK to the phone. On the phone: "Install unknown apps" once → enter the server address on first start → log in → Settings → Connect Health Connect.
 - **Signing:** release builds sign with `~/.gradle/workout-signing.properties` (generated once, lives outside the repo); without it they fall back to the debug key so `assembleRelease` always works. **Keep the release keystore safe** — updates must be signed with the same key.
 - **Updates:** the script stamps every build with `versionName` (git tag) + `versionCode` (commit count, monotonic) and publishes `apk-version.json` next to the APK. The app compares it to its own build and shows a **"App update available" banner** on the dashboard when yours is newer — tap → download → Android installs over the top, all data kept. Dismissing hides the banner until the *next* newer build.
+- **Releases ship the APK automatically:** the CI (`apk` job in `prod-deploy.yml`) builds a **generic APK** on every release and attaches it (+ `apk-version.json`) to the GitHub Release — so the app always matches the deployed version. After pulling a new image, run `scripts/update_apk_from_release.sh` to fetch it onto your stack (cron-friendly; pass a tag for a specific release). Locally built APKs via `build_apk.sh` stay the pre-filled alternative.
+- **Activity source switching:** the Settings selector (Strava / Garmin / Google Health Connect) also drives the phone-side sync in the app — Health starts it, anything else pauses it, and switches made on other devices reconcile on the next app start.
 - **Play Store later:** `./gradlew bundleRelease` produces the AAB; Health Connect permission declaration + privacy policy are the remaining store chores.
 
 ## Strava API credentials
 1. Log in at [strava.com/login](https://www.strava.com/login) → profile picture → **Settings** → **My API Application**.
 2. Create the app to get your Client ID & secret (works with your own account immediately).
 3. To let other users link their Strava, apply to the [Strava developer program](https://share.hsforms.com/1VXSwPUYqSH6IxK0y51FjHwcnkd8).
+
+> **Since June 2026 Strava requires an active paid subscription** for Standard-Tier API access — which can extend to the athletes connecting (API Policy §3.3). If a user's linking fails on Strava's side, a missing subscription is the most likely cause; the Settings page notes this, and the Apple/Google Health connector needs no Strava at all.

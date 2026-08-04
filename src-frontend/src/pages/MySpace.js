@@ -27,12 +27,12 @@ import CompetitionForm from "../forms/competitionForm";
 import PersonalGoalsForm from "../forms/personalGoalsForm";
 import {useLocation, useNavigate, useNavigationType, useSearchParams} from "react-router-dom";
 import JoinCompetitionForm from "../forms/joinCompetitionForm";
+import SettingsForm from "../forms/settingsForm";
 import {LinkStravaScreen} from "./HowTo";
 import {
     AddButton, EditButton,
     JoinButton,
     ModifyGoalsButton,
-    StravaButton,
     SyncStravaButton,
 } from "../forms/basicComponents";
 import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
@@ -94,6 +94,7 @@ function WelcomeBox({user, workouts}) {
 function WorkoutsBox({workouts, user, setLinkStrava}) {
 
     const [showEditWorkoutModal, setShowEditWorkoutModal] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
     const stravaLinked = user?.strava_athlete_id !== null && user?.strava_athlete_id !== undefined;
     const garminLinked = Boolean(user?.garmin_email);
     const healthLinked = Boolean(user?.health_user_id);
@@ -155,7 +156,8 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
                     {
                         (stravaLinked) ? (showSourceButton(stravaLinked, 'strava') &&
                             <SyncStravaButton additionalClasses="my-0.5 sm:my-0" isLoading={stravaSyncIsFetching} onClick={() => triggerStravaSync()}/>) :
-                            <StravaButton additionalClasses="my-0.5 sm:my-0" label={"Link Strava for Automatic Import"} onClick={() => setLinkStrava(true)}/>
+                            <SyncStravaButton additionalClasses="my-0.5 sm:my-0" label={"Link a Service"}
+                                              onClick={() => setShowSettings(true)}/>
                     }
                     {showSourceButton(garminLinked, 'garmin') && (
                         <SyncStravaButton additionalClasses="my-0.5 sm:my-0" label={"Re-Sync with Garmin"}
@@ -212,6 +214,12 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
 
             {(showEditWorkoutModal) && (
                 <WorkoutForm setModalState={setShowEditWorkoutModal} id={showEditWorkoutModal} scaling_distance={parseFloat(user?.scaling_distance || "1.0")}/>
+            )}
+
+            {/* "Link a Service" opens the personal settings - all import
+                providers (Strava, Garmin, Apple/Google Health) link there. */}
+            {showSettings && user && (
+                <SettingsForm user={user} setModalState={setShowSettings} setLinkStrava={setLinkStrava}/>
             )}
 
         </BoxSection>
