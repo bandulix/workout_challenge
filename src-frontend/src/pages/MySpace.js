@@ -104,7 +104,7 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
     const activeSource = user?.activity_source_effective;
     const showSourceButton = (linked, source) => linked && (activeSource === undefined || activeSource === source);
     const dispatch = useDispatch();
-    const [triggerStravaSync, { data: stravaSyncData, isFetching: stravaSyncIsFetching, error: stravaSyncError, isSuccess: stravaSyncIsSuccess }] = useLazySyncStravaQuery();
+    const [triggerStravaSync, { isFetching: stravaSyncIsFetching, error: stravaSyncError, isSuccess: stravaSyncIsSuccess }] = useLazySyncStravaQuery();
     const [triggerGarminSync, { isFetching: garminSyncIsFetching, error: garminSyncError, isSuccess: garminSyncIsSuccess }] = useLazySyncGarminQuery();
     const [triggerHealthSync, { isFetching: healthSyncIsFetching, error: healthSyncError, isSuccess: healthSyncIsSuccess }] = useLazySyncHealthQuery();
 
@@ -180,7 +180,7 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
                     </tr>
                 ) : (
                     recentWorkouts.map((workout, iWorkout) => (
-                        <tr key={"workout" + iWorkout} className="border-b border-gray-100 dark:border-ink-700/60 hover:bg-gray-50 dark:hover:bg-ink-800">
+                        <tr key={workout.id} className="border-b border-gray-100 dark:border-ink-700/60 hover:bg-gray-50 dark:hover:bg-ink-800">
                             <td className="py-2 px-4 text-sm md:text-base">
                                 <span className="font-semibold">{workout.start_datetime_fmt.date_readable}</span><br/>
                                 <span className="text-sm hidden sm:block">{workout.start_datetime_fmt.time_24h}</span>
@@ -223,10 +223,7 @@ function CompetitionRow({competition, user}) {
 
     const {
         data: stats,
-        error: statsError,
         isLoading: statsLoading,
-        refetch: refreshStats,
-        isFetching: statsFetching,
     } = useGetStatsByIdQuery(competition.id, {
         pollingInterval: 90000, // 90 seconds
     });
@@ -301,7 +298,7 @@ function CompetitionsBox({user, competitions, setJoinCompetition}) {
                     </tr>
                 ) : (
                     competitions.map((competition, iCompetition) => (
-                        <CompetitionRow key={"comp" + iCompetition} competition={competition} user={user} />
+                        <CompetitionRow key={competition.id} competition={competition} user={user} />
                     ))
                 )}
                 </tbody>
@@ -640,8 +637,6 @@ export default function MySpace() {
         data: workouts,
         error: workoutsError,
         isLoading: workoutsIsLoading,
-        refetch: refetchWorkouts,
-        isFetching: workoutsIsFetching,
     } = useGetWorkoutsQuery(undefined, {
         pollingInterval: 60000, // 60 seconds - keep devices in sync
     });
@@ -650,7 +645,6 @@ export default function MySpace() {
         data: competitions,
         error: competitionError,
         isLoading: competitionLoading,
-        isSuccess: competitionIsSuccess
     } = useGetCompetitionsQuery(undefined, {
         pollingInterval: 60000, // 60 seconds - keep devices in sync
     });

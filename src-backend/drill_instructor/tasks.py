@@ -78,18 +78,19 @@ def _user_rank(workout, competition):
     """
     Points = apps.get_model("competition", "Points")
 
-    my_total = (
-        Points.objects
-        .filter(goal__competition=competition, workout__user=workout.user_id)
-        .aggregate(total=Sum("points_capped"))
-    )["total"] or 0
-
     per_user = list(
         Points.objects
         .filter(goal__competition=competition)
         .values("workout__user")
         .annotate(total=Sum("points_capped"))
         .order_by("-total")
+    )
+
+    # my_total comes from the same annotated rows - no separate
+    # aggregate query (absent user => 0, identical semantics).
+    my_total = next(
+        (entry["total"] or 0 for entry in per_user if entry["workout__user"] == workout.user_id),
+        0,
     )
 
     if not per_user:

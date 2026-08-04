@@ -32,7 +32,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
     const [addDrillConfig, {isLoading: addLoading, error: addError}] = useAddDrillConfigMutation();
     const [updateDrillConfig, {isLoading: updateLoading, error: updateError}] = useUpdateDrillConfigMutation();
     const [deleteDrillConfig, {isLoading: deleteLoading}] = useDeleteDrillConfigMutation();
-    const [runTestMessage, {isLoading: testLoading, data: testData, error: testError}] = useRunTestMessageMutation();
+    const [runTestMessage, {isLoading: testLoading, error: testError}] = useRunTestMessageMutation();
 
     const existing = useMemo(
         () => (configs || []).find((cfg) => cfg.competition === competition.id) || null,

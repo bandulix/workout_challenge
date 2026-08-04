@@ -2,7 +2,7 @@ import datetime
 import mimetypes
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.http import FileResponse, Http404, HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -145,7 +145,13 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             .filter(parent__isnull=True)
             .distinct()
             .select_related("config", "config__competition", "config__persona", "workout", "workout__user")
-            .prefetch_related("replies", "replies__user")
+            # Ordered prefetch the serializer actually iterates - a plain
+            # prefetch_related was defeated by get_replies' own order_by,
+            # costing one extra query per thread root.
+            .prefetch_related(Prefetch(
+                "replies",
+                queryset=DrillInstructorMessage.objects.select_related("user").order_by("posted_at"),
+            ))
         )
         competition = self.request.query_params.get("competition")
         if competition and competition.isdigit():

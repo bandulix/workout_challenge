@@ -238,9 +238,7 @@ def _sync_user_activities(user, days_back=3) -> dict:
     except Exception as exc:  # noqa: BLE001
         raise GarminUnavailableError("Could not fetch activities from Garmin.") from exc
 
-    existing = set(
-        Workout.objects.filter(garmin_id__isnull=False).values_list("garmin_id", flat=True)
-    )
+    existing_map = Workout.objects.filter(garmin_id__isnull=False).in_bulk(field_name='garmin_id')
     created = updated = skipped = duplicates = 0
     for activity in activities or []:
         props = activity_to_workout_props(user, activity)
@@ -248,8 +246,8 @@ def _sync_user_activities(user, days_back=3) -> dict:
             skipped += 1
             continue
         garmin_id = props["garmin_id"]
-        if garmin_id in existing:
-            workout = Workout.objects.filter(garmin_id=garmin_id).first()
+        if garmin_id in existing_map:
+            workout = existing_map[garmin_id]
             if workout is not None and workout.user_id == user.id:
                 for key, value in props.items():
                     setattr(workout, key, value)

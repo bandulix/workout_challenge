@@ -1,6 +1,5 @@
 import logging
 
-from django.conf import settings
 from django.db.models import Q
 from django.core.exceptions import PermissionDenied
 from rest_framework import viewsets
@@ -18,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 from custom_user.views import IsOwnerOrReadOnly
 from custom_user.models import CustomUser
-from custom_user.strava import sync_strava
 from custom_user.point_recalc import recalc_points
 from .models import Competition, Team, ActivityGoal, Points
 from .serializers import CompetitionSerializer, TeamSerializer, ActivityGoalSerializer, PointsSerializer
@@ -36,7 +34,7 @@ class CompetitionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # return all competitions the user is owner of or a participant of
         #time.sleep(3)  # throttle for testing
-        return Competition.objects.filter(Q(owner=self.request.user) | Q(user=self.request.user)).distinct().order_by('-end_date', '-start_date', '-id')
+        return Competition.objects.filter(Q(owner=self.request.user) | Q(user=self.request.user)).distinct().prefetch_related('user').order_by('-end_date', '-start_date', '-id')
 
     def perform_create(self, serializer):
         # when creating a new competition, set the owner to the request user
@@ -52,7 +50,7 @@ class TeamViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # return all teams the user is a member of and all teams of competitions the user participates in
         #time.sleep(3)  # throttle for testing
-        return Team.objects.filter(Q(user=self.request.user) | Q(competition__user=self.request.user)).distinct().order_by('name')
+        return Team.objects.filter(Q(user=self.request.user) | Q(competition__user=self.request.user)).distinct().prefetch_related('user').order_by('name')
 
     def perform_create(self, serializer):
 

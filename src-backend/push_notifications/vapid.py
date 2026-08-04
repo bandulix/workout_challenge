@@ -137,6 +137,9 @@ def get_vapid_private_key() -> str:
     return _VAPID_CACHE.get("private", "") if _VAPID_CACHE else ""
 
 
+_VAPID_INSTANCE_CACHE = {"key": None, "instance": None}
+
+
 def get_vapid_instance():
     """Return a ready-to-sign ``py_vapid.Vapid`` for webpush().
 
@@ -145,14 +148,18 @@ def get_vapid_instance():
     non-file string to ``Vapid.from_string()``, which only understands
     base64url DER - so a PEM string made EVERY send die with "Could not
     deserialize key data". Normalise the format here instead.
+
+    Memoized per key value: EC key parsing on every subscription send
+    (fan-outs loop over participants x devices) is wasted work.
     """
     from py_vapid import Vapid
     key = get_vapid_private_key()
     if not key:
         return None
-    if "-----BEGIN" in key:
-        return Vapid.from_pem(key.encode())
-    return Vapid.from_string(private_key=key)
+    if _VAPID_INSTANCE_CACHE["key"] != key:
+        instance = Vapid.from_pem(key.encode()) if "-----BEGIN" in key else Vapid.from_string(private_key=key)
+        _VAPID_INSTANCE_CACHE.update({"key": key, "instance": instance})
+    return _VAPID_INSTANCE_CACHE["instance"]
 
 
 def get_vapid_subject() -> str:

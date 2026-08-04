@@ -60,7 +60,3 @@ export async function nativeHealthDisconnect() {
         console.warn("native signOut failed (ignored)", e);
     }
 }
-
-export async function nativeHealthStatus() {
-    return OWHealth.getStatus();
-}

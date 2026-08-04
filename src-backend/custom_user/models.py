@@ -1,5 +1,4 @@
-import requests
-import qrcode, datetime
+import datetime
 from decimal import Decimal
 
 from django.db import models, transaction
@@ -265,30 +264,6 @@ def my_competitions_changed_handler(sender, instance, action, pk_set, **kwargs):
                 elif 'remove' in action or 'clear' in action:
                     # instance competition obj / pk_set user id to remove
                     trigger_user_change(instance=user_obj, new=False, changes={'my_competitions': ([instance.pk], None)})
-
-
-
-def get_strava_auth_url(user_id):
-    """ Generate the initial auth url the user clicks, which will re-direct back to this page providing the code."""
-    from site_settings.models import resolve_strava_settings
-    strava_cfg = resolve_strava_settings()
-    client_id = strava_cfg["client_id"]
-    redirect_url = f"{settings.MAIN_HOST}/strava/return/?user_id={user_id}"
-    return f"https://www.strava.com/oauth/authorize?client_id={client_id}&response_type=code&approval_prompt=force&scope=profile:read_all,activity:read_all&redirect_uri={redirect_url}"
-
-
-def make_url_qr_code(url, path):
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4,
-    )
-    qr.add_data(url)
-    qr.make(fit=True)
-
-    img = qr.make_image(fill_color="black", back_color="white")
-    img.save(path)
 
 
 

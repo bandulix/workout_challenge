@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from "react";
+import React from "react";
 import {Modal} from "./basicComponents";
 
 export default function CompetitionInviteModal({competition, setModalState}) {

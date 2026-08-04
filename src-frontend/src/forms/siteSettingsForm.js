@@ -378,7 +378,7 @@ export default function SiteSettingsForm({setModalState}) {
                 <div className="px-4 w-full sm:w-1/2">
                     <Field label="Username" error={fieldErrors.email_host_user}>
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:text:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.email_host_user || ""}
                                onChange={(e) => setField("email_host_user", e.target.value)}
                                placeholder="competition@yourdomain.com"/>

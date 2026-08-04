@@ -5,39 +5,6 @@ import {useDispatch} from "react-redux";
 import {workoutsApi} from "../utils/reducers/workoutsSlice";
 import {statsApi} from "../utils/reducers/statsSlice";
 
-const steps = [
-    {title: "Welcome", content: "Let's find out how to best navigate the Workout Challenge!", img: null},
-    {
-        title: "Navigation",
-        content: "At the top, switch between your personal (private) and competition (public) dashboards.",
-        img: "/how_to_screen_1.png"
-    },
-    {
-        title: "Your Profile",
-        content: "See your lifetime stats, as well as change profile and privacy settings here.",
-        img: "/how_to_screen_2.png"
-    },
-    {
-        title: "Last 30 Day Stats",
-        content: "See your personal stats and streak over the last 30 days.",
-        img: "/how_to_screen_3.png"
-    },
-    {
-        title: "Your 7 Day Personal Goals",
-        content: "See and change your rolling 7 day activity goals.",
-        img: "/how_to_screen_4.png"
-    },
-    {
-        title: "Your Workouts",
-        content: "Add manually or automatically via Strava your workouts.",
-        img: "/how_to_screen_5.png"
-    },
-    {
-        title: "Your Competitions",
-        content: "Create your own or join other people's competitions.",
-        img: "/how_to_screen_6.png"
-    },
-]
 
 export function LinkStravaScreen({setModal}) {
     const [current, setCurrent] = useState(0)

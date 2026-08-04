@@ -1,10 +1,8 @@
-import React, {useEffect, useState, Suspense, lazy} from "react";
-import {useSelector, useDispatch, Provider} from 'react-redux';
+import React, {Suspense, lazy} from "react";
 import './App.css';
-import { store } from './utils/store';
 
 
-import {BrowserRouter as Router, Routes, Route, useLocation} from "react-router-dom";
+import {BrowserRouter as Router, Routes, Route} from "react-router-dom";
 import {
     WelcomePage,
     RegisterPage,

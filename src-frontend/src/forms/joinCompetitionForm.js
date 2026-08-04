@@ -30,10 +30,8 @@ export default function JoinCompetitionForm({setModalState, join_code= null}) {
     const [formError, setFormError] = useState('');
 
     const [updateEntry, {
-        data: updateData,
         error: updateError,
         isLoading: updateIsLoading,
-        isSuccess: updateIsSuccess
     }] = useJoinCompetitionMutation();
 
     // Overall form error message

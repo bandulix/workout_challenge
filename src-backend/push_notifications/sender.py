@@ -7,7 +7,7 @@ cryptography and VAPID signing; everything else is plain ``logging``.
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Iterable, Optional
+from typing import Optional
 
 from django.utils import timezone
 
@@ -109,17 +109,6 @@ def send_push_to_user_detailed(
             if status_code in (404, 410):
                 sub.delete()
     return results
-
-
-def send_push_to_users(users: Iterable, *, title: str, body: str, url: str = "/") -> int:
-    total = 0
-    for u in users:
-        total += send_push_to_user(u, title=title, body=body, url=url)
-    return total
-
-
-def has_any_subscription(user) -> bool:
-    return user.push_subscriptions.exists()
 
 
 def _send_one_safe(sub, payload, ttl):

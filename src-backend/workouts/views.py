@@ -1,11 +1,8 @@
-import time
-from django.db.models import Q
 from rest_framework import viewsets
 from django_filters.rest_framework import DjangoFilterBackend
 
 from custom_user.views import IsOwnerOrReadOnly
 from .models import Workout
-from competition.scorer import trigger_workout_change
 from .serializers import WorkoutSerializer
 from .filters import WorkoutFilter
 

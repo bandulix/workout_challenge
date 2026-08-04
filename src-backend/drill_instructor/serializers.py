@@ -243,8 +243,8 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     def get_replies(self, obj):
         if obj.parent_id is not None:
             return []  # replies themselves are never listed standalone
-        qs = obj.replies.select_related("user").order_by("posted_at")
-        return DrillInstructorReplySerializer(qs, many=True, context=self.context).data
+        # Uses the view's ordered Prefetch cache - no query per root.
+        return DrillInstructorReplySerializer(obj.replies.all(), many=True, context=self.context).data
 
     def get_persona_profile_picture(self, obj):
         return _persona_picture_url(obj.config.persona)

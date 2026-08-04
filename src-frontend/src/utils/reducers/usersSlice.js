@@ -115,7 +115,6 @@ export const usersApi = createApi({
 export const {
     useGetUsersQuery,
     useGetUserByIdQuery,
-    useAddUserMutation,
     useUpdateUserMutation,
     useDeleteUserMutation,
     useUploadProfilePictureMutation,
