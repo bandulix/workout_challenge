@@ -127,8 +127,10 @@ function HealthSection({user, onChanged}) {
                     no Strava needed. The health app on your phone syncs them to this server in the background.
                 </p>
 
-                {linked && user?.health_last_synced_at_fmt && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Last sync {user.health_last_synced_at_fmt}</p>
+                {linked && user?.health_last_synced_at && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Last sync {user.health_last_synced_at_fmt?.date_readable}, {user.health_last_synced_at_fmt?.time_24h}
+                    </p>
                 )}
 
                 {invitation?.code && (
@@ -215,7 +217,7 @@ function GarminSection({user, onChanged}) {
                     <>
                         <p className="text-sm text-gray-600 dark:text-gray-400">
                             Linked as <b>{user.garmin_email}</b>
-                            {user.garmin_last_synced_at && <> · last sync {user.garmin_last_synced_at_fmt}</>}
+                            {user.garmin_last_synced_at && <> · last sync {user.garmin_last_synced_at_fmt?.date_readable}, {user.garmin_last_synced_at_fmt?.time_24h}</>}
                         </p>
                         <button onClick={handleUnlink} disabled={unlinkLoading}
                                 className="px-4 py-2 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-sm font-semibold transition disabled:opacity-50">
