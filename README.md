@@ -144,7 +144,9 @@ Athletes then open **Settings → Apple / Google Health → Connect Health App**
 ## Android app (sideload APK)
 The whole PWA also ships as a native **Android app** (Capacitor shell around the same web build) with the **Open Wearables Android SDK built in** — so on Android, *Settings → Apple / Google Health → Connect Health Connect* becomes a **one-tap** flow: the app redeems the connection code itself, shows the Health Connect permission dialog and starts background sync. No second app, no code typing.
 
-**Build it** — the APK is part of the full stack: `scripts/build_apk.sh` reads the server address from the deployment's own **`.env` (`MAIN_HOST`)** and bakes it in, so the app always knows its server with no address entry on the phone:
+**Server address:** one APK works on every instance — the app asks for the **server address once on first start** (an APK can't know where it was downloaded from). When built via `scripts/build_apk.sh` with `MAIN_HOST` set in `.env`, that address is pre-filled and the phone just confirms it; build with `MAIN_HOST` unset for a fully generic APK. Either way, the backend's `HOSTS` must allow the app's `https://localhost` origin (CORS).
+
+**Build it:**
 
 ```bash
 scripts/build_apk.sh            # release APK (signed, see below)
@@ -154,8 +156,7 @@ scripts/build_apk.sh --debug    # faster debug build
 
 Toolchain (once per build machine): JDK 21 (e.g. `~/jdk21`) + Android SDK platform-36 (e.g. `~/Android/Sdk`); `npm ci` in `src-frontend`.
 
-- **`MAIN_HOST` is the single source of truth** — the script fails without it and warns when `HOSTS` lacks the app origin `https://localhost` (Capacitor scheme) which the backend's CORS must allow: `HOSTS=https://your-domain.com,https://localhost`.
-- **Install:** copy the APK to the phone (or host it on your domain) → "Install unknown apps" once → log in → Settings → Connect Health Connect.
+- **Install:** copy the APK to the phone (or host it on your domain) → "Install unknown apps" once → enter the server address on first start → log in → Settings → Connect Health Connect.
 - **Signing:** release builds sign with `~/.gradle/workout-signing.properties` (generated once, lives outside the repo); without it they fall back to the debug key so `assembleRelease` always works. **Keep the release keystore safe** — updates must be signed with the same key.
 - **Play Store later:** `./gradlew bundleRelease` produces the AAB; Health Connect permission declaration + privacy policy are the remaining store chores.
 
