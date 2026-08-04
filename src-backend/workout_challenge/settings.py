@@ -327,8 +327,11 @@ STRAVA_LIMIT_15MIN = int(os.environ.get("STRAVA_LIMIT_15MIN", 100))
 STRAVA_LIMIT_DAY = int(os.environ.get("STRAVA_LIMIT_DAY", 1000))
 
 # Health (Open Wearables): Apple Health / Health Connect connector.
-# Both are required to enable it; Site Settings can override at runtime.
+# BASE_URL + API key are required to enable the connector (Site Settings
+# can override at runtime). PUBLIC_URL is the phone-facing address shown
+# in connection codes (falls back to BASE_URL when unset).
 HEALTH_BASE_URL = os.environ.get("HEALTH_BASE_URL", "")
+HEALTH_PUBLIC_URL = os.environ.get("HEALTH_PUBLIC_URL", "")
 HEALTH_API_KEY = os.environ.get("HEALTH_API_KEY", "")
 
 

@@ -57,6 +57,7 @@ class SiteSettings(models.Model):
 
     # ---- Health (Open Wearables: Apple Health / Health Connect) --------
     health_base_url = models.CharField(max_length=300, blank=True, default="")
+    health_public_url = models.CharField(max_length=300, blank=True, default="")
     health_api_key = models.CharField(max_length=200, blank=True, default="")
 
     # ---- SMTP / outbound email -----------------------------------------
@@ -183,9 +184,13 @@ def resolve_health_settings():
     """
     solo = SiteSettings.get_solo()
     base_url = (solo.health_base_url or getattr(settings, "HEALTH_BASE_URL", "") or "").strip().rstrip("/")
+    public_url = (solo.health_public_url or getattr(settings, "HEALTH_PUBLIC_URL", "") or "").strip().rstrip("/")
     api_key = (solo.health_api_key or getattr(settings, "HEALTH_API_KEY", "") or "").strip()
     return {
         "base_url": base_url or None,
+        # The address phones use in the connection code - defaults to the
+        # server-side base URL (fine when one address serves both).
+        "public_url": public_url or base_url or None,
         "api_key": api_key or None,
         "enabled": bool(base_url and api_key),
     }

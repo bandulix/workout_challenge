@@ -21,4 +21,9 @@ class Migration(migrations.Migration):
             name='health_base_url',
             field=models.CharField(blank=True, default='', max_length=300),
         ),
+        migrations.AddField(
+            model_name='sitesettings',
+            name='health_public_url',
+            field=models.CharField(blank=True, default='', max_length=300),
+        ),
     ]
