@@ -34,6 +34,24 @@ export async function nativeHealthConnect({code, host}) {
     await OWHealth.startSync({daysBack: 43});
 }
 
+// Keep the native background sync in step with the selected activity
+// source: 'health' -> sync runs, anything else -> sync paused (the
+// server would skip the imports anyway, but the phone should not burn
+// battery pushing them). Covers switches made on other devices too.
+export async function nativeHealthSetSource(source) {
+    try {
+        const status = await OWHealth.getStatus();
+        if (!status.sessionValid) return; // never linked natively
+        if (source === "health" && !status.syncActive) {
+            await OWHealth.startSync({});
+        } else if (source !== "health" && status.syncActive) {
+            await OWHealth.stopSync();
+        }
+    } catch (e) {
+        console.warn("native source reconcile failed (ignored)", e);
+    }
+}
+
 export async function nativeHealthDisconnect() {
     // Best-effort: a stale native session must not block an unlink.
     try {

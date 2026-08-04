@@ -1,4 +1,4 @@
-import React, {useState} from "react";
+import React, {useEffect, useState} from "react";
 import {Link, useLocation, useNavigate} from "react-router-dom";
 import {Flag, Home, Plus, User2, Settings, Scale, BadgeHelp, Shield, LogOut, Sun, Moon, ChevronRight} from "lucide-react";
 import WorkoutForm from "../forms/workoutForm";
@@ -10,6 +10,7 @@ import {LinkStravaScreen} from "../pages/HowTo";
 import PersonaAvatar from "../components/PersonaAvatar";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {useTheme} from "./theme";
+import {isNativeHealthAvailable, nativeHealthSetSource} from "./nativeHealth";
 import {useGetUserByIdQuery} from "./reducers/usersSlice";
 import {useGetCompetitionsQuery} from "./reducers/competitionsSlice";
 import {useGetDrillConfigsQuery} from "./reducers/drillInstructorSlice";
@@ -138,6 +139,15 @@ export default function BottomNav() {
     const {data: user, error: userError, refetch: refetchUser} = useGetUserByIdQuery('me');
     const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: !user});
     const isStaff = !!user?.is_staff;
+
+    // Keep the native Health Connect background sync aligned with the
+    // effective activity source - including switches the user made on
+    // another device (browser picks up here on the next app start).
+    useEffect(() => {
+        if (user?.activity_source_effective && isNativeHealthAvailable()) {
+            nativeHealthSetSource(user.activity_source_effective);
+        }
+    }, [user?.activity_source_effective]);
     const onDashboard = location.pathname === "/dashboard" || location.pathname === "/";
     const onCompetition = location.pathname.startsWith("/competition/");
     const onCoach = location.pathname.startsWith("/coach");
