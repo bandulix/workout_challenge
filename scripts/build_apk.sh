@@ -64,4 +64,18 @@ fi
 
 echo
 echo "APK ready: src-frontend/android/$APK"
-echo "Copy it to your phone (or host it on your server) and install."
+
+# --- publish onto the stack (download link in Settings works) ---------
+# nginx serves /download/workout-challenge.apk from this volume-backed
+# dir; docker compose cp needs no host root and survives recreations.
+if docker compose -f ../../docker-compose.yml ps --status running 2>/dev/null | grep -q workoutchallenge; then
+    docker compose -f ../../docker-compose.yml exec -T workoutchallenge \
+        sh -c 'mkdir -p /workout_challenge/src-backend/data/downloads'
+    docker compose -f ../../docker-compose.yml cp "$APK" \
+        workoutchallenge:/workout_challenge/src-backend/data/downloads/workout-challenge.apk
+    echo "Published on the stack: /download/workout-challenge.apk"
+else
+    echo "NOTE: stack not running - skipped publishing. Copy the apk onto"
+    echo "      the server later, e.g.:"
+    echo "      docker compose cp src-frontend/android/$APK workoutchallenge:/workout_challenge/src-backend/data/downloads/workout-challenge.apk"
+fi
