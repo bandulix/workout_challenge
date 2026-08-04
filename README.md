@@ -126,6 +126,21 @@ Apple HealthKit and Google Health Connect keep workouts **on the phone** — the
 
 Athletes then open **Settings → Apple / Google Health → Connect Health App**, which shows a single-use connection code; they enter host + code in the health app on their phone (Open Wearables example/official app, or any app built with its SDK), and workouts start flowing — hourly poll, plus a manual **Re-Sync** button on Home. The activity-source selector (Settings) decides which provider imports when several are linked, and the cross-provider duplicate guard still applies.
 
+**Exposing Open Wearables to phones** — the address in `HEALTH_PUBLIC_URL` must be reachable from the internet. Two ways:
+
+- **Separate subdomain (recommended, zero risk):** `HEALTH_PUBLIC_URL=https://health.your-domain.com`, reverse-proxied to `127.0.0.1:8001`.
+- **Same domain, path-based:** serve OW under a path of your app domain, e.g. `https://workout.your-domain.com/health`. Add a route in your *outer* reverse proxy (the one in front of everything, not this container's nginx):
+  ```nginx
+  location /health/ {
+      proxy_pass http://127.0.0.1:8001/;   # trailing slash strips the /health prefix
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-Proto $scheme;
+  }
+  ```
+  and set `HEALTH_PUBLIC_URL=https://workout.your-domain.com/health` (no trailing slash). The backend always polls internally (`http://openwearables:8000`), so only the phone-side connection-code flow uses this address — verify it once on a real device before rolling out.
+
+**License:** Open Wearables is **MIT-licensed** (© 2025 Momentum) — permissive and compatible with this project's SSPL v1: it runs as a separate, unmodified service built from its pinned upstream source on your machine; nothing of it is vendored into this repository, so no obligations arise for this project's code. Attribution lives in [`NOTICE`](NOTICE). Should you ever fork its mobile example app or distribute a built image of it, keep its `LICENSE` file (with the MIT copyright notice) included, as MIT requires.
+
 ## Strava API credentials
 1. Log in at [strava.com/login](https://www.strava.com/login) → profile picture → **Settings** → **My API Application**.
 2. Create the app to get your Client ID & secret (works with your own account immediately).
