@@ -4,7 +4,7 @@ import {DeleteButton, Modal, SaveButton, SingleForm, StravaButton} from "./basic
 import {useNavigate} from "react-router-dom";
 import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, useUnlinkGarminMutation, useLinkHealthMutation, useUnlinkHealthMutation} from "../utils/reducers/linkSlice";
 import {useDispatch} from "react-redux";
-import {Watch, Smartphone} from "lucide-react";
+import {Watch, Smartphone, Download} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {isNativeHealthAvailable, nativeHealthConnect, nativeHealthDisconnect} from "../utils/nativeHealth";
 
@@ -90,6 +90,18 @@ function HealthSection({user, onChanged}) {
     const linked = Boolean(user?.health_user_id);
     const isNative = isNativeHealthAvailable();
 
+    // Android *browser*: direct sync belongs in the native app - offer
+    // the APK download (published by scripts/build_apk.sh onto the same
+    // server) instead of pushing the code flow.
+    const isAndroidBrowser = !isNative && /Android/i.test(navigator.userAgent);
+    const [apkAvailable, setApkAvailable] = useState(false);
+    useEffect(() => {
+        if (!isAndroidBrowser) return;
+        fetch("/download/workout-challenge.apk", {method: "HEAD"})
+            .then((r) => setApkAvailable(r.ok))
+            .catch(() => setApkAvailable(false));
+    }, [isAndroidBrowser]);
+
     async function handleLink() {
         setMessage(null);
         setError(null);
@@ -131,7 +143,9 @@ function HealthSection({user, onChanged}) {
             <div className="rounded-2xl border border-gray-200/70 dark:border-ink-700/60 p-4 space-y-3">
                 <div className="flex items-center gap-2">
                     <Smartphone className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
-                    <span className="font-display text-xs uppercase tracking-wider">Apple / Google Health</span>
+                    <span className="font-display text-xs uppercase tracking-wider">
+                        {isNative ? "Google Health Connect" : "Apple / Google Health"}
+                    </span>
                     {linked && <span className="ml-auto text-[10px] font-bold uppercase tracking-wide rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2 py-0.5">linked</span>}
                 </div>
 
@@ -141,6 +155,25 @@ function HealthSection({user, onChanged}) {
                         ? "One tap connects this app to Health Connect and syncs in the background."
                         : "The health app on your phone syncs them to this server in the background."}
                 </p>
+
+                {isAndroidBrowser && (
+                    <div className="rounded-xl bg-gray-100 dark:bg-ink-900 dark:border dark:border-ink-700/60 p-3 space-y-2">
+                        <p className="text-xs text-gray-600 dark:text-gray-300">
+                            <b>Best via our Android app:</b> direct Health Connect sync with one tap -
+                            no code, no extra health app.
+                        </p>
+                        {apkAvailable ? (
+                            <a href="/download/workout-challenge.apk" download
+                               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt">
+                                <Download className="h-4 w-4"/> Download the app (APK)
+                            </a>
+                        ) : (
+                            <p className="text-[11px] text-gray-400">
+                                The APK is not published on this server yet - the code flow below works too.
+                            </p>
+                        )}
+                    </div>
+                )}
 
                 {linked && user?.health_last_synced_at && (
                     <p className="text-xs text-gray-500 dark:text-gray-400">
