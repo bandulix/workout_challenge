@@ -6,6 +6,8 @@ import {
     Flame,
     Timer,
     Ruler,
+    Download,
+    X,
 } from 'lucide-react';
 import {useGetWorkoutsQuery, workoutsApi} from "../utils/reducers/workoutsSlice";
 import WorkoutForm, {sportLabelShort} from "../forms/workoutForm";
@@ -41,6 +43,7 @@ import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
 import {feedApi} from "../utils/reducers/feedSlice";
 import {BeatLoader} from "react-spinners";
 import ProfileAvatar from "../components/ProfileAvatar";
+import {useApkUpdateInfo} from "../utils/apkUpdate";
 
 
 function WelcomeBox({user, workouts}) {
@@ -594,6 +597,31 @@ function StatsBox({workouts, user}) {
 }
 
 
+// Sideload update banner (native app only): the server's published APK
+// is newer than the installed build - tap to download & install over
+// the top (data kept; same signing key required).
+function ApkUpdateBanner() {
+    const {update, dismiss} = useApkUpdateInfo();
+    if (!update) return null;
+    return (
+        <div className="mb-4 flex items-center gap-3 rounded-2xl bg-ink-900 text-white border border-volt-500/40 shadow-card-dark p-4">
+            <Download className="h-5 w-5 text-volt-400 shrink-0"/>
+            <div className="flex-1 min-w-0">
+                <p className="font-display text-xs uppercase tracking-wider">App update available</p>
+                <p className="text-[11px] text-gray-400">Version {update.versionName} — installing over the top keeps everything.</p>
+            </div>
+            <a href={update.url}
+                   className="shrink-0 rounded-full bg-volt-400 text-ink-950 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
+                Get it
+            </a>
+            <button onClick={dismiss} aria-label="Dismiss" className="shrink-0 text-gray-500 hover:text-gray-300 transition">
+                <X className="h-4 w-4"/>
+            </button>
+        </div>
+    );
+}
+
+
 export default function MySpace() {
     const navType = useNavigationType();
     useEffect(() => {
@@ -657,6 +685,7 @@ export default function MySpace() {
         <PageWrapper>
 
             <div className="container mx-auto p-4">
+                <ApkUpdateBanner/>
                 <div className="w-full">
 
                     {

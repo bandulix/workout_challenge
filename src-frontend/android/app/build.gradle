@@ -19,8 +19,10 @@ android {
         applicationId "com.bandulix.workoutchallenge"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // Stamped by scripts/build_apk.sh via -PversionName/-PversionCode
+        // (git tag + commit count). Defaults keep bare checkouts buildable.
+        versionCode Integer.parseInt(project.findProperty('versionCode')?.toString() ?: '1')
+        versionName project.findProperty('versionName')?.toString() ?: 'dev'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
               // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
