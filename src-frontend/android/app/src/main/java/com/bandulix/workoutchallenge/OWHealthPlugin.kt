@@ -101,6 +101,18 @@ class OWHealthPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun stopSync(call: PluginCall) {
+        pluginScope.launch {
+            try {
+                sdk().stopBackgroundSync()
+                call.resolve()
+            } catch (e: Exception) {
+                call.reject("stopBackgroundSync failed: ${e.message}", e)
+            }
+        }
+    }
+
+    @PluginMethod
     fun getStatus(call: PluginCall) {
         val ret = JSObject()
         ret.put("sessionValid", sdk().isSessionValid())

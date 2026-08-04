@@ -6,7 +6,7 @@ import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, 
 import {useDispatch} from "react-redux";
 import {Watch, Smartphone, Download} from "lucide-react";
 import {BeatLoader} from "react-spinners";
-import {isNativeHealthAvailable, nativeHealthConnect, nativeHealthDisconnect} from "../utils/nativeHealth";
+import {isNativeHealthAvailable, nativeHealthConnect, nativeHealthDisconnect, nativeHealthSetSource} from "../utils/nativeHealth";
 
 
 const PROVIDER_LABELS = {strava: "Strava", garmin: "Garmin", health: "Apple/Google Health"};
@@ -35,6 +35,9 @@ function SyncSourceSection({user, onChanged}) {
         setError(null);
         try {
             await updateSource({id: 'me', activity_source: source}).unwrap();
+            // In the Android app the phone-side background sync follows
+            // the selector: running for Health, paused for everything else.
+            if (isNativeHealthAvailable()) nativeHealthSetSource(source);
             onChanged();
         } catch (err) {
             console.error('Switch activity source failed', err);
