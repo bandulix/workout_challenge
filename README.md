@@ -94,7 +94,8 @@ server {
     }
 
     # Optional: Open Wearables (health profile) - phones must reach it.
-    # Alternative: give it its own server_name (health.your-domain.com).
+    # Recommended: this path route on the app domain (one cert, no extra
+    # DNS); alternative: its own server_name (health.your-domain.com).
     location /health/ {
         proxy_pass http://127.0.0.1:8001/;   # trailing slash strips the prefix
         proxy_set_header Host $host;
@@ -152,7 +153,7 @@ docker compose exec -w /workout_challenge/src-backend workoutchallenge python ma
 ## Apple / Google Health (Open Wearables)
 Apple HealthKit and Google Health Connect keep workouts **on the phone** — there is no cloud API any server could poll. This stack therefore bundles a full [Open Wearables](https://github.com/the-momentum/open-wearables) instance (MIT, self-hosted) as an **opt-in compose profile** — same `docker-compose.yml`, nothing separate to deploy:
 
-1. In `.env`: set `OW_POSTGRES_PASSWORD` and `HEALTH_PUBLIC_URL` (the address athletes' **phones** must reach — `http://<server-ip>:8001` with `OW_BIND=0.0.0.0` on a trusted LAN, or `https://health.your-domain.com` reverse-proxied to `127.0.0.1:8001`).
+1. In `.env`: set `OW_POSTGRES_PASSWORD` and `HEALTH_PUBLIC_URL` (the address athletes' **phones** must reach — recommended: `https://workout.your-domain.com/health` via the same domain as the app, or `http://<server-ip>:8001` with `OW_BIND=0.0.0.0` on a trusted LAN).
 2. `docker compose --profile health up -d` — the first start builds the Open Wearables image from a pinned upstream commit.
 3. Done — the connector logs into Open Wearables with the seeded admin developer (defaults `admin@example.com` / your `SECRET_KEY`, overridable via `OW_ADMIN_*` or Site Settings → Health); the backend reaches the API at the internal `http://openwearables:8000` by default.
 
@@ -160,8 +161,7 @@ Athletes then open **Settings → Apple / Google Health → Connect Health App**
 
 **Exposing Open Wearables to phones** — the address in `HEALTH_PUBLIC_URL` must be reachable from the internet. Two ways:
 
-- **Separate subdomain (recommended, zero risk):** `HEALTH_PUBLIC_URL=https://health.your-domain.com`, reverse-proxied to `127.0.0.1:8001`.
-- **Same domain, path-based:** serve OW under a path of your app domain, e.g. `https://workout.your-domain.com/health`. Add a route in your *outer* reverse proxy (the one in front of everything, not this container's nginx):
+- **Same domain, path-based (recommended):** serve OW under a path of your app domain, e.g. `https://workout.your-domain.com/health` — one domain, one certificate, nothing extra to set up in DNS. Add a route in your *outer* reverse proxy (the one in front of everything, not this container's nginx):
   ```nginx
   location /health/ {
       proxy_pass http://127.0.0.1:8001/;   # trailing slash strips the /health prefix
@@ -170,6 +170,7 @@ Athletes then open **Settings → Apple / Google Health → Connect Health App**
   }
   ```
   and set `HEALTH_PUBLIC_URL=https://workout.your-domain.com/health` (no trailing slash). The backend always polls internally (`http://openwearables:8000`), so only the phone-side connection-code flow uses this address — verify it once on a real device before rolling out.
+- **Separate subdomain (zero-risk alternative):** `HEALTH_PUBLIC_URL=https://health.your-domain.com`, reverse-proxied to `127.0.0.1:8001` — no prefix rewriting anywhere, but needs its own DNS record and certificate.
 
 **License:** Open Wearables is **MIT-licensed** (© 2025 Momentum) — permissive and compatible with this project's SSPL v1: it runs as a separate, unmodified service built from its pinned upstream source on your machine; nothing of it is vendored into this repository, so no obligations arise for this project's code. Attribution lives in [`NOTICE`](NOTICE). Should you ever fork its mobile example app or distribute a built image of it, keep its `LICENSE` file (with the MIT copyright notice) included, as MIT requires.
 
