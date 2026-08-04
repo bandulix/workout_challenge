@@ -3,10 +3,11 @@ import logging
 import random
 
 from django.apps import apps
+from django.db import IntegrityError
 from django.db.models import Sum
 from django.utils import timezone
 
-from workout_challenge.celery import app
+from workout_challenge.celery import app, is_task_already_executing
 
 from .llm_client import build_group_push_prompt, build_inactivity_prompt, build_reply_prompt, build_workout_prompt, generate_message
 
@@ -152,6 +153,15 @@ def post_workout_comment(self, workout_id):
         config = competition.drill_instructor
         persona = config.persona
 
+        # Idempotency: one workout comment per competition per workout.
+        # Double enqueues (double submit, sync edge cases, redelivery)
+        # must never produce a second, identical coach message.
+        if DrillInstructorMessage.objects.filter(
+            config=config, workout=workout, kind=DrillInstructorMessage.KIND_ACTIVITY
+        ).exists():
+            logger.info("Drill Instructor: workout %s already commented in competition %s, skipping.", workout_id, competition.id)
+            continue
+
         rank, total_participants, my_total, leader_total, target_user = _user_rank(workout, competition)
         user_prompt = build_workout_prompt(
             user_first_name=workout.user.first_name or workout.user.username or "Athlete",
@@ -186,14 +196,11 @@ def post_workout_comment(self, workout_id):
         )
         try:
             message.save()
-            config.last_posted_at = timezone.now()
-            config.messages_posted = (config.messages_posted or 0) + 1
-            # Surface an LLM outage (message still posted as static
-            # fallback); cleared again on the next successful generation.
-            config.last_error = llm_error or ""
-            config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
-            posted += 1
-            logger.info("Drill Instructor: stored message %s for competition %s", message.id, competition.id)
+        except IntegrityError:
+            # Lost the check-then-save race against a concurrent task -
+            # the other one posted; nothing is actually wrong.
+            logger.info("Drill Instructor: duplicate workout comment suppressed for competition %s.", competition.id)
+            continue
         except Exception as exc:  # noqa: BLE001 - never block workout saves
             message.success = False
             message.error = str(exc)[:2000]
@@ -204,6 +211,16 @@ def post_workout_comment(self, workout_id):
             config.last_error = str(exc)[:2000]
             config.save(update_fields=["last_error", "updated_at"])
             logger.warning("Drill Instructor: message save failed for competition %s: %s", competition.id, exc)
+            continue
+
+        config.last_posted_at = timezone.now()
+        config.messages_posted = (config.messages_posted or 0) + 1
+        # Surface an LLM outage (message still posted as static
+        # fallback); cleared again on the next successful generation.
+        config.last_error = llm_error or ""
+        config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
+        posted += 1
+        logger.info("Drill Instructor: stored message %s for competition %s", message.id, competition.id)
 
         # Optional web push for the athlete.
         if config.send_push_on_activity and send_push_to_user is not None:
@@ -404,6 +421,10 @@ def post_inactivity_nudges(self):
     Competition = apps.get_model("competition", "Competition")
     DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
 
+    # Overlap guard: a slow first run must not double-post today's nudges.
+    if is_task_already_executing("post_inactivity_nudges"):
+        return "Task already executing. Skipping."
+
     today = timezone.localdate()
     competitions = (
         Competition.objects
@@ -544,6 +565,11 @@ def post_random_pushes(self):
     Workout = apps.get_model("workouts", "Workout")
     Competition = apps.get_model("competition", "Competition")
     DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+
+    # Beat fires every 30 min and LLM calls are slow: without the guard
+    # an overlapping second run would double-post the same day's slots.
+    if is_task_already_executing("post_random_pushes"):
+        return "Task already executing. Skipping."
 
     now = timezone.localtime()
     today = now.date()

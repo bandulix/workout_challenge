@@ -90,7 +90,9 @@ def is_task_already_executing(task_name: str) -> bool:
     Returns: A boolean indicating whether the task with the given task name is
         running currently.
     """
-    active_tasks = app.control.inspect().active()
+    # None when no worker answers (tests, broker still starting) -
+    # treat as "nothing is running" instead of crashing the sweep.
+    active_tasks = app.control.inspect().active() or {}
     task_count = 0
     for worker, running_tasks in active_tasks.items():
         for task in running_tasks:
