@@ -122,7 +122,7 @@ Apple HealthKit and Google Health Connect keep workouts **on the phone** — the
 
 1. In `.env`: set `OW_POSTGRES_PASSWORD` and `HEALTH_PUBLIC_URL` (the address athletes' **phones** must reach — `http://<server-ip>:8001` with `OW_BIND=0.0.0.0` on a trusted LAN, or `https://health.your-domain.com` reverse-proxied to `127.0.0.1:8001`).
 2. `docker compose --profile health up -d` — the first start builds the Open Wearables image from a pinned upstream commit.
-3. Mint the API key once (two `curl` calls, printed in `.env.example`) and paste it into `HEALTH_API_KEY` — or set it later in **Site Settings → Health** (DB wins over env). The backend polls `HEALTH_BASE_URL`, which already defaults to the internal `http://openwearables:8000`.
+3. Done — the connector logs into Open Wearables with the seeded admin developer (defaults `admin@example.com` / your `SECRET_KEY`, overridable via `OW_ADMIN_*` or Site Settings → Health); the backend reaches the API at the internal `http://openwearables:8000` by default.
 
 Athletes then open **Settings → Apple / Google Health → Connect Health App**, which shows a single-use connection code; they enter host + code in the health app on their phone (Open Wearables example/official app, or any app built with its SDK), and workouts start flowing — hourly poll, plus a manual **Re-Sync** button on Home. The activity-source selector (Settings) decides which provider imports when several are linked, and the cross-provider duplicate guard still applies.
 

@@ -58,7 +58,8 @@ class SiteSettings(models.Model):
     # ---- Health (Open Wearables: Apple Health / Health Connect) --------
     health_base_url = models.CharField(max_length=300, blank=True, default="")
     health_public_url = models.CharField(max_length=300, blank=True, default="")
-    health_api_key = models.CharField(max_length=200, blank=True, default="")
+    health_developer_email = models.CharField(max_length=200, blank=True, default="")
+    health_developer_password = models.CharField(max_length=200, blank=True, default="")
 
     # ---- SMTP / outbound email -----------------------------------------
     email_host = models.CharField(max_length=200, blank=True, default="")
@@ -113,8 +114,8 @@ class SiteSettings(models.Model):
         return _mask(self.email_host_password)
 
     @property
-    def health_api_key_masked(self):
-        return _mask(self.health_api_key)
+    def health_developer_password_masked(self):
+        return _mask(self.health_developer_password)
 
 
 def _mask(value):
@@ -179,20 +180,25 @@ def resolve_strava_settings():
 def resolve_health_settings():
     """Active Open Wearables configuration as a dict (DB → env).
 
-    Both empty → the Health connector is disabled and the settings UI
-    hides the link section.
+    Auth model: a developer JWT (from developer email + password) works
+    on every OW endpoint - user management, data reads AND invitation
+    codes - so one credential pair is all the connector needs. Missing
+    password → the connector is disabled and the settings UI hides the
+    link section.
     """
     solo = SiteSettings.get_solo()
     base_url = (solo.health_base_url or getattr(settings, "HEALTH_BASE_URL", "") or "").strip().rstrip("/")
     public_url = (solo.health_public_url or getattr(settings, "HEALTH_PUBLIC_URL", "") or "").strip().rstrip("/")
-    api_key = (solo.health_api_key or getattr(settings, "HEALTH_API_KEY", "") or "").strip()
+    email = (solo.health_developer_email or getattr(settings, "HEALTH_DEVELOPER_EMAIL", "") or "").strip()
+    password = (solo.health_developer_password or getattr(settings, "HEALTH_DEVELOPER_PASSWORD", "") or "").strip()
     return {
         "base_url": base_url or None,
         # The address phones use in the connection code - defaults to the
         # server-side base URL (fine when one address serves both).
         "public_url": public_url or base_url or None,
-        "api_key": api_key or None,
-        "enabled": bool(base_url and api_key),
+        "developer_email": email or None,
+        "developer_password": password or None,
+        "enabled": bool(base_url and email and password),
     }
 
 

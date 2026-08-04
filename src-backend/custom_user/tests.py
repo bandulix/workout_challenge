@@ -754,3 +754,72 @@ class HealthConnectorTests(TestCase):
 
         response = self.client.get("/api/health/sync/")
         self.assertEqual(response.status_code, 400)
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class HealthOwAuthTests(TestCase):
+    """Developer-JWT auth against Open Wearables: login caching, 401
+    relogin retry, and adopting an existing OW user on 409."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.user = CustomUser.objects.create_user(
+            email="owauth@example.com", password="test-pw", first_name="Owa", last_name="",
+        )
+        self.cfg = {
+            "base_url": "https://ow.example.com",
+            "developer_email": "admin@example.com",
+            "developer_password": "secret",
+            "enabled": True,
+        }
+
+    def _login_response(self, token="jwt-1"):
+        resp = mock.Mock()
+        resp.status_code = 200
+        resp.json.return_value = {"access_token": token, "expires_in": 3600}
+        return resp
+
+    def test_developer_token_is_cached(self):
+        from .health import _developer_token
+        with mock.patch("custom_user.health.requests.post", return_value=self._login_response()) as mock_post:
+            self.assertEqual(_developer_token(self.cfg), "jwt-1")
+            self.assertEqual(_developer_token(self.cfg), "jwt-1")  # cache hit
+        self.assertEqual(mock_post.call_count, 1)
+
+    def test_request_relogs_in_once_on_401(self):
+        from .health import _ow_request
+        login = self._login_response()
+        unauthorized = mock.Mock(status_code=401)
+        ok = mock.Mock()
+        ok.status_code = 200
+        ok.json.return_value = {"ok": True}
+        with mock.patch("site_settings.models.resolve_health_settings", return_value=self.cfg), \
+                mock.patch("custom_user.health.requests.post", return_value=login) as mock_post, \
+                mock.patch("custom_user.health.requests.request", side_effect=[unauthorized, ok]) as mock_req:
+            # First call uses a stale cached token -> 401 -> fresh login -> retry.
+            from django.core.cache import cache
+            cache.set(f"health_developer_jwt_{self.cfg['base_url']}_{self.cfg['developer_email']}", "stale", 3600)
+            result = _ow_request("GET", "/users")
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(mock_req.call_count, 2)
+        self.assertEqual(mock_post.call_count, 1)
+
+    def test_ensure_user_adopts_existing_on_409(self):
+        from .health import ensure_health_user
+        adopted = {"data": [{"id": "aaaa-bbbb"}]}
+        with mock.patch("custom_user.health._ow_request", side_effect=[{"_conflict": True}, adopted]) as mock_req:
+            health_user_id = ensure_health_user(self.user)
+        self.assertEqual(health_user_id, "aaaa-bbbb")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.health_user_id, "aaaa-bbbb")
+        # POST /users then GET /users?email=...
+        self.assertEqual(mock_req.call_args_list[0].args[:2], ("POST", "/users"))
+        self.assertEqual(mock_req.call_args_list[1].args[:2], ("GET", "/users"))
