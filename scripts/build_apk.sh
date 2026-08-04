@@ -53,12 +53,19 @@ if [ -n "$JAVA_BIN" ]; then
     export JAVA_HOME="$(dirname "$(dirname "$JAVA_BIN")")"
 fi
 
+# --- version stamping (drives Android updates + the in-app banner) ----
+# versionName: latest git tag (e.g. 0.9.1) or "dev" outside a checkout.
+# versionCode: commit count - monotonic, so every later build updates.
+VERSION_NAME="$(git describe --tags --abbrev=0 2>/dev/null || echo dev)"
+VERSION_CODE="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+echo "Stamping version: $VERSION_NAME ($VERSION_CODE)"
+
 cd android
 if [ "${1:-}" = "--debug" ]; then
-    ./gradlew assembleDebug --no-daemon
+    ./gradlew assembleDebug --no-daemon -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
     APK="app/build/outputs/apk/debug/app-debug.apk"
 else
-    ./gradlew assembleRelease --no-daemon
+    ./gradlew assembleRelease --no-daemon -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
     APK="app/build/outputs/apk/release/app-release.apk"
 fi
 
@@ -73,7 +80,16 @@ if docker compose -f ../../docker-compose.yml ps --status running 2>/dev/null | 
         sh -c 'mkdir -p /workout_challenge/src-backend/data/downloads'
     docker compose -f ../../docker-compose.yml cp "$APK" \
         workoutchallenge:/workout_challenge/src-backend/data/downloads/workout-challenge.apk
-    echo "Published on the stack: /download/workout-challenge.apk"
+    # Version manifest for the in-app update check.
+    TMP_JSON="$(mktemp)"
+    printf '{"versionName":"%s","versionCode":%s,"url":"/download/workout-challenge.apk"}\n' \
+        "$VERSION_NAME" "$VERSION_CODE" > "$TMP_JSON"
+    # mktemp files are 0600 - nginx (different user) must be able to read it.
+    chmod 644 "$TMP_JSON"
+    docker compose -f ../../docker-compose.yml cp "$TMP_JSON" \
+        workoutchallenge:/workout_challenge/src-backend/data/downloads/apk-version.json
+    rm -f "$TMP_JSON"
+    echo "Published on the stack: /download/workout-challenge.apk (+ apk-version.json)"
 else
     echo "NOTE: stack not running - skipped publishing. Copy the apk onto"
     echo "      the server later, e.g.:"
