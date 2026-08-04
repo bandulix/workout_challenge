@@ -144,18 +144,17 @@ Athletes then open **Settings → Apple / Google Health → Connect Health App**
 ## Android app (sideload APK)
 The whole PWA also ships as a native **Android app** (Capacitor shell around the same web build) with the **Open Wearables Android SDK built in** — so on Android, *Settings → Apple / Google Health → Connect Health Connect* becomes a **one-tap** flow: the app redeems the connection code itself, shows the Health Connect permission dialog and starts background sync. No second app, no code typing.
 
-**Build it** (toolchain: JDK 21 + Android SDK platform-36; on this machine `~/jdk21` and `~/Android/Sdk`):
+**Build it** — the APK is part of the full stack: `scripts/build_apk.sh` reads the server address from the deployment's own **`.env` (`MAIN_HOST`)** and bakes it in, so the app always knows its server with no address entry on the phone:
 
 ```bash
-cd src-frontend
-REACT_APP_BACKEND_URL=https://your-domain.com npm run build   # APK must know its backend!
-npx cap sync android
-cd android && JAVA_HOME=~/jdk21 ./gradlew assembleRelease     # signed with ~/.gradle/workout-signing.properties
-# → android/app/build/outputs/apk/release/app-release.apk
+scripts/build_apk.sh            # release APK (signed, see below)
+scripts/build_apk.sh --debug    # faster debug build
+# → src-frontend/android/app/build/outputs/apk/release/app-release.apk
 ```
 
-- **`REACT_APP_BACKEND_URL` is mandatory** — without it the WebView calls its own localhost instead of your server.
-- **CORS:** the app's requests carry origin `https://localhost` (Capacitor scheme) — add it to `HOSTS` in `.env`, e.g. `HOSTS=https://your-domain.com,https://localhost`. For a LAN test build use `REACT_APP_BACKEND_URL=http://<machine-ip>` plus that IP in `HOSTS`.
+Toolchain (once per build machine): JDK 21 (e.g. `~/jdk21`) + Android SDK platform-36 (e.g. `~/Android/Sdk`); `npm ci` in `src-frontend`.
+
+- **`MAIN_HOST` is the single source of truth** — the script fails without it and warns when `HOSTS` lacks the app origin `https://localhost` (Capacitor scheme) which the backend's CORS must allow: `HOSTS=https://your-domain.com,https://localhost`.
 - **Install:** copy the APK to the phone (or host it on your domain) → "Install unknown apps" once → log in → Settings → Connect Health Connect.
 - **Signing:** release builds sign with `~/.gradle/workout-signing.properties` (generated once, lives outside the repo); without it they fall back to the debug key so `assembleRelease` always works. **Keep the release keystore safe** — updates must be signed with the same key.
 - **Play Store later:** `./gradlew bundleRelease` produces the AAB; Health Connect permission declaration + privacy policy are the remaining store chores.

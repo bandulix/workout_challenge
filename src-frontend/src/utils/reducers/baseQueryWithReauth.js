@@ -1,5 +1,6 @@
 import {fetchBaseQuery} from '@reduxjs/toolkit/query/react';
 import {throwErrorWithCode} from '../miscellaneous';
+import {getServerUrl} from '../serverUrl';
 
 // Sentry is loaded on demand (dynamic import) so the SDK stays out of
 // the initial bundle when no DSN is configured.
@@ -16,7 +17,7 @@ if (process.env.NODE_ENV !== 'production') {
 const requestTimings = new Map();
 
 const baseQuery = fetchBaseQuery({
-    baseUrl: (process.env.REACT_APP_BACKEND_URL || '') + '/api/',
+    baseUrl: getServerUrl() + '/api/',
     prepareHeaders: (headers) => {
         const token = localStorage.getItem('access_token');
         // Endpoints sending FormData (file uploads) mark themselves with
@@ -75,7 +76,7 @@ export function sentryError({result, errorSource, endpointName = undefined, quer
         });
 
         // Add API request specific performance data
-        const requestUrl = (process.env.REACT_APP_BACKEND_URL || '') + '/api/' + (queryArgs?.args?.url || '');
+        const requestUrl = getServerUrl() + '/api/' + (queryArgs?.args?.url || '');
         // Walk performance entries once - .getEntriesByType is O(n) per
         // call so caching on a module-level Map keeps the hot path fast.
         if (!requestTimings.has(requestUrl)) {
