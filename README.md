@@ -141,6 +141,25 @@ Athletes then open **Settings → Apple / Google Health → Connect Health App**
 
 **License:** Open Wearables is **MIT-licensed** (© 2025 Momentum) — permissive and compatible with this project's SSPL v1: it runs as a separate, unmodified service built from its pinned upstream source on your machine; nothing of it is vendored into this repository, so no obligations arise for this project's code. Attribution lives in [`NOTICE`](NOTICE). Should you ever fork its mobile example app or distribute a built image of it, keep its `LICENSE` file (with the MIT copyright notice) included, as MIT requires.
 
+## Android app (sideload APK)
+The whole PWA also ships as a native **Android app** (Capacitor shell around the same web build) with the **Open Wearables Android SDK built in** — so on Android, *Settings → Apple / Google Health → Connect Health Connect* becomes a **one-tap** flow: the app redeems the connection code itself, shows the Health Connect permission dialog and starts background sync. No second app, no code typing.
+
+**Build it** (toolchain: JDK 21 + Android SDK platform-36; on this machine `~/jdk21` and `~/Android/Sdk`):
+
+```bash
+cd src-frontend
+REACT_APP_BACKEND_URL=https://your-domain.com npm run build   # APK must know its backend!
+npx cap sync android
+cd android && JAVA_HOME=~/jdk21 ./gradlew assembleRelease     # signed with ~/.gradle/workout-signing.properties
+# → android/app/build/outputs/apk/release/app-release.apk
+```
+
+- **`REACT_APP_BACKEND_URL` is mandatory** — without it the WebView calls its own localhost instead of your server.
+- **CORS:** the app's requests carry origin `https://localhost` (Capacitor scheme) — add it to `HOSTS` in `.env`, e.g. `HOSTS=https://your-domain.com,https://localhost`. For a LAN test build use `REACT_APP_BACKEND_URL=http://<machine-ip>` plus that IP in `HOSTS`.
+- **Install:** copy the APK to the phone (or host it on your domain) → "Install unknown apps" once → log in → Settings → Connect Health Connect.
+- **Signing:** release builds sign with `~/.gradle/workout-signing.properties` (generated once, lives outside the repo); without it they fall back to the debug key so `assembleRelease` always works. **Keep the release keystore safe** — updates must be signed with the same key.
+- **Play Store later:** `./gradlew bundleRelease` produces the AAB; Health Connect permission declaration + privacy policy are the remaining store chores.
+
 ## Strava API credentials
 1. Log in at [strava.com/login](https://www.strava.com/login) → profile picture → **Settings** → **My API Application**.
 2. Create the app to get your Client ID & secret (works with your own account immediately).

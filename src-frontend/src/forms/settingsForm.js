@@ -6,6 +6,7 @@ import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, 
 import {useDispatch} from "react-redux";
 import {Watch, Smartphone} from "lucide-react";
 import {BeatLoader} from "react-spinners";
+import {isNativeHealthAvailable, nativeHealthConnect, nativeHealthDisconnect} from "../utils/nativeHealth";
 
 
 const PROVIDER_LABELS = {strava: "Strava", garmin: "Garmin", health: "Apple/Google Health"};
@@ -75,7 +76,9 @@ function SyncSourceSection({user, onChanged}) {
 // Apple Health / Google Health Connect via the server's Open Wearables
 // instance: linking hands the athlete a single-use connection code for
 // the health app on their phone, which then pushes the on-device
-// workouts to the server in the background.
+// workouts to the server in the background. Inside the Android app the
+// whole flow is one tap - the app redeems the code and talks to Health
+// Connect natively (see utils/nativeHealth.js).
 function HealthSection({user, onChanged}) {
     const [message, setMessage] = useState(null);
     const [error, setError] = useState(null);
@@ -85,18 +88,27 @@ function HealthSection({user, onChanged}) {
     const [unlinkHealth, {isLoading: unlinkLoading}] = useUnlinkHealthMutation();
 
     const linked = Boolean(user?.health_user_id);
+    const isNative = isNativeHealthAvailable();
 
     async function handleLink() {
         setMessage(null);
         setError(null);
         try {
             const res = await linkHealth().unwrap();
-            setInvitation({code: res?.code, host: res?.host, expires_at: res?.expires_at});
-            setMessage(res?.message || "Health linked.");
+            if (isNative) {
+                // Android app: redeem the code natively, request Health
+                // Connect permissions and start the background sync - no
+                // manual code entry.
+                await nativeHealthConnect({code: res.code, host: res.host});
+                setMessage("Health Connect linked - your workouts now sync in the background.");
+            } else {
+                setInvitation({code: res?.code, host: res?.host, expires_at: res?.expires_at});
+                setMessage(res?.message || "Health linked.");
+            }
             onChanged();
         } catch (err) {
             setInvitation(null);
-            setError(err?.data?.message || "Could not link Health.");
+            setError(err?.data?.message || err?.message || "Could not link Health.");
         }
     }
 
@@ -105,6 +117,7 @@ function HealthSection({user, onChanged}) {
         setError(null);
         setInvitation(null);
         try {
+            if (isNative) await nativeHealthDisconnect();
             const res = await unlinkHealth().unwrap();
             setMessage(res?.message || "Health unlinked.");
             onChanged();
@@ -124,7 +137,9 @@ function HealthSection({user, onChanged}) {
 
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                     Import workouts straight from Apple Health or Google Health Connect on your phone -
-                    no Strava needed. The health app on your phone syncs them to this server in the background.
+                    no Strava needed. {isNative
+                        ? "One tap connects this app to Health Connect and syncs in the background."
+                        : "The health app on your phone syncs them to this server in the background."}
                 </p>
 
                 {linked && user?.health_last_synced_at && (
@@ -148,7 +163,7 @@ function HealthSection({user, onChanged}) {
                 <div className="flex gap-2">
                     <button onClick={handleLink} disabled={linkLoading}
                             className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
-                        {linkLoading ? <BeatLoader size={6}/> : (linked ? "New connection code" : "Connect Health App")}
+                        {linkLoading ? <BeatLoader size={6}/> : (linked ? (isNative ? "Reconnect Health" : "New connection code") : (isNative ? "Connect Health Connect" : "Connect Health App"))}
                     </button>
                     {linked && (
                         <button onClick={handleUnlink} disabled={unlinkLoading}
