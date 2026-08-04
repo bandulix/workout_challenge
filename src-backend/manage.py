@@ -5,8 +5,11 @@ import sys
 
 
 def make_sure_paths_exist():
-    """ Make sure data folder paths exist for the database and/or migrations. """
-    for path in ['./data', './data/db_migrations', './data/db_migrations/competition', './data/db_migrations/workouts', './data/db_migrations/custom_user']:
+    """ Make sure the data folder (database / media / vapid) and the
+    migration package paths exist. The db_migrations tree is tracked
+    source code and normally already present - this is only a safety
+    net so a damaged checkout fails later than here, not never. """
+    for path in ['./data', './db_migrations', './db_migrations/competition', './db_migrations/workouts', './db_migrations/custom_user']:
         if not os.path.exists(path):
             os.makedirs(path)
             open(path + '/__init__.py', "a").close()

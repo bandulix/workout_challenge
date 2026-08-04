@@ -68,10 +68,11 @@ RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/render_config_js.py
 # NGINX runtime folder
 RUN mkdir -p /run/nginx
 
-# Django data folder with mirgations and sqlite database. Owned by the
-# app user so the unprivileged workers can write the DB / media /
-# vapid.json into it (named volumes inherit these ownership bits on
-# first mount; the entrypoint re-chowns for bind mounts).
+# Django data folder for the sqlite database / media / vapid.json.
+# Owned by the app user so the unprivileged workers can write into it
+# (named volumes inherit these ownership bits on first mount; the
+# entrypoint re-chowns for bind mounts). Migrations are NOT here -
+# they ship in src-backend/db_migrations/, outside this volume.
 RUN mkdir -p /workout_challenge/src-backend/data && chown -R app:app /workout_challenge/src-backend/data
 VOLUME /workout_challenge/src-backend/data
 

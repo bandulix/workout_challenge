@@ -126,20 +126,26 @@ AUTH_USER_MODEL = "custom_user.CustomUser"
 ROOT_URLCONF = 'workout_challenge.urls'
 
 
+# Migration modules for these apps live in src-backend/db_migrations/ -
+# deliberately OUTSIDE src-backend/data/, which is a runtime volume in
+# the Docker deployment. A named volume keeps its first-seeded content
+# forever and would shadow any migrations baked into a newer image, so
+# `migrate` at container start could never see them (and the new model
+# code would crash against the old schema - e.g. login 500s).
 MIGRATION_MODULES = {
-    "competition": "data.db_migrations.competition",
-    "workouts": "data.db_migrations.workouts",
-    "custom_user": "data.db_migrations.custom_user",
+    "competition": "db_migrations.competition",
+    "workouts": "db_migrations.workouts",
+    "custom_user": "db_migrations.custom_user",
     "drill_instructor": "drill_instructor.migrations",
     "site_settings": "site_settings.migrations",
     "push_notifications": "push_notifications.migrations",
-    # "django_celery_beat": "data.db_migrations.django_celery_beat",
-    # "django_celery_beat_periodictask": "data.db_migrations.django_celery_beat_periodictask",
-    # "sessions": "data.db_migrations.sessions",
-    # "auth": "data.db_migrations.auth",
-    # "authtoken": "data.db_migrations.authtoken",
-    # "admin": "data.db_migrations.admin",
-    # "contenttypes": "data.db_migrations.contenttypes",
+    # "django_celery_beat": "db_migrations.django_celery_beat",
+    # "django_celery_beat_periodictask": "db_migrations.django_celery_beat_periodictask",
+    # "sessions": "db_migrations.sessions",
+    # "auth": "db_migrations.auth",
+    # "authtoken": "db_migrations.authtoken",
+    # "admin": "db_migrations.admin",
+    # "contenttypes": "db_migrations.contenttypes",
 }
 
 

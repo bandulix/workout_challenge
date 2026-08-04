@@ -2,9 +2,10 @@
 .rdb
 docs
 src-backend/static
+# Runtime state only - must NOT ship. The migration modules live in
+# src-backend/db_migrations/ (outside data/) so they always ship with
+# the image and can never be shadowed by the runtime volume.
 src-backend/data
-# But the migrations MUST ship with the image - they're not runtime data.
-!src-backend/data/db_migrations/
 # The bundled scripts/ directory at the repo root (entrypoint,
 # render_config_js, dev helpers) must ship into the image. The
 # generic "[Ss]cripts" rule from the Python template below was
