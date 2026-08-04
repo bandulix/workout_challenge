@@ -39,6 +39,9 @@ This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/w
 **⌚ Garmin Connect import (new connector, parallel to Strava)**
 - Link Garmin in Settings; the password is used once and never stored — only the encrypted OAuth token blob (Fernet) is kept. Daily sync plus manual re-sync; ~60 activity types mapped; de-duplication by activity id.
 
+**🍎🤖 Apple Health / Health Connect import (new connector, Strava-optional)**
+- Import workouts **straight from Apple Health or Google Health Connect** — no Strava account (or subscription) needed. Since Apple/Google expose no cloud API, a self-hosted [Open Wearables](https://github.com/the-momentum/open-wearables) instance (MIT) receives the on-device data from a health app on the athlete's phone; this connector polls it hourly, like the other providers. Same one-source-per-user selector, same cross-provider duplicate guard. See [Apple / Google Health](#apple--google-health-open-wearables).
+
 **🔐 Access & invites**
 - Optional `REGISTRATION_TOKEN` invite gate; a competition invite link (`?join=<code>`) doubles as the registration invite, so invitees sign up token-free.
 - **First-user-is-admin** bootstrap; **Site Settings** runtime admin (LLM / Strava / SMTP, DB-over-env resolution, write-only secrets).
@@ -113,6 +116,14 @@ docker compose exec -w /workout_challenge/src-backend workoutchallenge python ma
   2. **Coach page → "Enable coach pings"**.
   3. Per competition: **AI Drill Instructor → "Browser push for participants"**.
 - VAPID keys are auto-generated on first start (`DATA_DIR/vapid.json` — don't lose it) or pinned via env vars.
+
+## Apple / Google Health (Open Wearables)
+Apple HealthKit and Google Health Connect keep workouts **on the phone** — there is no cloud API any server could poll. The connector therefore works in two parts:
+
+1. **Deploy Open Wearables** (MIT, self-hosted) beside this stack — follow its own quickstart (`git clone https://github.com/the-momentum/open-wearables` → `docker compose up -d`). Create an API key in its developer portal (or via `POST /api/v1/auth/login` + `POST /api/v1/api-keys`).
+2. **Point this app at it**: set `HEALTH_BASE_URL` + `HEALTH_API_KEY` in `.env` (or later in **Site Settings → Health**, DB wins over env). If it shares this compose network, the base URL is simply the service name, e.g. `http://openwearables:8000`.
+
+Athletes then open **Settings → Apple / Google Health → Connect Health App**, which shows a single-use connection code; they enter host + code in the health app on their phone (Open Wearables example/official app, or any app built with its SDK), and workouts start flowing — hourly poll, plus a manual **Re-Sync** button on Home. The activity-source selector (Settings) decides which provider imports when several are linked, and the cross-provider duplicate guard still applies.
 
 ## Strava API credentials
 1. Log in at [strava.com/login](https://www.strava.com/login) → profile picture → **Settings** → **My API Application**.

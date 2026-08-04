@@ -24,7 +24,7 @@ from rest_framework_simplejwt.views import (
 from rest_framework.routers import DefaultRouter
 from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView
 from workouts.views import WorkoutViewSet
-from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, ResetStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, LinkGarminView, UnlinkGarminView, SyncGarminView
+from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, ResetStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, LinkGarminView, UnlinkGarminView, SyncGarminView, LinkHealthView, UnlinkHealthView, SyncHealthView
 
 
 # Token endpoints with a strict throttle bucket (online brute-force
@@ -81,6 +81,9 @@ urlpatterns = [
         path('garmin/link/', LinkGarminView.as_view(), name='garmin-link'),
         path('garmin/unlink/', UnlinkGarminView.as_view(), name='garmin-unlink'),
         path('garmin/sync/', SyncGarminView.as_view(), name='garmin-sync'),
+        path('health/link/', LinkHealthView.as_view(), name='health-link'),
+        path('health/unlink/', UnlinkHealthView.as_view(), name='health-unlink'),
+        path('health/sync/', SyncHealthView.as_view(), name='health-sync'),
         path('celery/tasks/', CeleryQueryView.as_view(), name='celery-task-list'),
         path('celery/tasks/<str:task_id>/', CeleryQueryView.as_view(), name='celery-task-status'),
         path('celery/', CeleryQueryView.as_view(), name='celery-task-run'),

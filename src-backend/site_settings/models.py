@@ -55,6 +55,10 @@ class SiteSettings(models.Model):
     strava_limit_15min = models.IntegerField(null=True, blank=True)
     strava_limit_day = models.IntegerField(null=True, blank=True)
 
+    # ---- Health (Open Wearables: Apple Health / Health Connect) --------
+    health_base_url = models.CharField(max_length=300, blank=True, default="")
+    health_api_key = models.CharField(max_length=200, blank=True, default="")
+
     # ---- SMTP / outbound email -----------------------------------------
     email_host = models.CharField(max_length=200, blank=True, default="")
     email_port = models.IntegerField(null=True, blank=True)
@@ -106,6 +110,10 @@ class SiteSettings(models.Model):
     @property
     def email_host_password_masked(self):
         return _mask(self.email_host_password)
+
+    @property
+    def health_api_key_masked(self):
+        return _mask(self.health_api_key)
 
 
 def _mask(value):
@@ -164,6 +172,22 @@ def resolve_strava_settings():
         "client_secret": (solo.strava_client_secret or settings.STRAVA_CLIENT_SECRET or "").strip() or None,
         "limit_15min": solo.strava_limit_15min if solo.strava_limit_15min is not None else settings.STRAVA_LIMIT_15MIN,
         "limit_day": solo.strava_limit_day if solo.strava_limit_day is not None else settings.STRAVA_LIMIT_DAY,
+    }
+
+
+def resolve_health_settings():
+    """Active Open Wearables configuration as a dict (DB → env).
+
+    Both empty → the Health connector is disabled and the settings UI
+    hides the link section.
+    """
+    solo = SiteSettings.get_solo()
+    base_url = (solo.health_base_url or getattr(settings, "HEALTH_BASE_URL", "") or "").strip().rstrip("/")
+    api_key = (solo.health_api_key or getattr(settings, "HEALTH_API_KEY", "") or "").strip()
+    return {
+        "base_url": base_url or None,
+        "api_key": api_key or None,
+        "enabled": bool(base_url and api_key),
     }
 
 

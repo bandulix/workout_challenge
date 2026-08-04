@@ -36,7 +36,7 @@ import {
 import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
 import {SectionLoader} from "../utils/loaders";
 import {useDispatch} from "react-redux";
-import {useLazySyncGarminQuery, useLazySyncStravaQuery} from "../utils/reducers/linkSlice";
+import {useLazySyncGarminQuery, useLazySyncStravaQuery, useLazySyncHealthQuery} from "../utils/reducers/linkSlice";
 import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
 import {feedApi} from "../utils/reducers/feedSlice";
 import {BeatLoader} from "react-spinners";
@@ -93,15 +93,17 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
     const [showEditWorkoutModal, setShowEditWorkoutModal] = useState(false);
     const stravaLinked = user?.strava_athlete_id !== null && user?.strava_athlete_id !== undefined;
     const garminLinked = Boolean(user?.garmin_email);
-    // With both providers linked only the selected source imports (the
-    // other would double every activity) - hide its re-sync button.
+    const healthLinked = Boolean(user?.health_user_id);
+    // With several providers linked only the selected source imports (the
+    // others would double every activity) - hide their re-sync buttons.
     // `activity_source_effective` is undefined on pre-selector backends,
-    // which keeps the old show-both behaviour until the API catches up.
-    const bothLinked = stravaLinked && garminLinked;
+    // which keeps the old show-all-linked behaviour until the API catches up.
     const activeSource = user?.activity_source_effective;
+    const showSourceButton = (linked, source) => linked && (activeSource === undefined || activeSource === source);
     const dispatch = useDispatch();
     const [triggerStravaSync, { data: stravaSyncData, isFetching: stravaSyncIsFetching, error: stravaSyncError, isSuccess: stravaSyncIsSuccess }] = useLazySyncStravaQuery();
     const [triggerGarminSync, { isFetching: garminSyncIsFetching, error: garminSyncError, isSuccess: garminSyncIsSuccess }] = useLazySyncGarminQuery();
+    const [triggerHealthSync, { isFetching: healthSyncIsFetching, error: healthSyncError, isSuccess: healthSyncIsSuccess }] = useLazySyncHealthQuery();
 
     // Only the 5 most recent workouts, newest first.
     const recentWorkouts = useMemo(
@@ -137,6 +139,10 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
         if (garminSyncIsFetching === false) handleSyncResult(garminSyncIsSuccess, garminSyncError, "Garmin");
     }, [garminSyncIsFetching]);
 
+    useEffect(() => {
+        if (healthSyncIsFetching === false) handleSyncResult(healthSyncIsSuccess, healthSyncError, "Health");
+    }, [healthSyncIsFetching]);
+
     return (
         <BoxSection>
 
@@ -144,13 +150,17 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
                 <span className="mx-4 text-gray-500 uppercase font-bold mb-1.5 sm:mb-0">My Workouts <span className="normal-case font-normal text-gray-400">· latest 5</span></span>
                 <div className="p-0 flex gap-2">
                     {
-                        (stravaLinked) ? ((!bothLinked || activeSource !== 'garmin') &&
+                        (stravaLinked) ? (showSourceButton(stravaLinked, 'strava') &&
                             <SyncStravaButton additionalClasses="my-0.5 sm:my-0" isLoading={stravaSyncIsFetching} onClick={() => triggerStravaSync()}/>) :
                             <StravaButton additionalClasses="my-0.5 sm:my-0" label={"Link Strava for Automatic Import"} onClick={() => setLinkStrava(true)}/>
                     }
-                    {garminLinked && (!bothLinked || activeSource !== 'strava') && (
+                    {showSourceButton(garminLinked, 'garmin') && (
                         <SyncStravaButton additionalClasses="my-0.5 sm:my-0" label={"Re-Sync with Garmin"}
                                           isLoading={garminSyncIsFetching} onClick={() => triggerGarminSync()}/>
+                    )}
+                    {showSourceButton(healthLinked, 'health') && (
+                        <SyncStravaButton additionalClasses="my-0.5 sm:my-0" label={"Re-Sync Apple/Google Health"}
+                                          isLoading={healthSyncIsFetching} onClick={() => triggerHealthSync()}/>
                     )}
                 </div>
 

@@ -2,20 +2,32 @@ import {useDeleteUserMutation, usersApi, useUpdateUserMutation} from "../utils/r
 import React, {useEffect, useState} from "react";
 import {DeleteButton, Modal, SaveButton, SingleForm, StravaButton} from "./basicComponents";
 import {useNavigate} from "react-router-dom";
-import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, useUnlinkGarminMutation} from "../utils/reducers/linkSlice";
+import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, useUnlinkGarminMutation, useLinkHealthMutation, useUnlinkHealthMutation} from "../utils/reducers/linkSlice";
 import {useDispatch} from "react-redux";
-import {Watch} from "lucide-react";
+import {Watch, Smartphone} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 
 
-// Only shown when BOTH providers are linked: picks which one actually
+const PROVIDER_LABELS = {strava: "Strava", garmin: "Garmin", health: "Apple/Google Health"};
+
+function linkedProviders(user) {
+    const linked = [];
+    if (user?.strava_athlete_id) linked.push('strava');
+    if (user?.garmin_email) linked.push('garmin');
+    if (user?.health_user_id) linked.push('health');
+    return linked;
+}
+
+
+// Only shown when SEVERAL providers are linked: picks which one actually
 // imports activities, so the same activity never arrives twice (it
-// usually exists in both ecosystems - e.g. recorded on a Garmin watch
-// and auto-synced to Strava).
+// usually exists in several ecosystems - e.g. recorded on a Garmin watch,
+// auto-synced to Strava and mirrored into Apple Health).
 function SyncSourceSection({user, onChanged}) {
     const [updateSource, {isLoading}] = useUpdateUserMutation();
     const [error, setError] = useState(null);
     const active = user?.activity_source_effective;
+    const linked = linkedProviders(user);
 
     async function choose(source) {
         if (source === active || isLoading) return;
@@ -43,17 +55,108 @@ function SyncSourceSection({user, onChanged}) {
                     <span className="font-display text-xs uppercase tracking-wider">Activity import source</span>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Strava and Garmin are both linked. Only the selected source imports your activities,
+                    Several providers are linked. Only the selected source imports your activities,
                     so nothing gets doubled.
                 </p>
                 <div className="flex gap-2">
-                    <button onClick={() => choose('strava')} disabled={isLoading} className={optionClass('strava')}>
-                        Strava
-                    </button>
-                    <button onClick={() => choose('garmin')} disabled={isLoading} className={optionClass('garmin')}>
-                        Garmin
-                    </button>
+                    {linked.map((source) => (
+                        <button key={source} onClick={() => choose(source)} disabled={isLoading} className={optionClass(source)}>
+                            {PROVIDER_LABELS[source]}
+                        </button>
+                    ))}
                 </div>
+                {error && <p className="text-xs text-red-500">{error}</p>}
+            </div>
+        </div>
+    );
+}
+
+
+// Apple Health / Google Health Connect via the server's Open Wearables
+// instance: linking hands the athlete a single-use connection code for
+// the health app on their phone, which then pushes the on-device
+// workouts to the server in the background.
+function HealthSection({user, onChanged}) {
+    const [message, setMessage] = useState(null);
+    const [error, setError] = useState(null);
+    const [invitation, setInvitation] = useState(null);
+
+    const [linkHealth, {isLoading: linkLoading}] = useLinkHealthMutation();
+    const [unlinkHealth, {isLoading: unlinkLoading}] = useUnlinkHealthMutation();
+
+    const linked = Boolean(user?.health_user_id);
+
+    async function handleLink() {
+        setMessage(null);
+        setError(null);
+        try {
+            const res = await linkHealth().unwrap();
+            setInvitation({code: res?.code, host: res?.host, expires_at: res?.expires_at});
+            setMessage(res?.message || "Health linked.");
+            onChanged();
+        } catch (err) {
+            setInvitation(null);
+            setError(err?.data?.message || "Could not link Health.");
+        }
+    }
+
+    async function handleUnlink() {
+        setMessage(null);
+        setError(null);
+        setInvitation(null);
+        try {
+            const res = await unlinkHealth().unwrap();
+            setMessage(res?.message || "Health unlinked.");
+            onChanged();
+        } catch (err) {
+            setError(err?.data?.message || "Could not unlink Health.");
+        }
+    }
+
+    return (
+        <div className="px-4 w-full">
+            <div className="rounded-2xl border border-gray-200/70 dark:border-ink-700/60 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                    <Smartphone className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                    <span className="font-display text-xs uppercase tracking-wider">Apple / Google Health</span>
+                    {linked && <span className="ml-auto text-[10px] font-bold uppercase tracking-wide rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2 py-0.5">linked</span>}
+                </div>
+
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Import workouts straight from Apple Health or Google Health Connect on your phone -
+                    no Strava needed. The health app on your phone syncs them to this server in the background.
+                </p>
+
+                {linked && user?.health_last_synced_at_fmt && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Last sync {user.health_last_synced_at_fmt}</p>
+                )}
+
+                {invitation?.code && (
+                    <div className="rounded-xl bg-gray-100 dark:bg-ink-900 dark:border dark:border-ink-700/60 p-3 space-y-1.5">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                            In the health app (Open Wearables app, see your app store / the link your
+                            organizer shared), choose <b>connect with code</b> and enter:
+                        </p>
+                        <p className="font-mono text-lg font-bold tracking-wider text-center select-all py-1">{invitation.code}</p>
+                        {invitation.host && <p className="text-[11px] text-gray-400 text-center break-all">Server: {invitation.host}</p>}
+                        <p className="text-[11px] text-gray-400 text-center">The code is single-use{invitation.expires_at ? " and expires soon" : ""} - generate a new one here anytime.</p>
+                    </div>
+                )}
+
+                <div className="flex gap-2">
+                    <button onClick={handleLink} disabled={linkLoading}
+                            className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
+                        {linkLoading ? <BeatLoader size={6}/> : (linked ? "New connection code" : "Connect Health App")}
+                    </button>
+                    {linked && (
+                        <button onClick={handleUnlink} disabled={unlinkLoading}
+                                className="px-4 py-2 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-sm font-semibold transition disabled:opacity-50">
+                            {unlinkLoading ? <BeatLoader size={6}/> : "Unlink Health"}
+                        </button>
+                    )}
+                </div>
+
+                {message && !invitation?.code && <p className="text-xs text-volt-700 dark:text-volt-300">{message}</p>}
                 {error && <p className="text-xs text-red-500">{error}</p>}
             </div>
         </div>
@@ -393,10 +496,16 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
                     </div>
                 )}
             </div>
-            {(user.strava_athlete_id && user.garmin_email) && (
+            {(linkedProviders(user).length >= 2) && (
                 <SyncSourceSection user={user} onChanged={() => dispatch(usersApi.util.invalidateTags(['User']))}/>
             )}
             <GarminSection user={user} onChanged={() => dispatch(usersApi.util.invalidateTags(['User']))}/>
+            {/* Offered only when the server has an Open Wearables instance
+                configured - or when the user is already linked (so they can
+                still unlink after an admin disabled the connector). */}
+            {(user?.health_configured || user?.health_user_id) && (
+                <HealthSection user={user} onChanged={() => dispatch(usersApi.util.invalidateTags(['User']))}/>
+            )}
             <div className="relative flex justify-between items-center">
                 <DeleteButton onClick={handleDelete} label="Delete Account" highlighted={false} larger={true} />
                 <SaveButton onClick={handleSubmit} label="Update" highlighted={true} larger={true} />

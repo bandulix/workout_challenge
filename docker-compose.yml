@@ -89,6 +89,13 @@ services:
       # set it if you rotate SECRET_KEY and want Garmin linkages to survive.
       - GARMIN_TOKEN_KEY=${GARMIN_TOKEN_KEY:-}
 
+      # --- Health (Open Wearables: Apple Health / Health Connect) ---
+      # Base URL of your Open Wearables instance + an API key from its
+      # developer portal. Both empty = the Health connector is disabled
+      # and the settings UI hides it. See README ("Apple / Google Health").
+      - HEALTH_BASE_URL=${HEALTH_BASE_URL:-}
+      - HEALTH_API_KEY=${HEALTH_API_KEY:-}
+
       # --- Email (SMTP) ---
       # Leave host/user/password blank to disable outbound email.
       # Outbound mail will fail silently; the app still works.

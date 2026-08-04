@@ -105,13 +105,20 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     garmin_tokens_enc = models.TextField(null=True, blank=True)
     garmin_last_synced_at = models.DateTimeField(null=True, blank=True)
 
+    # Apple Health / Google Health Connect linkage via a self-hosted
+    # Open Wearables instance (see custom_user/health.py). We store only
+    # the OW user UUID - credentials stay in Site Settings / env.
+    health_user_id = models.CharField(max_length=40, null=True, blank=True)
+    health_last_synced_at = models.DateTimeField(null=True, blank=True)
+
     # Which linked provider imports activities. Activities often exist in
-    # BOTH ecosystems (e.g. recorded on a Garmin watch and auto-synced to
-    # Strava), so syncing both providers would double every workout.
-    # Only ever relevant when both providers are linked - see
-    # get_activity_source(). Set automatically at link time (first linked
-    # provider wins); the user can switch it in the personal settings.
-    ACTIVITY_SOURCE_CHOICES = [('strava', 'Strava'), ('garmin', 'Garmin')]
+    # MULTIPLE ecosystems (e.g. recorded on a Garmin watch and auto-synced
+    # to Strava and Apple Health), so syncing more than one provider would
+    # double every workout. Only ever relevant when several providers are
+    # linked - see get_activity_source(). Set automatically at link time
+    # (first linked provider wins); the user can switch it in the personal
+    # settings.
+    ACTIVITY_SOURCE_CHOICES = [('strava', 'Strava'), ('garmin', 'Garmin'), ('health', 'Apple/Google Health')]
     activity_source = models.CharField(max_length=10, choices=ACTIVITY_SOURCE_CHOICES, null=True, blank=True, default=None)
 
     is_staff = models.BooleanField(default=False)
@@ -150,25 +157,34 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
             if v != current.get(k)
         }
 
+    def get_linked_sources(self):
+        """All activity providers currently linked, in priority order."""
+        linked = []
+        if self.strava_refresh_token:
+            linked.append('strava')
+        if self.garmin_tokens_enc:
+            linked.append('garmin')
+        if self.health_user_id:
+            linked.append('health')
+        return linked
+
     def get_activity_source(self):
         """The provider that is allowed to import activities for this user.
 
-        - Only one provider linked  -> that provider (selector irrelevant).
-        - Both providers linked     -> the explicit choice; falls back to
-          'strava' for legacy rows that predate the selector (Strava was
-          the only integration back then, so this matches their previous
-          behaviour minus the Garmin doubling).
-        - Nothing linked            -> None.
+        - Only one provider linked    -> that provider (selector irrelevant).
+        - Several providers linked    -> the explicit choice; falls back to
+          'strava' when linked (legacy rows predate the selector and Strava
+          was the only integration back then), otherwise the first linked.
+        - Nothing linked              -> None.
         """
-        strava_linked = bool(self.strava_refresh_token)
-        garmin_linked = bool(self.garmin_tokens_enc)
-        if strava_linked and garmin_linked:
-            return self.activity_source if self.activity_source in ('strava', 'garmin') else 'strava'
-        if strava_linked:
-            return 'strava'
-        if garmin_linked:
-            return 'garmin'
-        return None
+        linked = self.get_linked_sources()
+        if not linked:
+            return None
+        if len(linked) == 1:
+            return linked[0]
+        if self.activity_source in linked:
+            return self.activity_source
+        return 'strava' if 'strava' in linked else linked[0]
 
 
     def save(self, *args, **kwargs):

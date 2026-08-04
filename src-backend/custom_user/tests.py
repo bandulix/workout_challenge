@@ -514,3 +514,243 @@ class CrossProviderDuplicateGuardTests(TestCase):
         self.assertEqual(mock_get.call_count, 1)
         self.assertFalse(WorkoutModel.objects.filter(strava_id=246810).exists())
         self.assertTrue(WorkoutModel.objects.filter(pk=manual.pk).exists())
+
+
+class MapHealthSportTypeTests(TestCase):
+    """Apple HealthKit / Health Connect type names are mapped onto our
+    sport types; unknown strings must fall back to 'Workout' (the
+    frontend's label lookups crash on verbatim unknown types)."""
+
+    def test_known_types_map(self):
+        from .health import map_health_sport_type
+        self.assertEqual(map_health_sport_type("running"), "Run")
+        self.assertEqual(map_health_sport_type("BIKING"), "Ride")
+        self.assertEqual(map_health_sport_type("swimming_open_water"), "Swim")
+        self.assertEqual(map_health_sport_type("traditionalStrengthTraining"), "WeightTraining")
+        self.assertEqual(map_health_sport_type("hiit"), "HighIntensityIntervalTraining")
+
+    def test_unknown_types_fall_back_to_workout(self):
+        from .health import map_health_sport_type
+        for unknown in ("underwater_hockey", "Basketball", "", None, "not-a-real-sport"):
+            with self.subTest(unknown=unknown):
+                self.assertEqual(map_health_sport_type(unknown), "Workout")
+
+    def test_already_ours_passes_through(self):
+        from .health import map_health_sport_type
+        self.assertEqual(map_health_sport_type("Pickleball"), "Pickleball")
+
+
+class HealthWorkoutMappingTests(TestCase):
+    """OW workout payload -> Workout field values."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.user = CustomUser.objects.create_user(
+            email="map@example.com", password="test-pw", first_name="Map", last_name="",
+        )
+
+    def _payload(self, **overrides):
+        payload = {
+            "id": "9f1c2a34-0000-4aaa-bbbb-111122223333",
+            "type": "running",
+            "name": "Morning Run",
+            "start_time": "2026-08-01T06:00:00Z",
+            "end_time": "2026-08-01T06:30:00Z",
+            "duration_seconds": 1800,
+            "calories_kcal": 320.0,
+            "distance_meters": 5000.0,
+            "avg_heart_rate_bpm": 150,
+            "source": {"name": "Health Connect"},
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_full_mapping(self):
+        from .health import workout_to_props
+        props = workout_to_props(self.user, self._payload())
+        self.assertEqual(props["health_id"], "9f1c2a34-0000-4aaa-bbbb-111122223333")
+        self.assertEqual(props["sport_type"], "Run")
+        self.assertEqual(props["duration"], datetime.timedelta(seconds=1800))
+        self.assertEqual(props["distance"], 5.0)
+        self.assertEqual(props["kcal"], 320)
+        self.assertEqual(props["intensity_category"], 3)
+        self.assertEqual(props["start_datetime"].isoformat(), "2026-08-01T06:00:00+00:00")
+
+    def test_duration_derived_from_end_time(self):
+        from .health import workout_to_props
+        props = workout_to_props(self.user, self._payload(duration_seconds=None))
+        self.assertEqual(props["duration"], datetime.timedelta(seconds=1800))
+
+    def test_missing_id_start_or_duration_returns_none(self):
+        from .health import workout_to_props
+        self.assertIsNone(workout_to_props(self.user, self._payload(id=None)))
+        self.assertIsNone(workout_to_props(self.user, self._payload(start_time=None)))
+        self.assertIsNone(workout_to_props(self.user, self._payload(duration_seconds=None, end_time=None)))
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class HealthConnectorTests(TestCase):
+    """The Open Wearables health connector: source resolution, sync
+    dedup, and the link/unlink views."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            email="health@example.com", password="test-pw", first_name="Hea", last_name="",
+        )
+        self.start = timezone.now().replace(microsecond=0) - datetime.timedelta(hours=5)
+        self.duration = datetime.timedelta(minutes=30)
+
+    def _link_health(self):
+        self.user.health_user_id = "11111111-2222-3333-4444-555555555555"
+        self.user.save()
+
+    def _ow_payload(self, **overrides):
+        payload = {
+            "id": "9f1c2a34-0000-4aaa-bbbb-111122223333",
+            "type": "running",
+            "start_time": self.start.isoformat().replace("+00:00", "Z"),
+            "end_time": (self.start + self.duration).isoformat().replace("+00:00", "Z"),
+            "duration_seconds": self.duration.total_seconds(),
+            "calories_kcal": 300.0,
+            "distance_meters": 4800.0,
+            "avg_heart_rate_bpm": 140,
+        }
+        payload.update(overrides)
+        return payload
+
+    # ---- source resolution -------------------------------------------
+
+    def test_only_health_linked(self):
+        self._link_health()
+        self.assertEqual(self.user.get_activity_source(), "health")
+
+    def test_health_and_strava_without_choice_prefers_strava(self):
+        self.user.strava_refresh_token = "gAAAAAencrypted"
+        self._link_health()
+        self.assertEqual(self.user.get_activity_source(), "strava")
+
+    def test_health_explicit_choice_wins(self):
+        self.user.garmin_tokens_enc = "gAAAAAencrypted"
+        self._link_health()
+        self.user.activity_source = "health"
+        self.user.save()
+        self.assertEqual(self.user.get_activity_source(), "health")
+
+    def test_health_task_skips_when_other_source_selected(self):
+        from .health import sync_health
+        self.user.strava_refresh_token = "gAAAAAencrypted"
+        self._link_health()
+        result = sync_health(user__id=self.user.id)
+        self.assertEqual(result.get("skipped"), "health is not the selected activity source")
+
+    # ---- sync dedup ----------------------------------------------------
+
+    def test_sync_creates_and_dedups_by_health_id(self):
+        from .health import _sync_user_workouts
+        self._link_health()
+        with mock.patch("custom_user.health._fetch_workouts", return_value=[self._ow_payload()]):
+            first = _sync_user_workouts(self.user)
+            second = _sync_user_workouts(self.user)
+
+        self.assertEqual(first["created"], 1)
+        self.assertEqual(second["created"], 0)
+        self.assertEqual(second["updated"], 1)
+        self.assertEqual(Workout.objects.filter(health_id="9f1c2a34-0000-4aaa-bbbb-111122223333").count(), 1)
+
+    def test_sync_skips_cross_provider_duplicate(self):
+        from .health import _sync_user_workouts
+        Workout.objects.create(
+            user=self.user, sport_type="Run", start_datetime=self.start,
+            duration=self.duration, intensity_category=2, strava_id=112233,
+        )
+        self._link_health()
+        with mock.patch("custom_user.health._fetch_workouts", return_value=[self._ow_payload()]):
+            result = _sync_user_workouts(self.user)
+
+        self.assertEqual(result["created"], 0)
+        self.assertEqual(result["duplicates_skipped"], 1)
+        self.assertEqual(Workout.objects.filter(user=self.user).count(), 1)
+
+    # ---- link / unlink views -------------------------------------------
+
+    def test_link_view_unconfigured_returns_503(self):
+        from .health import HealthConfigError
+        self.client.force_authenticate(self.user)
+        with mock.patch("custom_user.health.generate_invitation", side_effect=HealthConfigError):
+            response = self.client.post("/api/health/link/")
+        self.assertEqual(response.status_code, 503)
+
+    def test_link_view_returns_invitation_and_sets_source(self):
+        # The mocked generate_invitation stands in for the real one,
+        # which also creates the OW user and stores health_user_id.
+        self.user.health_user_id = "11111111-2222-3333-4444-555555555555"
+        self.user.save()
+        self.client.force_authenticate(self.user)
+        invitation = {"code": "ABC-DEF", "host": "https://health.example.com", "expires_at": "2026-08-05T00:00:00Z"}
+        with mock.patch("custom_user.health.generate_invitation", return_value=invitation), \
+                mock.patch("custom_user.health.sync_health") as sync_task:
+            response = self.client.post("/api/health/link/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["code"], "ABC-DEF")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.activity_source, "health")
+        # Health is the only linked provider -> initial import is queued.
+        sync_task.delay.assert_called_once()
+
+    def test_link_view_no_initial_import_when_other_source_active(self):
+        self.user.strava_refresh_token = "gAAAAAencrypted"
+        self.user.activity_source = "strava"
+        self.user.save()
+        self.client.force_authenticate(self.user)
+        invitation = {"code": "ABC-DEF", "host": "https://health.example.com", "expires_at": None}
+        with mock.patch("custom_user.health.generate_invitation", return_value=invitation), \
+                mock.patch("custom_user.health.sync_health") as sync_task:
+            response = self.client.post("/api/health/link/")
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        # Strava stays the source; linking a second provider never flips it.
+        self.assertEqual(self.user.activity_source, "strava")
+        sync_task.delay.assert_not_called()
+
+    def test_unlink_clears_fields_and_stale_source(self):
+        self._link_health()
+        self.user.activity_source = "health"
+        self.user.health_last_synced_at = timezone.now()
+        self.user.save()
+        self.client.force_authenticate(self.user)
+
+        response = self.client.post("/api/health/unlink/")
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.health_user_id)
+        self.assertIsNone(self.user.health_last_synced_at)
+        self.assertIsNone(self.user.activity_source)
+
+    def test_sync_view_blocked_when_other_source_selected(self):
+        self.user.strava_refresh_token = "gAAAAAencrypted"
+        self._link_health()
+        self.user.activity_source = "strava"
+        self.user.save()
+        self.client.force_authenticate(self.user)
+
+        response = self.client.get("/api/health/sync/")
+        self.assertEqual(response.status_code, 400)

@@ -157,6 +157,9 @@ class Workout(models.Model):
 
     garmin_id = models.CharField(max_length=40, unique=True, null=True)
 
+    # Apple Health / Health Connect workout id (Open Wearables UUID).
+    health_id = models.CharField(max_length=40, unique=True, null=True)
+
     @property
     def duration_seconds(self):
         return self.duration.seconds
@@ -313,4 +316,6 @@ def find_duplicate_workout(user, start_datetime, duration, provider=None):
         qs = qs.filter(strava_id__isnull=True)
     elif provider == 'garmin':
         qs = qs.filter(garmin_id__isnull=True)
+    elif provider == 'health':
+        qs = qs.filter(health_id__isnull=True)
     return qs.order_by('start_datetime').first()

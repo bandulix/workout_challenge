@@ -326,6 +326,11 @@ STRAVA_CLIENT_SECRET = os.environ.get("STRAVA_CLIENT_SECRET", "ReplaceWithClient
 STRAVA_LIMIT_15MIN = int(os.environ.get("STRAVA_LIMIT_15MIN", 100))
 STRAVA_LIMIT_DAY = int(os.environ.get("STRAVA_LIMIT_DAY", 1000))
 
+# Health (Open Wearables): Apple Health / Health Connect connector.
+# Both are required to enable it; Site Settings can override at runtime.
+HEALTH_BASE_URL = os.environ.get("HEALTH_BASE_URL", "")
+HEALTH_API_KEY = os.environ.get("HEALTH_API_KEY", "")
+
 
 # Sentry
 if (sentry_sdk_url := os.environ.get("SENTRY_DSN", None)) is not None:

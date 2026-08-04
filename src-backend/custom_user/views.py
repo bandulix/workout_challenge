@@ -537,3 +537,103 @@ class SyncGarminView(APIView):
 
         return Response({"message": f"Successfully synced Garmin ({result.get('created', 0)} new activities)."},
                         status=status.HTTP_200_OK)
+
+
+class LinkHealthView(APIView):
+    """Link the user to the Open Wearables instance (Apple/Google Health).
+
+    Creates the OW user on first call and always returns a fresh
+    single-use invitation code: the athlete enters host + code in the
+    health app, which then pushes Apple Health / Health Connect workouts
+    to the instance in the background.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .health import (
+            HealthConfigError,
+            HealthUnavailableError,
+            generate_invitation,
+            sync_health,
+        )
+
+        user = request.user
+        try:
+            invitation = generate_invitation(user)
+        except HealthConfigError:
+            return Response({"message": "The Health connector is not configured on this server (Site Settings -> Health)."},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except HealthUnavailableError:
+            logger.info("Open Wearables unreachable during health link for user %s", user.pk, exc_info=True)
+            return Response({"message": "Could not reach the health sync server - please try again later."},
+                            status=status.HTTP_502_BAD_GATEWAY)
+
+        # The first linked provider becomes the activity source; linking
+        # another provider never changes it (switched in the settings).
+        if not user.activity_source:
+            user.activity_source = 'health'
+            user.save(update_fields=['activity_source'])
+
+        # Initial import of the last ~6 weeks in the background - only
+        # when Health is the user's activity source (otherwise every
+        # activity that also exists in the other ecosystem would double).
+        if user.get_activity_source() == 'health':
+            try:
+                sync_health.delay(user__id=user.id, start_datetime=timezone.now() - datetime.timedelta(days=43))
+            except Exception as exc:  # noqa: BLE001 - linkage itself succeeded
+                logger.warning("Health linked but initial sync could not be queued for user %s: %s", user.id, exc)
+
+        return Response({
+            "message": "Health account linked. Enter the connection code in the health app on your phone.",
+            "code": invitation["code"],
+            "host": invitation["host"],
+            "expires_at": invitation["expires_at"],
+        }, status=status.HTTP_200_OK)
+
+
+class UnlinkHealthView(APIView):
+    """Unlink the Open Wearables user (workouts already imported are kept)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        user.health_user_id = None
+        user.health_last_synced_at = None
+        # Never leave the selector pointing at an unlinked provider.
+        if user.activity_source == 'health':
+            user.activity_source = None
+        user.save()
+        return Response({"message": "Successfully unlinked Health."}, status=status.HTTP_200_OK)
+
+
+class SyncHealthView(APIView):
+    """Manually re-sync recent Apple/Google Health workouts (hourly cap)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .health import HealthConfigError, HealthUnavailableError, sync_health
+
+        user = request.user
+        if not user.health_user_id:
+            return Response({"message": "Health is not linked."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if user.get_activity_source() != 'health':
+            return Response({"message": "Another provider is your selected activity source - Health import is disabled so activities don't get doubled. You can switch the source in the personal settings."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if user.health_last_synced_at and user.health_last_synced_at > (timezone.now() - datetime.timedelta(minutes=59)):
+            return Response({"message": "Too many requests! You can only request a Health sync every 60 minutes."},
+                            status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        try:
+            result = sync_health(user__id=user.id)
+        except HealthConfigError:
+            return Response({"message": "The Health connector is not configured on this server."},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except HealthUnavailableError:
+            logger.info("Open Wearables unreachable during health sync for user %s", user.pk, exc_info=True)
+            return Response({"message": "Could not reach the health sync server - please try again later."},
+                            status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response({"message": f"Successfully synced Health ({result.get('created', 0)} new activities)."},
+                        status=status.HTTP_200_OK)

@@ -14,6 +14,7 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
     llm_api_key_masked = serializers.CharField(read_only=True)
     strava_client_secret_masked = serializers.CharField(read_only=True)
     email_host_password_masked = serializers.CharField(read_only=True)
+    health_api_key_masked = serializers.CharField(read_only=True)
 
     class Meta:
         model = SiteSettings
@@ -32,6 +33,10 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
             "strava_client_secret_masked",
             "strava_limit_15min",
             "strava_limit_day",
+            # Health (Open Wearables)
+            "health_base_url",
+            "health_api_key",
+            "health_api_key_masked",
             # Email
             "email_host",
             "email_port",
@@ -50,4 +55,5 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
             "llm_api_key": {"write_only": True, "required": False, "allow_blank": True},
             "strava_client_secret": {"write_only": True, "required": False, "allow_blank": True},
             "email_host_password": {"write_only": True, "required": False, "allow_blank": True},
+            "health_api_key": {"write_only": True, "required": False, "allow_blank": True},
         }
