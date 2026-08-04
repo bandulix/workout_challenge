@@ -77,6 +77,34 @@ docker compose up -d    # pulls the pre-built image - no local build needed
 
 The stack starts nginx (app on port 80), Django/gunicorn, Celery worker + beat, Redis and Postgres. In production set `HOSTS` / `MAIN_HOST` to your public URL and `DEBUG=false`. Migrations and static files are handled automatically at container start.
 
+**Reverse proxy (production on a VPS)** — bind the app to localhost only and terminate TLS in front, e.g. `APP_BIND=127.0.0.1` `APP_PORT=8080` in `.env`, then point your proxy at it. Complete nginx example (app + optional Open Wearables for the health connector):
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name workout.your-domain.com;
+    # ssl_certificate / ssl_certificate_key ...
+
+    # The app itself (web UI + API)
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Optional: Open Wearables (health profile) - phones must reach it.
+    # Alternative: give it its own server_name (health.your-domain.com).
+    location /health/ {
+        proxy_pass http://127.0.0.1:8001/;   # trailing slash strips the prefix
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Matching `.env` entries: `MAIN_HOST=https://workout.your-domain.com`, `HOSTS=https://workout.your-domain.com,https://localhost` (the `https://localhost` origin is needed by the Android app), and for the health connector `HEALTH_PUBLIC_URL=https://workout.your-domain.com/health` (or the subdomain variant — see [Apple / Google Health](#apple--google-health-open-wearables)).
+
 The pre-built multi-arch image (amd64 + arm64) comes from [`ghcr.io/bandulix/workout_challenge`](https://github.com/bandulix/workout_challenge/pkgs/container/workout_challenge) and is rebuilt on every release. Use `docker compose up -d --build` to build from source instead (e.g. after changing code). *(The `vanalmsick/workout_challenge` image on DockerHub ships the original upstream app, not this fork.)*
 
 ## AI Drill Instructor
