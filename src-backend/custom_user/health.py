@@ -104,7 +104,9 @@ def generate_invitation(user) -> dict:
     return {
         "code": invitation["code"],
         "expires_at": invitation.get("expires_at"),
-        "host": resolve_health_settings()["base_url"],
+        # The phone-facing address (public_url), not necessarily the
+        # internal one the backend polls.
+        "host": resolve_health_settings()["public_url"],
     }
 
 

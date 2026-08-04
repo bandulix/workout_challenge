@@ -35,6 +35,7 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
             "strava_limit_day",
             # Health (Open Wearables)
             "health_base_url",
+            "health_public_url",
             "health_api_key",
             "health_api_key_masked",
             # Email

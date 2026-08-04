@@ -118,10 +118,11 @@ docker compose exec -w /workout_challenge/src-backend workoutchallenge python ma
 - VAPID keys are auto-generated on first start (`DATA_DIR/vapid.json` — don't lose it) or pinned via env vars.
 
 ## Apple / Google Health (Open Wearables)
-Apple HealthKit and Google Health Connect keep workouts **on the phone** — there is no cloud API any server could poll. The connector therefore works in two parts:
+Apple HealthKit and Google Health Connect keep workouts **on the phone** — there is no cloud API any server could poll. This stack therefore bundles a full [Open Wearables](https://github.com/the-momentum/open-wearables) instance (MIT, self-hosted) as an **opt-in compose profile** — same `docker-compose.yml`, nothing separate to deploy:
 
-1. **Deploy Open Wearables** (MIT, self-hosted) beside this stack — follow its own quickstart (`git clone https://github.com/the-momentum/open-wearables` → `docker compose up -d`). Create an API key in its developer portal (or via `POST /api/v1/auth/login` + `POST /api/v1/api-keys`).
-2. **Point this app at it**: set `HEALTH_BASE_URL` + `HEALTH_API_KEY` in `.env` (or later in **Site Settings → Health**, DB wins over env). If it shares this compose network, the base URL is simply the service name, e.g. `http://openwearables:8000`.
+1. In `.env`: set `OW_POSTGRES_PASSWORD` and `HEALTH_PUBLIC_URL` (the address athletes' **phones** must reach — `http://<server-ip>:8001` with `OW_BIND=0.0.0.0` on a trusted LAN, or `https://health.your-domain.com` reverse-proxied to `127.0.0.1:8001`).
+2. `docker compose --profile health up -d` — the first start builds the Open Wearables image from a pinned upstream commit.
+3. Mint the API key once (two `curl` calls, printed in `.env.example`) and paste it into `HEALTH_API_KEY` — or set it later in **Site Settings → Health** (DB wins over env). The backend polls `HEALTH_BASE_URL`, which already defaults to the internal `http://openwearables:8000`.
 
 Athletes then open **Settings → Apple / Google Health → Connect Health App**, which shows a single-use connection code; they enter host + code in the health app on their phone (Open Wearables example/official app, or any app built with its SDK), and workouts start flowing — hourly poll, plus a manual **Re-Sync** button on Home. The activity-source selector (Settings) decides which provider imports when several are linked, and the cross-provider duplicate guard still applies.
 

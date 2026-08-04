@@ -90,10 +90,13 @@ services:
       - GARMIN_TOKEN_KEY=${GARMIN_TOKEN_KEY:-}
 
       # --- Health (Open Wearables: Apple Health / Health Connect) ---
-      # Base URL of your Open Wearables instance + an API key from its
-      # developer portal. Both empty = the Health connector is disabled
-      # and the settings UI hides it. See README ("Apple / Google Health").
-      - HEALTH_BASE_URL=${HEALTH_BASE_URL:-}
+      # The `openwearables` service below (compose profile "health") is
+      # reachable internally at http://openwearables:8000 - the default
+      # here. Only the API key is needed to enable the connector.
+      # HEALTH_PUBLIC_URL is the address shown to phones in the connection
+      # code (they must reach it!) - falls back to HEALTH_BASE_URL.
+      - HEALTH_BASE_URL=${HEALTH_BASE_URL:-http://openwearables:8000}
+      - HEALTH_PUBLIC_URL=${HEALTH_PUBLIC_URL:-}
       - HEALTH_API_KEY=${HEALTH_API_KEY:-}
 
       # --- Email (SMTP) ---
@@ -178,6 +181,124 @@ services:
       timeout: 5s
       retries: 5
 
+  # ---------------------------------------------------------------------
+  # Open Wearables (Apple Health / Health Connect import) - OPT-IN.
+  # Start with:  docker compose --profile health up -d
+  # The image is built from the pinned upstream commit (no official image
+  # is published). The workoutchallenge service reaches the API internally
+  # at http://openwearables:8000 (see HEALTH_BASE_URL above); phones need
+  # it via OW_PORT/reverse proxy (see .env.example).
+  # ---------------------------------------------------------------------
+  openwearables-db:
+    profiles: ["health"]
+    image: postgres:15
+    container_name: workoutchallenge-openwearables-db
+    environment:
+      - POSTGRES_DB=open-wearables
+      - POSTGRES_USER=open-wearables
+      - POSTGRES_PASSWORD=${OW_POSTGRES_PASSWORD:?OW_POSTGRES_PASSWORD env var is required - see .env.example}
+    # No `ports:` block - only reachable over the internal compose network.
+    volumes:
+      - openwearables_db_data:/var/lib/postgresql/data
+      - ./scripts/ow-create-svix-db.sql:/docker-entrypoint-initdb.d/ow-create-svix-db.sql:ro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U open-wearables -d open-wearables" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  openwearables-redis:
+    profiles: ["health"]
+    image: redis:7-alpine
+    container_name: workoutchallenge-openwearables-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  openwearables:
+    profiles: ["health"]
+    container_name: workoutchallenge-openwearables
+    # No published image exists - build from the pinned upstream commit
+    # (reviewed for this integration; bump deliberately).
+    build: https://github.com/the-momentum/open-wearables.git#27ccd876f666b35425d5a5d02bccf1f3ac637d28:backend
+    image: workoutchallenge-openwearables:latest
+    pull_policy: build
+    command: scripts/start/app.sh
+    environment:
+      - ENVIRONMENT=production
+      - DB_HOST=openwearables-db
+      - DB_PORT=5432
+      - DB_NAME=open-wearables
+      - DB_USER=open-wearables
+      - DB_PASSWORD=${OW_POSTGRES_PASSWORD:?OW_POSTGRES_PASSWORD env var is required - see .env.example}
+      - REDIS_HOST=openwearables-redis
+      - REDIS_PORT=6379
+      # Initial developer login (used once to mint the API key for
+      # HEALTH_API_KEY). Defaults the password to SECRET_KEY - override
+      # with OW_ADMIN_EMAIL / OW_ADMIN_PASSWORD.
+      - ADMIN_EMAIL=${OW_ADMIN_EMAIL:-admin@localhost}
+      - ADMIN_PASSWORD=${OW_ADMIN_PASSWORD:-${SECRET_KEY:?SECRET_KEY env var is required}}
+    ports:
+      # Phones must reach this API - either directly (OW_BIND=0.0.0.0 on a
+      # trusted LAN) or via your reverse proxy pointing at 127.0.0.1:8001.
+      - "${OW_BIND:-127.0.0.1}:${OW_PORT:-8001}:8000"
+    depends_on:
+      openwearables-db:
+        condition: service_healthy
+      openwearables-redis:
+        condition: service_started
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  openwearables-worker:
+    profiles: ["health"]
+    container_name: workoutchallenge-openwearables-worker
+    build: https://github.com/the-momentum/open-wearables.git#27ccd876f666b35425d5a5d02bccf1f3ac637d28:backend
+    image: workoutchallenge-openwearables:latest
+    pull_policy: build
+    command: scripts/start/worker.sh
+    environment:
+      - ENVIRONMENT=production
+      - DB_HOST=openwearables-db
+      - DB_PORT=5432
+      - DB_NAME=open-wearables
+      - DB_USER=open-wearables
+      - DB_PASSWORD=${OW_POSTGRES_PASSWORD:?OW_POSTGRES_PASSWORD env var is required - see .env.example}
+      - REDIS_HOST=openwearables-redis
+      - REDIS_PORT=6379
+    depends_on:
+      - openwearables
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  openwearables-beat:
+    profiles: ["health"]
+    container_name: workoutchallenge-openwearables-beat
+    build: https://github.com/the-momentum/open-wearables.git#27ccd876f666b35425d5a5d02bccf1f3ac637d28:backend
+    image: workoutchallenge-openwearables:latest
+    pull_policy: build
+    command: scripts/start/beat.sh
+    environment:
+      - ENVIRONMENT=production
+      - DB_HOST=openwearables-db
+      - DB_PORT=5432
+      - DB_NAME=open-wearables
+      - DB_USER=open-wearables
+      - DB_PASSWORD=${OW_POSTGRES_PASSWORD:?OW_POSTGRES_PASSWORD env var is required - see .env.example}
+      - REDIS_HOST=openwearables-redis
+      - REDIS_PORT=6379
+    depends_on:
+      - openwearables
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
 volumes:
   postgres_data:
   django_data:
+  openwearables_db_data:

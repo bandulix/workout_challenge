@@ -139,6 +139,7 @@ export default function SiteSettingsForm({setModalState}) {
                 strava_limit_15min: settings.strava_limit_15min ?? "",
                 strava_limit_day: settings.strava_limit_day ?? "",
                 health_base_url: settings.health_base_url || "",
+                health_public_url: settings.health_public_url || "",
                 email_host: settings.email_host || "",
                 email_port: settings.email_port ?? "",
                 email_host_user: settings.email_host_user || "",
@@ -318,6 +319,16 @@ export default function SiteSettingsForm({setModalState}) {
                                className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.health_base_url || ""}
                                onChange={(e) => setField("health_base_url", e.target.value)}
+                               placeholder="https://health.your-domain.com"/>
+                    </Field>
+                </div>
+                <div className="px-4 w-full sm:w-1/2">
+                    <Field label="Public URL (phones)" error={fieldErrors.health_public_url}
+                           hint="Shown in the connection code - the address athletes' phones must reach. Leave blank to use the Base URL.">
+                        <input type="text"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               value={values.health_public_url || ""}
+                               onChange={(e) => setField("health_public_url", e.target.value)}
                                placeholder="https://health.your-domain.com"/>
                     </Field>
                 </div>
