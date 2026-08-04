@@ -1,10 +1,12 @@
 #!/bin/bash
-# Build the Workout Challenge Android APK for THIS deployment.
+# Build the Workout Challenge Android APK.
 #
-# The APK is part of the full stack: it reads the server address from
-# the deployment's own .env (MAIN_HOST), so the app always knows which
-# server to talk to - no manual address entry on the phone, no rebuild
-# guesswork.
+# Two supported shapes:
+#   - per-deployment (MAIN_HOST set in .env): the server address is
+#     baked in as the pre-filled default - the phone just confirms it.
+#   - generic (MAIN_HOST unset): one apk works on every instance; the
+#     app asks for the server address once on first start (an APK
+#     cannot know where it was downloaded from).
 #
 # Prerequisites (once per build machine):
 #   - JDK 21 (e.g. ~/jdk21) and Android SDK platform-36 (e.g. ~/Android/Sdk)
@@ -25,8 +27,8 @@ if [ ! -f .env ]; then
 fi
 MAIN_HOST="$(grep -E '^MAIN_HOST=' .env | tail -1 | cut -d= -f2-)"
 if [ -z "$MAIN_HOST" ]; then
-    echo "ERROR: MAIN_HOST is not set in .env - the APK would not know its server." >&2
-    exit 1
+    echo "NOTE: MAIN_HOST is not set in .env - building a GENERIC apk."
+    echo "      The app will ask for the server address once on first start."
 fi
 # MAIN_HOST must allow the app's own origin (CORS with credentials):
 # make sure HOSTS in .env contains https://localhost.
