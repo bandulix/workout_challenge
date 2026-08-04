@@ -28,3 +28,25 @@ which are described in detail in the documents above.
 
 All modifications remain under the same Server Side Public License v1.
 Original work: Copyright © 2025 github.com/vanalmsick.
+
+
+Third-Party Components
+======================
+
+Open Wearables
+--------------
+This project can optionally deploy (docker compose profile "health") and
+communicate with **Open Wearables**, an unmodified, separate service built
+on the deployment machine from a pinned upstream commit:
+
+    Open Wearables
+    https://github.com/the-momentum/open-wearables
+    Copyright © 2025 Momentum
+    License: MIT (permissive)
+
+Open Wearables is NOT vendored into or distributed with this repository;
+the two programs interact over HTTP only and remain independent works.
+The MIT license text is available in the upstream repository (`LICENSE`).
+If you redistribute Open Wearables itself (e.g. a fork of its mobile
+example app or a published container image of it), you must include its
+MIT license and copyright notice, as that license requires.
