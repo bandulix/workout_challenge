@@ -1,4 +1,5 @@
 import {useEffect, useState} from "react";
+import {getServerUrl} from "./serverUrl";
 
 // Authenticated image loader for media that is NOT publicly reachable
 // (e.g. uploaded persona profile pictures - copyright-safe by design).
@@ -18,7 +19,9 @@ export function fetchProtectedImage(url) {
     }
     if (!cache.has(url)) {
         const token = localStorage.getItem("access_token");
-        const promise = fetch(url, {
+        // In the native app relative API paths must point at the
+        // configured server, not the WebView's localhost origin.
+        const promise = fetch(getServerUrl() + url, {
             headers: token ? {Authorization: `Bearer ${token}`} : {},
         })
             .then((res) => {

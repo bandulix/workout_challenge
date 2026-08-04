@@ -9,6 +9,7 @@ import {competitionsApi} from '../utils/reducers/competitionsSlice';
 import {statsApi} from '../utils/reducers/statsSlice';
 import {feedApi} from '../utils/reducers/feedSlice';
 import {drillInstructorApi} from '../utils/reducers/drillInstructorSlice';
+import {getServerUrl} from '../utils/serverUrl';
 import {PageWrapper} from "../utils/miscellaneous";
 import {sentryError} from "../utils/reducers/baseQueryWithReauth";
 
@@ -175,7 +176,7 @@ const LoadingForm = () => {
 
 const apiCreateAccount = async (email, first_name, last_name, gender, password, invite_token, join_code) => {
     try {
-        const response = await fetch((process.env.REACT_APP_BACKEND_URL || '') + '/api/user/', {
+        const response = await fetch(getServerUrl() + '/api/user/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -221,7 +222,7 @@ const apiCreateAccount = async (email, first_name, last_name, gender, password, 
 
 const apiLogin = async (email, password) => {
     try {
-        const response = await fetch((process.env.REACT_APP_BACKEND_URL || '') + '/api/token/', {
+        const response = await fetch(getServerUrl() + '/api/token/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -263,7 +264,7 @@ const apiLogin = async (email, password) => {
 
 const apiRequestNewPassword = async (email) => {
     try {
-        const response = await fetch((process.env.REACT_APP_BACKEND_URL || '') + '/api/password-reset/request/', {
+        const response = await fetch(getServerUrl() + '/api/password-reset/request/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -301,7 +302,7 @@ const apiRequestNewPassword = async (email) => {
 
 const apiSetNewPassword = async (uid, token, newPassword) => {
     try {
-        const response = await fetch((process.env.REACT_APP_BACKEND_URL || '') + '/api/password-reset/confirm/', {
+        const response = await fetch(getServerUrl() + '/api/password-reset/confirm/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -366,7 +367,7 @@ function sanitizeRedirect(value) {
 
 const apiRefreshToken = async (refreshToken) => {
     try {
-        const response = await fetch((process.env.REACT_APP_BACKEND_URL || '') + '/api/token/refresh/', {
+        const response = await fetch(getServerUrl() + '/api/token/refresh/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
