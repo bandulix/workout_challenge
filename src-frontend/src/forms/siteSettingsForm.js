@@ -129,7 +129,7 @@ export default function SiteSettingsForm({setModalState}) {
                 llm_api_key: "",
                 strava_client_secret: "",
                 email_host_password: "",
-                health_api_key: "",
+                health_developer_password: "",
                 // Plain fields.
                 llm_provider: settings.llm_provider || "custom",
                 llm_base_url: settings.llm_base_url || "",
@@ -140,6 +140,7 @@ export default function SiteSettingsForm({setModalState}) {
                 strava_limit_day: settings.strava_limit_day ?? "",
                 health_base_url: settings.health_base_url || "",
                 health_public_url: settings.health_public_url || "",
+                health_developer_email: settings.health_developer_email || "",
                 email_host: settings.email_host || "",
                 email_port: settings.email_port ?? "",
                 email_host_user: settings.email_host_user || "",
@@ -179,7 +180,7 @@ export default function SiteSettingsForm({setModalState}) {
         const payload = {...values};
 
         // Empty secrets are omitted so the server keeps the existing value.
-        for (const secret of ["llm_api_key", "strava_client_secret", "email_host_password", "health_api_key"]) {
+        for (const secret of ["llm_api_key", "strava_client_secret", "email_host_password", "health_developer_password"]) {
             if (!payload[secret]) delete payload[secret];
         }
         // Coerce empty numeric strings to null.
@@ -333,12 +334,22 @@ export default function SiteSettingsForm({setModalState}) {
                     </Field>
                 </div>
                 <div className="px-4 w-full sm:w-1/2">
-                    <Field label="API Key" error={fieldErrors.health_api_key}
-                           hint={<>Currently stored: <code>{settings?.health_api_key_masked || "(not set)"}</code></>}>
+                    <Field label="Developer Email" error={fieldErrors.health_developer_email}
+                           hint="The Open Wearables developer login the connector uses (its JWT works on all OW endpoints).">
+                        <input type="text"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               value={values.health_developer_email || ""}
+                               onChange={(e) => setField("health_developer_email", e.target.value)}
+                               placeholder="admin@example.com"/>
+                    </Field>
+                </div>
+                <div className="px-4 w-full sm:w-1/2">
+                    <Field label="Developer Password" error={fieldErrors.health_developer_password}
+                           hint={<>Currently stored: <code>{settings?.health_developer_password_masked || "(not set)"}</code></>}>
                         <input type="password" autoComplete="off"
                                className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
-                               value={values.health_api_key || ""}
-                               onChange={(e) => setField("health_api_key", e.target.value)}
+                               value={values.health_developer_password || ""}
+                               onChange={(e) => setField("health_developer_password", e.target.value)}
                                placeholder="leave blank to keep current"/>
                     </Field>
                 </div>

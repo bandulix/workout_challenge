@@ -58,20 +58,57 @@ def _ow_config():
     return cfg
 
 
-def _ow_request(method, path, **kwargs):
+def _developer_token(cfg, force_login=False):
+    """A developer JWT for the OW instance, cached until shortly before
+    its (server-configured, default 60 min) expiry. Developer auth works
+    on every OW endpoint - user management, data reads AND invitation
+    codes - so one credential pair is all the connector needs."""
+    from django.core.cache import cache
+    cache_key = f"health_developer_jwt_{cfg['base_url']}_{cfg['developer_email']}"
+    if not force_login:
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+    try:
+        response = requests.post(
+            f"{cfg['base_url']}/api/v1/auth/login",
+            data={"username": cfg["developer_email"], "password": cfg["developer_password"]},
+            timeout=HEALTH_HTTP_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise HealthUnavailableError("Could not reach the Open Wearables instance.") from exc
+    if response.status_code >= 400:
+        logger.warning("Open Wearables login failed with HTTP %s", response.status_code)
+        raise HealthUnavailableError("Open Wearables rejected the configured developer login.")
+    payload = response.json()
+    token = payload.get("access_token")
+    if not token:
+        raise HealthUnavailableError("Open Wearables login returned no token.")
+    ttl = max(int(payload.get("expires_in", 3600)) - 120, 60)
+    cache.set(cache_key, token, min(ttl, 3000))
+    return token
+
+
+def _ow_request(method, path, _retried=False, **kwargs):
     cfg = _ow_config()
+    token = _developer_token(cfg, force_login=_retried)
     try:
         response = requests.request(
             method,
             f"{cfg['base_url']}/api/v1{path}",
-            headers={"X-Open-Wearables-API-Key": cfg["api_key"]},
+            headers={"Authorization": f"Bearer {token}"},
             timeout=HEALTH_HTTP_TIMEOUT,
             **kwargs,
         )
     except requests.RequestException as exc:
         raise HealthUnavailableError("Could not reach the Open Wearables instance.") from exc
+    if response.status_code == 401 and not _retried:
+        # Expired/revoked token - log in once more and retry.
+        return _ow_request(method, path, _retried=True, **kwargs)
     if response.status_code == 404:
         return None
+    if response.status_code == 409:
+        return {"_conflict": True}
     if response.status_code >= 400:
         logger.warning("Open Wearables %s %s -> %s", method, path, response.status_code)
         raise HealthUnavailableError(f"Open Wearables answered HTTP {response.status_code}.")
@@ -79,7 +116,12 @@ def _ow_request(method, path, **kwargs):
 
 
 def ensure_health_user(user) -> str:
-    """Return the user's Open Wearables UUID, creating the OW user once."""
+    """Return the user's Open Wearables UUID, creating the OW user once.
+
+    A 409 on creation means the email already exists over there (e.g. our
+    DB was rebuilt while OW kept its data) - adopt that user's UUID
+    instead of failing.
+    """
     if user.health_user_id:
         return user.health_user_id
     created = _ow_request("POST", "/users", json={
@@ -87,6 +129,10 @@ def ensure_health_user(user) -> str:
         "last_name": user.last_name or None,
         "email": user.email or None,
     })
+    if created and created.get("_conflict"):
+        existing = _ow_request("GET", "/users", params={"email": user.email, "limit": 1})
+        items = (existing or {}).get("data") or (existing or {}).get("items") or []
+        created = items[0] if items else None
     if not created or not created.get("id"):
         raise HealthUnavailableError("Open Wearables did not return a user id.")
     user.health_user_id = str(created["id"])
