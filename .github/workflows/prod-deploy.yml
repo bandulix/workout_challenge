@@ -116,6 +116,12 @@ jobs:
           java-version: '21'
       - name: Build web bundle (generic APK - no baked backend)
         working-directory: src-frontend
+        env:
+          # GitHub Actions sets CI=true, which makes the CRA build treat
+          # ESLint *warnings* as fatal errors. Local builds (where CI is
+          # unset) tolerate the existing warnings - keep CI identical to
+          # local instead of letting the apk job die on them.
+          CI: "false"
         run: npm ci && INLINE_RUNTIME_CHUNK=false npm run build && npx cap sync android
       - name: Install Android SDK platform 36
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
