@@ -137,9 +137,14 @@ jobs:
       - name: Attach APK to the GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Rename BEFORE upload: gh's file#name syntax only sets the asset
+        # *label* - the asset name stays the file's basename, and
+        # update_apk_from_release.sh looks for exactly these names.
         run: |
+          cp src-frontend/android/app/build/outputs/apk/release/app-release.apk \
+             src-frontend/android/workout-challenge.apk
           gh release upload "${{ needs.autotag.outputs.out_tag }}" \
-            src-frontend/android/app/build/outputs/apk/release/app-release.apk#workout-challenge.apk \
+            src-frontend/android/workout-challenge.apk \
             src-frontend/android/apk-version.json \
             --clobber
 
