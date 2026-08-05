@@ -44,7 +44,16 @@ if [ -z "$REPO_SLUG" ] || ! [[ "$REPO_SLUG" =~ ^[^/]+/[^/]+$ ]]; then
 fi
 
 # --- stack must be running ----------------------------------------------
-if ! docker compose ps --status running 2>/dev/null | grep -q workoutchallenge; then
+# Don't hide compose's own errors behind "not running": a broken .env
+# (e.g. a missing required variable) makes EVERY compose command fail,
+# which looks exactly like a stopped stack if stderr is swallowed.
+if ! PS_OUT="$(docker compose ps --status running 2>&1)"; then
+    echo "ERROR: 'docker compose ps' failed - your .env is probably incomplete." >&2
+    echo "       Compose said:" >&2
+    echo "$PS_OUT" | head -5 | sed 's/^/       /' >&2
+    exit 1
+fi
+if ! grep -q workoutchallenge <<<"$PS_OUT"; then
     echo "ERROR: the stack is not running - start it first (docker compose up -d)." >&2
     exit 1
 fi
@@ -55,7 +64,10 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
     AUTH=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
 fi
 if [ "$TAG" = "latest" ]; then
-    API="https://api.github.com/repos/${REPO_SLUG}/releases/latest"
+    # Not releases/latest: the newest release may legitimately carry no
+    # APK (its apk CI job failed). Walk backwards to the newest release
+    # that HAS both assets instead of erroring on a broken one.
+    API="https://api.github.com/repos/${REPO_SLUG}/releases?per_page=10"
 else
     API="https://api.github.com/repos/${REPO_SLUG}/releases/tags/${TAG}"
 fi
@@ -69,24 +81,36 @@ curl -fsSL "${AUTH[@]}" "$API" -o "$TMP/release.json"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}" python3 - "$TMP/release.json" "$TMP" <<'EOF'
 import json, os, sys, urllib.request
 
-release = json.load(open(sys.argv[1]))
+data = json.load(open(sys.argv[1]))
 outdir = sys.argv[2]
 token = os.environ.get("GITHUB_TOKEN")
-wanted = ["workout-challenge.apk", "apk-version.json"]
-found = []
-for asset in release.get("assets", []):
+wanted = {"workout-challenge.apk", "apk-version.json"}
+
+# "latest" mode got a LIST of releases: pick the newest one carrying both
+# assets. Explicit-tag mode got a single release object: use it as-is.
+if isinstance(data, list):
+    release = next(
+        (r for r in data if wanted <= {a["name"] for a in r.get("assets", [])}),
+        None,
+    )
+    if release is None:
+        sys.exit("ERROR: none of the last 10 releases has workout-challenge.apk + "
+                 "apk-version.json attached - the 'apk' CI job seems broken.")
+else:
+    release = data
+    missing = wanted - {a["name"] for a in release.get("assets", [])}
+    if missing:
+        sys.exit(f"ERROR: release {release.get('tag_name')} has no {', '.join(sorted(missing))} attached - "
+                 f"did the 'apk' CI job succeed for that release?")
+
+for asset in release["assets"]:
     if asset["name"] in wanted:
         req = urllib.request.Request(asset["browser_download_url"])
         if token:
             req.add_header("Authorization", f"Bearer {token}")
         with urllib.request.urlopen(req) as r, open(os.path.join(outdir, asset["name"]), "wb") as f:
             f.write(r.read())
-        found.append(asset["name"])
-missing = [n for n in wanted if n not in found]
-if missing:
-    sys.exit(f"ERROR: release {release.get('tag_name')} has no {', '.join(missing)} attached - "
-             f"did the 'apk' CI job succeed for that release?")
-print(f"Downloaded {', '.join(found)} from release {release.get('tag_name')}")
+print(f"Downloaded {', '.join(sorted(wanted))} from release {release.get('tag_name')}")
 EOF
 
 # --- publish onto the running stack (volume-backed downloads dir) -------
