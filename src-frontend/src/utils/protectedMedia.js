@@ -1,13 +1,43 @@
 import {useEffect, useState} from "react";
-import {getServerUrl} from "./serverUrl";
+import {CapacitorHttp} from "@capacitor/core";
+import {getServerUrl, isNativeApp} from "./serverUrl";
 
 // Authenticated image loader for media that is NOT publicly reachable
 // (e.g. uploaded persona profile pictures - copyright-safe by design).
 // <img> tags can't send the JWT, so the file is fetched with the
-// Authorization header and rendered from an object URL. Fetches are
+// Authorization header and rendered from a local URL. Fetches are
 // deduplicated module-wide so N avatar components share one request.
 
-const cache = new Map(); // url -> Promise<objectURL | null>
+const cache = new Map(); // url -> Promise<localURL | null>
+
+// Browser/PWA: same-origin fetch, rendered from a blob: object URL.
+async function fetchBrowser(url, token) {
+    const res = await fetch(getServerUrl() + url, {
+        headers: token ? {Authorization: `Bearer ${token}`} : {},
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return URL.createObjectURL(await res.blob());
+}
+
+// Native app: the WebView's fetch is avoided entirely. CapacitorHttp goes
+// through native OkHttp (no CORS preflight, no WebView cookie/header
+// quirks - the same request curl makes), and the image is rendered from
+// a data: URL because blob: object URLs are unreliable inside the
+// Capacitor WebView with the https app scheme.
+async function fetchNative(url, token) {
+    const resp = await CapacitorHttp.get({
+        url: getServerUrl() + url,
+        headers: token ? {Authorization: `Bearer ${token}`} : {},
+        responseType: "blob",
+    });
+    if (resp.status >= 400) throw new Error(`HTTP ${resp.status}`);
+    return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(resp.data);
+    });
+}
 
 export function fetchProtectedImage(url) {
     // The URL comes from an API payload. The request carries the JWT, so
@@ -19,16 +49,7 @@ export function fetchProtectedImage(url) {
     }
     if (!cache.has(url)) {
         const token = localStorage.getItem("access_token");
-        // In the native app relative API paths must point at the
-        // configured server, not the WebView's localhost origin.
-        const promise = fetch(getServerUrl() + url, {
-            headers: token ? {Authorization: `Bearer ${token}`} : {},
-        })
-            .then((res) => {
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                return res.blob();
-            })
-            .then((blob) => URL.createObjectURL(blob))
+        const promise = (isNativeApp() ? fetchNative(url, token) : fetchBrowser(url, token))
             .catch(() => {
                 // Drop failed fetches so the next mount retries (e.g. once
                 // a fresh access token exists after a background refresh).
@@ -40,7 +61,7 @@ export function fetchProtectedImage(url) {
     return cache.get(url);
 }
 
-// Returns {src, failed}: src is the object URL once loaded (null while
+// Returns {src, failed}: src is the local URL once loaded (null while
 // loading or when url is null), failed flips true when the fetch did not
 // produce an image (caller falls back to default artwork).
 export function useProtectedImage(url) {
@@ -50,9 +71,9 @@ export function useProtectedImage(url) {
         if (!url) return;
         let alive = true;
         setState({src: null, failed: false});
-        fetchProtectedImage(url).then((objectUrl) => {
+        fetchProtectedImage(url).then((localUrl) => {
             if (!alive) return;
-            setState(objectUrl ? {src: objectUrl, failed: false} : {src: null, failed: true});
+            setState(localUrl ? {src: localUrl, failed: false} : {src: null, failed: true});
         });
         return () => {
             alive = false;

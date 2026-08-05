@@ -17,13 +17,15 @@ export function personaAvatarSrc(avatar) {
     return null;
 }
 
-// Only browser-minted object URLs (blob:) and same-origin relative paths
-// may ever reach <img src>. The persona payload is server data (and the
-// editor preview is a DOM-derived string), so anything else - e.g. a
+// Only browser-minted object URLs (blob:), image data URLs (the native
+// loader's rendering format) and same-origin relative paths may ever
+// reach <img src>. The persona payload is server data (and the editor
+// preview is a DOM-derived string), so anything else - e.g. a
 // protocol-relative //host or an exotic scheme - is refused outright.
 export function safeImageSrc(url) {
     if (typeof url !== "string") return null;
     if (url.startsWith("blob:")) return url;
+    if (url.startsWith("data:image/")) return url;
     if (url.startsWith("/") && !url.startsWith("//")) return url;
     return null;
 }
