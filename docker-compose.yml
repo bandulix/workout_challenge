@@ -244,6 +244,11 @@ services:
       # with OW_ADMIN_EMAIL / OW_ADMIN_PASSWORD.
       - ADMIN_EMAIL=${OW_ADMIN_EMAIL:-admin@example.com}
       - ADMIN_PASSWORD=${OW_ADMIN_PASSWORD:-${SECRET_KEY:?SECRET_KEY env var is required}}
+      # The Android app redeems invitation codes / syncs from its
+      # Capacitor WebView origin (https://localhost) - without a CORS
+      # allowance the WebView blocks the calls and the app shows
+      # "Failed to fetch". OW defaults to allowing NO origins.
+      - CORS_ORIGINS=${OW_CORS_ORIGINS:-https://localhost}
     ports:
       # Phones must reach this API - either directly (OW_BIND=0.0.0.0 on a
       # trusted LAN) or via your reverse proxy pointing at 127.0.0.1:8001.
