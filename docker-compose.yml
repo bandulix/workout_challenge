@@ -248,7 +248,9 @@ services:
       # Capacitor WebView origin (https://localhost) - without a CORS
       # allowance the WebView blocks the calls and the app shows
       # "Failed to fetch". OW defaults to allowing NO origins.
-      - CORS_ORIGINS=${OW_CORS_ORIGINS:-https://localhost}
+      # MUST be a JSON list: pydantic-settings JSON-decodes list-typed
+      # env vars - a bare "https://localhost" crashes OW at startup.
+      - 'CORS_ORIGINS=${OW_CORS_ORIGINS:-["https://localhost"]}'
     ports:
       # Phones must reach this API - either directly (OW_BIND=0.0.0.0 on a
       # trusted LAN) or via your reverse proxy pointing at 127.0.0.1:8001.
