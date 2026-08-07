@@ -137,6 +137,23 @@ function LogoutPage() {
 
 function WelcomePage() {
     const location = useLocation();
+    const navigate = useNavigate();
+
+    // Session gate: this is the app's cold-start URL (the APK always
+    // opens here). With a stored refresh token there is a live session -
+    // go straight to the dashboard instead of showing the landing page.
+    // The dashboard's API queries refresh the access token as needed, and
+    // a genuinely expired refresh token bounces back to /login via
+    // baseQueryWithReauth - which is the correct end state anyway.
+    // replace: the landing page stays out of the history stack, so the
+    // Android back button exits the app instead of bouncing back here.
+    useEffect(() => {
+        if (localStorage.getItem('refresh_token') !== null) {
+            navigate(`/dashboard/${location.search}`, {replace: true});
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     return (
         <BaseHome>
             <div>
@@ -387,6 +404,15 @@ const apiRefreshToken = async (refreshToken) => {
             console.log('Token Refresh Successful');
             const token = await response.json();
             localStorage.setItem('access_token', token.access);
+            // The backend rotates refresh tokens (ROTATE_REFRESH_TOKENS +
+            // BLACKLIST_AFTER_ROTATION): the token we just used is now
+            // dead and the response carries its replacement. Dropping it
+            // here (as this code used to) left a blacklisted token in
+            // localStorage, so the next refresh failed and every app
+            // reopen ended back on the login screen.
+            if (token.refresh) {
+                localStorage.setItem('refresh_token', token.refresh);
+            }
             return [true, undefined];
         } else {
             console.log('Token Refresh Error:', response.status, response.statusText);

@@ -31,6 +31,17 @@ async function fetchNative(url, token) {
         responseType: "blob",
     });
     if (resp.status >= 400) throw new Error(`HTTP ${resp.status}`);
+    // The native bridge returns binary bodies as a base64 STRING
+    // (HttpRequestHandler.readStreamAsBase64), not a Blob - feeding it to
+    // FileReader.readAsDataURL throws a TypeError and the avatar silently
+    // falls back to the placeholder. Build the data: URL directly. The
+    // Android encoder wraps lines (Base64.DEFAULT), so strip whitespace.
+    if (typeof resp.data === "string") {
+        const headers = resp.headers || {};
+        const contentType = headers["Content-Type"] || headers["content-type"] || "image/jpeg";
+        return `data:${contentType.split(";")[0].trim()};base64,${resp.data.replace(/\s/g, "")}`;
+    }
+    // Web implementation fallback: a real Blob goes through FileReader.
     return await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result);
