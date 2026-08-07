@@ -610,6 +610,13 @@ function RegisterPage() {
 // downloaded from, so the user tells it once (pre-filled when the APK
 // was built per-deployment with MAIN_HOST baked in). Saving reloads so
 // every resolver picks the value up.
+//
+// RENDERED OUTSIDE the login form, on purpose: when this <form> was
+// nested inside it, the submit event never crossed the inner form
+// boundary while bubbling (it stops propagating at the outer form), so
+// React's root-delegated onSubmit never fired - "Save & reload" did
+// nothing at all and the server address was never stored (reproduced in
+// headless Chromium).
 function ServerField() {
     const [url, setUrl] = useState(getServerUrl());
     const [editing, setEditing] = useState(!hasStoredServerUrl() && !(process.env.REACT_APP_BACKEND_URL || ""));
@@ -757,45 +764,49 @@ function LogInPage() {
                 {
                     isLoading ? <LoadingForm/> : (
 
-                        <form className="bg-ink-850/95 backdrop-blur border border-ink-700/60 shadow-card-dark rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}
-                              onSubmit={handleSubmit}>
-                            <div className="mb-4">
-                                <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="email">
-                                    Email
-                                </label>
-                                <input
-                                    className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="email" type="text" placeholder="Email" autoFocus="True" tabIndex="1"
-                                    required={true}/>
-                            </div>
-                            <div className="mb-6">
-                                <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="password">
-                                    Password
-                                </label>
-                                <input
-                                    className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="password" type="password" placeholder="******************" tabIndex="2"
-                                    required={true}/>
-                                <Link to={`/password/`} className="button italic text-sm text-volt-400 hover:text-volt-300"
-                                      tabIndex="3">
-                                    Forgot Password?
-                                </Link>
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <button
-                                    className="bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm transition focus:outline-none mr-2 sm:mr-16"
-                                    type="submit" tabIndex="4">
-                                    Sign In
-                                </button>
-                                <Link to={`/signup/${location.search}`}
-                                      className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300 ml-2"
-                                      tabIndex="5">
-                                    Create Account
-                                </Link>
-                            </div>
-                            <p className="text-red-500 text-xs italic mt-5">{errorMessage}</p>
+                        <div>
+                            <form className="bg-ink-850/95 backdrop-blur border border-ink-700/60 shadow-card-dark rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}
+                                  onSubmit={handleSubmit}>
+                                <div className="mb-4">
+                                    <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="email">
+                                        Email
+                                    </label>
+                                    <input
+                                        className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
+                                        id="email" type="text" placeholder="Email" autoFocus="True" tabIndex="1"
+                                        required={true}/>
+                                </div>
+                                <div className="mb-6">
+                                    <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="password">
+                                        Password
+                                    </label>
+                                    <input
+                                        className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
+                                        id="password" type="password" placeholder="******************" tabIndex="2"
+                                        required={true}/>
+                                    <Link to={`/password/`} className="button italic text-sm text-volt-400 hover:text-volt-300"
+                                          tabIndex="3">
+                                        Forgot Password?
+                                    </Link>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <button
+                                        className="bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm transition focus:outline-none mr-2 sm:mr-16"
+                                        type="submit" tabIndex="4">
+                                        Sign In
+                                    </button>
+                                    <Link to={`/signup/${location.search}`}
+                                          className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300 ml-2"
+                                          tabIndex="5">
+                                        Create Account
+                                    </Link>
+                                </div>
+                                <p className="text-red-500 text-xs italic mt-5">{errorMessage}</p>
+                            </form>
+                            {/* Must stay OUTSIDE the login form - nested forms
+                                break React's submit delegation (see ServerField). */}
                             <ServerField/>
-                        </form>
+                        </div>
                     )
                 }
             </div>
