@@ -23,6 +23,11 @@ export const competitionsApi = createApi({
             }),
             providesTags: (result, error, id) => [{type: 'Competition', id}],
         }),
+        // Site-wide per-activity-type point multipliers (admin-edited) -
+        // read by the challenge "How points work" view.
+        getPointsFactors: builder.query({
+            query: () => ({url: 'points-factors/', method: 'GET'}),
+        }),
         addCompetition: builder.mutation({
             query: (newCompetition) => ({
                 url: 'competition/',
@@ -52,6 +57,7 @@ export const competitionsApi = createApi({
 export const {
     useGetCompetitionsQuery,
     useGetCompetitionByIdQuery,
+    useGetPointsFactorsQuery,
     useAddCompetitionMutation,
     useUpdateCompetitionMutation,
     useDeleteCompetitionMutation,

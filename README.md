@@ -153,24 +153,13 @@ docker compose exec -w /workout_challenge/src-backend workoutchallenge python ma
 ## Apple / Google Health (Open Wearables)
 Apple HealthKit and Google Health Connect keep workouts **on the phone** — there is no cloud API any server could poll. This stack therefore bundles a full [Open Wearables](https://github.com/the-momentum/open-wearables) instance (MIT, self-hosted) as an **opt-in compose profile** — same `docker-compose.yml`, nothing separate to deploy:
 
-1. In `.env`: set `OW_POSTGRES_PASSWORD` and `HEALTH_PUBLIC_URL` (the address athletes' **phones** must reach — recommended: `https://workout.your-domain.com/health` via the same domain as the app, or `http://<server-ip>:8001` with `OW_BIND=0.0.0.0` on a trusted LAN).
+1. In `.env`: set `OW_POSTGRES_PASSWORD`. That's it — phones reach Open Wearables via the app's own domain by default (see below).
 2. `docker compose --profile health up -d` — the first start builds the Open Wearables image from a pinned upstream commit.
 3. Done — the connector logs into Open Wearables with the seeded admin developer (defaults `admin@example.com` / your `SECRET_KEY`, overridable via `OW_ADMIN_*` or Site Settings → Health); the backend reaches the API at the internal `http://openwearables:8000` by default.
 
 Athletes then open **Settings → Apple / Google Health → Connect Health App**, which shows a single-use connection code; they enter host + code in the health app on their phone (Open Wearables example/official app, or any app built with its SDK), and workouts start flowing — hourly poll, plus a manual **Re-Sync** button on Home. The activity-source selector (Settings) decides which provider imports when several are linked, and the cross-provider duplicate guard still applies.
 
-**Exposing Open Wearables to phones** — the address in `HEALTH_PUBLIC_URL` must be reachable from the internet. Two ways:
-
-- **Same domain, path-based (recommended):** serve OW under a path of your app domain, e.g. `https://workout.your-domain.com/health` — one domain, one certificate, nothing extra to set up in DNS. Add a route in your *outer* reverse proxy (the one in front of everything, not this container's nginx):
-  ```nginx
-  location /health/ {
-      proxy_pass http://127.0.0.1:8001/;   # trailing slash strips the /health prefix
-      proxy_set_header Host $host;
-      proxy_set_header X-Forwarded-Proto $scheme;
-  }
-  ```
-  and set `HEALTH_PUBLIC_URL=https://workout.your-domain.com/health` (no trailing slash). The backend always polls internally (`http://openwearables:8000`), so only the phone-side connection-code flow uses this address — verify it once on a real device before rolling out.
-- **Separate subdomain (zero-risk alternative):** `HEALTH_PUBLIC_URL=https://health.your-domain.com`, reverse-proxied to `127.0.0.1:8001` — no prefix rewriting anywhere, but needs its own DNS record and certificate.
+**How phones reach Open Wearables** — the container's nginx serves the OW API under the app's own domain at **`/health/`** (proxied to the `openwearables` container), and `HEALTH_PUBLIC_URL` defaults to `MAIN_HOST + /health`. One domain, one certificate, no extra proxy rules — your outer reverse proxy (if any) just keeps forwarding everything to the app. This also fixes the classic failure mode: a LAN IP or the internal docker hostname in `HEALTH_PUBLIC_URL` is unreachable from mobile data ("host not found" in the app), and plain-HTTP hosts get mixed-content-blocked by the HTTPS app. Only set `HEALTH_PUBLIC_URL` if you deliberately expose OW elsewhere (e.g. a dedicated `https://health.your-domain.com` via your own reverse proxy, no prefix rewriting then).
 
 **License:** Open Wearables is **MIT-licensed** (© 2025 Momentum) — permissive and compatible with this project's SSPL v1: it runs as a separate, unmodified service built from its pinned upstream source on your machine; nothing of it is vendored into this repository, so no obligations arise for this project's code. Attribution lives in [`NOTICE`](NOTICE). Should you ever fork its mobile example app or distribute a built image of it, keep its `LICENSE` file (with the MIT copyright notice) included, as MIT requires.
 

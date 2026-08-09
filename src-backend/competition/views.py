@@ -143,6 +143,24 @@ class IsAdmin(BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.is_staff)
 
 
+class PointsFactorsView(APIView):
+    """The effective per-activity-type point multipliers for every sport
+    type (site-wide, admin-edited via Site Settings). Any logged-in user
+    may read them - the challenge "How points work" view shows them for
+    transparency. Not secret: they only describe the public scoring."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from workouts.models import SPORT_TYPES
+        from .scorer import get_sport_factors, sport_factor
+
+        factors = get_sport_factors()
+        return Response({
+            "factors": {key: sport_factor(key, factors) for key, _label in SPORT_TYPES},
+        })
+
+
 class CeleryQueryView(APIView):
     permission_classes = [IsAdmin]
 

@@ -474,6 +474,61 @@ class CrossProviderDuplicateGuardTests(TestCase):
         self.assertEqual(Workout.objects.filter(user=self.user).count(), 1)
         self.assertFalse(Workout.objects.filter(garmin_id="112233").exists())
 
+    def test_garmin_sync_never_imports_step_summaries(self):
+        """All-day step records are not workouts: they must be skipped -
+        and a previously imported one must be removed again on the next
+        sync (steps are the separate 'Steps' sport type, gated per goal
+        by count_steps_as_walks)."""
+        from .garmin import _sync_user_activities
+        steps_activity = {
+            "activityId": 445566,
+            "activityType": {"typeKey": "steps"},
+            "startTimeGMT": self.start.isoformat().replace("+00:00", "Z"),
+            "duration": self.duration.total_seconds(),
+        }
+        client = mock.Mock()
+        client.get_activities_by_date.return_value = [steps_activity]
+
+        with mock.patch("custom_user.garmin.get_client_for_user", return_value=client):
+            result = _sync_user_activities(self.user)
+        self.assertEqual(result["created"], 0)
+        self.assertEqual(result["removed"], 0)
+        self.assertFalse(Workout.objects.filter(garmin_id="445566").exists())
+
+        # Simulate a junk row imported before the filter existed - the
+        # next sync must delete it (keeping the user's other rows).
+        junk = Workout.objects.create(
+            user=self.user, sport_type="Workout", start_datetime=self.start,
+            duration=self.duration, intensity_category=1, garmin_id="445566",
+        )
+        with mock.patch("custom_user.garmin.get_client_for_user", return_value=client):
+            result = _sync_user_activities(self.user)
+        self.assertEqual(result["removed"], 1)
+        self.assertFalse(Workout.objects.filter(pk=junk.pk).exists())
+        self.assertTrue(Workout.objects.filter(pk=self.existing.pk).exists())
+
+    def test_garmin_sync_still_imports_real_stepper_workouts(self):
+        """The skip list must not catch actual workouts with 'step' in
+        the type (stair stepper)."""
+        from .garmin import _sync_user_activities
+        # Distinct start time: the class fixture Run at self.start would
+        # otherwise trip the cross-provider duplicate guard.
+        stepper_start = self.start - datetime.timedelta(hours=26)
+        stepper = {
+            "activityId": 778899,
+            "activityType": {"typeKey": "stair_stepper"},
+            "startTimeGMT": stepper_start.isoformat().replace("+00:00", "Z"),
+            "duration": self.duration.total_seconds(),
+        }
+        client = mock.Mock()
+        client.get_activities_by_date.return_value = [stepper]
+
+        with mock.patch("custom_user.garmin.get_client_for_user", return_value=client):
+            result = _sync_user_activities(self.user)
+        self.assertEqual(result["created"], 1)
+        workout = Workout.objects.get(garmin_id="778899")
+        self.assertEqual(workout.sport_type, "StairStepper")
+
     def test_strava_sync_skips_duplicate_from_manual_entry(self):
         from . import strava as strava_module
         from workouts.models import Workout as WorkoutModel

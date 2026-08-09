@@ -22,7 +22,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 from rest_framework.routers import DefaultRouter
-from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView
+from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView, PointsFactorsView
 from workouts.views import WorkoutViewSet
 from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, ResetStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, LinkGarminView, UnlinkGarminView, SyncGarminView, LinkHealthView, UnlinkHealthView, SyncHealthView
 
@@ -93,6 +93,7 @@ urlpatterns = [
         path('celery/', CeleryQueryView.as_view(), name='celery-task-run'),
         path('drill-instructor/config/<int:pk>/test/', DrillInstructorTestMessageView.as_view(), name='drill-config-test'),
         path('site-settings/', SiteSettingsView.as_view(), name='site-settings'),
+        path('points-factors/', PointsFactorsView.as_view(), name='points-factors'),
         path('push/status/', PushStatusView.as_view(), name='push-status'),
         path('push/subscribe/', PushSubscribeView.as_view(), name='push-subscribe'),
         path('push/unsubscribe/', PushUnsubscribeView.as_view(), name='push-unsubscribe'),

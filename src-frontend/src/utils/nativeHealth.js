@@ -14,11 +14,22 @@ export function isNativeHealthAvailable() {
 // it against the public OW endpoint ourselves and hand the resulting SDK
 // tokens to the native SDK, then request permissions and start sync.
 export async function nativeHealthConnect({code, host}) {
-    const resp = await fetch(`${host}/api/v1/invitation-code/redeem`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({code}),
-    });
+    let resp;
+    try {
+        resp = await fetch(`${host}/api/v1/invitation-code/redeem`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({code}),
+        });
+    } catch (e) {
+        // TypeError = fetch never got a response: DNS ("host not found"),
+        // offline, or an HTTP host mixed-content-blocked under the HTTPS
+        // app. Name the cause so the fix is obvious.
+        throw new Error(
+            `The health server can't be reached (${host}). ` +
+            "Check your internet connection - or, if you run the server, its Health public address (Site Settings)."
+        );
+    }
     if (!resp.ok) {
         throw new Error("The connection code was rejected by the health server.");
     }

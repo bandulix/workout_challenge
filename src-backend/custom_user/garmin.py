@@ -171,6 +171,20 @@ def map_sport_type(activity: dict) -> str:
     return GARMIN_SPORT_MAP.get(type_key, "Workout")
 
 
+# Garmin feed entries that are NOT workouts: some devices/loggers push
+# all-day activity summaries (daily step counts) into the activity list.
+# They must never become Workout rows - steps are a separate concept here
+# (sport_type 'Steps' from manual entry / Health Connect, gated per goal
+# by count_steps_as_walks). Exact matches only, so real step-*workouts*
+# (stair stepper etc.) keep importing.
+GARMIN_NON_WORKOUT_TYPES = {"steps", "daily_steps", "all_day_steps", "step_tracking"}
+
+
+def is_non_workout_activity(activity: dict) -> bool:
+    type_key = ((activity.get("activityType") or {}).get("typeKey") or "").lower()
+    return type_key in GARMIN_NON_WORKOUT_TYPES
+
+
 def _parse_start(activity: dict):
     raw = activity.get("startTimeGMT") or activity.get("startTimeLocal")
     if not raw:
@@ -239,8 +253,20 @@ def _sync_user_activities(user, days_back=3) -> dict:
         raise GarminUnavailableError("Could not fetch activities from Garmin.") from exc
 
     existing_map = Workout.objects.filter(garmin_id__isnull=False).in_bulk(field_name='garmin_id')
-    created = updated = skipped = duplicates = 0
+    created = updated = skipped = duplicates = removed = 0
     for activity in activities or []:
+        if is_non_workout_activity(activity):
+            # Never import step summaries - and remove the row again if a
+            # previous sync already imported one (per-object delete so the
+            # points recalc trigger fires).
+            activity_id = activity.get("activityId")
+            stale = existing_map.get(str(activity_id)) if activity_id is not None else None
+            if stale is not None and stale.user_id == user.id:
+                stale.delete()
+                removed += 1
+            else:
+                skipped += 1
+            continue
         props = activity_to_workout_props(user, activity)
         if props is None:
             skipped += 1
@@ -264,7 +290,7 @@ def _sync_user_activities(user, days_back=3) -> dict:
 
     user.garmin_last_synced_at = timezone.now()
     user.save(update_fields=["garmin_last_synced_at"])
-    return {"fetched": len(activities or []), "created": created, "updated": updated, "skipped": skipped, "duplicates_skipped": duplicates}
+    return {"fetched": len(activities or []), "created": created, "updated": updated, "skipped": skipped, "duplicates_skipped": duplicates, "removed": removed}
 
 
 @app.task(bind=True, time_limit=60 * 30)

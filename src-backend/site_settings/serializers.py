@@ -39,6 +39,8 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
             "health_developer_email",
             "health_developer_password",
             "health_developer_password_masked",
+            # Points calculation
+            "points_sport_factors",
             # Email
             "email_host",
             "email_port",

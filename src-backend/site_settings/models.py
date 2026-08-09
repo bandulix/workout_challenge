@@ -61,6 +61,12 @@ class SiteSettings(models.Model):
     health_developer_email = models.CharField(max_length=200, blank=True, default="")
     health_developer_password = models.CharField(max_length=200, blank=True, default="")
 
+    # ---- Points calculation ------------------------------------------
+    # Per-activity-type multipliers on raw points, e.g. {"Swim": 1.5,
+    # "Walk": 0.8}. Missing keys mean 1.0 (neutral). Edited by the admin
+    # in Admin Settings; applied by competition.scorer._calculate_points_raw.
+    points_sport_factors = models.JSONField(default=dict, blank=True)
+
     # ---- SMTP / outbound email -----------------------------------------
     email_host = models.CharField(max_length=200, blank=True, default="")
     email_port = models.IntegerField(null=True, blank=True)
@@ -84,7 +90,17 @@ class SiteSettings(models.Model):
     def save(self, *args, **kwargs):
         """Force the table to hold exactly one row."""
         self.pk = 1
+        # Diff the sport point factors before overwriting so changed
+        # factors trigger a re-score of the affected points rows.
+        try:
+            old_factors = type(self).objects.get(pk=1).points_sport_factors or {}
+        except type(self).DoesNotExist:
+            old_factors = {}
         super().save(*args, **kwargs)
+        new_factors = self.points_sport_factors or {}
+        if old_factors != new_factors:
+            from competition.scorer import apply_sport_factor_changes
+            apply_sport_factor_changes(old_factors, new_factors)
 
     def delete(self, *args, **kwargs):
         # Refuse to delete the singleton; clear values instead so the
@@ -193,9 +209,11 @@ def resolve_health_settings():
     password = (solo.health_developer_password or getattr(settings, "HEALTH_DEVELOPER_PASSWORD", "") or "").strip()
     return {
         "base_url": base_url or None,
-        # The address phones use in the connection code - defaults to the
-        # server-side base URL (fine when one address serves both).
-        "public_url": public_url or base_url or None,
+        # The address phones use in the connection code. Default: the
+        # app's own domain via the nginx /health/ route - the internal
+        # base_url (docker hostname) is never reachable from a phone and
+        # produced "host not found" in the app.
+        "public_url": public_url or (settings.MAIN_HOST.rstrip("/") + "/health") or base_url or None,
         "developer_email": email or None,
         "developer_password": password or None,
         "enabled": bool(base_url and email and password),

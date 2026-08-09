@@ -5,6 +5,7 @@ import {
     ArrowDownToLine,
     ArrowUpToLine,
     DoorOpen,
+    Info,
     Megaphone,
     Settings,
     UserRoundPlus,
@@ -55,6 +56,7 @@ import {teamsApi} from "../utils/reducers/teamsSlice";
 import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
 import {useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
 import PersonaAvatar from "../components/PersonaAvatar";
+import PointsInfoModal from "../components/PointsInfo";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {timeAgo} from "../utils/time";
 
@@ -73,12 +75,13 @@ function HeaderIconButton({onClick, title, icon: Icon, danger = false, isLoading
 }
 
 
-function CompetitionHead({competition, feed, isOwner}) {
+function CompetitionHead({competition, feed, isOwner, goals, user}) {
 
     const [showEditCompetitionModal, setShowEditCompetitionModal] = useState(false);
     const [showInviteCompetitionModal, setShowInviteCompetitionModal] = useState(false);
     const [showTransferCompetitionModal, setShowTransferCompetitionModal] = useState(false);
     const [showDrillInstructorModal, setShowDrillInstructorModal] = useState(false);
+    const [showPointsInfoModal, setShowPointsInfoModal] = useState(false);
     const [countTotal, setCountTotal] = useState(0);
     const [countGroups, setCountGroups] = useState({});
 
@@ -137,6 +140,7 @@ function CompetitionHead({competition, feed, isOwner}) {
                         </div>
                     ))}
                     <div className="flex items-center shrink-0 ml-auto">
+                        <HeaderIconButton title="How Points Work" icon={Info} onClick={() => setShowPointsInfoModal(true)}/>
                         {
                             (isOwner) ? <HeaderIconButton title="Settings" icon={Settings} onClick={() => setShowEditCompetitionModal(competition.id)}/> :
                                 <HeaderIconButton title="Leave Competition" icon={DoorOpen} danger onClick={() => triggerLeaveCompetition()} isLoading={leaveIsLoading}/>
@@ -153,6 +157,7 @@ function CompetitionHead({competition, feed, isOwner}) {
             {(showInviteCompetitionModal) && <CompetitionInviteModal setModalState={setShowInviteCompetitionModal} competition={competition}/>}
             {(showTransferCompetitionModal) && <TransferOwnershipForm setModalState={setShowTransferCompetitionModal} competition={competition}/>}
             {(showDrillInstructorModal) && <DrillInstructorConfigForm competition={competition} setModalState={setShowDrillInstructorModal}/>}
+            {(showPointsInfoModal) && <PointsInfoModal competition={competition} goals={goals} user={user} setModalState={setShowPointsInfoModal}/>}
 
         </BoxSection>
     )
@@ -1000,7 +1005,7 @@ export default function Competition() {
                     ) : (statsError) ? (
                         <ErrorBoxSection additionalClasses='mb-4' errorMsg={competitionError?.status + ' / ' + (competitionError?.error || competitionError?.message || competitionError?.data?.detail)}/>
                     ) : (
-                        <CompetitionHead competition={competition} feed={feed} isOwner={isOwner} />
+                        <CompetitionHead competition={competition} feed={feed} isOwner={isOwner} goals={stats?.competition?.goals} user={user} />
                     )
                 }
 

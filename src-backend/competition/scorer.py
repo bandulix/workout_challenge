@@ -2,13 +2,39 @@ import datetime
 import logging
 
 from django.apps import apps
+from django.core.cache import cache
 
 from custom_user.point_recalc import bump_stats_generation, trigger_recalc_points
 
 logger = logging.getLogger(__name__)
 
+_SPORT_FACTORS_CACHE_KEY = "sport-points-factors"
 
-def _calculate_points_raw(goal, workout, user):
+
+def get_sport_factors() -> dict:
+    """Site-wide per-activity-type point multipliers (SiteSettings).
+
+    Read on every scored workout, so cache briefly - the admin edit path
+    (``apply_sport_factor_changes``) invalidates on change.
+    """
+    factors = cache.get(_SPORT_FACTORS_CACHE_KEY)
+    if factors is None:
+        from site_settings.models import SiteSettings
+        factors = SiteSettings.get_solo().points_sport_factors or {}
+        cache.set(_SPORT_FACTORS_CACHE_KEY, factors, 60)
+    return factors
+
+
+def sport_factor(sport_type, factors=None) -> float:
+    """Multiplier for one sport type; 1.0 (neutral) when unset/invalid."""
+    factors = get_sport_factors() if factors is None else factors
+    try:
+        return float(factors.get(sport_type, 1.0))
+    except (TypeError, ValueError, AttributeError):
+        return 1.0
+
+
+def _calculate_points_raw(goal, workout, user, factors=None):
     goal_metric = goal.metric
     goal_target = float(goal.goal)
 
@@ -34,7 +60,7 @@ def _calculate_points_raw(goal, workout, user):
             points = 0
         else:
             points = float(workout.kcal) * 4.18 / (goal_target * float(user.scaling_kcal))
-    return points * 100
+    return points * 100 * sport_factor(workout.sport_type, factors)
 
 
 def _bust_stats_cache_for(user):
@@ -42,6 +68,59 @@ def _bust_stats_cache_for(user):
     user participates in - a logged/changed/deleted workout must show up
     on the challenge page immediately, not after the 30s cache window."""
     bump_stats_generation(user.my_competitions.values_list("pk", flat=True))
+
+
+def apply_sport_factor_changes(old_factors: dict, new_factors: dict):
+    """Re-score after the admin edited per-activity-type point factors.
+
+    Recomputes ``points_raw`` for every Points row whose workout's sport
+    type changed factor, then enqueues the cap recalc per affected
+    (user, goal) pair. Admin edits are rare, so the full scan is fine.
+    """
+    def _norm(factors, sport):
+        try:
+            return float(factors.get(sport, 1.0))
+        except (TypeError, ValueError):
+            return 1.0
+
+    changed_sports = {
+        s for s in set(old_factors) | set(new_factors)
+        if _norm(old_factors, s) != _norm(new_factors, s)
+    }
+    cache.delete(_SPORT_FACTORS_CACHE_KEY)
+    if not changed_sports:
+        return
+
+    Points = apps.get_model('competition', 'Points')
+    RecalcRequest = apps.get_model('custom_user', 'RecalcRequest')
+
+    recalc_pairs = set()
+    touched = 0
+    rows = Points.objects.filter(
+        workout__sport_type__in=changed_sports,
+    ).select_related('workout', 'goal', 'workout__user')
+    for row in rows:
+        new_raw = _calculate_points_raw(row.goal, row.workout, row.workout.user, factors=new_factors)
+        if float(row.points_raw) != new_raw:
+            row.points_raw = new_raw
+            row.points_capped = new_raw
+            row.save(update_fields=['points_raw', 'points_capped'])
+            touched += 1
+        recalc_pairs.add((row.workout.user_id, row.goal_id))
+
+    # in_bulk: one query instead of one per recalc pair.
+    ActivityGoal = apps.get_model('competition', 'ActivityGoal')
+    goal_map = ActivityGoal.objects.filter(
+        pk__in={goal_id for _, goal_id in recalc_pairs},
+    ).select_related('competition').in_bulk()
+    for user_id, goal_id in recalc_pairs:
+        RecalcRequest(
+            user_id=user_id, goal_id=goal_id,
+            start_datetime=goal_map[goal_id].competition.start_date,
+        ).save()
+    trigger_recalc_points()
+    logger.info("Sport factor change (%s) re-scored %s point rows, %s recalc pairs",
+                sorted(changed_sports), touched, len(recalc_pairs))
 
 
 def trigger_workout_delete(instance):

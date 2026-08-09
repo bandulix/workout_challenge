@@ -95,7 +95,8 @@ services:
       # here. The developer credentials default to the seeded OW admin
       # (OW_ADMIN_* below / SECRET_KEY), so the connector works out of
       # the box. HEALTH_PUBLIC_URL is the address shown to phones in the
-      # connection code (they must reach it!) - falls back to BASE_URL.
+      # connection code (they must reach it!) - empty means MAIN_HOST +
+      # /health, which the container nginx proxies to OW automatically.
       - HEALTH_BASE_URL=${HEALTH_BASE_URL:-http://openwearables:8000}
       - HEALTH_PUBLIC_URL=${HEALTH_PUBLIC_URL:-}
       - HEALTH_DEVELOPER_EMAIL=${HEALTH_DEVELOPER_EMAIL:-${OW_ADMIN_EMAIL:-admin@example.com}}

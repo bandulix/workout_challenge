@@ -94,6 +94,21 @@ const fields = {
 }
 
 
+// The raw inputs (gender/age/height/weight) are never sent to the server -
+// only the two derived equalizing factors are saved. To keep the promise
+// "inputs stay on your device" WITHOUT resetting the form on every open,
+// they are persisted in this device's localStorage only.
+const INPUTS_STORAGE_KEY = 'wc_equalizer_inputs';
+
+function loadSavedInputs() {
+    try {
+        return JSON.parse(localStorage.getItem(INPUTS_STORAGE_KEY) || '{}') || {};
+    } catch {
+        return {};
+    }
+}
+
+
 export default function GoalEqualizerForm({user, setModalState}) {
 
     const [values, setValues] = useState({});
@@ -112,11 +127,15 @@ export default function GoalEqualizerForm({user, setModalState}) {
         }
     }, [updateError])
 
-    // load current form values
+    // load current form values: last typed inputs (this device), else the
+    // profile gender, else the neutral defaults below
     useEffect(() => {
-        if (user !== undefined) {
-            setValues({...values, gender: (user.gender === null || user.gender === '') ? 'M' : user.gender});
-        }
+        const saved = loadSavedInputs();
+        setValues(values => ({
+            ...values,
+            ...saved,
+            gender: saved.gender || ((user?.gender === null || user?.gender === '' || user?.gender === undefined) ? 'M' : user.gender),
+        }));
     }, [])
 
     // calculate factors
@@ -125,6 +144,16 @@ export default function GoalEqualizerForm({user, setModalState}) {
         const age = (values.age === undefined || values.age === '') ? 35 : values.age;
         const height = (values.height === undefined || values.height === '') ? 180 : values.height;
         const weight = (values.weight === undefined || values.weight === '') ? 75 : values.weight;
+
+        // Persist the raw inputs on this device once anything was typed -
+        // never before (the mount run sees empty values and must not wipe
+        // the saved inputs before the load effect's setState lands).
+        if (values.gender || values.age || values.height || values.weight) {
+            localStorage.setItem(INPUTS_STORAGE_KEY, JSON.stringify({
+                gender: values.gender, age: values.age, height: values.height, weight: values.weight,
+            }));
+        }
+
         let bmr;
         let step_length;
 
