@@ -107,7 +107,7 @@ def get_competition_stats(competition, last_seven_days=False):
 
     # Custom query logic
     try:
-        competition_obj = Competition.objects.get(id=competition)
+        competition_obj = Competition.objects.select_related('owner').get(id=competition)
     except Competition.DoesNotExist:
         return Response({"detail": "Competition not found."}, status=status.HTTP_404_NOT_FOUND)
     all_points = Points.objects.filter(Q(award__competition__id=competition) | Q(goal__competition_id=competition))
@@ -218,11 +218,13 @@ def get_competition_stats(competition, last_seven_days=False):
     leaderboard_team = _add_rank(leaderboard_team, key="total_capped", enhance_dict=team_dict, id_field='workout__user__my_teams__id')
     team_dict = {i['id']: i for i in leaderboard_team}
 
+    # One query for the member ids - not two (values_list + count).
+    member_pks = list(competition_obj.user.all().values_list('pk', flat=True))
     competition_details = {
         'name': competition_obj.name,
         'owner': user_dict.get(competition_obj.owner.pk, {'id': competition_obj.owner.pk, 'username': 'ERROR', 'total_capped': None}),
-        'members': [user_dict.get(i, {'id': i, 'username': 'ERROR', 'total_capped': None}) for i in list(competition_obj.user.all().values_list('pk', flat=True))],
-        'member_count': competition_obj.user.all().count(),
+        'members': [user_dict.get(i, {'id': i, 'username': 'ERROR', 'total_capped': None}) for i in member_pks],
+        'member_count': len(member_pks),
         'active_member_count': len(timeseries_user),
         'start_date': competition_obj.start_date,
         'start_date_count': (datetime.date.today() - competition_obj.start_date).days,

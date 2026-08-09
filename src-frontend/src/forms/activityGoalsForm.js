@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from "react";
+import {useDispatch} from "react-redux";
 import {Modal, MultiForm, SaveButton, DeleteButton} from "./basicComponents";
 import lodFilter from 'lodash/filter';
 import {
@@ -8,6 +9,7 @@ import {
     useUpdateGoalMutation
 } from "../utils/reducers/goalsSlice";
 import {compareDictLists} from "../utils/miscellaneous";
+import {refreshChallengeSoon} from "./workoutForm";
 
 const fields = {
 
@@ -156,10 +158,12 @@ const fields = {
 
 export default function ActivityGoalsForm({competitionId, setModalState}) {
 
+    const dispatch = useDispatch();
     const {
         data: goals,
         isLoading: goalsLoading,
         isSuccess: goalsIsSuccess,
+        refetch: refetchGoals,
     } = useGetGoalsQuery();
     const [updateGoal, {
         isLoading: updateGoalIsLoading,
@@ -176,17 +180,31 @@ export default function ActivityGoalsForm({competitionId, setModalState}) {
     const [fieldErrors, setFieldErrors] = useState({});
     const [formError, setFormError] = useState('');
 
+    // Optional numeric fields arrive as "" when the user clears them -
+    // DRF rejects "" with a 400. Coerce to null (and numbers to numbers).
+    function sanitizePayload(item) {
+        const out = {...item};
+        for (const key of ['goal', 'min_per_workout', 'max_per_workout', 'min_per_day', 'max_per_day', 'min_per_week', 'max_per_week']) {
+            if (out[key] === '' || out[key] === undefined) {
+                out[key] = null;
+            } else if (out[key] !== null && typeof out[key] !== 'number') {
+                out[key] = parseFloat(out[key]);
+            }
+        }
+        return out;
+    }
+
     async function handleSubmit() {
         setFieldErrors({});
         setFormError('');
         let noErrors = true;
         const { newEntries, deletedEntries, changedEntries } = compareDictLists(filteredGoals, values);
         for (const newItem of newEntries) {
-            const result = await createGoal({...newItem, competition: competitionId});
+            const result = await createGoal({...sanitizePayload(newItem), competition: competitionId});
             if (result.hasOwnProperty('error')) {
                 noErrors = false;
                 console.error('Create Goal Error', result.error);
-                setFormError(formError + 'Error (' + result?.error?.status + ') when creating goal "' + newItem?.name + '": ' + result?.error?.data?.detail + '; ');
+                setFormError(prev => prev + 'Error (' + result?.error?.status + ') when creating goal "' + newItem?.name + '": ' + result?.error?.data?.detail + '; ');
             } else {
                 console.log('Added Goal', newItem, result);
             }
@@ -196,25 +214,38 @@ export default function ActivityGoalsForm({competitionId, setModalState}) {
             if (result.hasOwnProperty('error')) {
                 noErrors = false;
                 console.error('Delete Goal Error', result.error);
-                setFormError(formError + 'Error (' + result?.error?.status + ') when deleting goal "' + deletedItem?.name + '" (' + deletedItem?.id + '): ' + result?.error?.data?.detail + '; ');
+                setFormError(prev => prev + 'Error (' + result?.error?.status + ') when deleting goal "' + deletedItem?.name + '" (' + deletedItem?.id + '): ' + result?.error?.data?.detail + '; ');
             } else {
                 console.log('Deleted Goal', deletedItem, result);
             }
         }
         for (const changedItem of changedEntries) {
-            const result = await updateGoal({id: changedItem.id, ...Object.fromEntries(Object.entries(changedItem.changes).map(([key, value]) => [key, value.to]))});
+            const result = await updateGoal({id: changedItem.id, ...sanitizePayload(Object.fromEntries(Object.entries(changedItem.changes).map(([key, value]) => [key, value.to])))});
             if (result.hasOwnProperty('error')) {
                 noErrors = false;
                 console.error('Update Goal Error', result.error);
-                setFieldErrors({...fieldErrors, [`${changedItem.index}`]: result.error.data});
+                setFieldErrors(prev => ({...prev, [`${changedItem.index}`]: result.error.data}));
             } else {
                 console.log('Changed Goal', changedItem, result);
             }
         }
         if (noErrors) {
+            // Pull the challenge page's data sources now (and again after
+            // the server's async cap recalc lands, ~10-30s) instead of
+            // waiting for the 90s poll - same pattern as workout edits.
+            refreshChallengeSoon(dispatch);
             document.body.classList.remove('body-no-scroll');
             setModalState(false);
-            window.alert('Saved. The points might need to be re-calculated. Thus changes can take up to 10 minutes to reflect on the competition page for all users.');
+            window.alert('Saved. Points are being recalculated - the challenge page updates itself within a minute.');
+        } else {
+            // Partial failure: rows created above now exist server-side
+            // but their local copies still have no id - a retry would
+            // diff them as "new" and create duplicates. Re-sync the form
+            // from the server state before the user can retry.
+            const fresh = await refetchGoals();
+            if (fresh.data) {
+                setValues([...lodFilter(fresh.data, item => item?.competition == competitionId).map(item => ({...item}))]);
+            }
         }
     }
 

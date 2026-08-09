@@ -35,6 +35,13 @@ export default function JoinTeamForm({competition, setModalState, user, isOwner}
     async function handleTeamCreate(e) {
         e.preventDefault();
         const result = await createTeam({competition: competition.id, name: e.target.teamName.value});
+        if (result?.error || !result?.data?.id) {
+            // Without this check result.data.id threw on failure -
+            // an unhandled rejection with zero user feedback.
+            console.error('Create Team failed:', result?.error);
+            window.alert('Could not create the team. Please try again.');
+            return;
+        }
         console.log('Created new team:', result);
         e.target.reset();
         if (!isOwner) {

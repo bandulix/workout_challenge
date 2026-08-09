@@ -2,7 +2,7 @@ import React, {useRef, useState} from "react";
 import {Camera} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {useUploadProfilePictureMutation} from "../utils/reducers/usersSlice";
-import {useProtectedImage} from "../utils/protectedMedia";
+import {invalidateProtectedImage, useProtectedImage} from "../utils/protectedMedia";
 
 // The user's profile picture with an optional camera-badge edit affordance.
 // Uploads go straight to PATCH /api/user/me/ as multipart form data.
@@ -34,6 +34,9 @@ function ProfileAvatar({user, size = 96, editable = false, className = ""}) {
         }
         try {
             await upload(file).unwrap();
+            // The picture URL is stable - drop the cached old blob so the
+            // fresh upload actually renders.
+            invalidateProtectedImage(pictureUrl);
         } catch (err) {
             const msg = err?.data?.profile_picture_upload;
             setError(Array.isArray(msg) ? msg[0] : "Upload failed - please try again.");

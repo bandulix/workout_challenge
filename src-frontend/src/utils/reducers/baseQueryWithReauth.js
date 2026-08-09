@@ -39,6 +39,7 @@ const baseQuery = fetchBaseQuery({
 const REDACTED_FIELDS = new Set([
     'password', 'current_password', 'new_password',
     'llm_api_key', 'strava_client_secret', 'email_host_password',
+    'health_developer_password',
     'token', 'access_token', 'refresh_token',
     'p256dh', 'auth',  // push subscription secrets
 ]);
@@ -178,7 +179,12 @@ export const baseQueryWithReauth = async (args, api, extraOptions) => {
     // redirect param grows by one layer of percent-encoding on every
     // iteration - an infinite reload loop that bricks the browser.
     if (result.error && result.error.status === 401) {
-        const PUBLIC_PATHS = ['/login', '/signup', '/password'];
+        // '/logout' included: the bottom nav's 'me' query is still
+        // subscribed while LogoutPage wipes the tokens - without this
+        // guard its 401 redirected to /login?redirect=/logout, and the
+        // next login navigated straight back to /logout (wiping the
+        // just-issued tokens - a login-logout loop).
+        const PUBLIC_PATHS = ['/login', '/signup', '/password', '/logout'];
         if (PUBLIC_PATHS.some((p) => window.location.pathname === p || window.location.pathname.startsWith(p + '/'))) {
             // Already on the login flow - just propagate the 401 so
             // the calling component can show its error UI.

@@ -23,13 +23,13 @@ const PERIOD_TEXT = {
     competition: "for the whole challenge",
 };
 
-function capFloorText(goal) {
+function capFloorText(goal, scaling) {
     const lines = [];
     const unit = METRIC_TEXT[goal.metric]?.unit ?? goal.metric;
     const push = (label, min, max) => {
         const parts = [];
-        if (min !== null && min !== undefined) parts.push(`at least ${min} ${unit} count`);
-        if (max !== null && max !== undefined) parts.push(`capped at ${max} ${unit}`);
+        if (min !== null && min !== undefined) parts.push(`at least ${Math.round(min * scaling)} ${unit} count`);
+        if (max !== null && max !== undefined) parts.push(`capped at ${Math.round(max * scaling)} ${unit}`);
         if (parts.length) lines.push(`${label}: ${parts.join(", ")}`);
     };
     push("Per activity", goal.min_per_workout, goal.max_per_workout);
@@ -38,9 +38,19 @@ function capFloorText(goal) {
     return lines;
 }
 
+// Personal equalizer scaling for a goal's metric - same math as the
+// goal boxes on the challenge page, so both views show the same numbers.
+function metricScaling(metric, user) {
+    if (["kcal", "kj"].includes(metric)) return Number(user?.scaling_kcal ?? 1);
+    if (metric === "km") return Number(user?.scaling_distance ?? 1);
+    return 1;
+}
+
 
 export default function PointsInfoModal({competition, goals, user, setModalState}) {
-    const {data} = useGetPointsFactorsQuery();
+    // Fresh on every open: the slice caches aggressively (12h), but an
+    // admin edit must be visible the next time someone opens this view.
+    const {data} = useGetPointsFactorsQuery(undefined, {refetchOnMountOrArgChange: true});
     const factors = data?.factors || {};
     const nonNeutral = Object.entries(factors).filter(([, v]) => v !== 1.0);
 
@@ -50,20 +60,25 @@ export default function PointsInfoModal({competition, goals, user, setModalState
 
                 <div>
                     <p className="font-bold mb-1">Goals in “{competition.name}”</p>
-                    {(goals || []).map((goal) => (
-                        <div key={goal.id} className="mb-3 rounded-xl bg-gray-50 dark:bg-ink-900 p-3">
-                            <p className="font-semibold">{goal.name}: {goal.goal} {METRIC_TEXT[goal.metric]?.unit ?? goal.metric} {PERIOD_TEXT[goal.period] ?? goal.period}</p>
-                            <p className="font-mono text-xs text-gray-600 dark:text-gray-400 mt-1">
-                                {METRIC_TEXT[goal.metric]?.formula(goal.goal) ?? ""} × activity-type factor
-                            </p>
-                            {capFloorText(goal).map((line, i) => (
-                                <p key={i} className="text-xs text-gray-500 mt-0.5">{line}</p>
-                            ))}
-                            {!goal.count_steps_as_walks && (
-                                <p className="text-xs text-gray-500 mt-0.5">Daily step totals do not count for this goal.</p>
-                            )}
-                        </div>
-                    ))}
+                    {(goals || []).map((goal) => {
+                        const scaling = metricScaling(goal.metric, user);
+                        const target = Math.round(Number(goal.goal) * scaling);
+                        const scaledNote = scaling !== 1 ? ` (${goal.goal} × your ${Math.round(scaling * 100)}% factor)` : "";
+                        return (
+                            <div key={goal.id} className="mb-3 rounded-xl bg-gray-50 dark:bg-ink-900 p-3">
+                                <p className="font-semibold">{goal.name}: {target.toLocaleString()} {METRIC_TEXT[goal.metric]?.unit ?? goal.metric} {PERIOD_TEXT[goal.period] ?? goal.period}{scaledNote}</p>
+                                <p className="font-mono text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                    {METRIC_TEXT[goal.metric]?.formula(goal.goal) ?? ""} × activity-type factor
+                                </p>
+                                {capFloorText(goal, scaling).map((line, i) => (
+                                    <p key={i} className="text-xs text-gray-500 mt-0.5">{line}</p>
+                                ))}
+                                {!goal.count_steps_as_walks && (
+                                    <p className="text-xs text-gray-500 mt-0.5">Daily step totals do not count for this goal.</p>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
 
                 <div>

@@ -5,6 +5,7 @@ docker-compose defaults at runtime without restarting workers.
 """
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import models
 
 
@@ -97,6 +98,10 @@ class SiteSettings(models.Model):
         except type(self).DoesNotExist:
             old_factors = {}
         super().save(*args, **kwargs)
+        # Admin edits take effect immediately (well: without waiting out
+        # the TTL) - drop the short-lived resolver caches.
+        for name in _RESOLVER_CACHE_KEYS:
+            cache.delete(_resolver_cache_key(name))
         new_factors = self.points_sport_factors or {}
         if old_factors != new_factors:
             from competition.scorer import apply_sport_factor_changes
@@ -149,7 +154,29 @@ def _email_reply_to_list(value):
     return parts or None
 
 
-def resolve_llm_settings():
+# The resolve_* helpers read the singleton row on EVERY call, and some
+# callers are hot paths (Strava rate-limit checks per API call, LLM per
+# message, OW config per page fetch). Cache each resolved dict briefly;
+# SiteSettings.save() invalidates, so admin edits still take effect
+# without a restart (≤ TTL on the rare cache-miss race).
+_RESOLVER_CACHE_TTL = 60  # seconds
+_RESOLVER_CACHE_KEYS = ("llm", "strava", "health", "email")
+
+
+def _resolver_cache_key(name):
+    return f"site-settings-resolve:{name}"
+
+
+def _cached_resolve(name, resolver):
+    key = _resolver_cache_key(name)
+    value = cache.get(key)
+    if value is None:
+        value = resolver()
+        cache.set(key, value, _RESOLVER_CACHE_TTL)
+    return value
+
+
+def _uncached_llm_settings():
     """Active LLM configuration as a dict (DB → env → provider preset).
 
     Resolution order:
@@ -182,7 +209,18 @@ def resolve_llm_settings():
     }
 
 
-def resolve_strava_settings():
+def resolve_llm_settings():
+    """Active LLM configuration as a dict (DB → env → provider preset).
+
+    Resolution order:
+      1. DB column (``llm_base_url``, ``llm_model``) - explicit override
+      2. Provider preset (e.g. MiniMax auto-fills base URL + model)
+      3. Environment variable fallback
+    """
+    return _cached_resolve("llm", _uncached_llm_settings)
+
+
+def _uncached_strava_settings():
     """Active Strava configuration as a dict (DB → env)."""
     solo = SiteSettings.get_solo()
     return {
@@ -193,7 +231,12 @@ def resolve_strava_settings():
     }
 
 
-def resolve_health_settings():
+def resolve_strava_settings():
+    """Active Strava configuration as a dict (DB → env)."""
+    return _cached_resolve("strava", _uncached_strava_settings)
+
+
+def _uncached_health_settings():
     """Active Open Wearables configuration as a dict (DB → env).
 
     Auth model: a developer JWT (from developer email + password) works
@@ -220,7 +263,12 @@ def resolve_health_settings():
     }
 
 
-def resolve_email_settings():
+def resolve_health_settings():
+    """Active Open Wearables configuration as a dict (DB → env)."""
+    return _cached_resolve("health", _uncached_health_settings)
+
+
+def _uncached_email_settings():
     """Active SMTP configuration as a dict (DB → env)."""
     solo = SiteSettings.get_solo()
     db_reply_to = _email_reply_to_list(solo.email_reply_to)
@@ -234,3 +282,8 @@ def resolve_email_settings():
         "from_email": (solo.email_from or settings.EMAIL_FROM or "").strip() or None,
         "reply_to": db_reply_to if db_reply_to is not None else settings.EMAIL_REPLY_TO,
     }
+
+
+def resolve_email_settings():
+    """Active SMTP configuration as a dict (DB → env)."""
+    return _cached_resolve("email", _uncached_email_settings)

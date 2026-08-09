@@ -281,23 +281,34 @@ class FeedQueryView(APIView):
     """ API view to get the activity/point feed for a competition. """
     permission_classes = [FeedPermissions]
 
-    def get(self, request, competition):
-        # Custom query logic
-        #time.sleep(3)  # throttle for testing
+    FEED_CACHE_TTL = 30  # seconds - burst absorption between changes
 
+    def get(self, request, competition):
         competition_obj = Competition.objects.filter(id=competition)
         self.check_object_permissions(request, competition_obj)
 
-        all_points = Points.objects.filter(Q(award__competition__id=competition) | Q(goal__competition_id=competition)).order_by('-workout__start_datetime', '-workout__steps', '-workout__duration', '-workout', '-workout__user')
+        # Same generation key as the stats view: workout/point changes
+        # bump the generation, making old snapshots unreachable within
+        # seconds; between changes the short TTL absorbs poll bursts.
+        # (The feed rescans the competition's whole Points table twice -
+        # too expensive to run uncached on every 60-90s poll.)
+        generation = cache.get(f"stats-generation:{competition}", 0)
+        cache_key = f"competition-feed:{competition}:gen{generation}"
+        response_obj = cache.get(cache_key)
+        if response_obj is None:
+            all_points = Points.objects.filter(Q(award__competition__id=competition) | Q(goal__competition_id=competition)).order_by('-workout__start_datetime', '-workout__steps', '-workout__duration', '-workout', '-workout__user')
 
-        grouped_points = {i['workout']: i for i in all_points.values('workout__user', 'workout__user__username', 'workout__user__strava_allow_follow', 'workout', 'workout__sport_type', 'workout__start_datetime', 'workout__duration', 'workout__steps', 'workout__strava_id', 'award').annotate(points_capped=Sum('points_capped'), points_raw=Sum('points_raw')).order_by('-workout__start_datetime', '-workout__duration', '-workout', '-workout__user')}
+            grouped_points = {i['workout']: i for i in all_points.values('workout__user', 'workout__user__username', 'workout__user__strava_allow_follow', 'workout', 'workout__sport_type', 'workout__start_datetime', 'workout__duration', 'workout__steps', 'workout__strava_id', 'award').annotate(points_capped=Sum('points_capped'), points_raw=Sum('points_raw')).order_by('-workout__start_datetime', '-workout__duration', '-workout', '-workout__user')}
 
-        for i in all_points.values('workout', 'id', 'goal', 'goal__name', 'award', 'award__name', 'points_capped', 'points_raw'):
-            if 'details' not in grouped_points[i['workout']]:
-                grouped_points[i['workout']]['details'] = []
-            grouped_points[i['workout']]['details'].append(i)
+            for i in all_points.values('workout', 'id', 'goal', 'goal__name', 'award', 'award__name', 'points_capped', 'points_raw'):
+                if 'details' not in grouped_points[i['workout']]:
+                    grouped_points[i['workout']]['details'] = []
+                grouped_points[i['workout']]['details'].append(i)
 
-        return Response(list(grouped_points.values()))
+            response_obj = list(grouped_points.values())
+            cache.set(cache_key, response_obj, self.FEED_CACHE_TTL)
+
+        return Response(response_obj)
 
 
 

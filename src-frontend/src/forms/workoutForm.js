@@ -15,7 +15,7 @@ import {useDispatch} from "react-redux";
 // so two delayed re-invalidations pick up the final numbers instead of
 // waiting for the 90s poll. The stats endpoint busts its own cache on
 // these changes, so every refetch here is actually fresh.
-function refreshChallengeSoon(dispatch) {
+export function refreshChallengeSoon(dispatch) {
     const invalidateStatsAndFeed = () => {
         dispatch(statsApi.util.invalidateTags(['Stats']));
         dispatch(feedApi.util.invalidateTags(['Feed']));

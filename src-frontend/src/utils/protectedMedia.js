@@ -72,6 +72,21 @@ export function fetchProtectedImage(url) {
     return cache.get(url);
 }
 
+// Drop a cached image (e.g. after the user/persona re-uploaded their
+// picture): the URL is stable, so without this the old blob would be
+// served until a full page reload.
+export function invalidateProtectedImage(url) {
+    const entry = cache.get(url);
+    if (!entry) return;
+    cache.delete(url);
+    // Revoke the blob URL once settled so they don't accumulate.
+    Promise.resolve(entry).then((localUrl) => {
+        if (typeof localUrl === "string" && localUrl.startsWith("blob:")) {
+            URL.revokeObjectURL(localUrl);
+        }
+    }).catch(() => { /* best effort */ });
+}
+
 // Returns {src, failed}: src is the local URL once loaded (null while
 // loading or when url is null), failed flips true when the fetch did not
 // produce an image (caller falls back to default artwork).
@@ -79,7 +94,11 @@ export function useProtectedImage(url) {
     const [state, setState] = useState({src: null, failed: false});
 
     useEffect(() => {
-        if (!url) return;
+        if (!url) {
+            // Picture removed - reset instead of keeping the stale image.
+            setState({src: null, failed: false});
+            return;
+        }
         let alive = true;
         setState({src: null, failed: false});
         fetchProtectedImage(url).then((localUrl) => {

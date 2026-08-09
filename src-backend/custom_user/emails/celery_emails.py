@@ -47,7 +47,7 @@ def send_all_log_workouts_email():
     user_lst = CustomUser.objects.filter(
         Q(my_competitions__start_date__lte=datetime.date.today()) &
         Q(my_competitions__end_date__gte=datetime.date.today())
-    ).order_by('pk')
+    ).order_by('pk').distinct()  # distinct: one row per user, not per active competition
     task_log = []
     if len(user_lst) > 0:
         eta_steps = max(min((60 * 60) // len(user_lst), 60), 10)
@@ -145,7 +145,7 @@ def competition_start_email(competition_pk, user_pk):
 def send_all_leaderboard_emails():
     print("Scheduling leaderboard emails...")
     CustomUser = apps.get_model('custom_user', 'CustomUser')
-    user_lst = CustomUser.objects.filter(my_competitions__start_date__lt=datetime.date.today(), my_competitions__end_date__gte=datetime.date.today()).order_by('pk')
+    user_lst = CustomUser.objects.filter(my_competitions__start_date__lt=datetime.date.today(), my_competitions__end_date__gte=datetime.date.today()).order_by('pk').distinct()  # distinct: one row per user, not per active competition
     task_log = []
     if len(user_lst) > 0:
         eta_steps = max(min((60 * 60) // len(user_lst), 60), 10)

@@ -48,24 +48,37 @@ def recalc_points(self):
     RecalcRequest = apps.get_model('custom_user', 'RecalcRequest')
 
     all_tasks = RecalcRequest.objects.filter(done=False)
+    # Snapshot the ids NOW: rows created while we work must survive for
+    # the next run - deleting the live queryset afterwards would swallow
+    # them unprocessed (and leave points_capped stale).
+    task_ids = list(all_tasks.values_list('pk', flat=True))
     grouped_tasks = all_tasks.values('user', 'goal').annotate(start_datetime=Min('start_datetime'))
+    # in_bulk: one query for all groups instead of one get() per group.
+    goal_map = ActivityGoal.objects.in_bulk({t['goal'] for t in grouped_tasks})
     for task_group in grouped_tasks:
-        points_lst = Points.objects.filter(goal=task_group['goal'], workout__user=task_group['user'], workout__start_datetime__gte=task_group['start_datetime']).order_by('workout__start_datetime')
+        # select_related: Scorer dereferences points.workout several times
+        # per row - without it every row costs an extra SELECT.
+        points_lst = Points.objects.filter(goal=task_group['goal'], workout__user=task_group['user'], workout__start_datetime__gte=task_group['start_datetime']).select_related('workout').order_by('workout__start_datetime')
 
-        goal = ActivityGoal.objects.get(pk=task_group['goal'])
+        goal = goal_map[task_group['goal']]
 
         scorer = Scorer()
         scorer.set_goal(goal)
 
+        changed_rows = []
         for points in points_lst:
             earned_points = scorer.calculate_points(points)
-            setattr(points, 'points_capped', earned_points)
-            points.save()
+            if points.points_capped != earned_points:
+                points.points_capped = earned_points
+                changed_rows.append(points)
+        # bulk_update: one UPDATE per 500 rows instead of one per row.
+        if changed_rows:
+            Points.objects.bulk_update(changed_rows, ['points_capped'], batch_size=500)
 
     # Evaluate before the delete below empties the queryset.
     goal_ids = {task_group['goal'] for task_group in grouped_tasks}
 
-    all_tasks.delete()
+    RecalcRequest.objects.filter(pk__in=task_ids).delete()
 
     # The capped points just changed: bust the stats snapshots so the
     # leaderboard refetch right after a workout shows the final numbers.

@@ -14,6 +14,7 @@ import {
     SaveButton,
 } from "./basicComponents";
 import PersonaAvatar from "../components/PersonaAvatar";
+import {invalidateProtectedImage} from "../utils/protectedMedia";
 
 // Only admins reach this modal (the Coach page gates the entry point and
 // the API rejects non-staff writes); the persona library itself is global
@@ -113,6 +114,11 @@ function PersonaEditModal({persona, setModalState}) {
                 await addPersona(payload).unwrap();
             } else {
                 await updatePersona({id: persona.id, body: payload}).unwrap();
+                // The persona picture URL is stable - drop the cached old
+                // blob so a re-uploaded picture renders immediately.
+                if (pictureFile) {
+                    invalidateProtectedImage(persona.profile_picture);
+                }
             }
         } catch (err) {
             console.error("Persona save failed", err);

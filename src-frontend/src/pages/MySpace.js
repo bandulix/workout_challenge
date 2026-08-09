@@ -232,6 +232,7 @@ function CompetitionRow({competition, user}) {
     const {
         data: stats,
         isLoading: statsLoading,
+        error: statsError,
     } = useGetStatsByIdQuery(competition.id, {
         pollingInterval: 90000, // 90 seconds
     });
@@ -259,6 +260,8 @@ function CompetitionRow({competition, user}) {
             <td className="py-2 px-4 text-right text-sm">
                 {(statsLoading) ? (
                     <div><BeatLoader color="rgb(209 213 219)" /></div>
+                ) : (statsError || !stats?.competition) ? (
+                    <span className="text-gray-400">-</span>
                 ) : (stats.competition.start_date_count >= 0) ? (
                         ((stats.users[user.id]?.rank == null) ? (
                             <span className="text-gray-400">Time to work out!</span>

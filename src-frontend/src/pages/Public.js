@@ -3,12 +3,6 @@ import {Link, useLocation, useNavigationType, useParams} from "react-router-dom"
 import {useDispatch} from 'react-redux';
 import {useNavigate} from 'react-router-dom';
 import {BarLoader} from "react-spinners";
-import {usersApi} from '../utils/reducers/usersSlice';
-import {workoutsApi} from '../utils/reducers/workoutsSlice';
-import {competitionsApi} from '../utils/reducers/competitionsSlice';
-import {statsApi} from '../utils/reducers/statsSlice';
-import {feedApi} from '../utils/reducers/feedSlice';
-import {drillInstructorApi} from '../utils/reducers/drillInstructorSlice';
 import {getServerUrl, setServerUrl, hasStoredServerUrl, isNativeApp} from '../utils/serverUrl';
 import {PageWrapper} from "../utils/miscellaneous";
 import {sentryError} from "../utils/reducers/baseQueryWithReauth";
@@ -100,14 +94,20 @@ function LogoutPage() {
     // Side effects belong in useEffect, not in the render body (they ran
     // twice under StrictMode and triggered update-during-render warnings).
     useEffect(() => {
-        console.log('Clear localStorage as new user wants to register');
-        dispatch(usersApi.util.resetApiState());
-        dispatch(workoutsApi.util.resetApiState());
-        dispatch(competitionsApi.util.resetApiState());
-        dispatch(statsApi.util.resetApiState());
-        dispatch(feedApi.util.resetApiState());
-        dispatch(drillInstructorApi.util.resetApiState());
+        console.log('Clear localStorage and redux state on logout');
+        // RESET_STORE wipes ALL slice caches (users/workouts/competitions/
+        // stats/feed/drillInstructor AND teams/goals/join/link/siteSettings/
+        // push) - a partial reset left the rest in the store, and the
+        // throttled persistor re-saved them into localStorage seconds after
+        // the clear (admin site settings etc. survived "logout").
+        dispatch({type: 'RESET_STORE'});
+        // Preserve the native app's server address across the wipe -
+        // without it the app can't reach the backend after logout.
+        const serverUrl = localStorage.getItem('wc_server_url');
         localStorage.clear();
+        if (serverUrl !== null) {
+            localStorage.setItem('wc_server_url', serverUrl);
+        }
 
         // The service worker caches authenticated GET /api/* responses as
         // its offline fallback (see public/sw.js). Purge them on logout so
@@ -504,13 +504,14 @@ function RegisterPage() {
 
     useEffect(() => {
         console.log('Clear localStorage as new user wants to register');
-        dispatch(usersApi.util.resetApiState());
-        dispatch(workoutsApi.util.resetApiState());
-        dispatch(competitionsApi.util.resetApiState());
-        dispatch(statsApi.util.resetApiState());
-        dispatch(feedApi.util.resetApiState());
-        dispatch(drillInstructorApi.util.resetApiState());
+        dispatch({type: 'RESET_STORE'});
+        // Preserve the native app's server address - wiping it here
+        // stranded the registration API calls on the WebView origin.
+        const serverUrl = localStorage.getItem('wc_server_url');
         localStorage.clear();
+        if (serverUrl !== null) {
+            localStorage.setItem('wc_server_url', serverUrl);
+        }
     }, []);
 
     return (
@@ -695,12 +696,14 @@ function LogInPage() {
             // sync. The JWT tokens just set by apiLogin live in their own
             // keys and are not touched.
             localStorage.removeItem('appState');
-            dispatch(usersApi.util.resetApiState());
-            dispatch(workoutsApi.util.resetApiState());
-            dispatch(competitionsApi.util.resetApiState());
-            dispatch(statsApi.util.resetApiState());
-            dispatch(feedApi.util.resetApiState());
-            dispatch(drillInstructorApi.util.resetApiState());
+            // Per-device user state from the previous account must not
+            // leak into the next login (equalizer body stats, coach ping
+            // baseline).
+            localStorage.removeItem('wc_equalizer_inputs');
+            localStorage.removeItem('wc_last_coach_msg_id');
+            // Wipe every slice cache (the store re-persists itself within
+            // seconds - a partial reset leaks the other slices' caches).
+            dispatch({type: 'RESET_STORE'});
             // success logging in - redirect to dashboard
             await waitForLocalStorage('access_token');
             setIsLoading(false);
@@ -748,12 +751,7 @@ function LogInPage() {
     }
 
     useEffect(() => {
-        dispatch(usersApi.util.resetApiState());
-        dispatch(workoutsApi.util.resetApiState());
-        dispatch(competitionsApi.util.resetApiState());
-        dispatch(statsApi.util.resetApiState());
-        dispatch(feedApi.util.resetApiState());
-        dispatch(drillInstructorApi.util.resetApiState());
+        dispatch({type: 'RESET_STORE'});
 
         const refreshToken = localStorage.getItem('refresh_token');
         if (refreshToken !== null) {

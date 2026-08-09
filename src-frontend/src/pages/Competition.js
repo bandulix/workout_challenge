@@ -1003,7 +1003,7 @@ export default function Competition() {
                     (competitionLoading || feedLoading) ? (
                         <SectionLoader height={"h-48 mb-4"} />
                     ) : (statsError) ? (
-                        <ErrorBoxSection additionalClasses='mb-4' errorMsg={competitionError?.status + ' / ' + (competitionError?.error || competitionError?.message || competitionError?.data?.detail)}/>
+                        <ErrorBoxSection additionalClasses='mb-4' errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
                     ) : (
                         <CompetitionHead competition={competition} feed={feed} isOwner={isOwner} goals={stats?.competition?.goals} user={user} />
                     )

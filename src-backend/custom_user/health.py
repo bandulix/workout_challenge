@@ -353,7 +353,11 @@ def _sync_user_workouts(user, start_datetime=None) -> dict:
     since = start_datetime or (timezone.now() - datetime.timedelta(days=3))
     ow_workouts = _fetch_workouts(user.health_user_id, since)
 
-    existing_map = Workout.objects.filter(health_id__isnull=False).in_bulk(field_name='health_id')
+    # Only the fetched ids - not the whole table's health rows (which
+    # loaded every user's full Workout instances per user per sync).
+    # workout_to_props keys on ow_workout["id"].
+    ow_ids = [str(w["id"]) for w in ow_workouts if w.get("id")]
+    existing_map = Workout.objects.filter(health_id__in=ow_ids).in_bulk(field_name='health_id')
     created = updated = skipped = duplicates = 0
     for ow_workout in ow_workouts:
         props = workout_to_props(user, ow_workout)

@@ -252,7 +252,11 @@ def _sync_user_activities(user, days_back=3) -> dict:
     except Exception as exc:  # noqa: BLE001
         raise GarminUnavailableError("Could not fetch activities from Garmin.") from exc
 
-    existing_map = Workout.objects.filter(garmin_id__isnull=False).in_bulk(field_name='garmin_id')
+    # Only the fetched page's ids - not the whole table's garmin rows
+    # (which loaded every user's full Workout instances into memory
+    # per user per hourly sync).
+    activity_ids = [str(a.get("activityId")) for a in activities or [] if a.get("activityId") is not None]
+    existing_map = Workout.objects.filter(garmin_id__in=activity_ids).in_bulk(field_name='garmin_id')
     created = updated = skipped = duplicates = removed = 0
     for activity in activities or []:
         if is_non_workout_activity(activity):

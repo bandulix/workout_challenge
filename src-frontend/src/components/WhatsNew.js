@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from "react";
 import {PartyPopper} from "lucide-react";
 import {Modal} from "../forms/basicComponents";
+import {getServerUrl} from "../utils/serverUrl";
 
 // "What's new" release popup: after every release, the user gets one
 // popup with the changelog and a reload button.
@@ -21,7 +22,10 @@ function WhatsNew() {
 
         async function check() {
             try {
-                const res = await fetch("/api/version/");
+                // getServerUrl(): inside the native app a relative URL
+                // resolves to the WebView origin (https://localhost) -
+                // the popup could never appear there.
+                const res = await fetch(getServerUrl() + "/api/version/");
                 if (!res.ok) return;
                 const data = await res.json();
                 const version = (data?.version || "").trim();
