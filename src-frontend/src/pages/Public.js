@@ -422,12 +422,21 @@ const apiRefreshToken = async (refreshToken) => {
             } catch (e) {
                 error = { detail: 'Unknown error' };
             }
-            localStorage.removeItem('refresh_token');
+            // Only a 400/401 proves the refresh token is dead
+            // (invalid/expired/blacklisted) - drop it so the user gets a
+            // clean login form. 429 (throttled) and 5xx are transient:
+            // KEEP the token so a later retry succeeds instead of
+            // forcing a needless re-login.
+            if (response.status === 400 || response.status === 401) {
+                localStorage.removeItem('refresh_token');
+            }
             return [false, response.statusText + ' (' + response.status + ') - ' + error.detail];
         }
     } catch (error) {
         console.error('Network or server error during token refresh:', error);
-        localStorage.removeItem('refresh_token');
+        // Network failure (offline, flaky mobile data): the refresh token
+        // is very likely still valid - keep it so the next app start or
+        // poll retries transparently instead of logging the user out.
         // Capture network errors in Sentry
         sentryError({
             result: error,
@@ -729,9 +738,11 @@ function LogInPage() {
             console.log('refresh_token exists and is valid - redirect');
             navigate(`/dashboard/${location.search}`);
         } else {
-            // error refreshing access_token - manual login required
-            localStorage.removeItem('refresh_token');
-            console.log('refresh_token exists but expired - new login required');
+            // Refresh failed. apiRefreshToken already dropped the
+            // refresh_token when the backend confirmed it dead (400/401);
+            // on transient failures (429/network) the token stays, so the
+            // next app start retries automatically.
+            console.log('refresh_token exists but refresh failed - manual login or automatic retry');
         }
         setIsLoading(false);
     }

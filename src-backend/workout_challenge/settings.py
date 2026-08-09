@@ -229,6 +229,14 @@ REST_FRAMEWORK = {
         'anon': '100/hour',
         'user': '2000/hour',
         'auth': '30/hour',
+        # Token REFRESH gets its own, roomier bucket: the tight 'auth'
+        # rate exists to stop password guessing on token/, but a refresh
+        # token is a 256-bit random value (not brute-forceable), and the
+        # app legitimately needs one refresh per access-token expiry
+        # (~12/hour per foreground device) - plus mobile users share the
+        # per-IP budget via carrier-grade NAT. 30/hour here logged users
+        # out whenever the app was used regularly.
+        'auth_refresh': '300/hour',
         'join': '60/hour',
     },
 }

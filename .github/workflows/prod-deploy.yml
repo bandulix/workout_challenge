@@ -126,6 +126,34 @@ jobs:
         run: npm ci && INLINE_RUNTIME_CHUNK=false npm run build && npx cap sync android
       - name: Install Android SDK platform 36
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
+      - name: Set up release signing
+        # Android refuses in-place updates when the signature changes.
+        # Without signing material, every CI runner would generate a fresh
+        # ephemeral debug keystore - EVERY release APK had a different
+        # identity and no update path existed (uninstall/reinstall only,
+        # losing app data). With the ANDROID_KEYSTORE_* secrets present,
+        # CI signs with the same release key as local builds
+        # (app/build.gradle auto-discovers ~/.gradle/workout-signing.properties).
+        # Forks without the secrets keep the debug-key fallback.
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "No ANDROID_KEYSTORE_* secrets configured - release build falls back to the debug key."
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/workout-release.keystore"
+          mkdir -p ~/.gradle
+          {
+            printf 'storeFile=%s\n' "$RUNNER_TEMP/workout-release.keystore"
+            printf 'storePassword=%s\n' "$ANDROID_KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
+          } > ~/.gradle/workout-signing.properties
+          chmod 600 ~/.gradle/workout-signing.properties
       - name: Build the APK
         working-directory: src-frontend/android
         run: |

@@ -1,6 +1,9 @@
 from unittest import mock
 
+from django.core.cache import cache
 from django.test import TestCase, override_settings
+
+from custom_user.models import CustomUser
 
 from .release_notes import get_release_notes, parse_release_notes
 
@@ -63,6 +66,69 @@ class ParseReleaseNotesTests(TestCase):
             fake.stat.side_effect = OSError("missing")
             release_notes._cache.update({"mtime": None, "notes": None})
             self.assertEqual(get_release_notes(), {"heading": "", "sections": [], "truncated": False})
+
+
+# DRF throttling reads the Django cache - LocMem so tests need no Redis.
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class TokenThrottleSplitTests(TestCase):
+    """token/refresh must NOT share the tight 'auth' bucket with password
+    login: the app refreshes once per access-token lifetime (5 min ->
+    ~12/hour per foreground device), and per-IP budgets are shared behind
+    carrier-grade NAT, so 30/hour logged active users out (the Android
+    "seems disconnected after a while" bug)."""
+
+    def setUp(self):
+        # User creation fires welcome-email/point-recalc Celery plumbing -
+        # no-op it (same pattern as the custom_user test suites).
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        # The class-level LocMem cache instance is reused across test
+        # methods of this class - start each test with a clean history.
+        cache.clear()
+        self.user = CustomUser.objects.create_user(
+            email="throttle@example.com", password="Sup3r-Secret!Pass", first_name="T",
+        )
+
+    def test_scopes_are_split(self):
+        from .urls import ThrottledTokenObtainPairView, ThrottledTokenRefreshView
+        self.assertEqual(ThrottledTokenObtainPairView.throttle_scope, "auth")
+        self.assertEqual(ThrottledTokenRefreshView.throttle_scope, "auth_refresh")
+
+    def test_refresh_throttles_independently_of_login(self):
+        # SimpleRateThrottle.THROTTLE_RATES is bound once at import time,
+        # so patching api_settings/REST_FRAMEWORK has no effect here -
+        # patch the class attribute directly (as DRF's own tests do).
+        from rest_framework.throttling import SimpleRateThrottle
+        rates = {**SimpleRateThrottle.THROTTLE_RATES, "auth_refresh": "1/hour"}
+        with mock.patch.object(SimpleRateThrottle, "THROTTLE_RATES", rates):
+            login = self.client.post("/api/token/", {"email": "throttle@example.com", "password": "Sup3r-Secret!Pass"})
+            self.assertEqual(login.status_code, 200, login.content)
+            first = self.client.post("/api/token/refresh/", {"refresh": login.json()["refresh"]})
+            self.assertEqual(first.status_code, 200, first.content)
+            # Second refresh within the hour exceeds the test rate...
+            second = self.client.post("/api/token/refresh/", {"refresh": first.json()["refresh"]})
+            self.assertEqual(second.status_code, 429)
+            # ...while password login lives in its own bucket, unaffected.
+            again = self.client.post("/api/token/", {"email": "throttle@example.com", "password": "Sup3r-Secret!Pass"})
+            self.assertEqual(again.status_code, 200, again.content)
+
+    def test_refresh_rotates_and_rejects_old_token(self):
+        login = self.client.post("/api/token/", {"email": "throttle@example.com", "password": "Sup3r-Secret!Pass"})
+        self.assertEqual(login.status_code, 200, login.content)
+        refresh = login.json()["refresh"]
+        rotated = self.client.post("/api/token/refresh/", {"refresh": refresh})
+        self.assertEqual(rotated.status_code, 200, rotated.content)
+        self.assertTrue(rotated.json()["access"])
+        # ROTATE_REFRESH_TOKENS + BLACKLIST_AFTER_ROTATION: reuse is dead.
+        reuse = self.client.post("/api/token/refresh/", {"refresh": refresh})
+        self.assertEqual(reuse.status_code, 401)
 
 
 # DRF throttling reads the Django cache - LocMem so tests need no Redis.

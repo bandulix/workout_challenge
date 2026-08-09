@@ -202,8 +202,17 @@ export const baseQueryWithReauth = async (args, api, extraOptions) => {
             // Retry original request
             result = await baseQuery(args, api, extraOptions);
         } else {
-            window.location.href = `/login?redirect=${currentUrl}`; // force redirect
-            throw throwErrorWithCode('(Error 401) The user is not authenticated (refresh token expired). Please re-login.', 401);
+            // Only a 400/401 from the refresh endpoint proves the refresh
+            // token is dead (invalid/expired/blacklisted) - force a
+            // re-login. Anything else (429 throttled, 5xx, network error)
+            // is transient: keep the tokens and surface the original 401
+            // so the UI shows stale data while the next poll retries -
+            // instead of logging the user out over a hiccup.
+            const refreshStatus = refreshResult.error?.status;
+            if (refreshStatus === 400 || refreshStatus === 401) {
+                window.location.href = `/login?redirect=${currentUrl}`; // force redirect
+                throw throwErrorWithCode('(Error 401) The user is not authenticated (refresh token expired). Please re-login.', 401);
+            }
         }
     }
 

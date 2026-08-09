@@ -36,7 +36,11 @@ class ThrottledTokenObtainPairView(TokenObtainPairView):
 
 class ThrottledTokenRefreshView(TokenRefreshView):
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = 'auth'
+    # Separate from 'auth' (password login): refresh traffic is
+    # continuous (~12/hour/device, see ACCESS_TOKEN_LIFETIME) and per-IP
+    # budgets are shared behind carrier-grade NAT - see settings
+    # 'auth_refresh' rate.
+    throttle_scope = 'auth_refresh'
 from drill_instructor.views import (
     DrillInstructorPersonaViewSet,
     DrillInstructorConfigViewSet,
