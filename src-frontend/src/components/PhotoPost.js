@@ -106,7 +106,11 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
 
     return (
         <div className="w-full px-1 py-3 space-y-2">
-            <input ref={fileInput} type="file" accept="image/*" className="hidden"
+            {/* capture="user": on mobile the SELFIE camera opens directly
+                instead of the file chooser (proof-of-workout is usually a
+                sweaty face for the coach; the camera UI still allows
+                flipping to the rear cam, and desktop is unaffected). */}
+            <input ref={fileInput} type="file" accept="image/*" capture="user" className="hidden"
                    onChange={(e) => { setError(null); setFile(e.target.files?.[0] || null); e.target.value = ""; }}/>
             {file && (
                 <div className="relative inline-block">

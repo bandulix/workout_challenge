@@ -6,7 +6,11 @@ export const drillInstructorApi = createApi({
     baseQuery: baseQueryWithReauth,
     tagTypes: ['DrillPersona', 'DrillConfig', 'DrillMessage', 'DrillRoast'],
     keepUnusedDataFor: 60 * 60 * 12,
-    refetchOnMountOrArgChange: 60, // 60 seconds - the drill instructor's active state must not look "forgotten" on a second device
+    // Always refetch on (re)mount: the Android WebView parks its renderer
+    // when hidden, so timed polls don't fire reliably in the app - and a
+    // stale config (e.g. vision_capable=false from before the admin fixed
+    // the model) then sticks for days. These endpoints are tiny.
+    refetchOnMountOrArgChange: true,
     endpoints: (builder) => ({
         // ---- Personas ---------------------------------------------------
         getPersonas: builder.query({

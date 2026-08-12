@@ -278,3 +278,20 @@ class ReleaseVersionEndpointTests(TestCase):
     def test_version_defaults_to_dev(self):
         response = self.client.get("/api/version/")
         self.assertEqual(response.json()["version"], "dev")
+
+
+class ApiNoStoreMiddlewareTests(TestCase):
+    """API responses carry no-store headers: the Android WebView's disk
+    cache survives restarts and heuristically served stale GETs (the
+    request then never reaches the server - invisible in nginx logs).
+    Only /api/ is affected; static assets keep their long caching."""
+
+    def test_api_responses_are_no_store(self):
+        response = self.client.get("/api/version/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("no-store", response["Cache-Control"])
+        self.assertEqual(response["Pragma"], "no-cache")
+
+    def test_non_api_paths_untouched(self):
+        response = self.client.get("/")
+        self.assertNotIn("no-store", response.get("Cache-Control", ""))

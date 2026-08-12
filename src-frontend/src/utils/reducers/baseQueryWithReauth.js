@@ -18,6 +18,10 @@ const requestTimings = new Map();
 
 const baseQuery = fetchBaseQuery({
     baseUrl: getServerUrl() + '/api/',
+    // Never serve from the WebView's HTTP cache: its disk cache survives
+    // app restarts and otherwise decides staleness heuristically (the
+    // backend now also sends no-store - this is the client-side half).
+    cache: 'no-store',
     prepareHeaders: (headers) => {
         const token = localStorage.getItem('access_token');
         // Endpoints sending FormData (file uploads) mark themselves with

@@ -558,6 +558,25 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
                 <DeleteButton onClick={handleDelete} label="Delete Account" highlighted={false} larger={true} />
                 <SaveButton onClick={handleSubmit} label="Update" highlighted={true} larger={true} />
             </div>
+            <AppVersionFooter/>
         </Modal>
     )
+}
+
+
+// Native app only: the running build's version + versionCode, so "did
+// the update actually install?" is answerable without guessing (Android
+// gives no rollback indication when an install silently fails).
+function AppVersionFooter() {
+    const [version, setVersion] = useState(null);
+    useEffect(() => {
+        if (!isNativeHealthAvailable()) return;  // native android only
+        import("@capacitor/app").then(({App}) =>
+            App.getInfo().then((info) => setVersion(`${info.version} (${info.build})`)).catch(() => null)
+        );
+    }, []);
+    if (!version) return null;
+    return (
+        <p className="pb-2 text-center text-[11px] text-gray-400">App version {version}</p>
+    );
 }

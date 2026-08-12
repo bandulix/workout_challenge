@@ -118,6 +118,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'workout_challenge.middleware.ApiNoStoreMiddleware',
 ]
 
 AUTH_USER_MODEL = "custom_user.CustomUser"
