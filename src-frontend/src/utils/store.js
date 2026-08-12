@@ -37,7 +37,13 @@ const rootReducer = (state, action) => {
     return appReducer(state, action);
 };
 
-const preloadedState = loadState();
+// Snapshots written by older builds still contain RTK API caches (the
+// fossil this persistence removal targets) - drop those keys on READ as
+// well, or affected installs keep the stale data forever.
+const _persisted = loadState();
+const preloadedState = _persisted
+    ? Object.fromEntries(Object.entries(_persisted).filter(([key]) => !key.endsWith('Api')))
+    : undefined;
 
 const store = configureStore({
     reducer: rootReducer,
