@@ -141,7 +141,11 @@ export default function CompetitionForm({competition, setModalState, setShowTran
                 console.log('Create Competition success:', result);
                 setModalState(false);
                 document.body.classList.remove('body-no-scroll');
-                navigate(`/competition/${result.id}`);
+                // The new challenge page is interesting for about one
+                // second - there is nothing on it yet. Land back on the
+                // dashboard instead, where the challenge now shows up in
+                // "My Competitions" (visible feedback that it worked).
+                navigate('/dashboard');
             } catch (err) {
                 console.error('Create Competition failed', err);
                 setFieldErrors(err.data);

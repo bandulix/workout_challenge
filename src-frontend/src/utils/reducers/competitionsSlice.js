@@ -14,6 +14,12 @@ export const competitionsApi = createApi({
                 method: 'GET',
                 params: params,
             }),
+            // The Android WebView parks its renderer when hidden, so the
+            // 60s poll doesn't necessarily fire while the user looks at
+            // the dashboard - a freshly created challenge then stayed
+            // invisible. Always refetch on (re)mount; the dashboard is
+            // the landing page, so every navigation home reloads it.
+            refetchOnMountOrArgChange: true,
             providesTags: (result = []) => result.length ? [...result.map(({id}) => ({ type: 'Competition', id })), { type: 'Competition' }] : [{ type: 'Competition' }],
         }),
         getCompetitionById: builder.query({
