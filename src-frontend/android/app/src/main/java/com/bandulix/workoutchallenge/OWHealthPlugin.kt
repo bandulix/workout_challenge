@@ -1,5 +1,6 @@
 package com.bandulix.workoutchallenge
 
+import android.net.Uri
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -25,6 +26,12 @@ class OWHealthPlugin : Plugin() {
     override fun load() {
         // One-time init against the application context.
         OpenWearablesHealthSDK.initialize(context.applicationContext)
+        // Register the Health Connect permission launcher while the
+        // Activity is still in onCreate (plugin load happens during
+        // Bridge creation) - the SDK documents this as the reliable
+        // window for ActivityResult registration; doing it lazily on
+        // button tap risks a dead callback after process recreation.
+        activity?.let { sdk().setActivity(it) }
     }
 
     private fun sdk(): OpenWearablesHealthSDK = OpenWearablesHealthSDK.getInstance()
@@ -36,11 +43,16 @@ class OWHealthPlugin : Plugin() {
             call.reject("host is required")
             return
         }
-        // configure() returns false for a malformed URL.
-        if (!sdk().configure(host = host)) {
+        // The SDK's configure() return value is NOT a validation result -
+        // it reports whether a previous background sync was auto-restored
+        // (always false on a fresh connect). Validate the URL shape
+        // ourselves instead of rejecting on that flag.
+        val uri = Uri.parse(host)
+        if (uri == null || (uri.scheme != "http" && uri.scheme != "https") || uri.host.isNullOrBlank()) {
             call.reject("invalid host URL")
             return
         }
+        sdk().configure(host = host)
         call.resolve()
     }
 
