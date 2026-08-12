@@ -77,6 +77,14 @@ docker compose up -d    # pulls the pre-built image - no local build needed
 
 The stack starts nginx (app on port 80), Django/gunicorn, Celery worker + beat, Redis and Postgres. In production set `HOSTS` / `MAIN_HOST` to your public URL and `DEBUG=false`. Migrations and static files are handled automatically at container start.
 
+**Updating to a new release** — the compose file pins `pull_policy: missing`, so `up -d` alone never re-pulls the image. To update:
+
+```bash
+git pull                                # fresh docker-compose.yml / .env.example
+docker compose pull workoutchallenge    # explicit pull - bypasses pull_policy
+docker compose up -d                    # recreate with the new image, migrate runs at start
+```
+
 **Reverse proxy (production on a VPS)** — bind the app to localhost only and terminate TLS in front, e.g. `APP_BIND=127.0.0.1` `APP_PORT=8080` in `.env`, then point your proxy at it. Complete nginx example (app + optional Open Wearables for the health connector):
 
 ```nginx
