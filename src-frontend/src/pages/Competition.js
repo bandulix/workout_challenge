@@ -4,12 +4,15 @@ import {competitionsApi, useGetCompetitionByIdQuery} from "../utils/reducers/com
 import {
     ArrowDownToLine,
     ArrowUpToLine,
+    Camera,
     DoorOpen,
     Info,
     Megaphone,
+    Send,
     Settings,
     UserRoundPlus,
     UsersRound,
+    X,
 } from "lucide-react";
 import {Bar, Line} from 'react-chartjs-2';
 import {
@@ -54,11 +57,14 @@ import {useLeaveCompetitionMutation} from "../utils/reducers/joinSlice";
 import TransferOwnershipForm from "../forms/transferOwnershipForm";
 import {teamsApi} from "../utils/reducers/teamsSlice";
 import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
-import {useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
+import {drillInstructorApi, useGetDrillConfigsQuery, useGetDrillMessagesQuery, usePostDrillPhotoMutation} from "../utils/reducers/drillInstructorSlice";
 import PersonaAvatar from "../components/PersonaAvatar";
 import PointsInfoModal from "../components/PointsInfo";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {timeAgo} from "../utils/time";
+import {compressImage} from "../utils/imageCompress";
+import {useProtectedImage} from "../utils/protectedMedia";
+import {BeatLoader} from "react-spinners";
 
 ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Filler, Tooltip, Legend, BarElement, ChartDataLabels);
 
@@ -164,6 +170,124 @@ function CompetitionHead({competition, feed, isOwner, goals, user}) {
 }
 
 
+// Photo sharing for the coach feed: pick (or take, on mobile) a
+// picture, it gets compressed before upload (see utils/imageCompress.js),
+// then posted as a thread root - the coach reacts, participants reply
+// through the regular thread UI.
+function PhotoComposer({competitionId}) {
+    const fileInput = React.useRef(null);
+    const [file, setFile] = useState(null);
+    const [caption, setCaption] = useState("");
+    const [error, setError] = useState(null);
+    const [posting, setPosting] = useState(false);
+    const [postPhoto] = usePostDrillPhotoMutation();
+    const dispatch = useDispatch();
+
+    // Local preview of the picked file (instant, no upload needed).
+    const [preview, setPreview] = useState(null);
+    useEffect(() => {
+        if (!file) {
+            setPreview(null);
+            return;
+        }
+        const url = URL.createObjectURL(file);
+        setPreview(url);
+        return () => URL.revokeObjectURL(url);
+    }, [file]);
+
+    function reset() {
+        setFile(null);
+        setCaption("");
+        setError(null);
+    }
+
+    async function handleSend() {
+        if (!file || posting) return;
+        setError(null);
+        setPosting(true);
+        try {
+            const compressed = await compressImage(file);
+            await postPhoto({competition: competitionId, image: compressed, caption: caption.trim()}).unwrap();
+            reset();
+            // The coach's reaction is generated asynchronously (usually a
+            // few seconds) - two delayed re-fetches pick it up quickly,
+            // the regular 60s poll is the backstop.
+            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(['DrillMessage'])), 8000);
+            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(['DrillMessage'])), 20000);
+        } catch (err) {
+            const data = err?.data || {};
+            setError(data.image || data.caption || data.competition || "Could not post your picture - please try again.");
+        } finally {
+            setPosting(false);
+        }
+    }
+
+    if (!file) {
+        return (
+            <>
+                <input ref={fileInput} type="file" accept="image/*" className="hidden"
+                       onChange={(e) => { setError(null); setFile(e.target.files?.[0] || null); e.target.value = ""; }}/>
+                <button onClick={() => fileInput.current?.click()}
+                        title="Share a photo"
+                        aria-label="Share a photo"
+                        className="shrink-0 min-h-[36px] min-w-[36px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt flex items-center justify-center">
+                    <Camera className="h-4 w-4"/>
+                </button>
+            </>
+        );
+    }
+
+    return (
+        <div className="px-5 py-3 border-t border-gray-100 dark:border-ink-700/60 space-y-2">
+            <div className="relative inline-block">
+                <img src={preview} alt="Upload preview"
+                     className="max-h-48 rounded-xl border border-gray-200/70 dark:border-ink-700/60"/>
+                <button onClick={reset} aria-label="Discard photo"
+                        className="absolute -top-2 -right-2 min-h-[28px] min-w-[28px] rounded-full bg-ink-900 text-white flex items-center justify-center hover:bg-ink-700 transition">
+                    <X className="h-3.5 w-3.5"/>
+                </button>
+            </div>
+            <div className="flex items-center gap-2">
+                <input type="text" value={caption} maxLength={500}
+                       onChange={(e) => setCaption(e.target.value)}
+                       onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
+                       placeholder="Add a caption…"
+                       aria-label="Photo caption"
+                       className="flex-1 shadow border border-gray-200 dark:border-ink-700/60 rounded-full py-2 px-4 text-sm text-gray-700 dark:bg-ink-900 dark:text-gray-300 dark:placeholder-gray-600 leading-tight focus:outline-none focus:border-volt-500"/>
+                <button onClick={handleSend} disabled={posting}
+                        aria-label="Post photo"
+                        className="shrink-0 min-h-[44px] min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none flex items-center justify-center">
+                    {posting ? <BeatLoader size={5} color="#0a0d06"/> : <Send className="h-4 w-4"/>}
+                </button>
+            </div>
+            {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+    );
+}
+
+
+// One photo post in the feed: the author's picture + caption bubble,
+// then the thread (coach reaction + participant replies) underneath.
+function PhotoMessage({message, persona, canReply, defaultOpen}) {
+    const {src} = useProtectedImage(message.image);
+    return (
+        <div className="min-w-0 flex-1">
+            {src && (
+                <img src={src} alt={message.body || `Shared by ${message.author_name || "a participant"}`}
+                     className="max-h-72 w-auto max-w-full rounded-xl border border-gray-200/70 dark:border-ink-700/60"/>
+            )}
+            {message.body && (
+                <p className="text-sm leading-snug break-words dark:text-gray-100 mt-1.5">{message.body}</p>
+            )}
+            <p className="text-[11px] text-gray-400 mt-0.5">
+                {message.author_name || "Participant"} · {timeAgo(message.posted_at)}
+            </p>
+            <CoachThread message={message} persona={persona} canReply={canReply} defaultOpen={defaultOpen}/>
+        </div>
+    );
+}
+
+
 function CoachCorner({competition, isOwner}) {
     // The Drill Instructor's presence on the competition page: latest
     // coach messages for this competition + a setup CTA for owners.
@@ -224,6 +348,11 @@ function CoachCorner({competition, isOwner}) {
                         {persona.name}{config.enabled ? " is on duty" : " is benched"} · {config.messages_posted || 0} messages
                     </p>
                 </div>
+                {/* Photo posts need two things: the coach on duty (same
+                    gate as thread replies) and a vision-capable AI model
+                    (probed server-side) - a coach that can't see pictures
+                    doesn't offer the camera. */}
+                {config.enabled && config.vision_capable && <PhotoComposer competitionId={competition.id}/>}
                 {isOwner && (
                     <button onClick={() => setShowConfigModal(true)}
                             className="text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition">
@@ -235,6 +364,14 @@ function CoachCorner({competition, isOwner}) {
                 <ul className="px-4 py-3 space-y-3">
                     {latest.map((m) => {
                         const threadPersona = {avatar: m.persona_avatar, profile_picture: m.persona_profile_picture, theme_color: m.persona_theme_color, name: m.persona_name};
+                        if (m.kind === "photo") {
+                            return (
+                                <li key={m.id} className="flex items-start gap-2.5">
+                                    <ProfileAvatar user={{profile_picture: m.author_profile_picture, first_name: m.author_name}} size={30}/>
+                                    <PhotoMessage message={m} persona={threadPersona} canReply={config.enabled} defaultOpen={m.id === replyTargetId}/>
+                                </li>
+                            );
+                        }
                         return (
                             <li key={m.id} className="flex items-start gap-2.5">
                                 <PersonaAvatar persona={threadPersona} size={30}/>

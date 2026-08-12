@@ -139,6 +139,7 @@ class DrillInstructorMessage(models.Model):
     KIND_PUSH = "push"
     KIND_REPLY = "reply"
     KIND_REACTION = "reaction"
+    KIND_PHOTO = "photo"
     KIND_CHOICES = [
         (KIND_ACTIVITY, "Workout comment"),
         (KIND_TEST, "Test message"),
@@ -146,6 +147,7 @@ class DrillInstructorMessage(models.Model):
         (KIND_PUSH, "Random group push"),
         (KIND_REPLY, "Participant reply"),
         (KIND_REACTION, "Coach reaction"),
+        (KIND_PHOTO, "Participant photo post"),
     ]
 
     config = models.ForeignKey(
@@ -170,13 +172,21 @@ class DrillInstructorMessage(models.Model):
         related_name="replies",
     )
     # Who wrote this message. NULL = the coach (persona); set for
-    # participant replies.
+    # participant replies and photo posts.
     user = models.ForeignKey(
         CustomUser,
         on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name="drill_instructor_replies",
+    )
+    # Photo posts (kind=photo): the uploaded picture. Compressed
+    # client-side before upload; served only through the authenticated
+    # picture endpoint, never via public /media/.
+    image = models.ImageField(
+        upload_to="message_pics/",
+        null=True,
+        blank=True,
     )
     workout = models.ForeignKey(
         "workouts.Workout",

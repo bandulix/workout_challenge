@@ -412,3 +412,17 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
 # Model used for the weekly email AI fact. Slightly higher quality is
 # fine here because it runs once per user per week.
 LLM_EMAIL_MODEL = os.environ.get("LLM_EMAIL_MODEL", "gpt-4o")
+
+# Coach feed photo posts: per-user daily cap. Every photo queues an LLM
+# reaction (and, with an image-capable provider, an image-edit roast) -
+# both cost money per call, so keep this tight.
+DRILL_MAX_PHOTOS_PER_DAY = int(os.environ.get("DRILL_MAX_PHOTOS_PER_DAY", 2))
+
+# Optional: a SEPARATE OpenAI-compatible provider for image editing (the
+# coach's roasted-photo remix). Chat models that can READ images often
+# can't CREATE them (e.g. MiniMax M3) - with these set, the roast edit
+# call goes here while chat/vision stay on the main provider above.
+# Leave unset to probe the main endpoint for image editing as before.
+LLM_IMAGE_BASE_URL = os.environ.get("LLM_IMAGE_BASE_URL", "")
+LLM_IMAGE_MODEL = os.environ.get("LLM_IMAGE_MODEL", "")
+LLM_IMAGE_API_KEY = os.environ.get("LLM_IMAGE_API_KEY", "")  # falls back to OPENAI_API_KEY

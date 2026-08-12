@@ -60,6 +60,15 @@ VERSION_NAME="$(git describe --tags --abbrev=0 2>/dev/null || echo dev)"
 VERSION_CODE="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 echo "Stamping version: $VERSION_NAME ($VERSION_CODE)"
 
+# Uncommitted changes do NOT move the version code: the rebuilt APK would
+# carry the same stamp as the previous release and the in-app update
+# banner (latestCode > installedCode) would never fire.
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "WARNING: working tree has uncommitted changes - versionCode stays"
+    echo "         at $VERSION_CODE, so installed apps will NOT see this build"
+    echo "         as an update. Commit first if this build should ship."
+fi
+
 cd android
 if [ "${1:-}" = "--debug" ]; then
     ./gradlew assembleDebug --no-daemon -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"

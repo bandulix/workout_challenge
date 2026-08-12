@@ -9,14 +9,24 @@ already powers the weekly email fitness fact. The active API key, base
 URL and model are resolved at call time via
 :func:`site_settings.models.resolve_llm_settings`, so admins can change
 the provider from the Site Settings page without restarting workers.
+
+Vision: :func:`check_vision_capability` probes the configured model with
+a tiny test image (OpenAI-compatible providers give no reliable metadata
+for this, and custom-model names defy heuristics) and caches the answer.
+Photo posts in the coach feed are gated on it, and the coach's photo
+reactions include the actual picture when the model can see.
 """
 
+import base64
+import hashlib
 import ipaddress
 import logging
 import re
 import socket
 from typing import Optional
 from urllib.parse import urlparse
+
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +70,83 @@ def _safe_base_url(url: Optional[str]) -> Optional[str]:
     return url.strip()
 
 
-def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[str] = None, max_tokens: int = 1000) -> "tuple[Optional[str], Optional[str]]":
+def _resolved_client(timeout=None, max_retries=None):
+    """``(client, config, error_reason)`` for the active LLM settings.
+
+    Shared by generate_message and the vision probe. ``client`` is None
+    (and ``error_reason`` set) when the provider is unusable - no key, a
+    rejected base URL, or the openai package missing.
+    """
+    from site_settings.models import resolve_llm_settings
+
+    config = resolve_llm_settings()
+    api_key = config["api_key"]
+    if not api_key:
+        return None, config, "no LLM API key configured (Site Settings / OPENAI_API_KEY) - static fallback used"
+
+    base_url = _safe_base_url(config["base_url"])
+    if config["base_url"] and not base_url:
+        return None, config, "configured LLM base URL was rejected (must be https, non-private host) - static fallback used"
+
+    try:
+        # Imported lazily so unit tests that mock the OpenAI client don't
+        # pay the import cost (and so missing-key paths stay clean).
+        from openai import OpenAI
+    except ImportError:
+        logger.warning("openai package not installed; skipping Drill Instructor message generation.")
+        return None, config, "openai package not installed - static fallback used"
+
+    client_kwargs = {"api_key": api_key}
+    if base_url:
+        client_kwargs["base_url"] = base_url
+    if timeout is not None:
+        client_kwargs["timeout"] = timeout
+    if max_retries is not None:
+        client_kwargs["max_retries"] = max_retries
+    return OpenAI(**client_kwargs), config, None
+
+
+def _minimax_extra_body(config) -> dict:
+    """MiniMax M3 runs "adaptive thinking" by default: the reasoning is
+    billed as completion tokens and can consume the whole max_tokens
+    budget, leaving only a <think> block behind. Short persona quips
+    gain nothing from deliberation - turn it off (documented M3
+    parameter; only sent to MiniMax endpoints)."""
+    base_url = (config.get("base_url") or "").lower()
+    if config.get("provider") == "MiniMax" or "minimax" in base_url:
+        return {"extra_body": {"thinking": {"type": "disabled"}}}
+    return {}
+
+
+def _image_content_part(image_path: str) -> Optional[dict]:
+    """Build an OpenAI image_url content part from a local file (data
+    URL - the provider can't reach our authenticated endpoints)."""
+    import mimetypes
+
+    try:
+        with open(image_path, "rb") as handle:
+            data = handle.read(MAX_IMAGE_BYTES + 1)
+    except OSError as exc:
+        logger.warning("Drill Instructor: could not read image %s: %s", image_path, exc)
+        return None
+    if not data or len(data) > MAX_IMAGE_BYTES:
+        logger.warning("Drill Instructor: image %s empty or over %s bytes - skipped", image_path, MAX_IMAGE_BYTES)
+        return None
+    mime = mimetypes.guess_type(image_path)[0] or "image/jpeg"
+    if not mime.startswith("image/"):
+        mime = "image/jpeg"
+    return {
+        "type": "image_url",
+        "image_url": {"url": f"data:{mime};base64,{base64.b64encode(data).decode()}"},
+    }
+
+
+# Images fed to the LLM: feed photos are compressed client-side
+# (max ~1600px JPEG), so this cap is only a backstop.
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+
+def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[str] = None, max_tokens: int = 1000, image_path: Optional[str] = None) -> "tuple[Optional[str], Optional[str]]":
     """Return ``(message, None)``, or ``(None, reason)`` when unavailable.
 
     The OpenAI Python SDK is compatible with any provider that exposes an
@@ -72,25 +158,13 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
     static message and surfaces ``reason`` to the competition owner (see
     tasks.py), so "the coach only posts static messages" is diagnosable
     from the config UI instead of failing silently.
+
+    ``image_path`` attaches a local picture to the user message (vision
+    models only - callers gate on :func:`check_vision_capability`).
     """
-    from site_settings.models import resolve_llm_settings
-
-    config = resolve_llm_settings()
-    api_key = config["api_key"]
-    if not api_key:
-        return None, "no LLM API key configured (Site Settings / OPENAI_API_KEY) - static fallback used"
-
-    base_url = _safe_base_url(config["base_url"])
-    if config["base_url"] and not base_url:
-        return None, "configured LLM base URL was rejected (must be https, non-private host) - static fallback used"
-
-    try:
-        # Imported lazily so unit tests that mock the OpenAI client don't
-        # pay the import cost (and so missing-key paths stay clean).
-        from openai import OpenAI
-    except ImportError:
-        logger.warning("openai package not installed; skipping Drill Instructor message generation.")
-        return None, "openai package not installed - static fallback used"
+    client, config, error = _resolved_client()
+    if client is None:
+        return None, error
 
     # The system prompt is user-editable, so it's a soft prompt-injection
     # target: a custom persona could try to leak secrets, override the
@@ -112,29 +186,26 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
         "(hard cap: 450 characters)."
     )
 
+    user_content = safe_user_prompt
+    if image_path:
+        image_part = _image_content_part(image_path)
+        if image_part is not None:
+            user_content = [
+                {"type": "text", "text": safe_user_prompt},
+                image_part,
+            ]
+
     try:
-        client_kwargs = {"api_key": api_key}
-        if base_url:
-            client_kwargs["base_url"] = base_url
-        client = OpenAI(**client_kwargs)
-        create_kwargs = {}
-        # MiniMax M3 runs "adaptive thinking" by default: the reasoning is
-        # billed as completion tokens and can consume the whole max_tokens
-        # budget, leaving only a <think> block behind. Short persona quips
-        # gain nothing from deliberation - turn it off (documented M3
-        # parameter; only sent to MiniMax endpoints).
-        if config["provider"] == "MiniMax" or "minimax" in (base_url or "").lower():
-            create_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
         response = client.chat.completions.create(
             model=model or config["model"],
             messages=[
                 {"role": "system", "content": safe_system_prompt + guardrail},
-                {"role": "user", "content": safe_user_prompt},
+                {"role": "user", "content": user_content},
             ],
             temperature=0.9,
             top_p=1.0,
             max_tokens=max_tokens,
-            **create_kwargs,
+            **_minimax_extra_body(config),
         )
         raw = (response.choices[0].message.content or "").strip()
     except Exception as exc:  # noqa: BLE001 - OpenAI raises many subclasses
@@ -162,6 +233,407 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
     if len(raw) > 600:
         raw = raw[:597].rsplit(" ", 1)[0] + "..."
     return raw, None
+
+
+# 1x1 white PNG - the probe only tests whether the API ACCEPTS image
+# content parts, not what the model makes of them.
+_PROBE_PNG_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
+# Definitive answers are stable per model - cache them for a day.
+# Transient failures (network, 5xx, rate limit) are retried soon.
+_VISION_CACHE_TTL = 60 * 60 * 24
+_VISION_RETRY_TTL = 60 * 5
+
+
+def _vision_cache_key(config) -> str:
+    # Keyed by endpoint + model: an admin editing the LLM settings
+    # produces a fresh key automatically - no invalidation hook needed.
+    digest = hashlib.sha256(f"{config.get('base_url')}|{config.get('model')}".encode()).hexdigest()[:16]
+    return f"drill-vision-capable:{digest}"
+
+
+def check_vision_capability() -> bool:
+    """True when the configured chat model accepts image input.
+
+    OpenAI-compatible providers expose no reliable capability metadata,
+    and custom/self-hosted model names defy pattern matching - so we
+    probe: one tiny chat completion with a 1x1 image. A clean response
+    means vision works; a 400 means the model rejects image content
+    parts. Network/5xx/rate-limit answers count as "no" but expire
+    quickly, so a provider hiccup doesn't hide the feature for a day.
+
+    Everything (coach feed photo button AND the photo endpoint) gates
+    on this. Never raises - any failure means "can't see".
+    """
+    client, config, error = _resolved_client(timeout=10, max_retries=0)
+    if client is None:
+        return False
+
+    cache_key = _vision_cache_key(config)
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return bool(cached)
+
+    try:
+        client.chat.completions.create(
+            model=config["model"],
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Reply with the single word: OK"},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{_PROBE_PNG_B64}"}},
+                ],
+            }],
+            max_tokens=8,
+            **_minimax_extra_body(config),
+        )
+        capable = True
+    except Exception as exc:  # noqa: BLE001 - OpenAI raises many subclasses
+        status_code = getattr(exc, "status_code", None)
+        if status_code is not None and 400 <= status_code < 500 and status_code not in (401, 403, 429):
+            # Definitive: the endpoint rejected the request shape (image
+            # content not supported by this model).
+            capable = False
+            ttl = _VISION_CACHE_TTL
+        else:
+            # Transient or indeterminate - answer "no" for now, retry soon.
+            capable = False
+            ttl = _VISION_RETRY_TTL
+        logger.info("Drill Instructor vision probe failed (%s): %s", type(exc).__name__, str(exc)[:200])
+        cache.set(cache_key, capable, ttl)
+        return capable
+
+    logger.info("Drill Instructor vision probe: model %s accepts images", config["model"])
+    cache.set(cache_key, capable, _VISION_CACHE_TTL)
+    return capable
+
+
+# ---------------------------------------------------------------------------
+# Image generation / editing (the coach's roasted-photo remix)
+# ---------------------------------------------------------------------------
+
+# Chat models usually can't edit images, but many providers host a
+# dedicated image model on the same OpenAI-compatible endpoint. After the
+# configured model, these fallbacks are probed (first success wins and is
+# cached - the caller never has to know which model actually worked).
+_PROVIDER_IMAGE_MODELS = {
+    "openai": ["gpt-image-1", "dall-e-2"],
+}
+
+
+def _probe_image_bytes() -> bytes:
+    """1024x1024 white PNG for the edit probe - dall-e-2 insists on
+    square 1024 input, gpt-image-1 accepts anything; one shape fits both."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (1024, 1024), (255, 255, 255)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _image_endpoint_config() -> Optional[dict]:
+    """The endpoint used for image editing (the roast).
+
+    Resolution: dedicated LLM_IMAGE_* env (base_url + model required
+    together) → None, meaning "probe the main chat endpoint". Providers
+    whose chat models can READ images often can't CREATE them (MiniMax
+    M3) - the split lets chat/vision stay on such a provider while the
+    roast goes to e.g. OpenAI's gpt-image-1.
+    """
+    from django.conf import settings
+
+    base_url = (getattr(settings, "LLM_IMAGE_BASE_URL", "") or "").strip().rstrip("/")
+    model = (getattr(settings, "LLM_IMAGE_MODEL", "") or "").strip()
+    if not base_url or not model:
+        return None
+    api_key = (getattr(settings, "LLM_IMAGE_API_KEY", "") or "").strip() or None
+    return {"base_url": base_url, "model": model, "api_key": api_key}
+
+
+def _image_endpoint_style(base_url) -> str:
+    """xAI's images/edits speaks JSON (the OpenAI SDK's multipart call gets
+    a 415), so it gets its own wire format - detected by host, no extra
+    setting needed."""
+    return "xai" if "x.ai" in (base_url or "").lower() else "openai"
+
+
+class _XaiImageClient:
+    """Minimal stand-in for the OpenAI client on the xAI path: carries
+    what a JSON POST to {base_url}/images/edits needs."""
+
+    def __init__(self, base_url: str, api_key: str, timeout: int):
+        self.base_url = base_url
+        self.api_key = api_key
+        self.timeout = timeout
+
+
+def _image_client(timeout=30):
+    """``(client, model, candidates, style)`` for image editing, or
+    ``(None, None, [], None)`` when unusable.
+
+    With a dedicated LLM_IMAGE_* config the candidate list is exactly its
+    model; otherwise the main endpoint is probed with its chat model plus
+    provider-known image models. The probe keeps the default short
+    timeout; real edits take much longer (caller passes timeout=180).
+    """
+    image_cfg = _image_endpoint_config()
+    if image_cfg is not None:
+        base_url = _safe_base_url(image_cfg["base_url"])
+        if not base_url:
+            logger.warning("Drill Instructor: LLM_IMAGE_BASE_URL rejected (must be https, non-private host).")
+            return None, None, [], None
+        api_key = image_cfg["api_key"]
+        if not api_key:
+            from site_settings.models import resolve_llm_settings
+            api_key = resolve_llm_settings()["api_key"]
+        if not api_key:
+            return None, None, [], None
+        style = _image_endpoint_style(base_url)
+        if style == "xai":
+            return _XaiImageClient(base_url, api_key, timeout), image_cfg["model"], [image_cfg["model"]], style
+        try:
+            from openai import OpenAI
+        except ImportError:
+            return None, None, [], None
+        return OpenAI(api_key=api_key, base_url=base_url, timeout=timeout, max_retries=0), image_cfg["model"], [image_cfg["model"]], style
+
+    client, config, error = _resolved_client(timeout=timeout, max_retries=0)
+    if client is None:
+        return None, None, [], None
+    candidates = [config["model"]] + _PROVIDER_IMAGE_MODELS.get(config.get("provider"), [])
+    return client, config["model"], candidates, _image_endpoint_style(config.get("base_url"))
+
+
+def _images_edit(client, style: str, model: str, image_bytes: bytes, prompt: str, timeout: int):
+    """One images.edit call in the provider's wire format.
+
+    Returns the raw SDK result (openai) or the parsed JSON dict (xai);
+    raises on failure - the caller classifies via the status code.
+    """
+    if style == "xai":
+        import requests as _requests
+
+        resp = _requests.post(
+            f"{client.base_url}/images/edits",
+            headers={
+                "Authorization": f"Bearer {client.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "prompt": prompt,
+                "image": {
+                    "url": f"data:image/png;base64,{base64.b64encode(image_bytes).decode()}",
+                    "type": "image_url",
+                },
+            },
+            timeout=timeout,
+        )
+        if resp.status_code >= 400:
+            error = Exception(f"xAI images/edits answered HTTP {resp.status_code}")
+            error.status_code = resp.status_code
+            raise error
+        return resp.json()
+    return client.images.edit(
+        model=model,
+        image=image_bytes,
+        prompt=prompt,
+        size="1024x1024",
+        n=1,
+    )
+
+
+def _extract_image_payload(result) -> "tuple[Optional[bytes], Optional[str]]":
+    """Normalise an edit response to image bytes: b64_json (gpt-image-1
+    always, xAI optionally) or a URL to download (dall-e-2 default, xAI
+    default) - the URL variant is fetched with the same size cap."""
+    if isinstance(result, dict):  # xAI JSON body
+        data = result.get("data") or [{}]
+        b64 = data[0].get("b64_json")
+        url = data[0].get("url")
+    else:
+        datum = result.data[0]
+        b64 = getattr(datum, "b64_json", None)
+        url = getattr(datum, "url", None)
+    if b64:
+        return base64.b64decode(b64), None
+    if not url:
+        return None, "image API returned neither b64_json nor url"
+    import requests as _requests
+
+    try:
+        resp = _requests.get(url, timeout=60, stream=True)
+        resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001
+        return None, f"image download failed ({type(exc).__name__})"
+    content_type = (resp.headers.get("Content-Type") or "").split(";")[0].strip()
+    if not content_type.startswith("image/"):
+        return None, f"image URL answered {content_type or 'unknown content type'}"
+    payload = resp.content[:MAX_ROAST_IMAGE_BYTES + 1]
+    if len(payload) > MAX_ROAST_IMAGE_BYTES:
+        return None, "generated image too large"
+    return payload, None
+
+
+def _image_cache_key() -> str:
+    image_cfg = _image_endpoint_config()
+    if image_cfg is not None:
+        raw = f"image-endpoint|{image_cfg['base_url']}|{image_cfg['model']}"
+    else:
+        from site_settings.models import resolve_llm_settings
+        config = resolve_llm_settings()
+        raw = f"chat-endpoint|{config.get('base_url')}|{config.get('model')}"
+    return "drill-image-edit:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def check_image_edit_capability() -> Optional[str]:
+    """The image-edit model available for the roast remix, or None.
+
+    Same philosophy as :func:`check_vision_capability`: probe once (one
+    trivial edit request per candidate), cache the outcome per endpoint.
+    Returns the model NAME so callers can pass it to
+    :func:`generate_roast_image` without knowing the fallback logic.
+    Never raises - any failure means "no image editing".
+    """
+    client, _model, candidates, style = _image_client()
+    if client is None:
+        return None
+
+    cache_key = _image_cache_key()
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached or None
+
+    for candidate in candidates:
+        try:
+            _images_edit(
+                client, style, candidate,
+                image_bytes=_probe_image_bytes(),
+                prompt="Return this image unchanged.",
+                timeout=30,
+            )
+        except Exception as exc:  # noqa: BLE001 - OpenAI raises many subclasses
+            status_code = getattr(exc, "status_code", None)
+            if status_code is not None and 400 <= status_code < 500 and status_code not in (401, 403, 429):
+                logger.info("Drill Instructor image-edit probe: model %s rejected (%s)", candidate, status_code)
+                continue  # definitive "this model can't" - try the next one
+            # Transient or indeterminate - answer "no" for now, retry soon.
+            logger.info("Drill Instructor image-edit probe failed (%s): %s", type(exc).__name__, str(exc)[:200])
+            cache.set(cache_key, "", _VISION_RETRY_TTL)
+            return None
+        logger.info("Drill Instructor image-edit probe: %s can edit images", candidate)
+        cache.set(cache_key, candidate, _VISION_CACHE_TTL)
+        return candidate
+
+    cache.set(cache_key, "", _VISION_CACHE_TTL)
+    return None
+
+
+def _prepare_edit_image(image_path: str, square_png: bool) -> bytes:
+    """Normalise a feed photo for the images.edit input.
+
+    dall-e-2 only accepts square 1024x1024 PNGs - portrait phone shots
+    get white-padded instead of cropped (a crop could cut off the very
+    thing being roasted). Other models take the photo as-is.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    with Image.open(image_path) as img:
+        img = img.convert("RGB")
+        if not square_png:
+            buf = BytesIO()
+            img.save(buf, format="PNG")
+            return buf.getvalue()
+        side = max(img.width, img.height, 1024)
+        canvas = Image.new("RGB", (side, side), (255, 255, 255))
+        canvas.paste(img, ((side - img.width) // 2, (side - img.height) // 2))
+        canvas = canvas.resize((1024, 1024), Image.LANCZOS)
+        buf = BytesIO()
+        canvas.save(buf, format="PNG")
+        return buf.getvalue()
+
+
+def generate_roast_image(image_path: str, roast_prompt: str, model: str) -> "tuple[Optional[bytes], Optional[str]]":
+    """Edit ``image_path`` per the roast prompt; return ``(png_bytes, None)``
+    or ``(None, reason)``.
+
+    The result arrives as b64_json (gpt-image-1 always) or a URL (dall-e-2
+    default) - the URL variant is downloaded with the same size cap.
+    """
+    client, _model, _candidates, style = _image_client(timeout=180)
+    if client is None:
+        return None, "no image-edit endpoint available"
+
+    # dall-e-2 insists on square 1024 PNG input; xAI follows the input
+    # image's aspect ratio, so padding would only add white bars there.
+    square_png = (model == "dall-e-2")
+    try:
+        image_bytes = _prepare_edit_image(image_path, square_png=square_png)
+    except Exception as exc:  # noqa: BLE001 - PIL raises many subclasses
+        logger.warning("Drill Instructor: could not prepare image %s: %s", image_path, exc)
+        return None, f"image preparation failed ({type(exc).__name__})"
+
+    try:
+        result = _images_edit(
+            client, style, model,
+            image_bytes=image_bytes,
+            prompt=roast_prompt[:3900],  # dall-e-2 caps prompts at 4000 chars
+            timeout=180,
+        )
+        return _extract_image_payload(result)
+    except Exception as exc:  # noqa: BLE001 - OpenAI raises many subclasses
+        logger.warning("Drill Instructor image edit failed: %s", exc)
+        return None, f"image edit failed ({type(exc).__name__}: {str(exc)[:200]})"
+
+
+MAX_ROAST_IMAGE_BYTES = 8 * 1024 * 1024
+
+
+def build_roast_image_prompt(*, persona_name: str, persona_system_prompt: str, caption: str = "") -> str:
+    """The edit instruction for the coach's roasted photo remix.
+
+    Style comes from the persona (the system prompt is the owner's own
+    voice briefing - clamped), the mechanic is a bootcamp-poster roast:
+    playful and over the top, never mean-spirited.
+    """
+    parts = [
+        f"Edit this photo into a funny, over-the-top bootcamp propaganda poster that playfully roasts the person in it, in the style of the drill-instructor persona \"{persona_name}\".",
+        f"Persona style briefing: \"{(persona_system_prompt or '').strip()[:400]}\"",
+        "Rules: keep the person clearly recognizable and the edit good-natured "
+        "(exaggerate effort, scenery and drama - never appearance, body or "
+        "identity). Bold poster look, dramatic lightning optional.",
+    ]
+    if caption:
+        parts.append(
+            f"Work the caption \"{caption[:120]}\" into the joke. If you render "
+            "it as poster text, spell it EXACTLY as written."
+        )
+    else:
+        parts.append("Do not render any text - let the imagery do the roasting.")
+    return "\n".join(parts)
+
+
+def build_roast_caption_prompt(*, competition_name: str, author_first_name: str, caption: str = "") -> str:
+    """One-liner the coach posts together with the roasted image."""
+    parts = [
+        f"Competition: {competition_name}",
+        f"Situation: you just posted a remixed propaganda-poster version of @{author_first_name}'s photo as a playful roast.",
+    ]
+    if caption:
+        parts.append(f"Their original caption: \"{caption[:200]}\"")
+    parts.append(
+        "Write one short line (max 160 chars) in your persona's voice "
+        f"presenting your masterpiece and addressing @{author_first_name} by "
+        "their @FirstName token. Never invent other names."
+    )
+    parts.append("Write your line now.")
+    return "\n".join(parts)
 
 
 def _previous_messages_parts(previous_messages) -> "list[str]":
@@ -305,6 +777,50 @@ def build_reply_prompt(*, competition_name: str, coach_message: str, reply_first
         "call back to the thread if useful, and push them back to training. "
         "Never invent other names."
     )
+    parts.append("Write your reaction now.")
+    return "\n".join(parts)
+
+
+def build_photo_prompt(*, competition_name: str, author_first_name: str, caption: str = "", can_see_image: bool = False, roasts_image: bool = False) -> str:
+    """Compose the user-message for the coach's reaction to a photo post.
+
+    A participant shared a picture in the competition's feed. When the
+    configured model is vision-capable the picture is attached to the
+    request (``can_see_image=True``) and the coach reacts to what it
+    actually shows; otherwise the prompt says so explicitly and the coach
+    riffs on the caption instead of hallucinating image content. With
+    ``roasts_image`` the coach also teases the remixed poster it is about
+    to post (the roast image is generated right after the text reaction).
+    """
+    parts = [
+        f"Competition: {competition_name}",
+        f"Situation: @{author_first_name} just shared a photo with the group.",
+    ]
+    if caption:
+        parts.append(f"Their caption: \"{caption[:300]}\"")
+    if can_see_image:
+        parts.append(
+            "The photo is attached - you CAN see it. React to what it "
+            "actually shows: the effort, the scenery, the form, the "
+            "sweat. Tie it back to training."
+        )
+    else:
+        parts.append(
+            "You cannot see the picture itself - react to the caption and the "
+            "gesture of sharing. If the caption is empty, riff on the fact "
+            "that they dropped photo proof into the feed."
+        )
+    parts.append(
+        "Write one short reaction (max 220 chars) in your persona's voice, "
+        f"addressing @{author_first_name} by their @FirstName token."
+        + ("" if can_see_image else " Never describe what might be in the picture,")
+        + " Never invent other names."
+    )
+    if can_see_image and roasts_image:
+        parts.append(
+            "End your reaction by teasing that you also remixed their photo "
+            "into one of your posters - it lands in the thread right after you."
+        )
     parts.append("Write your reaction now.")
     return "\n".join(parts)
 

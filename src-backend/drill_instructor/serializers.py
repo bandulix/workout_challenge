@@ -121,6 +121,11 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
     messages_posted = serializers.IntegerField(read_only=True)
     last_error = serializers.CharField(read_only=True)
     competition_name = serializers.CharField(source="competition.name", read_only=True)
+    # Whether the configured LLM accepts image input (probed + cached in
+    # llm_client.check_vision_capability). The photo-post button and the
+    # photo endpoint both gate on this - a text-only model means no
+    # photo feature at all.
+    vision_capable = serializers.SerializerMethodField()
 
     class Meta:
         model = DrillInstructorConfig
@@ -138,10 +143,15 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
             "last_posted_at",
             "messages_posted",
             "last_error",
+            "vision_capable",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at"]
+
+    def get_vision_capable(self, obj):
+        from .llm_client import check_vision_capability
+        return check_vision_capability()
 
     persona_detail = DrillInstructorPersonaSerializer(source="persona", read_only=True)
 
@@ -177,14 +187,22 @@ class DrillInstructorReplySerializer(serializers.ModelSerializer):
     is_coach = serializers.SerializerMethodField()
     author_name = serializers.SerializerMethodField()
     author_profile_picture = serializers.SerializerMethodField()
+    # The coach's roasted-photo remix hangs under the photo post as a
+    # reaction - same authenticated endpoint as the root's image.
+    image = serializers.SerializerMethodField()
 
     class Meta:
         model = DrillInstructorMessage
-        fields = ["id", "kind", "body", "posted_at", "is_coach", "author_name", "author_profile_picture"]
+        fields = ["id", "kind", "body", "posted_at", "is_coach", "author_name", "author_profile_picture", "image"]
         read_only_fields = fields
 
     def get_is_coach(self, obj):
         return obj.user_id is None
+
+    def get_image(self, obj):
+        if not obj.image:
+            return None
+        return reverse("drill-message-picture", kwargs={"pk": obj.pk})
 
     def get_author_name(self, obj):
         if obj.user_id is None:
@@ -203,6 +221,10 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     Everything is denormalised into one payload so the mobile feed doesn't
     have to fan out into N extra queries per bubble. Thread replies are
     nested oldest-first so the conversation reads top to bottom.
+
+    Photo posts (kind=photo) are participant-authored thread roots: they
+    carry the image URL (authenticated endpoint, like profile pictures)
+    plus the author's name/picture for the bubble header.
     """
 
     competition_id = serializers.IntegerField(source="config.competition_id", read_only=True)
@@ -215,6 +237,9 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     athlete_name = serializers.SerializerMethodField()
     workout_summary = serializers.SerializerMethodField()
     replies = serializers.SerializerMethodField()
+    image = serializers.SerializerMethodField()
+    author_name = serializers.SerializerMethodField()
+    author_profile_picture = serializers.SerializerMethodField()
 
     class Meta:
         model = DrillInstructorMessage
@@ -237,6 +262,9 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             "athlete_name",
             "workout_summary",
             "replies",
+            "image",
+            "author_name",
+            "author_profile_picture",
         ]
         read_only_fields = fields
 
@@ -248,6 +276,24 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
 
     def get_persona_profile_picture(self, obj):
         return _persona_picture_url(obj.config.persona)
+
+    def get_image(self, obj):
+        """Photo post image - the authenticated endpoint, never the raw
+        /media/ path (same privacy model as profile pictures; relative
+        URL, see _persona_picture_url)."""
+        if not obj.image:
+            return None
+        return reverse("drill-message-picture", kwargs={"pk": obj.pk})
+
+    def get_author_name(self, obj):
+        if obj.user_id is None:
+            return None
+        return obj.user.first_name or obj.user.username or None
+
+    def get_author_profile_picture(self, obj):
+        if obj.user_id is None:
+            return None
+        return _user_picture_url(obj.user)
 
     def get_athlete_name(self, obj):
         user = getattr(obj.workout, "user", None)

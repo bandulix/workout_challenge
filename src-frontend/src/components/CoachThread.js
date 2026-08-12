@@ -5,7 +5,19 @@ import {BeatLoader} from "react-spinners";
 import PersonaAvatar from "./PersonaAvatar";
 import ProfileAvatar from "./ProfileAvatar";
 import {drillInstructorApi, useReplyToDrillMessageMutation} from "../utils/reducers/drillInstructorSlice";
+import {useProtectedImage} from "../utils/protectedMedia";
 import {timeAgo} from "../utils/time";
+
+// A reply's image (the coach's roasted-photo remix) - authenticated
+// endpoint, so loaded through the protected-media cache like avatars.
+function ReplyImage({url, alt}) {
+    const {src} = useProtectedImage(url);
+    if (!src) return null;
+    return (
+        <img src={src} alt={alt}
+             className="mt-1 max-h-72 w-auto max-w-full rounded-xl border border-gray-200/70 dark:border-ink-700/60"/>
+    );
+}
 
 // Conversation thread under a top-level coach message: participants of
 // the challenge reply, the coach reacts in its persona's voice (async,
@@ -73,6 +85,7 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false}) {
                                     instead of overflowing the viewport (page scrolled
                                     sideways on smartphones). */}
                                 <p className="text-sm leading-snug break-words dark:text-gray-100">{r.body}</p>
+                                {r.image && <ReplyImage url={r.image} alt={r.body ? `Coach remix: ${r.body}` : "Coach remix"}/>}
                                 <p className="text-[11px] text-gray-400 mt-0.5">
                                     {r.is_coach ? (persona?.name || "Coach") : (r.author_name || "Participant")} · {timeAgo(r.posted_at)}
                                 </p>

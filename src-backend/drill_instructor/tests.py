@@ -866,6 +866,727 @@ class CoachThreadReplyTests(TestCase):
         self.assertIn(f"/competition/{self.competition.id}", push.call_args[1]["url"])
 
 
+class PhotoPostTests(TestCase):
+    """Participants post pictures into the coach feed; the coach reacts
+    asynchronously (post_photo_reaction task); the image itself is only
+    served through the authenticated picture endpoint."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        reaction_patcher = mock.patch("drill_instructor.tasks.post_photo_reaction.delay")
+        self.addCleanup(reaction_patcher.stop)
+        self.reaction_delay = reaction_patcher.start()
+
+        # Photo posts are gated on the configured LLM accepting images -
+        # pretend a vision-capable model (the probe itself is covered by
+        # its own tests below).
+        vision_patcher = mock.patch("drill_instructor.views.check_vision_capability", return_value=True)
+        self.addCleanup(vision_patcher.stop)
+        vision_patcher.start()
+
+        self._media_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._media_tmp.cleanup)
+        media_override = override_settings(MEDIA_ROOT=self._media_tmp.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+        self.persona = DrillInstructorPersona.objects.create(
+            name="Photo Sergeant",
+            system_prompt="You are a test sergeant.",
+        )
+        self.owner = _user("photo-owner@example.com", "Olivia")
+        self.athlete = _user("photo-athlete@example.com", "Alex")
+        self.outsider = _user("photo-outsider@example.com", "Nina")
+        today = timezone.localdate()
+        self.competition = Competition.objects.create(
+            owner=self.owner,
+            name="Photo Cup",
+            start_date=today - datetime.timedelta(days=3),
+            end_date=today + datetime.timedelta(days=4),
+        )
+        self.athlete.my_competitions.add(self.competition)
+        self.config = DrillInstructorConfig.objects.create(
+            competition=self.competition,
+            enabled=True,
+            persona=self.persona,
+        )
+        self.client = APIClient()
+
+    def _post(self, user, caption="Proof of the hill repeats!"):
+        self.client.force_authenticate(user)
+        image = SimpleUploadedFile("photo.png", PNG_1PX, content_type="image/png")
+        data = {"competition": self.competition.id, "image": image}
+        if caption is not None:
+            data["caption"] = caption
+        return self.client.post("/api/drill-instructor/message/photo/", data, format="multipart")
+
+    # ---- endpoint permissions & validation ----------------------------
+
+    def test_anonymous_gets_401(self):
+        image = SimpleUploadedFile("photo.png", PNG_1PX, content_type="image/png")
+        response = self.client.post(
+            "/api/drill-instructor/message/photo/",
+            {"competition": self.competition.id, "image": image},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_outsider_gets_404(self):
+        response = self._post(self.outsider)
+        self.assertEqual(response.status_code, 404)
+
+    def test_participant_can_post_and_reaction_is_queued(self):
+        response = self._post(self.athlete)
+        self.assertEqual(response.status_code, 201, response.content)
+        message = DrillInstructorMessage.objects.get(pk=response.json()["id"])
+        self.assertEqual(message.kind, DrillInstructorMessage.KIND_PHOTO)
+        self.assertIsNone(message.parent)
+        self.assertEqual(message.user, self.athlete)
+        self.assertEqual(message.body, "Proof of the hill repeats!")
+        self.assertTrue(message.image.name.startswith("message_pics/"))
+        self.reaction_delay.assert_called_once_with(message.id)
+
+    def test_payload_exposes_image_via_authenticated_url(self):
+        response = self._post(self.athlete)
+        payload = response.json()
+        self.assertIn(f"/api/drill-instructor/message/{payload['id']}/picture/", payload["image"])
+        self.assertNotIn("/media/", payload["image"])
+        self.assertEqual(payload["author_name"], "Alex")
+
+    def test_caption_optional(self):
+        response = self._post(self.athlete, caption=None)
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["body"], "")
+
+    def test_caption_too_long(self):
+        response = self._post(self.athlete, caption="x" * 501)
+        self.assertEqual(response.status_code, 400)
+
+    def test_image_required(self):
+        self.client.force_authenticate(self.athlete)
+        response = self.client.post(
+            "/api/drill-instructor/message/photo/",
+            {"competition": self.competition.id},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_non_image_rejected(self):
+        self.client.force_authenticate(self.athlete)
+        fake = SimpleUploadedFile("evil.png", b"not an image", content_type="text/plain")
+        response = self.client.post(
+            "/api/drill-instructor/message/photo/",
+            {"competition": self.competition.id, "image": fake},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_post_to_benched_coach_rejected(self):
+        self.config.enabled = False
+        self.config.save()
+        response = self._post(self.athlete)
+        self.assertEqual(response.status_code, 400)
+
+    def test_post_rejected_when_model_cant_see(self):
+        with mock.patch("drill_instructor.views.check_vision_capability", return_value=False):
+            response = self._post(self.athlete)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("can't see pictures", response.json()["image"])
+        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
+
+    def test_post_throttled(self):
+        # The configured daily cap (default 2) is enforced - one more
+        # post within 24h is refused.
+        from django.conf import settings
+        for _ in range(settings.DRILL_MAX_PHOTOS_PER_DAY):
+            DrillInstructorMessage.objects.create(
+                config=self.config, kind=DrillInstructorMessage.KIND_PHOTO,
+                user=self.athlete, body="spam!",
+            )
+        response = self._post(self.athlete)
+        self.assertEqual(response.status_code, 429)
+
+    def test_throttle_counts_only_recent_posts(self):
+        old = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PHOTO,
+            user=self.athlete, body="yesterday's pic",
+        )
+        DrillInstructorMessage.objects.filter(pk=old.pk).update(
+            posted_at=timezone.now() - datetime.timedelta(hours=25)
+        )
+        response = self._post(self.athlete)
+        self.assertEqual(response.status_code, 201, response.content)
+
+    # ---- feed integration ----------------------------------------------
+
+    def test_photo_post_is_a_thread_root_in_the_feed(self):
+        self._post(self.athlete)
+        self.client.force_authenticate(self.athlete)
+        response = self.client.get("/api/drill-instructor/message/")
+        results = response.json()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["kind"], DrillInstructorMessage.KIND_PHOTO)
+        self.assertEqual(results[0]["author_name"], "Alex")
+
+    def test_replies_under_photos_use_the_regular_thread(self):
+        post = self._post(self.athlete)
+        root_id = post.json()["id"]
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(f"/api/drill-instructor/message/{root_id}/reply/", {"body": "Nice form!"}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+
+    # ---- the picture endpoint ------------------------------------------
+
+    def _photo_message(self):
+        message = DrillInstructorMessage(
+            config=self.config, kind=DrillInstructorMessage.KIND_PHOTO,
+            user=self.athlete, body="pic",
+        )
+        message.image.save("photo.png", SimpleUploadedFile("photo.png", PNG_1PX, content_type="image/png"))
+        message.save()
+        return message
+
+    def test_picture_member_gets_internal_redirect(self):
+        message = self._photo_message()
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(f"/api/drill-instructor/message/{message.id}/picture/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["X-Accel-Redirect"], f"/protected-media/{message.image.name}")
+        self.assertIn("private", response["Cache-Control"])
+
+    def test_picture_outsider_gets_404(self):
+        message = self._photo_message()
+        self.client.force_authenticate(self.outsider)
+        response = self.client.get(f"/api/drill-instructor/message/{message.id}/picture/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_picture_anonymous_gets_401(self):
+        message = self._photo_message()
+        response = self.client.get(f"/api/drill-instructor/message/{message.id}/picture/")
+        self.assertEqual(response.status_code, 401)
+
+    # ---- the coach's reaction task --------------------------------------
+
+    def test_photo_reaction_task_creates_coach_reaction(self):
+        from .tasks import post_photo_reaction
+        photo = self._photo_message()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value=None), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - photo proof logged!", None)) as gen:
+            result = post_photo_reaction(photo.id)
+        reaction = DrillInstructorMessage.objects.get(pk=result["reaction_id"])
+        self.assertEqual(reaction.kind, DrillInstructorMessage.KIND_REACTION)
+        self.assertEqual(reaction.parent, photo)
+        self.assertIsNone(reaction.user)
+        _, kwargs = gen.call_args
+        self.assertIn("@Alex", kwargs["user_prompt"])
+        self.assertIn("pic", kwargs["user_prompt"])
+        # A vision-capable model gets the actual picture attached.
+        self.assertEqual(kwargs["image_path"], photo.image.path)
+        self.assertIn("CAN see it", kwargs["user_prompt"])
+        self.assertIsNone(result["roast_id"])  # no image-edit model probed
+
+    # ---- the roast remix -----------------------------------------------
+
+    def test_roast_posts_remixed_image_as_second_reaction(self):
+        from .tasks import post_photo_reaction
+        photo = self._photo_message()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="dall-e-2"), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - framed it!", None)), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(PNG_1PX, None)) as roast:
+            result = post_photo_reaction(photo.id)
+        self.assertIsNotNone(result["roast_id"])
+        roast_msg = DrillInstructorMessage.objects.get(pk=result["roast_id"])
+        self.assertEqual(roast_msg.kind, DrillInstructorMessage.KIND_REACTION)
+        self.assertEqual(roast_msg.parent, photo)
+        self.assertIsNone(roast_msg.user)
+        self.assertTrue(roast_msg.image)  # the remixed poster
+        self.assertIn("@Alex", roast_msg.body)
+        roast_args = roast.call_args[0]  # positional: (image_path, prompt, model)
+        self.assertEqual(roast_args[0], photo.image.path)
+        self.assertEqual(roast_args[2], "dall-e-2")  # probed model passed through
+
+    def test_roast_failure_still_posts_the_text_reaction(self):
+        from .tasks import post_photo_reaction
+        photo = self._photo_message()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="dall-e-2"), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - noted!", None)), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(None, "quota exhausted")):
+            result = post_photo_reaction(photo.id)
+        self.assertIsNone(result["roast_id"])
+        self.assertIsNotNone(result["reaction_id"])  # text always lands
+        self.config.refresh_from_db()
+        self.assertIn("quota exhausted", self.config.last_error)
+
+    def test_no_roast_without_vision(self):
+        from .tasks import post_photo_reaction
+        photo = self._photo_message()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=False), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability") as edit_probe, \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - noted!", None)):
+            result = post_photo_reaction(photo.id)
+        self.assertIsNone(result["roast_id"])
+        edit_probe.assert_not_called()  # roasting without seeing = blind edits
+
+    def test_reaction_image_served_through_the_picture_endpoint(self):
+        photo = self._photo_message()
+        roast_msg = DrillInstructorMessage(
+            config=self.config, kind=DrillInstructorMessage.KIND_REACTION,
+            parent=photo, user=None, body="roasted",
+        )
+        roast_msg.image.save("roast.png", SimpleUploadedFile("roast.png", PNG_1PX, content_type="image/png"))
+        roast_msg.save()
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(f"/api/drill-instructor/message/{roast_msg.id}/picture/")
+        self.assertEqual(response.status_code, 200)  # child message, not a root
+        self.client.force_authenticate(self.outsider)
+        response = self.client.get(f"/api/drill-instructor/message/{roast_msg.id}/picture/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_photo_reaction_task_text_only_when_model_cant_see(self):
+        from .tasks import post_photo_reaction
+        photo = self._photo_message()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=False), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - nice one!", None)) as gen:
+            post_photo_reaction(photo.id)
+        _, kwargs = gen.call_args
+        self.assertIsNone(kwargs["image_path"])
+        self.assertIn("cannot see the picture", kwargs["user_prompt"])
+
+    def test_photo_reaction_task_retries_text_only_when_image_call_fails(self):
+        from .tasks import post_photo_reaction
+        photo = self._photo_message()
+        calls = []
+
+        def fake_generate(**kwargs):
+            calls.append(kwargs)
+            if kwargs.get("image_path"):
+                return None, "provider rejected the image"
+            return "@Alex - noted the caption!", None
+
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value=None), \
+                mock.patch("drill_instructor.tasks.generate_message", side_effect=fake_generate):
+            result = post_photo_reaction(photo.id)
+        reaction = DrillInstructorMessage.objects.get(pk=result["reaction_id"])
+        self.assertEqual(reaction.body, "@Alex - noted the caption!")
+        self.assertEqual(len(calls), 2)
+        self.assertIsNone(calls[1].get("image_path"))  # text-only retry
+
+    def test_photo_reaction_task_static_fallback_on_llm_outage(self):
+        from .tasks import post_photo_reaction
+        photo = self._photo_message()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value=None), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=(None, "outage")):
+            result = post_photo_reaction(photo.id)
+        reaction = DrillInstructorMessage.objects.get(pk=result["reaction_id"])
+        self.assertIn("Photo Sergeant", reaction.body)
+        self.assertIn("@Alex", reaction.body)
+
+    def test_photo_reaction_task_ignores_non_photo_messages(self):
+        from .tasks import post_photo_reaction
+        root = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PUSH, body="Move!",
+        )
+        result = post_photo_reaction(root.id)
+        self.assertEqual(result.get("skipped"), "not_a_photo_post")
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class VisionCapabilityProbeTests(TestCase):
+    """The photo feature gates on a live probe of the configured LLM:
+    one tiny image completion decides whether the model can see. The
+    answer is cached per endpoint+model; transient failures expire fast,
+    definitive 400s stick for a day."""
+
+    def setUp(self):
+        self.settings_override = override_settings(
+            OPENAI_API_KEY="test-key",
+            LLM_PROVIDER="custom",
+            LLM_BASE_URL="https://llm.example.com/v1",
+            LLM_MODEL="some-model",
+        )
+        self.settings_override.enable()
+        self.addCleanup(self.settings_override.disable)
+        from site_settings.models import SiteSettings
+        SiteSettings.get_solo()  # ensure the resolver has a row
+        # The probe answer is cached per endpoint+model - every test
+        # needs a clean slate or a cached result would skip the mock.
+        from django.core.cache import cache
+        cache.clear()
+
+    def _run_probe(self, side_effect=None):
+        from . import llm_client
+        client = mock.Mock()
+        create = client.chat.completions.create
+        if side_effect is not None:
+            create.side_effect = side_effect
+        with mock.patch.object(llm_client, "_resolved_client", return_value=(client, {
+            "provider": "custom",
+            "api_key": "test-key",
+            "base_url": "https://llm.example.com/v1",
+            "model": "some-model",
+        }, None)):
+            first = llm_client.check_vision_capability()
+            second = llm_client.check_vision_capability()
+        return first, second, create
+
+    def test_no_api_key_means_no_vision(self):
+        from . import llm_client
+        with mock.patch.object(llm_client, "_resolved_client", return_value=(None, {}, "no key")):
+            self.assertFalse(llm_client.check_vision_capability())
+
+    def test_successful_probe_means_vision_and_is_cached(self):
+        first, second, create = self._run_probe()
+        self.assertTrue(first)
+        self.assertTrue(second)
+        create.assert_called_once()  # second call served from cache
+
+    def test_400_means_no_vision_and_is_cached(self):
+        class FakeBadRequest(Exception):
+            status_code = 400
+
+        first, second, create = self._run_probe(side_effect=FakeBadRequest("image input not supported"))
+        self.assertFalse(first)
+        self.assertFalse(second)
+        create.assert_called_once()
+
+    def test_probe_sends_an_image_content_part(self):
+        _, _, create = self._run_probe()
+        content = create.call_args[1]["messages"][0]["content"]
+        self.assertEqual(content[0]["type"], "text")
+        self.assertEqual(content[1]["type"], "image_url")
+        self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class ImageEditCapabilityProbeTests(TestCase):
+    """The roast remix gates on a live probe of the images.edit endpoint:
+    the configured chat model is tried first, then the provider's known
+    image models; the first working model name is cached and returned."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()  # probe answers are cached per endpoint+model
+        # The dedicated image endpoint must not leak between tests.
+        no_image_cfg = override_settings(
+            LLM_IMAGE_BASE_URL="", LLM_IMAGE_MODEL="", LLM_IMAGE_API_KEY="",
+        )
+        no_image_cfg.enable()
+        self.addCleanup(no_image_cfg.disable)
+
+    def _config(self, provider="custom"):
+        return {
+            "provider": provider,
+            "api_key": "test-key",
+            "base_url": "https://llm.example.com/v1",
+            "model": "chat-model",
+        }
+
+    def _run(self, client, config):
+        from . import llm_client
+        with mock.patch.object(llm_client, "_resolved_client", return_value=(client, config, None)):
+            return llm_client.check_image_edit_capability()
+
+    def test_no_api_key_means_no_edit_capability(self):
+        from . import llm_client
+        with mock.patch.object(llm_client, "_resolved_client", return_value=(None, {}, "no key")):
+            self.assertIsNone(llm_client.check_image_edit_capability())
+
+    def test_configured_model_wins_when_it_can_edit(self):
+        client = mock.Mock()
+        self.assertEqual(self._run(client, self._config()), "chat-model")
+        client.images.edit.assert_called_once()
+
+    def test_openai_fallback_models_are_tried(self):
+        class FakeBadRequest(Exception):
+            status_code = 400
+
+        client = mock.Mock()
+        client.images.edit.side_effect = [FakeBadRequest("chat model can't edit"), mock.Mock()]
+        self.assertEqual(self._run(client, self._config(provider="openai")), "gpt-image-1")
+        self.assertEqual(client.images.edit.call_count, 2)
+
+    def test_no_capable_model_caches_the_negative(self):
+        class FakeBadRequest(Exception):
+            status_code = 400
+
+        client = mock.Mock()
+        client.images.edit.side_effect = FakeBadRequest("nope")
+        self.assertIsNone(self._run(client, self._config()))
+        self.assertIsNone(self._run(client, self._config()))  # cached
+        client.images.edit.assert_called_once()  # custom provider: only the chat model itself
+
+    def test_transient_failure_retries_soon(self):
+        client = mock.Mock()
+        client.images.edit.side_effect = ConnectionError("provider down")
+        self.assertIsNone(self._run(client, self._config()))
+
+    # ---- dedicated image endpoint (LLM_IMAGE_*) -------------------------
+
+    @override_settings(
+        LLM_IMAGE_BASE_URL="https://images.example.com/v1",
+        LLM_IMAGE_MODEL="image-model",
+        LLM_IMAGE_API_KEY="image-key",
+        OPENAI_API_KEY="chat-key",
+        LLM_PROVIDER="custom",
+        LLM_BASE_URL="https://chat.example.com/v1",
+        LLM_MODEL="chat-model",
+    )
+    def test_dedicated_image_endpoint_is_used_and_chat_endpoint_untouched(self):
+        from . import llm_client
+        # _safe_base_url does real DNS - example.com doesn't resolve in tests.
+        with mock.patch.object(llm_client, "_resolved_client", side_effect=AssertionError("chat endpoint must not be probed")), \
+                mock.patch.object(llm_client, "_safe_base_url", side_effect=lambda url: url), \
+                mock.patch("openai.OpenAI") as openai_cls:
+            client = openai_cls.return_value
+            result = llm_client.check_image_edit_capability()
+        self.assertEqual(result, "image-model")
+        # Client built against the IMAGE endpoint with the IMAGE key...
+        _, kwargs = openai_cls.call_args
+        self.assertEqual(kwargs["base_url"], "https://images.example.com/v1")
+        self.assertEqual(kwargs["api_key"], "image-key")
+        # ...and only its configured model is probed.
+        self.assertEqual(client.images.edit.call_args[1]["model"], "image-model")
+
+    @override_settings(
+        LLM_IMAGE_BASE_URL="https://images.example.com/v1",
+        LLM_IMAGE_MODEL="image-model",
+        LLM_IMAGE_API_KEY="",  # falls back to the main key
+        OPENAI_API_KEY="chat-key",
+        LLM_PROVIDER="custom",
+        LLM_BASE_URL="",
+        LLM_MODEL="chat-model",
+    )
+    def test_image_key_falls_back_to_main_api_key(self):
+        from . import llm_client
+        with mock.patch.object(llm_client, "_safe_base_url", side_effect=lambda url: url), \
+                mock.patch("openai.OpenAI") as openai_cls:
+            llm_client.check_image_edit_capability()
+        self.assertEqual(openai_cls.call_args[1]["api_key"], "chat-key")
+
+    @override_settings(
+        LLM_IMAGE_BASE_URL="https://images.example.com/v1",
+        LLM_IMAGE_MODEL="",  # base_url without model = not configured
+    )
+    def test_partial_image_config_is_ignored(self):
+        from . import llm_client
+        self.assertIsNone(llm_client._image_endpoint_config())
+
+    @override_settings(
+        LLM_IMAGE_BASE_URL="http://169.254.169.254/v1",  # SSRF guard applies here too
+        LLM_IMAGE_MODEL="image-model",
+    )
+    def test_private_image_endpoint_rejected(self):
+        from . import llm_client
+        client, model, candidates, style = llm_client._image_client()
+        self.assertIsNone(client)
+        self.assertEqual(candidates, [])
+
+    @override_settings(
+        LLM_IMAGE_BASE_URL="https://api.x.ai/v1",
+        LLM_IMAGE_MODEL="grok-imagine-image",
+        LLM_IMAGE_API_KEY="xai-key",
+    )
+    def test_xai_endpoint_gets_json_client(self):
+        from . import llm_client
+        with mock.patch.object(llm_client, "_safe_base_url", side_effect=lambda url: url):
+            client, model, candidates, style = llm_client._image_client()
+        self.assertEqual(style, "xai")
+        self.assertEqual(model, "grok-imagine-image")
+        self.assertEqual(candidates, ["grok-imagine-image"])
+        self.assertEqual(client.base_url, "https://api.x.ai/v1")
+        self.assertEqual(client.api_key, "xai-key")
+
+    def test_xai_edit_posts_json_not_multipart(self):
+        """xAI 415s the OpenAI SDK's multipart edit call - the JSON body
+        with a base64 data-URI image is the working wire format."""
+        from . import llm_client
+        client = llm_client._XaiImageClient("https://api.x.ai/v1", "xai-key", 30)
+        resp = mock.Mock(status_code=200)
+        resp.json.return_value = {"data": [{"b64_json": base64.b64encode(PNG_1PX).decode()}]}
+        with mock.patch("requests.post", return_value=resp) as post:
+            result = llm_client._images_edit(client, "xai", "grok-imagine-image", PNG_1PX, "roast it", 30)
+        _, kwargs = post.call_args
+        self.assertEqual(kwargs["json"]["model"], "grok-imagine-image")
+        self.assertTrue(kwargs["json"]["image"]["url"].startswith("data:image/png;base64,"))
+        self.assertNotIn("files", kwargs)  # never multipart
+        payload, error = llm_client._extract_image_payload(result)
+        self.assertIsNone(error)
+        self.assertEqual(payload, PNG_1PX)
+
+    def test_xai_edit_400_carries_status_code(self):
+        from . import llm_client
+        client = llm_client._XaiImageClient("https://api.x.ai/v1", "xai-key", 30)
+        resp = mock.Mock(status_code=400)
+        with mock.patch("requests.post", return_value=resp):
+            with self.assertRaises(Exception) as ctx:
+                llm_client._images_edit(client, "xai", "grok-imagine-image", PNG_1PX, "roast it", 30)
+        self.assertEqual(ctx.exception.status_code, 400)
+
+
+class RoastImageGenerationTests(TestCase):
+    """generate_roast_image: edit call shape, b64 + URL result handling,
+    and the dall-e-2 square-PNG normalisation."""
+
+    def setUp(self):
+        # The dedicated image endpoint must not leak in from the env.
+        no_image_cfg = override_settings(
+            LLM_IMAGE_BASE_URL="", LLM_IMAGE_MODEL="", LLM_IMAGE_API_KEY="",
+        )
+        no_image_cfg.enable()
+        self.addCleanup(no_image_cfg.disable)
+
+    def _client(self, b64=None, url=None):
+        client = mock.Mock()
+        datum = mock.Mock()
+        datum.b64_json = base64.b64encode(b64).decode() if b64 else None
+        datum.url = url
+        client.images.edit.return_value = mock.Mock(data=[datum])
+        return client
+
+    def _photo_file(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        tmp.write(PNG_1PX)
+        tmp.flush()
+        self.addCleanup(tmp.close)
+        return tmp.name
+
+    def _generate(self, client, model="m", style="openai"):
+        from . import llm_client
+        with mock.patch.object(llm_client, "_image_client", return_value=(client, model, [model], style)):
+            return llm_client.generate_roast_image(self._photo_file(), "roast it", model)
+
+    def test_b64_result_returned_as_bytes(self):
+        client = self._client(b64=PNG_1PX)
+        data, error = self._generate(client)
+        self.assertIsNone(error)
+        self.assertEqual(data, PNG_1PX)
+        kwargs = client.images.edit.call_args[1]
+        self.assertEqual(kwargs["model"], "m")
+        self.assertEqual(kwargs["prompt"], "roast it")
+
+    def test_url_result_is_downloaded(self):
+        client = self._client(url="https://img.example.com/roast.png")
+        resp = mock.Mock()
+        resp.headers = {"Content-Type": "image/png"}
+        resp.content = PNG_1PX
+        resp.raise_for_status = lambda: None
+        with mock.patch("requests.get", return_value=resp):
+            data, error = self._generate(client)
+        self.assertIsNone(error)
+        self.assertEqual(data, PNG_1PX)
+
+    def test_dalle2_gets_a_square_1024_png(self):
+        client = self._client(b64=PNG_1PX)
+        self._generate(client, model="dall-e-2")
+        sent = client.images.edit.call_args[1]["image"]
+        from io import BytesIO
+
+        from PIL import Image
+        with Image.open(BytesIO(sent)) as img:
+            self.assertEqual(img.format, "PNG")
+            self.assertEqual(img.size, (1024, 1024))
+
+    def test_edit_failure_returns_reason(self):
+        client = mock.Mock()
+        client.images.edit.side_effect = RuntimeError("safety filter")
+        data, error = self._generate(client)
+        self.assertIsNone(data)
+        self.assertIn("safety filter", error)
+
+    def test_no_image_endpoint_means_clean_skip(self):
+        from . import llm_client
+        with mock.patch.object(llm_client, "_image_client", return_value=(None, None, [], None)):
+            data, error = llm_client.generate_roast_image(self._photo_file(), "roast it", "m")
+        self.assertIsNone(data)
+        self.assertIn("no image-edit endpoint", error)
+
+    def test_xai_style_edit_roundtrip(self):
+        from . import llm_client
+        client = llm_client._XaiImageClient("https://api.x.ai/v1", "xai-key", 180)
+        resp = mock.Mock(status_code=200)
+        resp.json.return_value = {"data": [{"b64_json": base64.b64encode(PNG_1PX).decode()}]}
+        with mock.patch("requests.post", return_value=resp) as post:
+            data, error = self._generate(client, model="grok-imagine-image", style="xai")
+        self.assertIsNone(error)
+        self.assertEqual(data, PNG_1PX)
+        self.assertEqual(post.call_args[1]["timeout"], 180)  # real edits take long
+
+    def test_xai_url_result_is_downloaded(self):
+        from . import llm_client
+        client = llm_client._XaiImageClient("https://api.x.ai/v1", "xai-key", 180)
+        post_resp = mock.Mock(status_code=200)
+        post_resp.json.return_value = {"data": [{"url": "https://img.example.com/roast.png"}]}
+        get_resp = mock.Mock()
+        get_resp.headers = {"Content-Type": "image/png"}
+        get_resp.content = PNG_1PX
+        get_resp.raise_for_status = lambda: None
+        with mock.patch("requests.post", return_value=post_resp), \
+                mock.patch("requests.get", return_value=get_resp):
+            data, error = self._generate(client, model="grok-imagine-image", style="xai")
+        self.assertIsNone(error)
+        self.assertEqual(data, PNG_1PX)
+
+
+class GenerateMessageImageTests(TestCase):
+    """generate_message attaches the local picture as a base64 data-URL
+    content part when image_path is given (the provider can't reach our
+    authenticated media endpoints)."""
+
+    def test_image_becomes_a_multimodal_content_part(self):
+        from . import llm_client
+        client = mock.Mock()
+        client.chat.completions.create.return_value = mock.Mock(
+            choices=[mock.Mock(message=mock.Mock(content="Nice shot!"))]
+        )
+        with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+            tmp.write(PNG_1PX)
+            tmp.flush()
+            with mock.patch.object(llm_client, "_resolved_client", return_value=(client, {"provider": "custom", "model": "m", "base_url": None}, None)):
+                body, error = llm_client.generate_message(
+                    system_prompt="You are a coach.",
+                    user_prompt="React to this photo.",
+                    image_path=tmp.name,
+                )
+        self.assertIsNone(error)
+        self.assertEqual(body, "Nice shot!")
+        content = client.chat.completions.create.call_args[1]["messages"][1]["content"]
+        self.assertEqual(content[0], {"type": "text", "text": "React to this photo."})
+        self.assertEqual(content[1]["type"], "image_url")
+        self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
+
+    def test_missing_image_falls_back_to_plain_text(self):
+        from . import llm_client
+        client = mock.Mock()
+        client.chat.completions.create.return_value = mock.Mock(
+            choices=[mock.Mock(message=mock.Mock(content="Caption it is!"))]
+        )
+        with mock.patch.object(llm_client, "_resolved_client", return_value=(client, {"provider": "custom", "model": "m", "base_url": None}, None)):
+            body, error = llm_client.generate_message(
+                system_prompt="You are a coach.",
+                user_prompt="React to this photo.",
+                image_path="/nonexistent/photo.png",
+            )
+        self.assertIsNone(error)
+        content = client.chat.completions.create.call_args[1]["messages"][1]["content"]
+        self.assertIsInstance(content, str)  # no image part attached
+
+
 class InactivityNudgePeriodicTaskTests(TestCase):
     """Migration 0007 seeds the PeriodicTask row the DatabaseScheduler
     needs - without it the celery.py beat entry alone would never fire."""

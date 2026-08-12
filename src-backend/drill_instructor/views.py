@@ -4,6 +4,7 @@ import mimetypes
 from django.conf import settings
 from django.db.models import Prefetch, Q
 from django.http import FileResponse, Http404, HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -12,6 +13,7 @@ from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .llm_client import check_vision_capability
 from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona
 from .serializers import (
     DrillInstructorConfigSerializer,
@@ -134,6 +136,12 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
     # Anti-spam / LLM-cost cap: each reply queues one coach reaction.
     MAX_REPLIES_PER_HOUR = 10
     MAX_REPLY_LEN = 500
+    # Photos: a tight per-user daily cap (env-configurable) - every post
+    # queues an LLM reaction (and possibly an image-edit roast), both of
+    # which cost money, and a photo spam feed stops being fun quickly.
+    MAX_PHOTOS_PER_DAY = settings.DRILL_MAX_PHOTOS_PER_DAY
+    MAX_PHOTO_BYTES = 5 * 1024 * 1024  # 5 MB
+    MAX_PHOTO_CAPTION_LEN = 500
 
     def get_queryset(self):
         user = self.request.user
@@ -207,6 +215,126 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             DrillInstructorReplySerializer(reply, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=False, methods=["post"])
+    def photo(self, request):
+        """Post a photo into the competition's coach feed (multipart).
+
+        The picture + optional caption become a thread root, so
+        participants reply with the same mechanism as under coach
+        messages; the coach's reaction is generated asynchronously by the
+        ``post_photo_reaction`` task. Only while the coach is on duty -
+        same gate as thread replies.
+        """
+        competition_id = request.data.get("competition")
+        try:
+            competition_id = int(competition_id)
+        except (TypeError, ValueError):
+            return Response({"competition": "A valid competition id is required."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        config = (
+            DrillInstructorConfig.objects
+            .filter(Q(competition__owner=request.user) | Q(competition__user=request.user))
+            .filter(competition_id=competition_id)
+            .select_related("competition", "persona")
+            .first()
+        )
+        # 404, not 403: don't leak which competitions exist.
+        if config is None:
+            return Response({"competition": "Competition not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not config.enabled:
+            return Response({"competition": "The coach is benched for this competition - photo posts are paused."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Photo posts only make sense when the coach can actually see
+        # them: the feature is hidden in the UI and refused here when the
+        # configured LLM rejects image input (probed + cached).
+        if not check_vision_capability():
+            return Response(
+                {"image": "The configured AI model can't see pictures - photo posts are unavailable on this server."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        image = request.FILES.get("image")
+        if image is None:
+            return Response({"image": "A picture file is required."}, status=status.HTTP_400_BAD_REQUEST)
+        content_type = getattr(image, "content_type", "") or ""
+        if not content_type.startswith("image/"):
+            return Response({"image": "File must be an image."}, status=status.HTTP_400_BAD_REQUEST)
+        if image.size > self.MAX_PHOTO_BYTES:
+            return Response({"image": "Picture too large (max 5 MB)."}, status=status.HTTP_400_BAD_REQUEST)
+
+        caption = (request.data.get("caption") or "").strip()
+        if len(caption) > self.MAX_PHOTO_CAPTION_LEN:
+            return Response({"caption": f"Caption too long (max {self.MAX_PHOTO_CAPTION_LEN} characters)."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        day_ago = timezone.now() - datetime.timedelta(hours=24)
+        recent = DrillInstructorMessage.objects.filter(
+            kind=DrillInstructorMessage.KIND_PHOTO, user=request.user, posted_at__gte=day_ago,
+        ).count()
+        if recent >= self.MAX_PHOTOS_PER_DAY:
+            return Response(
+                {"image": f"That's enough pictures for today - max {self.MAX_PHOTOS_PER_DAY} per day."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        message = DrillInstructorMessage.objects.create(
+            config=config,
+            kind=DrillInstructorMessage.KIND_PHOTO,
+            user=request.user,
+            body=caption,
+            image=image,
+        )
+
+        from .tasks import post_photo_reaction
+        post_photo_reaction.delay(message.id)
+
+        return Response(
+            DrillInstructorMessageSerializer(message, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["get"])
+    def picture(self, request, pk=None):
+        """Serve a photo post's image - owner/participants only.
+
+        Same privacy model as profile pictures: never on public /media/,
+        Django checks membership (the member-scoped queryset 404s
+        outsiders), production file delivery goes to nginx via
+        X-Accel-Redirect; bare Django dev (DEBUG) streams the file.
+
+        NOT the viewset's roots-only queryset: the coach's roast remix
+        hangs on a child (reaction) message, so any message of a
+        competition the user belongs to must resolve here.
+        """
+        message = get_object_or_404(
+            DrillInstructorMessage.objects
+            .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
+            .distinct(),
+            pk=pk,
+        )
+        if not message.image:
+            raise Http404("No picture on this message.")
+
+        content_type = (
+            mimetypes.guess_type(message.image.name)[0]
+            or "application/octet-stream"
+        )
+        if settings.DEBUG:
+            response = FileResponse(
+                message.image.open("rb"), content_type=content_type
+            )
+        else:
+            response = HttpResponse(content_type=content_type)
+            response["X-Accel-Redirect"] = f"/protected-media/{message.image.name}"
+        # Photos are immutable per message id, but revalidate anyway -
+        # a deleted-and-reposted edge must never serve a stale image.
+        # Private: never stored by shared caches.
+        response["Cache-Control"] = "private, no-cache"
+        response["X-Robots-Tag"] = "noindex, nofollow"
+        return response
 
 
 class DrillInstructorTestMessageView(APIView):

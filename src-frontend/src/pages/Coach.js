@@ -48,8 +48,16 @@ function CoachHero({persona, config, latestMessage, ownedCompetitions}) {
                     <div className="absolute -top-2 left-12 h-4 w-4 rotate-45 bg-white/10"/>
                     {latestMessage ? (
                         <>
-                            <p className="text-[15px] leading-relaxed break-words">{latestMessage.body}</p>
+                            {/* Photo posts carry their text in the caption -
+                                with an empty caption the bubble announces
+                                the photo instead of rendering blank. */}
+                            <p className="text-[15px] leading-relaxed break-words">
+                                {latestMessage.kind === "photo"
+                                    ? (latestMessage.body || `${latestMessage.author_name || "Someone"} shared a photo in the feed.`)
+                                    : latestMessage.body}
+                            </p>
                             <p className="mt-2 text-xs text-gray-400">
+                                {latestMessage.kind === "photo" && latestMessage.author_name ? `${latestMessage.author_name} · ` : ""}
                                 {latestMessage.competition_name} · {timeAgo(latestMessage.posted_at)}
                             </p>
                         </>

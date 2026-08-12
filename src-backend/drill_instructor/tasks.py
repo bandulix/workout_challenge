@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from workout_challenge.celery import app, is_task_already_executing
 
-from .llm_client import build_group_push_prompt, build_inactivity_prompt, build_reply_prompt, build_workout_prompt, generate_message
+from .llm_client import build_group_push_prompt, build_inactivity_prompt, build_photo_prompt, build_reply_prompt, build_roast_caption_prompt, build_roast_image_prompt, build_workout_prompt, check_image_edit_capability, check_vision_capability, generate_message, generate_roast_image
 
 try:
     from push_notifications.sender import send_push_to_user
@@ -381,6 +381,179 @@ def post_reply_reaction(self, reply_id):
             logger.warning("Drill Instructor: reaction push failed for user %s: %s", reply.user_id, exc)
 
     return {"reply_id": reply_id, "reaction_id": message.id}
+
+
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
+def post_photo_reaction(self, photo_id):
+    """Generate the coach's reaction to a participant's photo post.
+
+    Triggered by the photo endpoint: the photo post is stored
+    synchronously, then this task reacts to it in the persona's voice -
+    stored as a ``reaction`` under the photo thread root, with a push
+    ping to the poster when the config's push toggle is on.
+    """
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+
+    try:
+        photo = (
+            DrillInstructorMessage.objects
+            .select_related("config", "config__competition", "config__persona", "user")
+            .get(pk=photo_id)
+        )
+    except DrillInstructorMessage.DoesNotExist:
+        logger.info("Drill Instructor: photo post %s no longer exists, skipping reaction.", photo_id)
+        return {"skipped": "photo_missing"}
+
+    # Sanity: only ever react to a participant's photo thread root.
+    if photo.kind != DrillInstructorMessage.KIND_PHOTO or photo.user_id is None or photo.parent_id is not None:
+        return {"skipped": "not_a_photo_post"}
+
+    config = photo.config
+    persona = config.persona
+    author_first_name = photo.user.first_name or photo.user.username or "Athlete"
+
+    # The photo endpoint already gates on vision capability, but the
+    # model could have been switched between post and task - re-check.
+    can_see = check_vision_capability()
+    image_path = photo.image.path if (can_see and photo.image) else None
+    # The roast remix needs both: a model that can SEE the photo and an
+    # endpoint that can EDIT images (probe returns the working model).
+    roast_model = check_image_edit_capability() if can_see else None
+
+    user_prompt = build_photo_prompt(
+        competition_name=config.competition.name,
+        author_first_name=author_first_name,
+        caption=photo.body or "",
+        can_see_image=image_path is not None,
+        roasts_image=roast_model is not None,
+    )
+
+    body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt, image_path=image_path)
+    if not body and image_path is not None:
+        # The probe said vision, the request failed anyway (model swapped,
+        # provider-side reject) - retry text-only before falling back to
+        # the static line.
+        body, llm_error = generate_message(
+            system_prompt=persona.system_prompt,
+            user_prompt=build_photo_prompt(
+                competition_name=config.competition.name,
+                author_first_name=author_first_name,
+                caption=photo.body or "",
+                can_see_image=False,
+            ),
+        )
+    if not body:
+        body = f"@{author_first_name} drops photo proof - {persona.name} approves. Now back to training!"
+
+    message = DrillInstructorMessage(
+        config=config,
+        kind=DrillInstructorMessage.KIND_REACTION,
+        parent=photo,
+        user=None,
+        body=body,
+        posted_at=timezone.now(),
+    )
+    try:
+        message.save()
+        config.last_posted_at = timezone.now()
+        config.messages_posted = (config.messages_posted or 0) + 1
+        config.last_error = llm_error or ""
+        config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
+        logger.info("Drill Instructor: stored photo reaction %s for photo post %s", message.id, photo_id)
+    except Exception as exc:  # noqa: BLE001 - reaction is nice-to-have
+        message.success = False
+        message.error = str(exc)[:2000]
+        try:
+            message.save()
+        except Exception:  # pragma: no cover
+            pass
+        config.last_error = str(exc)[:2000]
+        config.save(update_fields=["last_error", "updated_at"])
+        logger.warning("Drill Instructor: photo reaction save failed for post %s: %s", photo_id, exc)
+        return {"error": str(exc), "photo_id": photo_id}
+
+    # Push ping to the poster only - it's a personal reaction, not a
+    # group announcement.
+    if config.send_push_on_activity and send_push_to_user is not None:
+        try:
+            send_push_to_user(
+                photo.user,
+                title=f"{config.competition.name} - {persona.name}",
+                body=body,
+                url=f"/competition/{config.competition_id}",
+                icon=_persona_icon(persona),
+                badge="/icon-badge.png",
+                tag=f"drill-photo-{photo.id}",
+            )
+        except Exception as exc:  # noqa: BLE001 - never block the reaction
+            logger.warning("Drill Instructor: photo reaction push failed for user %s: %s", photo.user_id, exc)
+
+    roast_id = None
+    if roast_model and image_path:
+        roast_id = _post_photo_roast(config, photo, roast_model, image_path)
+
+    return {"photo_id": photo_id, "reaction_id": message.id, "roast_id": roast_id}
+
+
+def _post_photo_roast(config, photo, roast_model, image_path):
+    """The entertainment payload: edit the posted photo into a persona-
+    styled roast poster and post it as a second coach reaction.
+
+    Strictly best-effort - image generation is slow and costs money per
+    call, so a failure (quota, safety filter, provider outage) degrades
+    to "no roast" with the reason visible in the config's last_error; the
+    text reaction above is never at risk.
+    """
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+    persona = config.persona
+    author_first_name = photo.user.first_name or photo.user.username or "Athlete"
+
+    roast_prompt = build_roast_image_prompt(
+        persona_name=persona.name,
+        persona_system_prompt=persona.system_prompt,
+        caption=photo.body or "",
+    )
+    png_bytes, roast_error = generate_roast_image(image_path, roast_prompt, roast_model)
+    if not png_bytes:
+        config.last_error = f"photo roast skipped: {roast_error}"
+        config.save(update_fields=["last_error", "updated_at"])
+        logger.info("Drill Instructor: photo roast for %s skipped: %s", photo.id, roast_error)
+        return None
+
+    caption, _llm_error = generate_message(
+        system_prompt=persona.system_prompt,
+        user_prompt=build_roast_caption_prompt(
+            competition_name=config.competition.name,
+            author_first_name=author_first_name,
+            caption=photo.body or "",
+        ),
+    )
+    if not caption:
+        caption = f"@{author_first_name} - I made you a poster. You're welcome."
+
+    from django.core.files.base import ContentFile
+
+    roast = DrillInstructorMessage(
+        config=config,
+        kind=DrillInstructorMessage.KIND_REACTION,
+        parent=photo,
+        user=None,
+        body=caption,
+        posted_at=timezone.now(),
+    )
+    roast.image.save(f"roast-{photo.id}.png", ContentFile(png_bytes), save=False)
+    try:
+        roast.save()
+        config.last_posted_at = timezone.now()
+        config.messages_posted = (config.messages_posted or 0) + 1
+        config.save(update_fields=["last_posted_at", "messages_posted", "updated_at"])
+        logger.info("Drill Instructor: posted photo roast %s for photo post %s", roast.id, photo.id)
+        return roast.id
+    except Exception as exc:  # noqa: BLE001 - the roast is nice-to-have
+        config.last_error = f"photo roast save failed: {str(exc)[:400]}"
+        config.save(update_fields=["last_error", "updated_at"])
+        logger.warning("Drill Instructor: roast save failed for photo %s: %s", photo.id, exc)
+        return None
 
 
 def _competition_leader(competition):

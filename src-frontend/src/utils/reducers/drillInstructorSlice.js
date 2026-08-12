@@ -111,6 +111,24 @@ export const drillInstructorApi = createApi({
             }),
             invalidatesTags: ['DrillMessage'],
         }),
+        postDrillPhoto: builder.mutation({
+            // Participant's photo post (multipart; image is compressed
+            // before upload - see utils/imageCompress.js). The coach's
+            // reaction is generated server-side in the background.
+            query: ({competition, image, caption}) => {
+                const form = new FormData();
+                form.append('competition', String(competition));
+                form.append('image', image);
+                if (caption) form.append('caption', caption);
+                return {
+                    url: 'drill-instructor/message/photo/',
+                    method: 'POST',
+                    body: form,
+                    headers: {'X-Skip-Content-Type': '1'},
+                };
+            },
+            invalidatesTags: ['DrillMessage'],
+        }),
 
         // ---- Test message (Celery task runner) -------------------------
         runTestMessage: builder.mutation({
@@ -134,5 +152,6 @@ export const {
     useDeleteDrillConfigMutation,
     useGetDrillMessagesQuery,
     useReplyToDrillMessageMutation,
+    usePostDrillPhotoMutation,
     useRunTestMessageMutation,
 } = drillInstructorApi;
