@@ -53,7 +53,6 @@ export default function PhotoPost({competitionId, visionCapable, parentId, onPos
 function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
     const fileInput = React.useRef(null);
     const [file, setFile] = useState(null);
-    const [caption, setCaption] = useState("");
     const [error, setError] = useState(null);
     const [posting, setPosting] = useState(false);
     const [postPhoto] = usePostDrillPhotoMutation();
@@ -79,7 +78,6 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
 
     function reset() {
         setFile(null);
-        setCaption("");
         setError(null);
         onDone?.();
     }
@@ -90,7 +88,7 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
         setPosting(true);
         try {
             const compressed = await compressImage(file);
-            const posted = await postPhoto({competition: competitionId, parent: parentId, image: compressed, caption: caption.trim()}).unwrap();
+            const posted = await postPhoto({competition: competitionId, parent: parentId, image: compressed}).unwrap();
             reset();
             // The coach's reaction is generated asynchronously (usually a
             // few seconds) - two delayed re-fetches pick it up quickly,
@@ -121,12 +119,13 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
                 </div>
             )}
             <div className="flex items-center gap-2">
-                <input type="text" value={caption} maxLength={500}
-                       onChange={(e) => setCaption(e.target.value)}
-                       onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
-                       placeholder="Add a caption…"
-                       aria-label="Photo caption"
-                       className="flex-1 shadow border border-gray-200 dark:border-ink-700/60 rounded-full py-2 px-4 text-sm text-gray-700 dark:bg-ink-900 dark:text-gray-300 dark:placeholder-gray-600 leading-tight focus:outline-none focus:border-volt-500"/>
+                {!file && (
+                    <button onClick={() => fileInput.current?.click()}
+                            className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px]">
+                        Choose a different picture
+                    </button>
+                )}
+                <div className="flex-1"/>
                 <button onClick={handleSend} disabled={posting || !file}
                         aria-label="Post photo"
                         className="shrink-0 min-h-[44px] min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none flex items-center justify-center">

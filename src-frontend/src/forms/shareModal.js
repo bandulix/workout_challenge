@@ -1,8 +1,13 @@
 import React from "react";
 import {Modal} from "./basicComponents";
+import {getServerUrl, isNativeApp} from "../utils/serverUrl";
 
 export default function CompetitionInviteModal({competition, setModalState}) {
-    const hostUrl = window.location.origin;
+    // In the Android app window.location.origin is the WebView's own
+    // https://localhost - a localhost invite link is useless on anyone
+    // else's phone. The real server address lives in the server-url
+    // store (entered once at first start / baked per-deployment).
+    const hostUrl = isNativeApp() ? getServerUrl() : window.location.origin;
     const url = hostUrl + '?join=' + competition.join_code;
 
     return (
