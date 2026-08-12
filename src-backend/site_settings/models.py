@@ -41,9 +41,12 @@ class SiteSettings(models.Model):
     llm_provider = models.CharField(
         max_length=20,
         choices=LLM_PROVIDER_CHOICES,
-        default="custom",
+        default="",
         blank=True,
-        help_text="Preset provider. Picks sane defaults for base URL + model; you can override below.",
+        help_text=(
+            "Preset provider. Picks sane defaults for base URL + model; you can override below. "
+            "Blank = follow the deployment (.env LLM_PROVIDER / 'custom')."
+        ),
     )
     llm_api_key = models.CharField(max_length=200, blank=True, default="")
     llm_base_url = models.CharField(max_length=300, blank=True, default="")

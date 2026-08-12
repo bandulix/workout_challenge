@@ -130,8 +130,10 @@ export default function SiteSettingsForm({setModalState}) {
                 strava_client_secret: "",
                 email_host_password: "",
                 health_developer_password: "",
-                // Plain fields.
-                llm_provider: settings.llm_provider || "custom",
+                // Plain fields. llm_provider stays "" for "deployment
+                // default" - coercing it to "custom" would shadow the
+                // .env LLM_PROVIDER on every save.
+                llm_provider: settings.llm_provider || "",
                 llm_base_url: settings.llm_base_url || "",
                 llm_model: settings.llm_model || "",
                 llm_email_model: settings.llm_email_model || "",
@@ -220,11 +222,12 @@ export default function SiteSettingsForm({setModalState}) {
                      description="Used by the AI Drill Instructor and the weekly email AI fact.">
                 <div className="px-4 w-full sm:w-1/2">
                     <Field label="Provider Preset" error={fieldErrors.llm_provider}
-                           hint="Picking MiniMax auto-fills the base URL and model below. You can still override either.">
+                           hint="Picking MiniMax auto-fills the base URL and model below. You can still override either. 'Deployment default' follows the .env values (LLM_PROVIDER/LLM_BASE_URL/LLM_MODEL) - a docker recreate applies them.">
                         <select
                             className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
-                            value={values.llm_provider || "custom"}
+                            value={values.llm_provider ?? ""}
                             onChange={(e) => handleProviderChange(e.target.value)}>
+                            <option value="">Deployment default (.env)</option>
                             <option value="custom">Custom (OpenAI-compatible)</option>
                             <option value="MiniMax">MiniMax</option>
                             <option value="openai">OpenAI</option>

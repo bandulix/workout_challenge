@@ -170,11 +170,50 @@ function CompetitionHead({competition, feed, isOwner, goals, user}) {
 }
 
 
-// Photo sharing for the coach feed: pick (or take, on mobile) a
-// picture, it gets compressed before upload (see utils/imageCompress.js),
-// then posted as a thread root - the coach reacts, participants reply
-// through the regular thread UI.
-function PhotoComposer({competitionId}) {
+// Photo sharing for the coach feed. The camera button is ALWAYS visible
+// while the coach is on duty - when the server's AI model can't see
+// pictures (vision probe failed), a click explains that instead of
+// opening the picker (better discoverability than a hidden feature).
+// The backend endpoint still refuses photo posts without vision - the
+// gate there protects against LLM cost abuse via the API.
+function PhotoPost({competitionId, visionCapable}) {
+    const [open, setOpen] = useState(false);
+    const [hint, setHint] = useState(false);
+    return (
+        <>
+            <button onClick={() => {
+                        if (!visionCapable) {
+                            setHint((v) => !v);
+                            return;
+                        }
+                        setHint(false);
+                        setOpen((v) => !v);
+                    }}
+                    title="Share a photo"
+                    aria-label="Share a photo"
+                    className="shrink-0 min-h-[36px] min-w-[36px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt flex items-center justify-center">
+                <Camera className="h-4 w-4"/>
+            </button>
+            {hint && (
+                <div className="w-full px-5 pb-3 -mt-1">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Photo posts are unavailable right now - the AI model configured on this
+                        server can't see pictures. (Organizer: pick a vision-capable model in
+                        Site Settings → AI.)
+                    </p>
+                </div>
+            )}
+            {open && visionCapable && <PhotoComposer competitionId={competitionId} onDone={() => setOpen(false)}/>}
+        </>
+    );
+}
+
+
+// The composer itself: pick (or take, on mobile) a picture, it gets
+// compressed before upload (see utils/imageCompress.js), then posted as
+// a thread root - the coach reacts, participants reply through the
+// regular thread UI.
+function PhotoComposer({competitionId, onDone}) {
     const fileInput = React.useRef(null);
     const [file, setFile] = useState(null);
     const [caption, setCaption] = useState("");
@@ -182,6 +221,12 @@ function PhotoComposer({competitionId}) {
     const [posting, setPosting] = useState(false);
     const [postPhoto] = usePostDrillPhotoMutation();
     const dispatch = useDispatch();
+
+    // Open the picker as soon as the composer mounts (the button already
+    // said "I want to share a photo" - no second tap).
+    useEffect(() => {
+        fileInput.current?.click();
+    }, []);
 
     // Local preview of the picked file (instant, no upload needed).
     const [preview, setPreview] = useState(null);
@@ -199,6 +244,7 @@ function PhotoComposer({competitionId}) {
         setFile(null);
         setCaption("");
         setError(null);
+        onDone?.();
     }
 
     async function handleSend() {
@@ -222,23 +268,10 @@ function PhotoComposer({competitionId}) {
         }
     }
 
-    if (!file) {
-        return (
-            <>
-                <input ref={fileInput} type="file" accept="image/*" className="hidden"
-                       onChange={(e) => { setError(null); setFile(e.target.files?.[0] || null); e.target.value = ""; }}/>
-                <button onClick={() => fileInput.current?.click()}
-                        title="Share a photo"
-                        aria-label="Share a photo"
-                        className="shrink-0 min-h-[36px] min-w-[36px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt flex items-center justify-center">
-                    <Camera className="h-4 w-4"/>
-                </button>
-            </>
-        );
-    }
-
     return (
-        <div className="px-5 py-3 border-t border-gray-100 dark:border-ink-700/60 space-y-2">
+        <div className="w-full px-5 py-3 border-t border-gray-100 dark:border-ink-700/60 space-y-2">
+            <input ref={fileInput} type="file" accept="image/*" className="hidden"
+                   onChange={(e) => { setError(null); setFile(e.target.files?.[0] || null); e.target.value = ""; }}/>
             <div className="relative inline-block">
                 <img src={preview} alt="Upload preview"
                      className="max-h-48 rounded-xl border border-gray-200/70 dark:border-ink-700/60"/>
@@ -337,7 +370,7 @@ function CoachCorner({competition, isOwner}) {
 
     return (
         <div ref={cornerRef} className="mb-4 rounded-3xl bg-white dark:bg-ink-850 dark:border dark:border-ink-700/60 shadow-card dark:shadow-card-dark overflow-hidden">
-            <div className="flex items-center gap-3 px-5 pt-4 pb-3 border-b border-gray-100 dark:border-ink-700/60">
+            <div className="flex flex-wrap items-center gap-3 px-5 pt-4 pb-3 border-b border-gray-100 dark:border-ink-700/60">
                 <PersonaAvatar persona={persona} size={44} glow={config.enabled}/>
                 <div className="flex-1 min-w-0">
                     <p className="font-display text-xs uppercase tracking-wider flex items-center gap-2">
@@ -348,11 +381,10 @@ function CoachCorner({competition, isOwner}) {
                         {persona.name}{config.enabled ? " is on duty" : " is benched"} · {config.messages_posted || 0} messages
                     </p>
                 </div>
-                {/* Photo posts need two things: the coach on duty (same
-                    gate as thread replies) and a vision-capable AI model
-                    (probed server-side) - a coach that can't see pictures
-                    doesn't offer the camera. */}
-                {config.enabled && config.vision_capable && <PhotoComposer competitionId={competition.id}/>}
+                {/* The camera is always offered while the coach is on
+                    duty; PhotoPost explains when the server's model can't
+                    see pictures instead of hiding the feature. */}
+                {config.enabled && <PhotoPost competitionId={competition.id} visionCapable={Boolean(config.vision_capable)}/>}
                 {isOwner && (
                     <button onClick={() => setShowConfigModal(true)}
                             className="text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition">
