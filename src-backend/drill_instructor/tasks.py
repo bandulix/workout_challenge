@@ -299,14 +299,21 @@ def post_reply_reaction(self, reply_id):
         logger.info("Drill Instructor: reply %s no longer exists, skipping reaction.", reply_id)
         return {"skipped": "reply_missing"}
 
-    # Sanity: only ever react to a participant's reply with a thread root.
-    if reply.kind != DrillInstructorMessage.KIND_REPLY or reply.user_id is None or reply.parent_id is None:
+    # Sanity: only ever react to a participant's reply (text or photo)
+    # with a thread root.
+    if reply.kind not in (DrillInstructorMessage.KIND_REPLY, DrillInstructorMessage.KIND_PHOTO) or reply.user_id is None or reply.parent_id is None:
         return {"skipped": "not_a_reply"}
 
     config = reply.config
     persona = config.persona
     root = reply.parent
     replier_first_name = reply.user.first_name or reply.user.username or "Athlete"
+
+    # A photo reply: the coach gets the actual picture when the model can
+    # see (checked live - the model could have changed since the post).
+    reply_image_path = None
+    if reply.image:
+        reply_image_path = reply.image.path if check_vision_capability() else None
 
     # Thread context (the few messages before this reply, oldest first)
     # so the reaction can call back to the conversation.
@@ -331,9 +338,28 @@ def post_reply_reaction(self, reply_id):
         reply_first_name=replier_first_name,
         reply_body=reply.body,
         thread_history=history,
+        reply_has_photo=reply_image_path is not None,
     )
 
-    body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
+    body, llm_error = generate_message(
+        system_prompt=persona.system_prompt,
+        user_prompt=user_prompt,
+        image_path=reply_image_path,
+    )
+    if not body and reply_image_path is not None:
+        # The probe said vision, the request failed anyway (model swapped,
+        # provider-side reject) - retry text-only before the static line.
+        body, llm_error = generate_message(
+            system_prompt=persona.system_prompt,
+            user_prompt=build_reply_prompt(
+                competition_name=config.competition.name,
+                coach_message=root.body,
+                reply_first_name=replier_first_name,
+                reply_body=reply.body,
+                thread_history=history,
+                reply_has_photo=False,
+            ),
+        )
     if not body:
         body = f"{persona.name}: heard loud and clear, @{replier_first_name}!"
 

@@ -2,7 +2,7 @@ import datetime
 import mimetypes
 
 from django.conf import settings
-from django.db.models import Prefetch, Q
+from django.db.models import Count, Prefetch, Q
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -14,12 +14,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .llm_client import check_vision_capability
-from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona
+from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona, DrillInstructorPhotoVote
 from .serializers import (
     DrillInstructorConfigSerializer,
     DrillInstructorMessageSerializer,
     DrillInstructorPersonaSerializer,
     DrillInstructorReplySerializer,
+    RoastCardSerializer,
 )
 
 
@@ -220,29 +221,47 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
     def photo(self, request):
         """Post a photo into the competition's coach feed (multipart).
 
-        The picture + optional caption become a thread root, so
-        participants reply with the same mechanism as under coach
-        messages; the coach's reaction is generated asynchronously by the
-        ``post_photo_reaction`` task. Only while the coach is on duty -
-        same gate as thread replies.
+        Two shapes: without ``parent`` the picture + optional caption
+        become a thread root (coach reaction via ``post_photo_reaction``,
+        roast remix when an image-edit model is set). With ``parent``
+        (a thread root id) the photo answers that message - e.g. the
+        Coach page's button replies to the coach's latest message - and
+        the coach reacts via ``post_reply_reaction``. Only while the
+        coach is on duty - same gate as thread replies.
         """
-        competition_id = request.data.get("competition")
-        try:
-            competition_id = int(competition_id)
-        except (TypeError, ValueError):
-            return Response({"competition": "A valid competition id is required."},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        config = (
-            DrillInstructorConfig.objects
-            .filter(Q(competition__owner=request.user) | Q(competition__user=request.user))
-            .filter(competition_id=competition_id)
-            .select_related("competition", "persona")
-            .first()
-        )
-        # 404, not 403: don't leak which competitions exist.
-        if config is None:
-            return Response({"competition": "Competition not found."}, status=status.HTTP_404_NOT_FOUND)
+        parent = None
+        parent_id = request.data.get("parent")
+        if parent_id not in (None, ""):
+            try:
+                parent_id = int(parent_id)
+            except (TypeError, ValueError):
+                return Response({"parent": "A valid message id is required."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            parent = get_object_or_404(
+                DrillInstructorMessage.objects
+                .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
+                .filter(parent__isnull=True)
+                .distinct(),
+                pk=parent_id,
+            )
+            config = parent.config
+        else:
+            competition_id = request.data.get("competition")
+            try:
+                competition_id = int(competition_id)
+            except (TypeError, ValueError):
+                return Response({"competition": "A valid competition id is required."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            config = (
+                DrillInstructorConfig.objects
+                .filter(Q(competition__owner=request.user) | Q(competition__user=request.user))
+                .filter(competition_id=competition_id)
+                .select_related("competition", "persona")
+                .first()
+            )
+            # 404, not 403: don't leak which competitions exist.
+            if config is None:
+                return Response({"competition": "Competition not found."}, status=status.HTTP_404_NOT_FOUND)
         if not config.enabled:
             return Response({"competition": "The coach is benched for this competition - photo posts are paused."},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -283,13 +302,21 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         message = DrillInstructorMessage.objects.create(
             config=config,
             kind=DrillInstructorMessage.KIND_PHOTO,
+            parent=parent,
             user=request.user,
             body=caption,
             image=image,
         )
 
-        from .tasks import post_photo_reaction
-        post_photo_reaction.delay(message.id)
+        if parent is not None:
+            # Photo answer inside an existing thread: the coach reacts
+            # with the reply pipeline (which also attaches the image when
+            # the model can see).
+            from .tasks import post_reply_reaction
+            post_reply_reaction.delay(message.id)
+        else:
+            from .tasks import post_photo_reaction
+            post_photo_reaction.delay(message.id)
 
         return Response(
             DrillInstructorMessageSerializer(message, context={"request": request}).data,
@@ -335,6 +362,67 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         response["Cache-Control"] = "private, no-cache"
         response["X-Robots-Tag"] = "noindex, nofollow"
         return response
+
+    # The swipe box shows the newest roasts across the user's
+    # competitions; older cards fall off the edge (they stay in the
+    # competition threads anyway).
+    ROAST_BOX_LIMIT = 50
+
+    @action(detail=False, methods=["get"])
+    def roasts(self, request):
+        """Roast cards for the Coach page's hot-or-not swipe box.
+
+        Every coach reaction that carries an image (the remixed posters),
+        newest first, scoped to the caller's competitions.
+        """
+        qs = (
+            DrillInstructorMessage.objects
+            .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
+            .filter(kind=DrillInstructorMessage.KIND_REACTION, user__isnull=True)
+            .exclude(image="")
+            .exclude(image__isnull=True)
+            .select_related("config", "config__competition", "config__persona", "parent", "parent__user")
+            .prefetch_related(Prefetch(
+                "photo_votes",
+                queryset=DrillInstructorPhotoVote.objects.filter(user=request.user),
+                to_attr="my_votes",
+            ))
+            .annotate(
+                hot_votes=Count("photo_votes", filter=Q(photo_votes__hot=True), distinct=True),
+                not_votes=Count("photo_votes", filter=Q(photo_votes__hot=False), distinct=True),
+            )
+            .distinct()
+            .order_by("-posted_at")[: self.ROAST_BOX_LIMIT]
+        )
+        return Response(RoastCardSerializer(qs, many=True, context={"request": request}).data)
+
+    @action(detail=True, methods=["post"])
+    def vote(self, request, pk=None):
+        """Cast (or change) the caller's hot-or-not vote on a roast card."""
+        # NOT the roots-only queryset: roasts are child messages - scope
+        # by competition membership directly (same pattern as picture()).
+        message = get_object_or_404(
+            DrillInstructorMessage.objects
+            .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
+            .distinct(),
+            pk=pk,
+        )
+        if not message.image or message.user_id is not None or message.kind != DrillInstructorMessage.KIND_REACTION:
+            return Response({"message": "Only the coach's roasted photos can be voted on."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        hot = request.data.get("hot")
+        if not isinstance(hot, bool):
+            return Response({"hot": "true or false required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        vote, _created = DrillInstructorPhotoVote.objects.update_or_create(
+            message=message, user=request.user, defaults={"hot": hot},
+        )
+        tally = message.photo_votes.aggregate(
+            hot_votes=Count("id", filter=Q(hot=True)),
+            not_votes=Count("id", filter=Q(hot=False)),
+        )
+        return Response({"id": message.id, "my_vote": vote.hot, **tally}, status=status.HTTP_200_OK)
 
 
 class DrillInstructorTestMessageView(APIView):

@@ -126,6 +126,10 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
     # photo endpoint both gate on this - a text-only model means no
     # photo feature at all.
     vision_capable = serializers.SerializerMethodField()
+    # Whether an image-EDIT model is reachable (LLM_IMAGE_* or the chat
+    # endpoint's image models). Gates the hot-or-not roast box on the
+    # Coach page.
+    image_edit_capable = serializers.SerializerMethodField()
 
     class Meta:
         model = DrillInstructorConfig
@@ -144,6 +148,7 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
             "messages_posted",
             "last_error",
             "vision_capable",
+            "image_edit_capable",
             "created_at",
             "updated_at",
         ]
@@ -152,6 +157,10 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
     def get_vision_capable(self, obj):
         from .llm_client import check_vision_capability
         return check_vision_capability()
+
+    def get_image_edit_capable(self, obj):
+        from .llm_client import check_image_edit_capability
+        return check_image_edit_capability() is not None
 
     persona_detail = DrillInstructorPersonaSerializer(source="persona", read_only=True)
 
@@ -315,3 +324,55 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
         if workout.kcal is not None:
             parts.append(f"{round(float(workout.kcal))} kcal")
         return " · ".join(parts)
+
+
+class RoastCardSerializer(serializers.ModelSerializer):
+    """One roasted photo for the Coach page's hot-or-not swipe box.
+
+    Denormalised like the feed serializer: image URL, the coach's caption
+    line, persona + competition context, the roasted athlete's first
+    name, and the running tally (plus the caller's own vote).
+    """
+
+    image = serializers.SerializerMethodField()
+    competition_name = serializers.CharField(source="config.competition.name", read_only=True)
+    persona_name = serializers.CharField(source="config.persona.name", read_only=True)
+    athlete_name = serializers.SerializerMethodField()
+    hot_votes = serializers.IntegerField(read_only=True)
+    not_votes = serializers.IntegerField(read_only=True)
+    my_vote = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DrillInstructorMessage
+        fields = [
+            "id",
+            "body",
+            "posted_at",
+            "image",
+            "competition_name",
+            "persona_name",
+            "athlete_name",
+            "hot_votes",
+            "not_votes",
+            "my_vote",
+        ]
+        read_only_fields = fields
+
+    def get_image(self, obj):
+        if not obj.image:
+            return None
+        return reverse("drill-message-picture", kwargs={"pk": obj.pk})
+
+    def get_athlete_name(self, obj):
+        # The roast hangs under the photo post; its user is the athlete.
+        author = getattr(obj.parent, "user", None)
+        if author is None:
+            return None
+        return author.first_name or author.username or None
+
+    def get_my_vote(self, obj):
+        # Uses the view's per-user Prefetch (to_attr) - no query per card.
+        votes = getattr(obj, "my_votes", None)
+        if votes is None:
+            votes = list(obj.photo_votes.filter(user=self.context["request"].user))
+        return votes[0].hot if votes else None  # True / False / None

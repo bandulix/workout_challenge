@@ -4,7 +4,7 @@ import {baseQueryWithReauth} from './baseQueryWithReauth';
 export const drillInstructorApi = createApi({
     reducerPath: 'drillInstructorApi',
     baseQuery: baseQueryWithReauth,
-    tagTypes: ['DrillPersona', 'DrillConfig', 'DrillMessage'],
+    tagTypes: ['DrillPersona', 'DrillConfig', 'DrillMessage', 'DrillRoast'],
     keepUnusedDataFor: 60 * 60 * 12,
     refetchOnMountOrArgChange: 60, // 60 seconds - the drill instructor's active state must not look "forgotten" on a second device
     endpoints: (builder) => ({
@@ -113,11 +113,14 @@ export const drillInstructorApi = createApi({
         }),
         postDrillPhoto: builder.mutation({
             // Participant's photo post (multipart; image is compressed
-            // before upload - see utils/imageCompress.js). The coach's
-            // reaction is generated server-side in the background.
-            query: ({competition, image, caption}) => {
+            // before upload - see utils/imageCompress.js). With `parent`
+            // the photo answers that thread (Coach page: the coach's
+            // latest message); without it, it opens a new thread. The
+            // coach's reaction is generated server-side in the background.
+            query: ({competition, parent, image, caption}) => {
                 const form = new FormData();
-                form.append('competition', String(competition));
+                if (parent) form.append('parent', String(parent));
+                else form.append('competition', String(competition));
                 form.append('image', image);
                 if (caption) form.append('caption', caption);
                 return {
@@ -128,6 +131,20 @@ export const drillInstructorApi = createApi({
                 };
             },
             invalidatesTags: ['DrillMessage'],
+        }),
+
+        // ---- Roast swipe box (hot-or-not) ------------------------------
+        getRoasts: builder.query({
+            query: () => ({url: 'drill-instructor/message/roasts/', method: 'GET'}),
+            providesTags: ['DrillRoast'],
+        }),
+        voteRoast: builder.mutation({
+            query: ({id, hot}) => ({
+                url: `drill-instructor/message/${id}/vote/`,
+                method: 'POST',
+                body: {hot},
+            }),
+            // No refetch: the swipe box applies votes optimistically.
         }),
 
         // ---- Test message (Celery task runner) -------------------------
@@ -153,5 +170,7 @@ export const {
     useGetDrillMessagesQuery,
     useReplyToDrillMessageMutation,
     usePostDrillPhotoMutation,
+    useGetRoastsQuery,
+    useVoteRoastMutation,
     useRunTestMessageMutation,
 } = drillInstructorApi;

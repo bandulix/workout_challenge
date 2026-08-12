@@ -1,9 +1,11 @@
 import React, {useMemo, useState} from "react";
-import {Link} from "react-router-dom";
+import {Link, useNavigate} from "react-router-dom";
 import {Megaphone, Bot, ChevronRight, Radio, Sparkles, PencilLine, Flag, MessageCircle} from "lucide-react";
 import {PageWrapper, BoxSection} from "../utils/miscellaneous";
 import {SectionLoader} from "../utils/loaders";
 import PersonaAvatar from "../components/PersonaAvatar";
+import PhotoPost from "../components/PhotoPost";
+import RoastSwipeBox from "../components/RoastSwipeBox";
 import PushOptInCard from "../components/PushOptIn";
 import {Modal} from "../forms/basicComponents";
 import DrillInstructorPersonaModal from "../forms/drillInstructorPersonaModal";
@@ -22,6 +24,7 @@ const FALLBACK_PERSONA = {name: "Your Coach", tagline: "Waiting for orders.", av
 
 
 function CoachHero({persona, config, latestMessage, ownedCompetitions}) {
+    const navigate = useNavigate();
     return (
         <div className="relative overflow-hidden rounded-3xl bg-ink-900 text-white shadow-card-dark border border-ink-700/60">
             {/* volt aura */}
@@ -75,12 +78,22 @@ function CoachHero({persona, config, latestMessage, ownedCompetitions}) {
                 </div>
 
                 {/* Straight into the thread on the competition page - the
-                    reply param deep-links to Coach's Corner and opens it. */}
+                    reply param deep-links to Coach's Corner and opens it.
+                    The photo button answers the coach's latest message with
+                    a picture (same thread, competition-scoped). */}
                 {config && latestMessage && (
-                    <Link to={`/competition/${latestMessage.competition_id}?reply=${latestMessage.id}`}
-                          className="mt-5 inline-flex items-center gap-2 rounded-full bg-volt-400 text-ink-950 px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
-                        <MessageCircle className="h-4 w-4"/> Respond <ChevronRight className="h-4 w-4"/>
-                    </Link>
+                    <div className="mt-5 flex items-center gap-3">
+                        <Link to={`/competition/${latestMessage.competition_id}?reply=${latestMessage.id}`}
+                              className="inline-flex items-center gap-2 rounded-full bg-volt-400 text-ink-950 px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
+                            <MessageCircle className="h-4 w-4"/> Respond <ChevronRight className="h-4 w-4"/>
+                        </Link>
+                        {config.enabled && (
+                            <PhotoPost competitionId={config.competition}
+                                       parentId={latestMessage.id}
+                                       visionCapable={Boolean(config.vision_capable)}
+                                       onPosted={() => navigate(`/competition/${latestMessage.competition_id}?reply=${latestMessage.id}`)}/>
+                        )}
+                    </div>
                 )}
 
                 {!config && ownedCompetitions.length > 0 && (
@@ -233,6 +246,12 @@ function CoachPage() {
                     <div className="flex flex-col gap-4">
                         <CoachHero persona={heroPersona} config={heroConfig} latestMessage={latestMessage}
                                    ownedCompetitions={ownedCompetitions}/>
+
+                        {/* Hot-or-not over the coach's roasted photos -
+                            the box itself decides between game, empty
+                            state and hidden (image model not set + no
+                            roasts yet). */}
+                        <RoastSwipeBox/>
 
                         <MyChallenges competitions={myCompetitions}/>
 

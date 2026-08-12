@@ -4,15 +4,12 @@ import {competitionsApi, useGetCompetitionByIdQuery} from "../utils/reducers/com
 import {
     ArrowDownToLine,
     ArrowUpToLine,
-    Camera,
     DoorOpen,
     Info,
     Megaphone,
-    Send,
     Settings,
     UserRoundPlus,
     UsersRound,
-    X,
 } from "lucide-react";
 import {Bar, Line} from 'react-chartjs-2';
 import {
@@ -51,20 +48,19 @@ import {
 import {BoxSection, ErrorBoxSection, PageWrapper, useDarkMode} from "../utils/miscellaneous";
 import {sportLabelShort} from "../forms/workoutForm";
 import CoachThread from "../components/CoachThread";
+import PhotoPost from "../components/PhotoPost";
 import CompetitionInviteModal from "../forms/shareModal";
 import {useDispatch} from "react-redux";
 import {useLeaveCompetitionMutation} from "../utils/reducers/joinSlice";
 import TransferOwnershipForm from "../forms/transferOwnershipForm";
 import {teamsApi} from "../utils/reducers/teamsSlice";
 import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
-import {drillInstructorApi, useGetDrillConfigsQuery, useGetDrillMessagesQuery, usePostDrillPhotoMutation} from "../utils/reducers/drillInstructorSlice";
+import {useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
 import PersonaAvatar from "../components/PersonaAvatar";
 import PointsInfoModal from "../components/PointsInfo";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {timeAgo} from "../utils/time";
-import {compressImage} from "../utils/imageCompress";
 import {useProtectedImage} from "../utils/protectedMedia";
-import {BeatLoader} from "react-spinners";
 
 ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Filler, Tooltip, Legend, BarElement, ChartDataLabels);
 
@@ -167,135 +163,6 @@ function CompetitionHead({competition, feed, isOwner, goals, user}) {
 
         </BoxSection>
     )
-}
-
-
-// Photo sharing for the coach feed. The camera button is ALWAYS visible
-// while the coach is on duty - when the server's AI model can't see
-// pictures (vision probe failed), a click explains that instead of
-// opening the picker (better discoverability than a hidden feature).
-// The backend endpoint still refuses photo posts without vision - the
-// gate there protects against LLM cost abuse via the API.
-function PhotoPost({competitionId, visionCapable}) {
-    const [open, setOpen] = useState(false);
-    const [hint, setHint] = useState(false);
-    return (
-        <>
-            <button onClick={() => {
-                        if (!visionCapable) {
-                            setHint((v) => !v);
-                            return;
-                        }
-                        setHint(false);
-                        setOpen((v) => !v);
-                    }}
-                    title="Share a photo"
-                    aria-label="Share a photo"
-                    className="shrink-0 min-h-[36px] min-w-[36px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt flex items-center justify-center">
-                <Camera className="h-4 w-4"/>
-            </button>
-            {hint && (
-                <div className="w-full px-5 pb-3 -mt-1">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Photo posts are unavailable right now - the AI model configured on this
-                        server can't see pictures. (Organizer: pick a vision-capable model in
-                        Site Settings → AI.)
-                    </p>
-                </div>
-            )}
-            {open && visionCapable && <PhotoComposer competitionId={competitionId} onDone={() => setOpen(false)}/>}
-        </>
-    );
-}
-
-
-// The composer itself: pick (or take, on mobile) a picture, it gets
-// compressed before upload (see utils/imageCompress.js), then posted as
-// a thread root - the coach reacts, participants reply through the
-// regular thread UI.
-function PhotoComposer({competitionId, onDone}) {
-    const fileInput = React.useRef(null);
-    const [file, setFile] = useState(null);
-    const [caption, setCaption] = useState("");
-    const [error, setError] = useState(null);
-    const [posting, setPosting] = useState(false);
-    const [postPhoto] = usePostDrillPhotoMutation();
-    const dispatch = useDispatch();
-
-    // Open the picker as soon as the composer mounts (the button already
-    // said "I want to share a photo" - no second tap).
-    useEffect(() => {
-        fileInput.current?.click();
-    }, []);
-
-    // Local preview of the picked file (instant, no upload needed).
-    const [preview, setPreview] = useState(null);
-    useEffect(() => {
-        if (!file) {
-            setPreview(null);
-            return;
-        }
-        const url = URL.createObjectURL(file);
-        setPreview(url);
-        return () => URL.revokeObjectURL(url);
-    }, [file]);
-
-    function reset() {
-        setFile(null);
-        setCaption("");
-        setError(null);
-        onDone?.();
-    }
-
-    async function handleSend() {
-        if (!file || posting) return;
-        setError(null);
-        setPosting(true);
-        try {
-            const compressed = await compressImage(file);
-            await postPhoto({competition: competitionId, image: compressed, caption: caption.trim()}).unwrap();
-            reset();
-            // The coach's reaction is generated asynchronously (usually a
-            // few seconds) - two delayed re-fetches pick it up quickly,
-            // the regular 60s poll is the backstop.
-            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(['DrillMessage'])), 8000);
-            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(['DrillMessage'])), 20000);
-        } catch (err) {
-            const data = err?.data || {};
-            setError(data.image || data.caption || data.competition || "Could not post your picture - please try again.");
-        } finally {
-            setPosting(false);
-        }
-    }
-
-    return (
-        <div className="w-full px-5 py-3 border-t border-gray-100 dark:border-ink-700/60 space-y-2">
-            <input ref={fileInput} type="file" accept="image/*" className="hidden"
-                   onChange={(e) => { setError(null); setFile(e.target.files?.[0] || null); e.target.value = ""; }}/>
-            <div className="relative inline-block">
-                <img src={preview} alt="Upload preview"
-                     className="max-h-48 rounded-xl border border-gray-200/70 dark:border-ink-700/60"/>
-                <button onClick={reset} aria-label="Discard photo"
-                        className="absolute -top-2 -right-2 min-h-[28px] min-w-[28px] rounded-full bg-ink-900 text-white flex items-center justify-center hover:bg-ink-700 transition">
-                    <X className="h-3.5 w-3.5"/>
-                </button>
-            </div>
-            <div className="flex items-center gap-2">
-                <input type="text" value={caption} maxLength={500}
-                       onChange={(e) => setCaption(e.target.value)}
-                       onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
-                       placeholder="Add a caption…"
-                       aria-label="Photo caption"
-                       className="flex-1 shadow border border-gray-200 dark:border-ink-700/60 rounded-full py-2 px-4 text-sm text-gray-700 dark:bg-ink-900 dark:text-gray-300 dark:placeholder-gray-600 leading-tight focus:outline-none focus:border-volt-500"/>
-                <button onClick={handleSend} disabled={posting}
-                        aria-label="Post photo"
-                        className="shrink-0 min-h-[44px] min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none flex items-center justify-center">
-                    {posting ? <BeatLoader size={5} color="#0a0d06"/> : <Send className="h-4 w-4"/>}
-                </button>
-            </div>
-            {error && <p className="text-xs text-red-500">{error}</p>}
-        </div>
-    );
 }
 
 

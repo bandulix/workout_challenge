@@ -1042,6 +1042,71 @@ class PhotoPostTests(TestCase):
         response = self.client.post(f"/api/drill-instructor/message/{root_id}/reply/", {"body": "Nice form!"}, format="json")
         self.assertEqual(response.status_code, 201, response.content)
 
+    # ---- photo as a thread reply (Coach page button) -------------------
+
+    def _coach_root(self):
+        return DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PUSH, body="Show me the effort!",
+        )
+
+    def test_photo_reply_to_coach_message(self):
+        root = self._coach_root()
+        self.client.force_authenticate(self.athlete)
+        image = SimpleUploadedFile("photo.png", PNG_1PX, content_type="image/png")
+        with mock.patch("drill_instructor.tasks.post_reply_reaction.delay") as reply_task:
+            response = self.client.post(
+                "/api/drill-instructor/message/photo/",
+                {"parent": root.id, "image": image, "caption": "Like this?"},
+                format="multipart",
+            )
+        self.assertEqual(response.status_code, 201, response.content)
+        message = DrillInstructorMessage.objects.get(pk=response.json()["id"])
+        self.assertEqual(message.kind, DrillInstructorMessage.KIND_PHOTO)
+        self.assertEqual(message.parent, root)  # thread reply, not a root
+        self.assertEqual(message.config, self.config)  # competition comes from the parent
+        reply_task.assert_called_once_with(message.id)  # reply pipeline, not the root pipeline
+        self.reaction_delay.assert_not_called()
+
+    def test_photo_reply_to_child_message_rejected(self):
+        root = self._coach_root()
+        child = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REPLY,
+            parent=root, user=self.athlete, body="first",
+        )
+        self.client.force_authenticate(self.athlete)
+        image = SimpleUploadedFile("photo.png", PNG_1PX, content_type="image/png")
+        response = self.client.post(
+            "/api/drill-instructor/message/photo/",
+            {"parent": child.id, "image": image},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 404)  # children are not reply targets
+
+    def test_photo_reply_outsider_gets_404(self):
+        root = self._coach_root()
+        self.client.force_authenticate(self.outsider)
+        image = SimpleUploadedFile("photo.png", PNG_1PX, content_type="image/png")
+        response = self.client.post(
+            "/api/drill-instructor/message/photo/",
+            {"parent": root.id, "image": image},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_reply_reaction_task_attaches_photo_when_vision_capable(self):
+        from .tasks import post_reply_reaction
+        photo_reply = self._photo_message()
+        photo_reply.parent = self._coach_root()
+        photo_reply.save()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - I see it!", None)) as gen:
+            result = post_reply_reaction(photo_reply.id)
+        _, kwargs = gen.call_args
+        self.assertEqual(kwargs["image_path"], photo_reply.image.path)
+        self.assertIn("PHOTO", kwargs["user_prompt"])
+        reaction = DrillInstructorMessage.objects.get(pk=result["reaction_id"])
+        self.assertEqual(reaction.parent, photo_reply.parent)
+
     # ---- the picture endpoint ------------------------------------------
 
     def _photo_message(self):
@@ -1585,6 +1650,120 @@ class GenerateMessageImageTests(TestCase):
         self.assertIsNone(error)
         content = client.chat.completions.create.call_args[1]["messages"][1]["content"]
         self.assertIsInstance(content, str)  # no image part attached
+
+
+class RoastVoteTests(TestCase):
+    """The Coach page's hot-or-not swipe box: roast cards are the coach's
+    image reactions across the user's competitions; every member gets one
+    changeable vote per card."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        self._media_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._media_tmp.cleanup)
+        media_override = override_settings(MEDIA_ROOT=self._media_tmp.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+        self.persona = DrillInstructorPersona.objects.create(
+            name="Roast Sergeant", system_prompt="You roast.",
+        )
+        self.owner = _user("roast-owner@example.com", "Olivia")
+        self.athlete = _user("roast-athlete@example.com", "Alex")
+        self.outsider = _user("roast-outsider@example.com", "Nina")
+        today = timezone.localdate()
+        self.competition = Competition.objects.create(
+            owner=self.owner, name="Roast Cup",
+            start_date=today - datetime.timedelta(days=3),
+            end_date=today + datetime.timedelta(days=4),
+        )
+        self.athlete.my_competitions.add(self.competition)
+        self.config = DrillInstructorConfig.objects.create(
+            competition=self.competition, enabled=True, persona=self.persona,
+        )
+        self.photo = DrillInstructorMessage(
+            config=self.config, kind=DrillInstructorMessage.KIND_PHOTO,
+            user=self.athlete, body="proof",
+        )
+        self.photo.image.save("p.png", SimpleUploadedFile("p.png", PNG_1PX, content_type="image/png"))
+        self.photo.save()
+        self.roast = DrillInstructorMessage(
+            config=self.config, kind=DrillInstructorMessage.KIND_REACTION,
+            parent=self.photo, user=None, body="I made you a poster.",
+        )
+        self.roast.image.save("r.png", SimpleUploadedFile("r.png", PNG_1PX, content_type="image/png"))
+        self.roast.save()
+        self.client = APIClient()
+
+    # ---- the card listing ----------------------------------------------
+
+    def test_roasts_lists_only_image_reactions_for_members(self):
+        # Noise that must NOT appear: the photo post itself, text-only
+        # reactions, and coach messages without an image.
+        DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REACTION,
+            parent=self.photo, user=None, body="text only",
+        )
+        self.client.force_authenticate(self.athlete)
+        response = self.client.get("/api/drill-instructor/message/roasts/")
+        self.assertEqual(response.status_code, 200)
+        cards = response.json()
+        self.assertEqual([c["id"] for c in cards], [self.roast.id])
+        card = cards[0]
+        self.assertEqual(card["athlete_name"], "Alex")
+        self.assertEqual(card["persona_name"], "Roast Sergeant")
+        self.assertEqual(card["competition_name"], "Roast Cup")
+        self.assertIn(f"/message/{self.roast.id}/picture/", card["image"])
+        self.assertEqual(card["hot_votes"], 0)
+        self.assertIsNone(card["my_vote"])
+
+    def test_roasts_anonymous_gets_401(self):
+        response = self.client.get("/api/drill-instructor/message/roasts/")
+        self.assertEqual(response.status_code, 401)
+
+    def test_roasts_hidden_from_outsiders(self):
+        self.client.force_authenticate(self.outsider)
+        response = self.client.get("/api/drill-instructor/message/roasts/")
+        self.assertEqual(response.json(), [])
+
+    # ---- voting ----------------------------------------------------------
+
+    def test_member_votes_hot(self):
+        self.client.force_authenticate(self.athlete)
+        response = self.client.post(f"/api/drill-instructor/message/{self.roast.id}/vote/", {"hot": True}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["hot_votes"], 1)
+        self.assertTrue(response.json()["my_vote"])
+
+    def test_vote_is_upserted_on_change(self):
+        self.client.force_authenticate(self.athlete)
+        self.client.post(f"/api/drill-instructor/message/{self.roast.id}/vote/", {"hot": True}, format="json")
+        response = self.client.post(f"/api/drill-instructor/message/{self.roast.id}/vote/", {"hot": False}, format="json")
+        self.assertEqual(response.json()["hot_votes"], 0)
+        self.assertEqual(response.json()["not_votes"], 1)
+        self.assertEqual(self.roast.photo_votes.count(), 1)  # one row, not two
+
+    def test_outsider_vote_gets_404(self):
+        self.client.force_authenticate(self.outsider)
+        response = self.client.post(f"/api/drill-instructor/message/{self.roast.id}/vote/", {"hot": True}, format="json")
+        self.assertEqual(response.status_code, 404)
+
+    def test_vote_rejected_on_plain_photo_post(self):
+        self.client.force_authenticate(self.athlete)
+        response = self.client.post(f"/api/drill-instructor/message/{self.photo.id}/vote/", {"hot": True}, format="json")
+        self.assertEqual(response.status_code, 400)  # only coach roasts are votable
+
+    def test_vote_requires_boolean(self):
+        self.client.force_authenticate(self.athlete)
+        response = self.client.post(f"/api/drill-instructor/message/{self.roast.id}/vote/", {"hot": "yes"}, format="json")
+        self.assertEqual(response.status_code, 400)
 
 
 class InactivityNudgePeriodicTaskTests(TestCase):

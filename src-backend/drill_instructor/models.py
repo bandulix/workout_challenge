@@ -209,3 +209,36 @@ class DrillInstructorMessage(models.Model):
 
     def __str__(self):
         return f"[{self.posted_at:%Y-%m-%d %H:%M}] {self.config.competition.name}: {self.body[:60]}"
+
+
+class DrillInstructorPhotoVote(models.Model):
+    """One user's hot-or-not verdict on a roasted photo.
+
+    Feeds the swipe box on the Coach page: every participant of the
+    competition gets one vote per roast image, changeable until the card
+    leaves their stack (upsert on re-vote).
+    """
+
+    message = models.ForeignKey(
+        DrillInstructorMessage,
+        on_delete=models.CASCADE,
+        related_name="photo_votes",
+    )
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="drill_photo_votes",
+    )
+    hot = models.BooleanField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["message", "user"], name="one_vote_per_roast"),
+        ]
+        indexes = [
+            models.Index(fields=["message", "hot"], name="roast_vote_tally"),
+        ]
+
+    def __str__(self):
+        return f"{'hot' if self.hot else 'not'} by {self.user_id} on roast {self.message_id}"

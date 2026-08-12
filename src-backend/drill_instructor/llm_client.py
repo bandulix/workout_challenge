@@ -748,14 +748,16 @@ def build_group_push_prompt(*, competition_name: str, participant_first_names, l
     return "\n".join(parts)
 
 
-def build_reply_prompt(*, competition_name: str, coach_message: str, reply_first_name: str, reply_body: str, thread_history=None) -> str:
+def build_reply_prompt(*, competition_name: str, coach_message: str, reply_first_name: str, reply_body: str, thread_history=None, reply_has_photo: bool = False) -> str:
     """Compose the user-message for the coach's reaction to a reply.
 
     A participant publicly answered one of the coach's messages in the
     thread - the coach reacts in persona: answer questions, take the
     banter, push them back to training. The thread history (oldest
     first, clamped) gives continuity without letting the conversation
-    blow up the prompt.
+    blow up the prompt. A photo reply (``reply_has_photo``) arrives with
+    the picture attached to the request - the coach reacts to what it
+    shows plus the caption.
     """
     parts = [
         f"Competition: {competition_name}",
@@ -769,7 +771,14 @@ def build_reply_prompt(*, competition_name: str, coach_message: str, reply_first
             speaker = "You" if entry.get("is_coach") else f"@{entry.get('author')}"
             lines.append(f"- {speaker}: \"{str(entry['body'])[:120]}\"")
         parts.extend(lines)
-    parts.append(f"@{reply_first_name} now replied: \"{reply_body[:500]}\"")
+    if reply_has_photo:
+        if reply_body:
+            parts.append(f"@{reply_first_name} now replied with a PHOTO (attached - you can see it) and wrote: \"{reply_body[:500]}\"")
+        else:
+            parts.append(f"@{reply_first_name} now replied with just a PHOTO (attached - you can see it), no words.")
+        parts.append("React to what the photo actually shows.")
+    else:
+        parts.append(f"@{reply_first_name} now replied: \"{reply_body[:500]}\"")
     parts.append(
         "Write one short reaction (max 220 chars) in your persona's voice, "
         f"addressing @{reply_first_name} by their @FirstName token. React "
