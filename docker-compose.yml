@@ -127,6 +127,14 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - LLM_EMAIL_MODEL=${LLM_EMAIL_MODEL:-gpt-4o}
+      # Coach feed: per-user daily photo cap; optional separate endpoint
+      # for image EDITING (the roast remix) when the chat model can't
+      # create images (e.g. MiniMax M3, Gemini Flash Lite). xAI example:
+      # LLM_IMAGE_BASE_URL=https://api.x.ai/v1 + LLM_IMAGE_MODEL=grok-imagine-image
+      - DRILL_MAX_PHOTOS_PER_DAY=${DRILL_MAX_PHOTOS_PER_DAY:-2}
+      - LLM_IMAGE_BASE_URL=${LLM_IMAGE_BASE_URL:-}
+      - LLM_IMAGE_MODEL=${LLM_IMAGE_MODEL:-}
+      - LLM_IMAGE_API_KEY=${LLM_IMAGE_API_KEY:-}
 
       # --- Sentry (optional error tracking) ---
       - SENTRY_DSN=${SENTRY_DSN:-}
