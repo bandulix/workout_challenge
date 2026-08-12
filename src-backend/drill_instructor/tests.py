@@ -1608,6 +1608,51 @@ class RoastImageGenerationTests(TestCase):
         self.assertEqual(data, PNG_1PX)
 
 
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class CapabilityCacheReadTests(TestCase):
+    """The config serializer never probes synchronously: on a cold cache
+    it answers False and queues ONE background probe; a warm cache is
+    served directly."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def _flags(self):
+        from .models import DrillInstructorConfig
+        from .serializers import DrillInstructorConfigSerializer
+        config = DrillInstructorConfig()  # unsaved - the flags don't touch the row
+        serializer = DrillInstructorConfigSerializer(config)
+        return serializer.data["vision_capable"], serializer.data["image_edit_capable"]
+
+    @override_settings(OPENAI_API_KEY="test-key", LLM_PROVIDER="custom", LLM_BASE_URL="https://llm.example.com/v1", LLM_MODEL="m")
+    def test_cold_cache_answers_false_and_queues_one_probe(self):
+        with mock.patch("drill_instructor.tasks.probe_llm_capabilities.delay") as probe:
+            self.assertEqual(self._flags(), (False, False))
+            self.assertEqual(self._flags(), (False, False))
+        probe.assert_called_once()  # throttled by the marker
+
+    @override_settings(OPENAI_API_KEY="test-key", LLM_PROVIDER="custom", LLM_BASE_URL="https://llm.example.com/v1", LLM_MODEL="m")
+    def test_warm_cache_is_served_without_probing(self):
+        from django.core.cache import cache
+        from . import llm_client
+        from site_settings.models import resolve_llm_settings
+
+        cache.set(llm_client._vision_cache_key(resolve_llm_settings()), True, 60)
+        cache.set(llm_client._image_cache_key(), "some-model", 60)
+        with mock.patch("drill_instructor.tasks.probe_llm_capabilities.delay") as probe:
+            self.assertEqual(self._flags(), (True, True))
+        probe.assert_not_called()
+
+    @override_settings(OPENAI_API_KEY="")
+    def test_no_api_key_means_false_without_probe(self):
+        with mock.patch("drill_instructor.tasks.probe_llm_capabilities.delay") as probe:
+            self.assertEqual(self._flags(), (False, False))
+        probe.assert_not_called()
+
+
 class GenerateMessageImageTests(TestCase):
     """generate_message attaches the local picture as a base64 data-URL
     content part when image_path is given (the provider can't reach our

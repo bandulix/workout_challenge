@@ -154,13 +154,30 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["created_at", "updated_at"]
 
+    def _capability_flags(self):
+        """(vision, image_edit) for the photo/roast features.
+
+        Cache-only read: the actual probes make real HTTP calls and would
+        stall this hot serializer past the client's fetch timeout on a
+        cold cache. A miss queues a background probe (throttled); the
+        next config refetch (mount or 60s poll) picks up the result.
+        """
+        from django.core.cache import cache
+
+        from .llm_client import read_cached_capabilities
+
+        vision, edit = read_cached_capabilities()
+        if vision is None or edit is None:
+            if cache.add("drill-caps-probe-queued", 1, 120):
+                from .tasks import probe_llm_capabilities
+                probe_llm_capabilities.delay()
+        return bool(vision), bool(edit)
+
     def get_vision_capable(self, obj):
-        from .llm_client import check_vision_capability
-        return check_vision_capability()
+        return self._capability_flags()[0]
 
     def get_image_edit_capable(self, obj):
-        from .llm_client import check_image_edit_capability
-        return check_image_edit_capability() is not None
+        return self._capability_flags()[1]
 
     persona_detail = DrillInstructorPersonaSerializer(source="persona", read_only=True)
 

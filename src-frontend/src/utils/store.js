@@ -58,17 +58,27 @@ const store = configureStore({
     preloadedState,
 });
 
-// Persisted-state writes are throttled: saveState serializes the whole
-// store (all RTK caches) on EVERY dispatched action - with several
-// polling loops that's many full JSON.stringify+setItem per minute on
-// the main thread. 2s is plenty for a warm-start cache (login/logout
-// paths clear appState explicitly anyway).
+// Persisted-state writes are throttled: saveState serializes on EVERY
+// dispatched action - with several polling loops that's many full
+// JSON.stringify+setItem per minute on the main thread. 2s is plenty.
+//
+// RTK Query caches are deliberately NOT persisted: a rehydrated cache
+// served days-old data in the long-lived Android WebView (including
+// fossilized "pending" entries whose promise never resolved) - e.g. the
+// coach config arrived without the capability flags and the roast box
+// stayed hidden. Every query refetches on mount anyway; correctness
+// beats the warm-start illusion. Only future non-API state is kept.
 let saveStateTimer = null;
 store.subscribe(() => {
     if (saveStateTimer !== null) return;
     saveStateTimer = setTimeout(() => {
         saveStateTimer = null;
-        saveState(store.getState());
+        const state = store.getState();
+        const persisted = {};
+        for (const key of Object.keys(state)) {
+            if (!key.endsWith('Api')) persisted[key] = state[key];
+        }
+        saveState(persisted);
     }, 2000);
 });
 

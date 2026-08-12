@@ -19,6 +19,21 @@ except ImportError:  # pragma: no cover - keeps the module importable for tests
 logger = logging.getLogger(__name__)
 
 
+@app.task(bind=True, max_retries=0, time_limit=120)
+def probe_llm_capabilities(self):
+    """Fill the capability cache in the background.
+
+    Queued by the config serializer on a cache miss (throttled via a
+    short-lived marker) - the probes make real HTTP calls and must not
+    run inside an API request. Idempotent: the check functions are
+    cached, so repeat runs are nearly free.
+    """
+    from .llm_client import check_image_edit_capability, check_vision_capability
+    check_vision_capability()
+    check_image_edit_capability()
+    return {"done": True}
+
+
 def _persona_icon(persona):
     """Push-notification icon for a persona. Custom uploaded pictures are
     NOT used: they live behind the authenticated picture endpoint, and the

@@ -254,6 +254,29 @@ def _vision_cache_key(config) -> str:
     return f"drill-vision-capable:{digest}"
 
 
+def read_cached_capabilities() -> "tuple[Optional[bool], Optional[bool]]":
+    """(vision_capable, image_edit_capable) from the cache ONLY - never
+    blocks on a probe.
+
+    None means "not probed yet". The config serializer runs on a hot
+    request path (every Coach/competition page load), and a synchronous
+    probe would otherwise stall the response for up to ~40s on a cold
+    cache - past the client's fetch timeout, leaving the query pending
+    forever and the feature flags frozen at their stale values.
+    """
+    from site_settings.models import resolve_llm_settings
+
+    config = resolve_llm_settings()
+    if not config["api_key"]:
+        return False, False
+    vision = cache.get(_vision_cache_key(config))
+    edit = cache.get(_image_cache_key())
+    return (
+        None if vision is None else bool(vision),
+        None if edit is None else bool(edit),
+    )
+
+
 def check_vision_capability() -> bool:
     """True when the configured chat model accepts image input.
 

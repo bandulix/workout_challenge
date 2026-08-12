@@ -22,6 +22,12 @@ const baseQuery = fetchBaseQuery({
     // app restarts and otherwise decides staleness heuristically (the
     // backend now also sends no-store - this is the client-side half).
     cache: 'no-store',
+    // A stalled mobile connection must not pin a query in "pending"
+    // forever (RTK serves the stale cached data while it hangs) - fail
+    // after 30s so the UI can error/refresh instead of lying by
+    // omission. Generous on purpose: the Garmin SSO roundtrip and cold
+    // LLM-adjacent endpoints can be slow.
+    timeout: 30000,
     prepareHeaders: (headers) => {
         const token = localStorage.getItem('access_token');
         // Endpoints sending FormData (file uploads) mark themselves with
