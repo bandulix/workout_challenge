@@ -300,6 +300,8 @@ def post_reply_reaction(self, reply_id):
     synchronously, then this task answers it in the persona's voice -
     stored as a ``reaction`` message under the same thread root, with a
     push ping to the replier when the config's push toggle is on.
+    Photo replies (the Coach page's photo button) also earn the roast
+    remix when an image-edit model is configured.
     """
     DrillInstructorConfig = apps.get_model("drill_instructor", "DrillInstructorConfig")
     DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
@@ -421,7 +423,19 @@ def post_reply_reaction(self, reply_id):
         except Exception as exc:  # noqa: BLE001 - never block the reaction
             logger.warning("Drill Instructor: reaction push failed for user %s: %s", reply.user_id, exc)
 
-    return {"reply_id": reply_id, "reaction_id": message.id}
+    # A photo reply (the Coach page's photo button always replies to the
+    # coach's latest message) earns the same roast remix as a thread-root
+    # photo post - without this, Coach-page photos never got an edited
+    # picture and never reached the hot-or-not box. reply_image_path is
+    # only set when the model can see, so the "no blind edits" gate from
+    # the root pipeline holds here too.
+    roast_id = None
+    if reply.kind == DrillInstructorMessage.KIND_PHOTO and reply_image_path:
+        roast_model = check_image_edit_capability()
+        if roast_model:
+            roast_id = _post_photo_roast(config, reply, roast_model, reply_image_path, parent=root)
+
+    return {"reply_id": reply_id, "reaction_id": message.id, "roast_id": roast_id}
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
@@ -536,7 +550,7 @@ def post_photo_reaction(self, photo_id):
     return {"photo_id": photo_id, "reaction_id": message.id, "roast_id": roast_id}
 
 
-def _post_photo_roast(config, photo, roast_model, image_path):
+def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
     """The entertainment payload: edit the posted photo into a persona-
     styled roast poster and post it as a second coach reaction.
 
@@ -544,6 +558,11 @@ def _post_photo_roast(config, photo, roast_model, image_path):
     call, so a failure (quota, safety filter, provider outage) degrades
     to "no roast" with the reason visible in the config's last_error; the
     text reaction above is never at risk.
+
+    ``parent`` defaults to the photo itself (thread-root posts). Photo
+    REPLIES pass the thread root instead - threads only render direct
+    children of the root, so parenting the roast to the reply would hide
+    it from the thread (it would still show in the hot-or-not box).
     """
     DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
     persona = config.persona
@@ -577,7 +596,7 @@ def _post_photo_roast(config, photo, roast_model, image_path):
     roast = DrillInstructorMessage(
         config=config,
         kind=DrillInstructorMessage.KIND_REACTION,
-        parent=photo,
+        parent=parent or photo,
         user=None,
         body=caption,
         posted_at=timezone.now(),

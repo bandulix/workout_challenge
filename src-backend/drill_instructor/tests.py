@@ -1099,6 +1099,7 @@ class PhotoPostTests(TestCase):
         photo_reply.parent = self._coach_root()
         photo_reply.save()
         with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value=None), \
                 mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - I see it!", None)) as gen:
             result = post_reply_reaction(photo_reply.id)
         _, kwargs = gen.call_args
@@ -1106,6 +1107,42 @@ class PhotoPostTests(TestCase):
         self.assertIn("PHOTO", kwargs["user_prompt"])
         reaction = DrillInstructorMessage.objects.get(pk=result["reaction_id"])
         self.assertEqual(reaction.parent, photo_reply.parent)
+        self.assertIsNone(result["roast_id"])  # no image-edit model probed
+
+    def test_photo_reply_earns_the_roast_remix(self):
+        # The Coach page's photo button always replies to the coach's
+        # latest message - the reply pipeline must roast those photos
+        # too, or Coach-page uploads never reach the hot-or-not box.
+        from .tasks import post_reply_reaction
+        photo_reply = self._photo_message()
+        photo_reply.parent = self._coach_root()
+        photo_reply.save()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image"), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - framed it!", None)), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(PNG_1PX, None)) as roast:
+            result = post_reply_reaction(photo_reply.id)
+        self.assertIsNotNone(result["roast_id"])
+        roast_msg = DrillInstructorMessage.objects.get(pk=result["roast_id"])
+        self.assertEqual(roast_msg.kind, DrillInstructorMessage.KIND_REACTION)
+        self.assertEqual(roast_msg.parent, photo_reply.parent)  # hangs under the thread ROOT, not the reply
+        self.assertIsNone(roast_msg.user)
+        self.assertTrue(roast_msg.image)
+        roast_args = roast.call_args[0]  # positional: (image_path, prompt, model)
+        self.assertEqual(roast_args[0], photo_reply.image.path)
+        self.assertEqual(roast_args[2], "grok-imagine-image")
+
+    def test_photo_reply_no_roast_without_vision(self):
+        from .tasks import post_reply_reaction
+        photo_reply = self._photo_message()
+        photo_reply.parent = self._coach_root()
+        photo_reply.save()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=False), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability") as edit_probe, \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - noted!", None)):
+            result = post_reply_reaction(photo_reply.id)
+        self.assertIsNone(result["roast_id"])
+        edit_probe.assert_not_called()  # roasting without seeing = blind edits
 
     # ---- the picture endpoint ------------------------------------------
 
