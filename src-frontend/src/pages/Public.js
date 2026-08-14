@@ -285,6 +285,23 @@ const apiLogin = async (email, password) => {
 };
 
 
+// DRF error payloads come in several shapes: {"detail": "..."} for
+// view-level errors, {"non_field_errors": [...]} for serializer-wide
+// failures (invalid/expired reset token, weak password) and
+// {"field": [...]} for field errors. Pick the first human-readable one
+// so the user sees the real reason instead of "Unknown error".
+function firstErrorMessage(parsedError) {
+    if (!parsedError) return null;
+    if (typeof parsedError.detail === 'string') return parsedError.detail;
+    if (Array.isArray(parsedError.non_field_errors) && parsedError.non_field_errors.length) return parsedError.non_field_errors.join(' ');
+    for (const value of Object.values(parsedError)) {
+        if (Array.isArray(value) && value.length) return value.join(' ');
+        if (typeof value === 'string') return value;
+    }
+    return null;
+}
+
+
 const apiRequestNewPassword = async (email) => {
     try {
         const response = await fetch(getServerUrl() + '/api/password-reset/request/', {
@@ -308,7 +325,7 @@ const apiRequestNewPassword = async (email) => {
             } catch (e) {
                 parsedError = null;
             }
-            return [false, response.statusText + ' (' + response.status + ') - ' + (parsedError ? parsedError.detail : 'Unknown error')];
+            return [false, response.statusText + ' (' + response.status + ') - ' + (firstErrorMessage(parsedError) || 'Unknown error')];
         }
     } catch (error) {
         console.error('Network or server error during password reset request:', error);
@@ -348,7 +365,7 @@ const apiSetNewPassword = async (uid, token, newPassword) => {
             } catch (e) {
                 parsedError = null;
             }
-            return [false, response.statusText + ' (' + response.status + ') - ' + (parsedError ? parsedError.detail : 'Unknown error')];
+            return [false, response.statusText + ' (' + response.status + ') - ' + (firstErrorMessage(parsedError) || 'Unknown error')];
         }
     } catch (error) {
         console.error('Network or server error during password reset:', error);

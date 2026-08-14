@@ -878,3 +878,168 @@ class HealthOwAuthTests(TestCase):
         # POST /users then GET /users?email=...
         self.assertEqual(mock_req.call_args_list[0].args[:2], ("POST", "/users"))
         self.assertEqual(mock_req.call_args_list[1].args[:2], ("GET", "/users"))
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+    MAIN_HOST="https://workout.example.com",
+)
+class PasswordResetFlowTests(TestCase):
+    """The login-page password reset: request endpoint must answer
+    identically for known and unknown addresses (no user enumeration by
+    status, body or timing) and queue the email via Celery; the confirm
+    endpoint validates uid+token+password, blacklists outstanding
+    refresh tokens, and a used token dies with the password change."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            email="resetme@example.com",
+            password="Old-Pass-123!",
+            first_name="Rita",
+            last_name="",
+        )
+
+    def _request_reset(self, email):
+        with mock.patch("custom_user.emails.celery_emails.password_reset_email.apply_async") as queued:
+            response = self.client.post("/api/password-reset/request/", {"email": email}, format="json")
+        return response, queued
+
+    def _uid_token(self):
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        return urlsafe_base64_encode(force_bytes(self.user.pk)), default_token_generator.make_token(self.user)
+
+    def test_known_email_queues_the_reset_email(self):
+        response, queued = self._request_reset("resetme@example.com")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["detail"], "Password reset e-mail sent.")
+        queued.assert_called_once()
+        user_pk, reset_url = queued.call_args.kwargs["args"]
+        self.assertEqual(user_pk, self.user.pk)
+        self.assertRegex(reset_url, r"^https://workout\.example\.com/password/reset/[^/]+/[^/]+/$")
+
+    def test_unknown_email_answers_identically_and_queues_nothing(self):
+        response, queued = self._request_reset("nobody@example.com")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["detail"], "Password reset e-mail sent.")
+        queued.assert_not_called()
+
+    def test_email_lookup_is_case_insensitive(self):
+        # normalize_email() only lowercases the domain - a mixed-case
+        # local part must still find the account.
+        response, queued = self._request_reset("ResetMe@example.com")
+        self.assertEqual(response.status_code, 200)
+        queued.assert_called_once()
+
+    def test_confirm_with_bad_token_fails_with_uniform_message(self):
+        uid, _token = self._uid_token()
+        response = self.client.post(
+            "/api/password-reset/confirm/",
+            {"uid": uid, "token": "bogus-token", "new_password": "New-Pass-456!"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(str(response.data["non_field_errors"][0]), "This reset link is invalid or has expired.")
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("Old-Pass-123!"))
+
+    def test_confirm_with_bad_uid_gives_the_same_message(self):
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        uid = urlsafe_base64_encode(force_bytes(999999))
+        response = self.client.post(
+            "/api/password-reset/confirm/",
+            {"uid": uid, "token": "x-y", "new_password": "New-Pass-456!"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(str(response.data["non_field_errors"][0]), "This reset link is invalid or has expired.")
+
+    def test_confirm_rejects_weak_password(self):
+        uid, token = self._uid_token()
+        response = self.client.post(
+            "/api/password-reset/confirm/",
+            {"uid": uid, "token": token, "new_password": "123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("Old-Pass-123!"))
+
+    def test_confirm_sets_password_and_kills_sessions(self):
+        # An outstanding refresh token stands in for a logged-in session.
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        RefreshToken.for_user(self.user)
+        uid, token = self._uid_token()
+        response = self.client.post(
+            "/api/password-reset/confirm/",
+            {"uid": uid, "token": token, "new_password": "New-Pass-456!"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("New-Pass-456!"))
+
+        # The reset token died with the password change (no reuse) ...
+        reuse = self.client.post(
+            "/api/password-reset/confirm/",
+            {"uid": uid, "token": token, "new_password": "Other-Pass-789!"},
+            format="json",
+        )
+        self.assertEqual(reuse.status_code, 400)
+
+        # ... and the pre-reset refresh token is blacklisted.
+        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
+
+        outstanding = OutstandingToken.objects.filter(user=self.user)
+        self.assertTrue(outstanding.exists())
+        for tok in outstanding:
+            self.assertTrue(BlacklistedToken.objects.filter(token=tok).exists())
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    MAIN_HOST="https://workout.example.com",
+    EMAIL_FROM="workout@example.com",
+    EMAIL_REPLY_TO=["support@example.com"],
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class PasswordResetEmailTests(TestCase):
+    """The queued celery task renders and sends the reset email; the
+    reply-to footer must be a single address, not the raw list."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = CustomUser.objects.create_user(
+            email="resetme@example.com",
+            password="Old-Pass-123!",
+            first_name="Rita",
+            last_name="",
+        )
+
+    def test_task_sends_email_with_reset_link_and_scalar_reply_to(self):
+        from django.core import mail
+
+        from .emails.celery_emails import password_reset_email
+
+        reset_url = "https://workout.example.com/password/reset/MQ/some-token/"
+        result = password_reset_email(self.user.pk, reset_url)
+        self.assertIn("queued", result)
+        self.assertEqual(len(mail.outbox), 1)
+        email = mail.outbox[0]
+        self.assertEqual(email.to, ["resetme@example.com"])
+        body = email.alternatives[0][0]
+        self.assertIn(reset_url, body)
+        self.assertIn("mailto:support@example.com", body)
+        self.assertNotIn("['", body)  # no raw Python list in the footer
+
+    def test_task_ignores_deleted_user(self):
+        from .emails.celery_emails import password_reset_email
+
+        self.assertIn("not found", password_reset_email(999999, "https://x/"))

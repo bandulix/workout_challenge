@@ -375,7 +375,9 @@ def password_reset_email(user_pk, reset_url):
                 "first_name": user.first_name,
                 "MAIN_HOST": settings.MAIN_HOST,
                 "RESET_URL": reset_url,
-                "EMAIL_REPLY_TO": settings.EMAIL_REPLY_TO,
+                # Single address string like the other emails - passing
+                # the raw list rendered "mailto:['a@b.com']" (or None).
+                "EMAIL_REPLY_TO": settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO else settings.EMAIL_FROM,
             },
         )
         send_email(subject="Workout Challenge - Reset Your Password", body=email_body, to_email=user.email)
