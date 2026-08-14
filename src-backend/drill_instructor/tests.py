@@ -1541,6 +1541,68 @@ class ImageEditCapabilityProbeTests(TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
 
 
+class RoastImagePromptTests(TestCase):
+    """build_roast_image_prompt: the Site Settings template overrides the
+    built-in default; placeholders are substituted, stray braces are
+    harmless, blank/lookup-failure falls back to the default."""
+
+    def _build(self, **kwargs):
+        from .llm_client import build_roast_image_prompt
+        defaults = {"persona_name": "Roast Master", "persona_system_prompt": "You roast hard.", "caption": ""}
+        defaults.update(kwargs)
+        return build_roast_image_prompt(**defaults)
+
+    def _set_template(self, template):
+        from site_settings.models import SiteSettings
+        solo = SiteSettings.get_solo()
+        solo.roast_image_prompt = template
+        solo.save()
+
+    def test_default_prompt_when_unset(self):
+        prompt = self._build(caption="leg day!")
+        self.assertIn('"Roast Master"', prompt)
+        self.assertIn('"You roast hard."', prompt)
+        self.assertIn("good-natured", prompt)
+        self.assertIn('Work the caption "leg day!" into the joke.', prompt)
+
+    def test_default_prompt_without_caption_bans_text(self):
+        prompt = self._build()
+        self.assertIn("Do not render any text", prompt)
+
+    def test_custom_template_replaces_the_default(self):
+        self._set_template("Turn this photo into a medieval quest poster for {persona_name}.")
+        prompt = self._build(caption="leg day!")
+        self.assertEqual(prompt, "Turn this photo into a medieval quest poster for Roast Master.")
+        self.assertNotIn("bootcamp propaganda poster", prompt)
+
+    def test_custom_template_substitutes_all_placeholders(self):
+        self._set_template("{persona_name}|{persona_style}|{caption}|{caption_instruction}")
+        prompt = self._build(caption="so tired")
+        self.assertEqual(
+            prompt,
+            "Roast Master|You roast hard.|so tired|"
+            'Work the caption "so tired" into the joke. If you render it as poster text, spell it EXACTLY as written.',
+        )
+
+    def test_custom_template_substitutes_the_no_caption_instruction(self):
+        self._set_template("{caption_instruction}")
+        self.assertEqual(self._build(), "Do not render any text - let the imagery do the roasting.")
+
+    def test_custom_template_tolerates_stray_braces(self):
+        self._set_template('JSON-ish: {"a": 1}, unknown {placeholder}, persona {persona_name}')
+        prompt = self._build()
+        self.assertEqual(prompt, 'JSON-ish: {"a": 1}, unknown {placeholder}, persona Roast Master')
+
+    def test_blank_template_falls_back_to_default(self):
+        self._set_template("   ")
+        self.assertIn("bootcamp propaganda poster", self._build())
+
+    def test_settings_lookup_failure_falls_back_to_default(self):
+        from . import llm_client
+        with mock.patch("site_settings.models.SiteSettings.get_solo", side_effect=RuntimeError("db down")):
+            self.assertIn("bootcamp propaganda poster", self._build())
+
+
 class RoastImageGenerationTests(TestCase):
     """generate_roast_image: edit call shape, b64 + URL result handling,
     and the dall-e-2 square-PNG normalisation."""

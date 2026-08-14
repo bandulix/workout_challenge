@@ -618,13 +618,56 @@ def generate_roast_image(image_path: str, roast_prompt: str, model: str) -> "tup
 MAX_ROAST_IMAGE_BYTES = 8 * 1024 * 1024
 
 
+def _roast_caption_instruction(caption: str) -> str:
+    """The dynamic closing line of the roast prompt: caption-aware when the
+    athlete wrote one, no-text otherwise."""
+    if caption:
+        return (
+            f"Work the caption \"{caption[:120]}\" into the joke. If you render "
+            "it as poster text, spell it EXACTLY as written."
+        )
+    return "Do not render any text - let the imagery do the roasting."
+
+
+def _custom_roast_image_template() -> str:
+    """The admin's roast-prompt template from Site Settings ('' = default).
+
+    Looked up per roast (rare, and the edit call itself costs an API
+    request), never cached beyond the resolver TTL used elsewhere. Any
+    failure means "no override" - the roast must never break on a
+    settings lookup.
+    """
+    try:
+        from site_settings.models import SiteSettings
+
+        return (SiteSettings.get_solo().roast_image_prompt or "").strip()
+    except Exception:  # noqa: BLE001 - never block a roast on a settings lookup
+        logger.warning("Drill Instructor: could not read the custom roast image prompt, using the default.", exc_info=True)
+        return ""
+
+
 def build_roast_image_prompt(*, persona_name: str, persona_system_prompt: str, caption: str = "") -> str:
     """The edit instruction for the coach's roasted photo remix.
 
     Style comes from the persona (the system prompt is the owner's own
     voice briefing - clamped), the mechanic is a bootcamp-poster roast:
     playful and over the top, never mean-spirited.
+
+    Admins can override the whole prompt in Site Settings
+    (``roast_image_prompt``) - a template with optional {persona_name},
+    {persona_style}, {caption} and {caption_instruction} placeholders.
+    Blank keeps the built-in default below. Substitution uses plain
+    str.replace so stray braces in the template can't crash formatting.
     """
+    template = _custom_roast_image_template()
+    if template:
+        return (
+            template
+            .replace("{persona_name}", persona_name)
+            .replace("{persona_style}", (persona_system_prompt or "").strip()[:400])
+            .replace("{caption}", (caption or "")[:120])
+            .replace("{caption_instruction}", _roast_caption_instruction(caption or ""))
+        )
     parts = [
         f"Edit this photo into a funny, over-the-top bootcamp propaganda poster that playfully roasts the person in it, in the style of the drill-instructor persona \"{persona_name}\".",
         f"Persona style briefing: \"{(persona_system_prompt or '').strip()[:400]}\"",
@@ -632,13 +675,7 @@ def build_roast_image_prompt(*, persona_name: str, persona_system_prompt: str, c
         "(exaggerate effort, scenery and drama - never appearance, body or "
         "identity). Bold poster look, dramatic lightning optional.",
     ]
-    if caption:
-        parts.append(
-            f"Work the caption \"{caption[:120]}\" into the joke. If you render "
-            "it as poster text, spell it EXACTLY as written."
-        )
-    else:
-        parts.append("Do not render any text - let the imagery do the roasting.")
+    parts.append(_roast_caption_instruction(caption or ""))
     return "\n".join(parts)
 
 

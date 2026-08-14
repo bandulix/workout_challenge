@@ -137,6 +137,7 @@ export default function SiteSettingsForm({setModalState}) {
                 llm_base_url: settings.llm_base_url || "",
                 llm_model: settings.llm_model || "",
                 llm_email_model: settings.llm_email_model || "",
+                roast_image_prompt: settings.roast_image_prompt || "",
                 strava_client_id: settings.strava_client_id ?? "",
                 strava_limit_15min: settings.strava_limit_15min ?? "",
                 strava_limit_day: settings.strava_limit_day ?? "",
@@ -269,6 +270,14 @@ export default function SiteSettingsForm({setModalState}) {
                                placeholder="gpt-4o"/>
                     </Field>
                 </div>
+                <Field label="Roast Image Prompt" error={fieldErrors.roast_image_prompt}
+                       hint="The edit instruction sent to the image model when the coach remixes a participant's photo into a roast poster. Leave blank for the built-in default (a good-natured bootcamp propaganda poster). Optional placeholders: {persona_name}, {persona_style}, {caption} and {caption_instruction} (the dynamic 'work the caption into the joke / no text' line).">
+                    <textarea rows={6}
+                              className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                              value={values.roast_image_prompt || ""}
+                              onChange={(e) => setField("roast_image_prompt", e.target.value)}
+                              placeholder={'Edit this photo into a funny, over-the-top bootcamp propaganda poster that playfully roasts the person in it, in the style of the drill-instructor persona "{persona_name}".'}/>
+                </Field>
             </Section>
 
             <Section title="Strava"
