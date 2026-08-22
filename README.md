@@ -27,11 +27,13 @@ This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/w
 - Personas have **profile pictures, taglines and accent colours** — 10 hand-crafted avatar artworks ship in `src-frontend/public/personas/`; custom personas can pick artwork or an emoji.
 - Messages live in an in-app audit log (REST: `/api/drill-instructor/*`) and can be pushed to athletes' devices via web push.
 - **Quiet-day nudges:** if a running competition sees zero workouts in a day, the instructor posts one motivational, group-addressed message on its own (daily sweep, per-competition toggle).
+- **Arcade:** Order of the Day (sealed morning mission, ribbon on the feed), Dunce megaphone on last place until they log, Hall of Roasts, coach mood from the last 48h, and permanent dog tags (First Blood, Ghost Killer, Photogenic, Never Missed Monday, Survived the Dunce).
 
 **📱 Coach-centred PWA redesign (mobile-first)**
-- Dark athletic "volt/ink" theme, self-hosted Archivo Black + Inter fonts, class-based dark mode with manual toggle.
+- Dark athletic **volt/ink** theme (`#d7ff3e` on `#0a0d06`), self-hosted Archivo Black + Inter fonts, class-based dark mode with manual toggle. The **volt lightning** mark is the favicon, PWA icons, Apple touch icon, Android launcher and splash.
 - **Coach page** (`/coach`): persona hero, live chat-style coach feed, persona roster, platform-aware push opt-in.
-- Bottom-bar navigation (floating dock on desktop) with the coach persona at centre stage; installable PWA with offline shell and push on iOS & Android.
+- Bottom-bar navigation (ink dock, volt pill for the active tab, breathing lime halo on the coach) with the persona at centre stage; installable PWA with offline shell and push on iOS & Android.
+- Login/welcome uses a gym / volt-neon still that stays on screen.
 
 **🏠 Home / profile**
 - Redesigned dashboard with compact **Streak Card**; 30-day stats and personal-goal blocks.
@@ -54,8 +56,9 @@ This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/w
 Create a competition or join one via a friend's invite link, log workouts manually or import them automatically, and customize the competition's activity goals. Participants earn 1 point per 1% progress towards a goal (100 min goal + 50 min workout = 50 points). Points can be capped/floored per workout / day / week to keep the competition healthy and consistency-focused.
 
 **Features:**
-- Competitions with custom goals, teams, leaderboards and weekly email recaps
+- Competitions with custom goals, teams, leaderboards and weekly email recaps — editing a goal rescores every activity in the challenge (caps reapplied in the site timezone)
 - **AI Drill Instructor** with persona avatars — comments on every workout, nudges quiet groups, optionally pings phones via push
+- **Coach arcade** — daily mission, dunce, hall of roasts, mood, dog tags
 - **Coach page** — a live, chat-style feed of everything the coach has said
 - Workout entry manually or via Strava / Garmin Connect auto-import
 - Personal dashboard with workout stats, streak card and personal goals
@@ -86,6 +89,12 @@ The stack starts nginx (app on port 80), Django/gunicorn, Celery worker + beat, 
 git pull                                # fresh docker-compose.yml / .env.example
 docker compose pull workoutchallenge    # explicit pull - bypasses pull_policy
 docker compose up -d                    # recreate with the new image, migrate runs at start
+```
+
+If a goal edit flattened every activity to the same points, repair scores after the container is up:
+
+```bash
+docker compose exec workoutchallenge python manage.py rescore_goals
 ```
 
 **Reverse proxy (production on a VPS)** — bind the app to localhost only and terminate TLS in front, e.g. `APP_BIND=127.0.0.1` `APP_PORT=8080` in `.env`, then point your proxy at it. Complete nginx example (app + optional Open Wearables for the health connector):
@@ -136,10 +145,13 @@ Each competition can optionally activate an AI coach that generates a short, per
 
 **What it does:**
 - Comments on every workout in the competition, in the persona's voice.
+- **Order of the Day:** a sealed morning mission (07:05) with a ribbon on the feed; slackers hear about it at 22:05.
+- **Dunce:** last place on the board gets the megaphone until they log (assigned at 00:10).
+- **Hall of Roasts**, coach mood (Proud / Watching / Disappointed / Unleashed from the last 48h), and **dog tags** earned for the season.
 - **Random daily push:** 1-2 times per day at random times (07:00–22:00) the instructor posts a pep talk pushing the whole group (toggleable per competition).
 - **Quiet-day nudge:** if a whole day passes without any workout in a running competition, the instructor posts one motivational nudge to the group (toggleable per competition).
 - With browser push enabled, messages are also dispatched to subscribed devices (nudges go to every participant).
-- Participants can talk back in the coach feed, including **photo posts from the camera or the gallery**.
+- Participants can talk back in the coach feed, including **photo posts from the camera or the gallery** (always hung under your latest own workout).
 
 **Built-in personas** (each with profile picture, tagline and accent colour):
 

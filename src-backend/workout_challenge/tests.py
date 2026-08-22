@@ -50,6 +50,15 @@ class ParseReleaseNotesTests(TestCase):
         notes = parse_release_notes(text)
         self.assertEqual(notes["heading"], "1.2.3")
 
+    def test_empty_unreleased_falls_through_to_version(self):
+        text = (
+            "# Changelog\n\n## [Unreleased]\n\n"
+            "## [0.38.0] - 2026-08-22\n\n### Added\n- Arcade.\n"
+        )
+        notes = parse_release_notes(text)
+        self.assertEqual(notes["heading"], "0.38.0")
+        self.assertEqual(notes["sections"][0]["items"][0], "Arcade.")
+
     def test_item_cap_and_truncated_flag(self):
         text = "## [Unreleased]\n\n### Added\n" + "\n".join(f"- Item {i}" for i in range(30))
         notes = parse_release_notes(text)

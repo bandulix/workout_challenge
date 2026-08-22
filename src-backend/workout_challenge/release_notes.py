@@ -2,11 +2,9 @@
 CHANGELOG.md shipped inside the image (repo root in dev).
 
 The file follows Keep a Changelog: entries accumulate under
-``## [Unreleased]`` until a release. The parser always takes the FIRST
-``## [...]`` section - so while the repo never cuts version headings the
-popup shows the accumulated "Latest changes", and once headings like
-``## [1.2.3] - 2026-08-01`` are adopted the newest release wins
-automatically, with no code change.
+``## [Unreleased]`` until a release. The parser takes the first
+``## [...]`` section that has items, skipping an empty Unreleased so a
+cut heading like ``## [0.38.0] - 2026-08-22`` becomes the popup.
 """
 
 import logging
@@ -31,6 +29,10 @@ def _strip_md(text):
     return text.replace("**", "").replace("`", "").strip()
 
 
+def _section_has_items(chunk):
+    return any(line.strip().startswith("- ") for line in chunk.splitlines())
+
+
 def parse_release_notes(markdown_text):
     """Shape the newest changelog section for the popup.
 
@@ -42,15 +44,24 @@ def parse_release_notes(markdown_text):
         return notes
 
     top = re.split(r"(?m)^## ", markdown_text)
-    if len(top) < 2:
+    first = None
+    heading_name = None
+    for chunk in top[1:]:
+        lines = chunk.splitlines()
+        heading_line = lines[0].strip() if lines else ""
+        m = re.match(r"\[([^\]]+)\]", heading_line)
+        if not m:
+            continue
+        # Empty Unreleased is the Keep-a-Changelog placeholder after a
+        # cut; skip it so the version heading underneath is the popup.
+        if m.group(1).lower() == "unreleased" and not _section_has_items(chunk):
+            continue
+        first = chunk
+        heading_name = m.group(1)
+        break
+    if first is None:
         return notes
-    first = top[1]
-
-    heading_line = first.splitlines()[0].strip()
-    m = re.match(r"\[([^\]]+)\]", heading_line)
-    if not m:
-        return notes
-    notes["heading"] = "Latest changes" if m.group(1).lower() == "unreleased" else m.group(1)
+    notes["heading"] = "Latest changes" if heading_name.lower() == "unreleased" else heading_name
 
     total = 0
     for sub in re.split(r"(?m)^### ", first)[1:]:
