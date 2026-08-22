@@ -65,7 +65,7 @@ cryptography==50.0.0
     #   pywebpush
 curl-cffi==0.16.1
     # via garminconnect
-django==4.2.30
+django==5.2.16
     # via
     #   -r requirements.txt
     #   django-celery-beat
@@ -98,7 +98,7 @@ frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
-garminconnect==0.3.2
+garminconnect==0.3.5
     # via -r requirements.txt
 gevent==26.8.0
     # via -r requirements.txt
