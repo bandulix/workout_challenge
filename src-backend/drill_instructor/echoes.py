@@ -38,11 +38,27 @@ def _metric_for(workout):
     return "duration", float(minutes)
 
 
-def _beats(workout, echo):
+def _aware(dt):
+    if dt is None:
+        return None
+    if timezone.is_naive(dt):
+        return timezone.make_aware(dt, timezone.get_current_timezone())
+    return dt
+
+
+def _beats(workout, echo, committed_at=None):
     if workout.user_id == echo.holder_id:
         return False
     if echo.sport_type and workout.sport_type != echo.sport_type:
         return False
+    start = _aware(workout.start_datetime)
+    if committed_at is not None and start is not None and start < _aware(committed_at):
+        return False
+    competition = echo.config.competition if getattr(echo, "config_id", None) else None
+    if competition is not None and start is not None:
+        day = timezone.localtime(start).date()
+        if day < competition.start_date or day > competition.end_date:
+            return False
     if echo.metric == "distance":
         value = float(workout.distance or 0)
     else:
@@ -262,6 +278,7 @@ def start_challenge(echo, user, now=None):
     EchoChallenge = apps.get_model("drill_instructor", "EchoChallenge")
     DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
 
+    expire_challenges(now)
     with transaction.atomic():
         echo = (
             LegendEcho.objects.select_for_update()
@@ -284,15 +301,10 @@ def start_challenge(echo, user, now=None):
         ).exists():
             raise ValueError("Finish your current challenge first.")
 
-        end = now + datetime.timedelta(days=CHALLENGE_DAYS)
-        comp_end = datetime.datetime.combine(
-            echo.config.competition.end_date + datetime.timedelta(days=1),
-            datetime.time.max,
-        )
-        if timezone.is_naive(comp_end):
-            comp_end = timezone.make_aware(comp_end, timezone.get_current_timezone())
-        if timezone.is_naive(end):
-            end = timezone.make_aware(end, timezone.get_current_timezone())
+        end = _aware(now + datetime.timedelta(days=CHALLENGE_DAYS))
+        comp_end = _aware(datetime.datetime.combine(
+            echo.config.competition.end_date, datetime.time.max,
+        ))
         window_end = min(end, comp_end)
         if window_end <= now:
             raise ValueError("This challenge is over.")
@@ -316,28 +328,7 @@ def start_challenge(echo, user, now=None):
         _post_coach_line(echo.config, DrillInstructorMessage.KIND_ECHO, body)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Echo challenge post failed: %s", exc)
-    _push_group(echo.config, f"War for {echo.title}", body)
     return challenge
-
-
-def _push_group(config, title, body):
-    try:
-        from push_notifications.sender import send_push_to_user
-    except ImportError:
-        return
-    if not config.send_push_on_activity or send_push_to_user is None:
-        return
-    from .tasks import _persona_icon
-    icon = _persona_icon(config.persona)
-    for participant in config.competition.user.all():
-        try:
-            send_push_to_user(
-                participant, title=f"{config.competition.name} - {title}",
-                body=body[:180], url="/coach", icon=icon, badge="/icon-badge.png",
-                tag=f"echo-{config.competition_id}",
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.info("Echo push failed for %s: %s", participant.pk, exc)
 
 
 def claim_echo(echo, winner, workout):
@@ -374,7 +365,6 @@ def claim_echo(echo, winner, workout):
         _post_coach_line(echo.config, DrillInstructorMessage.KIND_CLAIM, body)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Echo claim post failed: %s", exc)
-    _push_group(echo.config, "Echo claimed", body)
     return echo
 
 
@@ -408,6 +398,7 @@ def resolve_workout_challenges(workout, config):
     """If this workout beats an Echo the athlete challenged, they claim it."""
     EchoChallenge = apps.get_model("drill_instructor", "EchoChallenge")
     now = timezone.now()
+    expire_challenges(now)
     claimed = []
     with transaction.atomic():
         active = (
@@ -419,11 +410,14 @@ def resolve_workout_challenges(workout, config):
                 echo__status__in=("undefeated", "contested"),
                 window_end__gte=now,
             )
-            .select_related("echo", "echo__holder", "echo__config", "echo__config__persona")
+            .select_related(
+                "echo", "echo__holder", "echo__config",
+                "echo__config__persona", "echo__config__competition",
+            )
         )
         for challenge in active:
             echo = challenge.echo
-            if not _beats(workout, echo):
+            if not _beats(workout, echo, committed_at=challenge.committed_at):
                 continue
             challenge.status = EchoChallenge.STATUS_WON
             challenge.resolving_workout = workout
@@ -440,31 +434,33 @@ def expire_challenges(now=None):
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
     expired = 0
     immortal = 0
-    due = (
-        EchoChallenge.objects.filter(status=EchoChallenge.STATUS_ACTIVE, window_end__lt=now)
-        .select_related("echo", "echo__config", "echo__config__persona", "echo__origin_user")
-    )
-    for challenge in due:
-        challenge.status = EchoChallenge.STATUS_EXPIRED
-        challenge.save(update_fields=["status"])
-        echo = challenge.echo
-        echo.defenses = (echo.defenses or 0) + 1
-        if echo.defenses >= DEFENSES_TO_IMMORTAL:
+    with transaction.atomic():
+        due_rows = list(
+            EchoChallenge.objects.select_for_update()
+            .filter(status=EchoChallenge.STATUS_ACTIVE, window_end__lt=now)
+            .select_related("echo", "echo__config", "echo__config__persona", "echo__origin_user")
+        )
+        for challenge in due_rows:
+            challenge.status = EchoChallenge.STATUS_EXPIRED
+            challenge.save(update_fields=["status"])
+            echo = challenge.echo
+            echo.defenses = (echo.defenses or 0) + 1
+            if echo.defenses >= DEFENSES_TO_IMMORTAL:
+                immortalize(echo)
+                immortal += 1
+            else:
+                echo.status = LegendEcho.STATUS_UNDEFEATED
+                echo.save(update_fields=["defenses", "status"])
+            expired += 1
+
+        today = timezone.localdate()
+        finished = LegendEcho.objects.filter(
+            status__in=(LegendEcho.STATUS_UNDEFEATED, LegendEcho.STATUS_CONTESTED),
+            config__competition__end_date__lt=today,
+        ).select_related("config", "config__persona", "origin_user")
+        for echo in finished:
             immortalize(echo)
             immortal += 1
-        else:
-            echo.status = LegendEcho.STATUS_UNDEFEATED
-            echo.save(update_fields=["defenses", "status"])
-        expired += 1
-
-    today = timezone.localdate()
-    finished = LegendEcho.objects.filter(
-        status__in=(LegendEcho.STATUS_UNDEFEATED, LegendEcho.STATUS_CONTESTED),
-        config__competition__end_date__lt=today,
-    ).select_related("config", "config__persona", "origin_user")
-    for echo in finished:
-        immortalize(echo)
-        immortal += 1
     return {"expired": expired, "immortal": immortal}
 
 

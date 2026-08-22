@@ -334,10 +334,11 @@ def evaluate_workout_game(workout, config):
             award_tag(user, "never_missed_monday")
 
     try:
-        from .echoes import resolve_workout_challenges
+        from .echoes import mint_echo, resolve_workout_challenges
         resolve_workout_challenges(workout, config)
+        mint_echo(workout, config)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Echo resolve failed for workout %s: %s", workout.pk, exc)
+        logger.warning("Echo resolve/mint failed for workout %s: %s", workout.pk, exc)
 
 
 def evaluate_photo_game(photo_message):

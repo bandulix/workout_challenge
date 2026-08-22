@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Login spinner never giving way to the app** — visiting `/login` deleted the access token and waited on a refresh with no timeout, so a slow or hung `/token/refresh/` left people on the loading bar; a 5s `localStorage` wait after password login threw uncaught and froze the spinner for good. The form now keeps a still-valid access token, caps silent refresh at 8s, always clears the loader, and a stale in-flight refresh can no longer wipe the tokens from a login that just finished.
 - **Echo claims now move the bar** — a successful claim updates the Echo's metric, power and title to the winner's workout (the next challenger has to beat *that*), and a claiming workout cannot also plant a fresh Echo. Immortal Echoes close any open wars so they cannot be stolen after the season ends.
+- **Echo wars cannot be won with a backdated import**, lapsed windows unlock on the next action (not only at 21:20), and a hung token refresh can no longer overwrite a login that just finished.
 
 ## [0.39.0] - 2026-08-22
 

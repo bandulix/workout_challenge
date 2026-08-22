@@ -2822,6 +2822,32 @@ class LegendEchoTests(TestCase):
         war.refresh_from_db()
         self.assertIn(war.status, (EchoChallenge.STATUS_LOST, EchoChallenge.STATUS_EXPIRED))
 
+    def test_backdated_workout_cannot_claim(self):
+        from .echoes import mint_echo, resolve_workout_challenges, start_challenge
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        start_challenge(echo, self.nina)
+        past = self._workout(
+            self.nina, minutes=120,
+            when=timezone.now() - datetime.timedelta(days=3),
+        )
+        self.assertEqual(resolve_workout_challenges(past, self.config), [])
+        echo.refresh_from_db()
+        self.assertEqual(echo.holder_id, self.alex.id)
+
+    def test_lapsed_window_unlocks_on_the_next_action(self):
+        from .echoes import mint_echo, start_challenge
+        from .models import EchoChallenge, LegendEcho
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        war = start_challenge(echo, self.nina)
+        EchoChallenge.objects.filter(pk=war.pk).update(
+            window_end=timezone.now() - datetime.timedelta(minutes=1),
+        )
+        start_challenge(echo, self.owner)
+        echo.refresh_from_db()
+        self.assertEqual(echo.status, LegendEcho.STATUS_CONTESTED)
+        war.refresh_from_db()
+        self.assertEqual(war.status, EchoChallenge.STATUS_EXPIRED)
+
     def test_cannot_challenge_after_the_season(self):
         from .echoes import mint_echo, start_challenge
         echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
@@ -2870,6 +2896,5 @@ class LegendEchoTests(TestCase):
         task = PeriodicTask.objects.get(name="drill_instructor_echo_windows")
         self.assertEqual(task.task, "drill_instructor.tasks.resolve_echo_windows")
         self.assertTrue(task.enabled)
-        self.assertEqual(task.crontab.hour, "21")
-        self.assertEqual(task.crontab.minute, "20")
+        self.assertEqual(task.crontab.minute, "*/15")
 

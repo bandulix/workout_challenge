@@ -61,8 +61,12 @@ export function refreshAccessToken() {
             if (res.ok) {
                 const data = await res.json();
                 if (data.access) {
-                    localStorage.setItem("access_token", data.access);
-                    if (data.refresh) localStorage.setItem("refresh_token", data.refresh);
+                    // A login that finished while this refresh was on the
+                    // wire owns the current keys - do not overwrite them.
+                    if (getRefreshToken() === refresh) {
+                        localStorage.setItem("access_token", data.access);
+                        if (data.refresh) localStorage.setItem("refresh_token", data.refresh);
+                    }
                     return "ok";
                 }
             }

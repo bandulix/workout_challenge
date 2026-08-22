@@ -68,13 +68,12 @@ async function shareEcho(echo) {
     }
 }
 
-function EchoCard({echo, userId, onChallenge, busy}) {
+function EchoCard({echo, userId, onChallenge, busy, now}) {
     const mine = echo.holder_id === userId;
     const planted = echo.origin_id === userId;
     const war = echo.active_challenge;
     const myWar = echo.my_challenge;
     const live = echo.status === "undefeated" || echo.status === "contested";
-    const now = useNowTick(Boolean(war?.window_end));
     const canChallenge = live && !mine && !war && Boolean(userId);
 
     return (
@@ -170,6 +169,8 @@ export default function EchoChamber({competitionId, userId}) {
     const rows = echoes || [];
     const live = rows.filter((e) => e.status === "undefeated" || e.status === "contested");
     const immortal = rows.filter((e) => e.status === "immortal");
+    const ticking = live.some((e) => e.active_challenge?.window_end);
+    const now = useNowTick(ticking);
     if (rows.length === 0) return null;
 
     async function onChallenge(echo) {
@@ -197,7 +198,7 @@ export default function EchoChamber({competitionId, userId}) {
             {live.length > 0 && (
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     {live.map((echo) => (
-                        <EchoCard key={echo.id} echo={echo} userId={userId}
+                        <EchoCard key={echo.id} echo={echo} userId={userId} now={now}
                                   onChallenge={onChallenge} busy={isLoading}/>
                     ))}
                 </div>
@@ -209,7 +210,7 @@ export default function EchoChamber({competitionId, userId}) {
                     </p>
                     <div className="mt-2 grid gap-3 sm:grid-cols-2">
                         {immortal.map((echo) => (
-                            <EchoCard key={echo.id} echo={echo} userId={userId}
+                            <EchoCard key={echo.id} echo={echo} userId={userId} now={now}
                                       onChallenge={onChallenge} busy={isLoading}/>
                         ))}
                     </div>

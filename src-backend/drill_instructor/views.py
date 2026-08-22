@@ -583,6 +583,11 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        from .echoes import expire_challenges
+        try:
+            expire_challenges()
+        except Exception:  # noqa: BLE001
+            pass
         user = self.request.user
         qs = (
             LegendEcho.objects.filter(

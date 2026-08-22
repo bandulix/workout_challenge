@@ -282,13 +282,6 @@ def post_workout_comment(self, workout_id):
             except Exception as exc:  # noqa: BLE001 - never block workout saves
                 logger.warning("Drill Instructor: push failed for user %s: %s", workout.user_id, exc)
 
-        try:
-            from .echoes import mint_echo
-            mint_echo(workout, config)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Legend Echo eval failed for workout %s config %s: %s",
-                           workout_id, config.id, exc)
-
     return {"workout_id": workout_id, "posted": posted, "competitions": competitions.count()}
 
 

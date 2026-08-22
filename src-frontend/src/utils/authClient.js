@@ -78,9 +78,11 @@ export async function apiRefreshToken(refreshToken) {
     try {
         const result = await store.dispatch(usersApi.endpoints.refreshToken.initiate({refresh: refreshToken}));
         if (result.data?.access) {
-            localStorage.setItem("access_token", result.data.access);
-            if (result.data.refresh) {
-                localStorage.setItem("refresh_token", result.data.refresh);
+            if (localStorage.getItem("refresh_token") === refreshToken) {
+                localStorage.setItem("access_token", result.data.access);
+                if (result.data.refresh) {
+                    localStorage.setItem("refresh_token", result.data.refresh);
+                }
             }
             return [true, undefined];
         }
