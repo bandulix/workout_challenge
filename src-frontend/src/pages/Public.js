@@ -14,6 +14,7 @@ import {
     apiRefreshToken,
     sanitizeRedirect,
 } from "../utils/authClient";
+import {accessTokenNeedsRefresh, getAccessToken} from "../utils/authTokens";
 
 function BaseHome({children, tagline}) {
     const navType = useNavigationType();
@@ -143,6 +144,11 @@ function LogoutPage() {
         }
     }, [matched, navigate]);
 
+    useEffect(() => {
+        const t = setTimeout(() => navigate("/login"), 4000);
+        return () => clearTimeout(t);
+    }, [navigate]);
+
     return (
         <BaseHome>
             <div className="flex justify-center">
@@ -189,20 +195,16 @@ function WelcomePage() {
 }
 
 
-const waitForLocalStorage = (key, timeout = 5000) =>
-    new Promise((resolve, reject) => {
-        const start = Date.now();
-        const interval = setInterval(() => {
-            const val = localStorage.getItem(key);
-            if (val !== null) {
-                clearInterval(interval);
-                resolve(val);
-            } else if (Date.now() - start > timeout) {
-                clearInterval(interval);
-                reject(new Error('Timeout waiting for localStorage key'));
-            }
-        }, 100);
-    });
+function goAfterLogin(navigate, location, params) {
+    if (params?.has("redirect")) {
+        const redirectUrl = sanitizeRedirect(params.get("redirect"));
+        if (redirectUrl) {
+            navigate(redirectUrl);
+            return;
+        }
+    }
+    navigate(`/dashboard/${location.search}`);
+}
 
 
 const LoadingForm = () => {
@@ -246,21 +248,25 @@ function RegisterPage() {
             setErrorMessage(['Passwords do not match.']);
         } else {
             setIsLoading(true);
-            const [success_register, msg_register] = await apiCreateAccount(email, first_name, last_name, gender, password1, invite_token, joinCode);
-            const [success_login, msg_login] = await apiLogin(email, password1);
-            const params = new URLSearchParams(location.search);
-            if (success_register && success_login) {
-                await waitForLocalStorage('access_token');
-                // Never log token values - console output ends up in
-                // Sentry breadcrumbs and shared-device devtools.
-                navigate(`/dashboard/?${params.toString()}`);
-            } else if (!success_register) {
-                setErrorMessage(msg_register.split(", "));
-            } else if (!success_login) {
-                setErrorMessage(['Successful Registration', 'Login ' + msg_login]);
-                navigate(`/dashboard/?${params.toString()}`);
+            try {
+                const [success_register, msg_register] = await apiCreateAccount(email, first_name, last_name, gender, password1, invite_token, joinCode);
+                const [success_login, msg_login] = await apiLogin(email, password1);
+                const params = new URLSearchParams(location.search);
+                if (success_register && success_login) {
+                    dispatch({type: "RESET_STORE"});
+                    navigate(`/dashboard/?${params.toString()}`);
+                } else if (!success_register) {
+                    setErrorMessage(msg_register.split(", "));
+                } else if (!success_login) {
+                    setErrorMessage(["Successful Registration", "Login " + msg_login]);
+                    navigate(`/dashboard/?${params.toString()}`);
+                }
+            } catch (err) {
+                console.error("Registration failed", err);
+                setErrorMessage(["Could not register - please try again."]);
+            } finally {
+                setIsLoading(false);
             }
-            setIsLoading(false);
         }
     };
 
@@ -457,72 +463,71 @@ function LogInPage() {
         setIsLoading(true);
         const email = e.target.email.value;
         const password = e.target.password.value;
-        const [success, msg] = await apiLogin(email, password);
-        if (success) {
+        try {
+            const [success, msg] = await apiLogin(email, password);
+            if (!success) {
+                setErrorMessage(msg);
+                return;
+            }
             // A fresh login must mean fresh data: drop the persisted Redux
             // cache (localStorage 'appState') from whatever session was on
             // this device before - otherwise a stale cache (e.g. "no coach
             // configured") survives the login and the device looks out of
             // sync. The JWT tokens just set by apiLogin live in their own
             // keys and are not touched.
-            localStorage.removeItem('appState');
-            // Per-device user state from the previous account must not
-            // leak into the next login (equalizer body stats, coach ping
-            // baseline).
-            localStorage.removeItem('wc_equalizer_inputs');
-            localStorage.removeItem('wc_last_coach_msg_id');
-            // Wipe every slice cache (the store re-persists itself within
-            // seconds - a partial reset leaks the other slices' caches).
-            dispatch({type: 'RESET_STORE'});
-            // success logging in - redirect to dashboard
-            await waitForLocalStorage('access_token');
-            setIsLoading(false);
-            if (params.has('redirect')) {
-                // Only honour the redirect param when it points at a
-                // same-origin path. Anything else (absolute URL, scheme
-                // like javascript:, protocol-relative //evil.com) is
-                // dropped to prevent open-redirect abuse.
-                const redirectUrl = sanitizeRedirect(params.get('redirect'));
-                if (redirectUrl) {
-                    navigate(redirectUrl);
-                } else {
-                    navigate(`/dashboard/${location.search}`);
-                }
-            } else {
-                navigate(`/dashboard/${location.search}`);
-            }
-        } else {
-            // error logging in - user try again
-            setErrorMessage(msg);
+            localStorage.removeItem("appState");
+            localStorage.removeItem("wc_equalizer_inputs");
+            localStorage.removeItem("wc_last_coach_msg_id");
+            dispatch({type: "RESET_STORE"});
+            goAfterLogin(navigate, location, params);
+        } catch (err) {
+            console.error("Login failed", err);
+            setErrorMessage("Could not log in - please try again.");
+        } finally {
             setIsLoading(false);
         }
-    }
-
-    // check if refreshToken already exists and user is already logged in
-    async function checkRefreshToken(refreshToken) {
-        setIsLoading(true);
-        const [success] = await apiRefreshToken(refreshToken);
-        if (success) {
-            // success refreshing access_token - redirecting to dashboard
-            await waitForLocalStorage('access_token');
-            navigate(`/dashboard/${location.search}`);
-        } else {
-            // Refresh failed. apiRefreshToken already dropped the
-            // refresh_token when the backend confirmed it dead (400/401);
-            // on transient failures (429/network) the token stays, so the
-            // next app start retries automatically.
-        }
-        setIsLoading(false);
     }
 
     useEffect(() => {
-        dispatch({type: 'RESET_STORE'});
+        let cancelled = false;
+        dispatch({type: "RESET_STORE"});
 
-        const refreshToken = localStorage.getItem('refresh_token');
-        if (refreshToken !== null) {
-            localStorage.removeItem('access_token');
-            checkRefreshToken(refreshToken);
-        }
+        const refreshToken = localStorage.getItem("refresh_token");
+        if (!refreshToken) return undefined;
+
+        (async () => {
+            setIsLoading(true);
+            try {
+                // A still-valid access token is enough - do not delete it
+                // and wait on refresh. That used to park the login page
+                // on the spinner if refresh was slow or never returned.
+                if (getAccessToken() && !accessTokenNeedsRefresh()) {
+                    if (!cancelled) goAfterLogin(navigate, location, params);
+                    return;
+                }
+                const timedOut = await Promise.race([
+                    apiRefreshToken(refreshToken).then((r) => r),
+                    new Promise((resolve) => setTimeout(() => resolve(["timeout"]), 8000)),
+                ]);
+                if (cancelled) return;
+                if (timedOut[0] === true) {
+                    goAfterLogin(navigate, location, params);
+                    return;
+                }
+                // Refresh hung or failed, but a still-valid access token
+                // is enough to enter the app.
+                if (getAccessToken() && !accessTokenNeedsRefresh()) {
+                    goAfterLogin(navigate, location, params);
+                    return;
+                }
+            } catch {
+                // Show the form so the user can sign in by password.
+            }
+            if (!cancelled) setIsLoading(false);
+        })();
+
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
 

@@ -27,7 +27,8 @@ This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/w
 - Personas have **profile pictures, taglines and accent colours** — 10 hand-crafted avatar artworks ship in `src-frontend/public/personas/`; anyone can add their own roaster (artwork or an emoji). Staff can edit or delete every roaster; everyone else only the ones they made.
 - Messages live in an in-app audit log (REST: `/api/drill-instructor/*`) and can be pushed to athletes' devices via web push.
 - **Quiet-day nudges:** if a running competition sees zero workouts in a day, the instructor posts one motivational, group-addressed message on its own (daily sweep, per-competition toggle).
-- **Arcade:** Order of the Day (sealed morning mission, ribbon on the feed), Dunce megaphone on last place until they log, Hall of Roasts on the challenge page, coach mood from the last 48h, and permanent dog tags (First Blood, Ghost Killer, Photogenic, Never Missed Monday, Survived the Dunce).
+- **Arcade:** Order of the Day (sealed morning mission, ribbon on the feed), Dunce megaphone on last place until they log, Hall of Roasts on the challenge page, coach mood from the last 48h, and permanent dog tags (First Blood, Ghost Killer, Photogenic, Never Missed Monday, Survived the Dunce, Echo Immortal, Echo Slayer).
+- **Legend Echoes:** standout workouts become living, claimable trophies in the Echo Chamber — stylized photo, coach narrative, power rating. Anyone can declare war (7-day window); a successful beat claims the Echo and grows the lineage. Survive three failed claims or the season and it goes Immortal. End of season: the Book of Echoes.
 - **Weekly coach vote:** everyone in a challenge votes for next week's instructor; the winner takes over Monday morning, with a live countdown in Coach's Corner.
 
 **📱 Coach-centred PWA redesign (mobile-first)**
@@ -59,7 +60,7 @@ Create a competition or join one via a friend's invite link, log workouts manual
 **Features:**
 - Competitions with custom goals, teams, leaderboards and weekly email recaps — editing a goal rescores every activity in the challenge (caps reapplied in the site timezone)
 - **AI Drill Instructor** with persona avatars — comments on every workout, nudges quiet groups, optionally pings phones via push
-- **Coach arcade** — daily mission, dunce, hall of roasts, mood, dog tags, weekly coach vote
+- **Coach arcade** — daily mission, dunce, hall of roasts, mood, dog tags, weekly coach vote, Legend Echoes
 - **Your own roaster** — anyone can add a coach voice; staff can edit or delete every persona
 - **Coach page** — a live, chat-style feed of everything the coach has said
 - Workout entry manually or via Strava / Garmin Connect auto-import
@@ -150,6 +151,7 @@ Each competition can optionally activate an AI coach that generates a short, per
 - **Order of the Day:** a sealed morning mission (07:05) with a ribbon on the feed; slackers hear about it at 22:05.
 - **Dunce:** last place on the board gets the megaphone until they log (assigned at 00:10).
 - **Hall of Roasts** on the challenge page (top remixed photos of that competition), coach mood (Proud / Watching / Disappointed / Unleashed from the last 48h), and **dog tags** earned for the season.
+- **Legend Echoes:** the coach can immortalize a standout workout as a living trophy in the Echo Chamber (remix art + narrative + power). Anyone in the challenge can contest it; beat the metric in 7 days and you claim it. Three successful defenses — or the end of the competition — makes it Immortal (Echo Immortal / Echo Slayer dog tags). The Book of Echoes is the season chronicle.
 - **Weekly coach vote:** participants pick next week's instructor in Coach's Corner. Votes tally Monday 07:15; the winner takes the megaphone and a countdown shows how long they are on the clock.
 - **Random daily push:** 1-2 times per day at random times (07:00–22:00) the instructor posts a pep talk pushing the whole group (toggleable per competition).
 - **Quiet-day nudge:** if a whole day passes without any workout in a running competition, the instructor posts one motivational nudge to the group (toggleable per competition).

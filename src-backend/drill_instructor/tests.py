@@ -813,6 +813,21 @@ class PromptHistoryTests(TestCase):
 
         self.assertNotIn("most recent messages", prompt)
 
+    def test_build_workout_prompt_includes_echo_lines(self):
+        from .llm_client import build_workout_prompt
+
+        prompt = build_workout_prompt(
+            user_first_name="Alex", username="alex", sport_type="Run",
+            duration_minutes=30, distance_km=None, kcal=None, intensity=2,
+            competition_name="Cup", points_capped=None, user_rank=2,
+            total_participants=3,
+            echo_lines=["Still waiting for someone to silence Marcus's Run Echo."],
+        )
+
+        self.assertIn("Living Legend Echoes", prompt)
+        self.assertIn("Marcus", prompt)
+        self.assertLess(prompt.index("Living Legend Echoes"), prompt.index("Write your comment now"))
+
 
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
@@ -2635,3 +2650,226 @@ class PersonaVoteTests(TestCase):
         self.client.force_authenticate(self.athlete)
         response = self._vote(stranger)
         self.assertEqual(response.status_code, 400)
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class LegendEchoTests(TestCase):
+    """Mint, challenge, claim, immortalize, Book of Echoes."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+            "drill_instructor.tasks.post_workout_comment.delay",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        llm = mock.patch(
+            "drill_instructor.llm_client.generate_message",
+            return_value=("LEGEND: @Alex planted a flag.", None),
+        )
+        self.addCleanup(llm.stop)
+        llm.start()
+
+        self.persona = DrillInstructorPersona.objects.create(
+            name="Echo Sergeant", system_prompt="Bark.",
+        )
+        self.owner = _user("echo-owner@example.com", "Omar")
+        self.alex = _user("echo-alex@example.com", "Alex")
+        self.nina = _user("echo-nina@example.com", "Nina")
+        self.outsider = _user("echo-out@example.com", "Otto")
+        today = timezone.localdate()
+        self.competition = Competition.objects.create(
+            owner=self.owner,
+            name="Echo Cup",
+            start_date=today - datetime.timedelta(days=3),
+            end_date=today + datetime.timedelta(days=20),
+        )
+        self.alex.my_competitions.add(self.competition)
+        self.nina.my_competitions.add(self.competition)
+        self.config = DrillInstructorConfig.objects.create(
+            competition=self.competition, enabled=True, persona=self.persona,
+        )
+        self.client = APIClient()
+
+    def _workout(self, user, minutes=30, distance=None, sport="Run", when=None):
+        w = Workout(
+            user=user, sport_type=sport,
+            start_datetime=when or timezone.now(),
+            duration=datetime.timedelta(minutes=minutes),
+            distance=distance,
+            intensity_category=2,
+        )
+        w.save(score=False)
+        return w
+
+    def test_first_short_workout_is_not_an_echo(self):
+        from .echoes import mint_echo
+        echo = mint_echo(self._workout(self.alex, minutes=30), self.config)
+        self.assertIsNone(echo)
+
+    def test_steps_never_mint(self):
+        from .echoes import mint_echo
+        steps = self._workout(self.alex, minutes=120)
+        Workout.objects.filter(pk=steps.pk).update(sport_type="Steps", steps=20000)
+        steps.refresh_from_db()
+        echo = mint_echo(steps, self.config)
+        self.assertIsNone(echo)
+
+    def test_first_flag_mints_and_posts(self):
+        from .echoes import mint_echo
+        from .models import LegendEcho
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        self.assertIsNotNone(echo)
+        self.assertEqual(echo.status, LegendEcho.STATUS_UNDEFEATED)
+        self.assertEqual(echo.holder_id, self.alex.id)
+        self.assertGreaterEqual(echo.power, 1)
+        self.assertTrue(DrillInstructorMessage.objects.filter(
+            config=self.config, kind=DrillInstructorMessage.KIND_ECHO,
+        ).exists())
+
+    def test_personal_best_needs_a_prior_same_sport(self):
+        from .echoes import mint_echo
+        mint_echo(self._workout(self.nina, minutes=45), self.config)
+        prior = self._workout(self.alex, minutes=35)
+        self.assertIsNone(mint_echo(prior, self.config))
+        better = self._workout(self.alex, minutes=50)
+        echo = mint_echo(better, self.config)
+        self.assertIsNotNone(echo)
+        self.assertEqual(echo.origin_user_id, self.alex.id)
+
+    def test_mythic_size_mints(self):
+        from .echoes import mint_echo
+        echo = mint_echo(self._workout(self.alex, minutes=95), self.config)
+        self.assertIsNotNone(echo)
+
+    def test_cooldown_blocks_a_second_flag(self):
+        from .echoes import mint_echo
+        first = mint_echo(self._workout(self.alex, minutes=95), self.config)
+        self.assertIsNotNone(first)
+        second = mint_echo(self._workout(self.alex, minutes=96), self.config)
+        self.assertIsNone(second)
+
+    def test_challenge_claim_and_slayer_tag(self):
+        from .echoes import mint_echo, resolve_workout_challenges, start_challenge
+        from .models import DogTag, EchoChallenge, LegendEcho
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        start_challenge(echo, self.nina)
+        echo.refresh_from_db()
+        self.assertEqual(echo.status, LegendEcho.STATUS_CONTESTED)
+        with self.assertRaises(ValueError):
+            start_challenge(echo, self.owner)
+        beat = self._workout(self.nina, minutes=60)
+        claimed = resolve_workout_challenges(beat, self.config)
+        self.assertEqual(len(claimed), 1)
+        echo.refresh_from_db()
+        self.assertEqual(echo.holder_id, self.nina.id)
+        self.assertEqual(echo.chain_length, 2)
+        self.assertEqual(echo.status, LegendEcho.STATUS_UNDEFEATED)
+        self.assertGreater(echo.metric_value, 45)
+        self.assertIsNone(mint_echo(beat, self.config))
+        self.assertTrue(DogTag.objects.filter(user=self.nina, slug="echo_slayer").exists())
+        self.assertTrue(DrillInstructorMessage.objects.filter(
+            config=self.config, kind=DrillInstructorMessage.KIND_CLAIM,
+        ).exists())
+        self.assertEqual(
+            EchoChallenge.objects.filter(echo=echo, status=EchoChallenge.STATUS_WON).count(), 1,
+        )
+
+    def test_holder_cannot_challenge_own_echo(self):
+        from .echoes import mint_echo, start_challenge
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        with self.assertRaises(ValueError):
+            start_challenge(echo, self.alex)
+
+    def test_tie_does_not_claim(self):
+        from .echoes import mint_echo, resolve_workout_challenges, start_challenge
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        start_challenge(echo, self.nina)
+        claimed = resolve_workout_challenges(self._workout(self.nina, minutes=45), self.config)
+        self.assertEqual(claimed, [])
+        echo.refresh_from_db()
+        self.assertEqual(echo.holder_id, self.alex.id)
+
+    def test_three_defenses_immortalize(self):
+        from .echoes import expire_challenges, mint_echo, start_challenge
+        from .models import DogTag, EchoChallenge, LegendEcho
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        for _ in range(3):
+            challenge = start_challenge(echo, self.nina)
+            EchoChallenge.objects.filter(pk=challenge.pk).update(
+                window_end=timezone.now() - datetime.timedelta(minutes=1),
+            )
+            expire_challenges()
+            echo.refresh_from_db()
+        self.assertEqual(echo.status, LegendEcho.STATUS_IMMORTAL)
+        self.assertTrue(DogTag.objects.filter(user=self.alex, slug="echo_immortal").exists())
+
+    def test_season_end_immortalizes_survivors(self):
+        from .echoes import expire_challenges, mint_echo, start_challenge
+        from .models import EchoChallenge, LegendEcho
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        war = start_challenge(echo, self.nina)
+        self.competition.end_date = timezone.localdate() - datetime.timedelta(days=1)
+        self.competition.save()
+        result = expire_challenges()
+        self.assertGreaterEqual(result["immortal"], 1)
+        echo.refresh_from_db()
+        self.assertEqual(echo.status, LegendEcho.STATUS_IMMORTAL)
+        war.refresh_from_db()
+        self.assertIn(war.status, (EchoChallenge.STATUS_LOST, EchoChallenge.STATUS_EXPIRED))
+
+    def test_cannot_challenge_after_the_season(self):
+        from .echoes import mint_echo, start_challenge
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        self.competition.end_date = timezone.localdate() - datetime.timedelta(days=1)
+        self.competition.save()
+        with self.assertRaises(ValueError):
+            start_challenge(echo, self.nina)
+
+    def test_api_list_challenge_book_and_isolation(self):
+        from .echoes import mint_echo
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        self.client.force_authenticate(self.nina)
+        listed = self.client.get("/api/drill-instructor/echoes/", {"competition": self.competition.id})
+        self.assertEqual(listed.status_code, 200, listed.content)
+        rows = listed.json()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], echo.id)
+        self.assertEqual(rows[0]["holder_id"], self.alex.id)
+        self.assertIn("metric_label", rows[0])
+
+        war = self.client.post(f"/api/drill-instructor/echoes/{echo.id}/challenge/")
+        self.assertEqual(war.status_code, 200, war.content)
+        self.assertEqual(war.json()["status"], "contested")
+        self.assertEqual(war.json()["active_challenge"]["challenger_id"], self.nina.id)
+
+        twice = self.client.post(f"/api/drill-instructor/echoes/{echo.id}/challenge/")
+        self.assertEqual(twice.status_code, 400)
+
+        book = self.client.get("/api/drill-instructor/echoes/book/", {"competition": self.competition.id})
+        self.assertEqual(book.status_code, 200, book.content)
+        payload = book.json()
+        self.assertEqual(payload["echo_count"], 1)
+        self.assertEqual(payload["chapters"][0]["wars"][0]["challenger"], "Nina")
+
+        self.client.force_authenticate(self.outsider)
+        hidden = self.client.get("/api/drill-instructor/echoes/", {"competition": self.competition.id})
+        self.assertEqual(hidden.status_code, 200)
+        self.assertEqual(hidden.json(), [])
+        forbidden = self.client.post(f"/api/drill-instructor/echoes/{echo.id}/challenge/")
+        self.assertEqual(forbidden.status_code, 404)
+        no_book = self.client.get("/api/drill-instructor/echoes/book/", {"competition": self.competition.id})
+        self.assertEqual(no_book.status_code, 404)
+
+    def test_echo_windows_periodic_task_seeded(self):
+        from django_celery_beat.models import PeriodicTask
+        task = PeriodicTask.objects.get(name="drill_instructor_echo_windows")
+        self.assertEqual(task.task, "drill_instructor.tasks.resolve_echo_windows")
+        self.assertTrue(task.enabled)
+        self.assertEqual(task.crontab.hour, "21")
+        self.assertEqual(task.crontab.minute, "20")
+

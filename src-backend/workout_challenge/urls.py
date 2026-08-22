@@ -46,6 +46,7 @@ from drill_instructor.views import (
     DrillInstructorConfigViewSet,
     DrillInstructorMessageViewSet,
     DrillInstructorTestMessageView,
+    LegendEchoViewSet,
 )
 from site_settings.views import SiteSettingsView
 from push_notifications.views import (
@@ -66,6 +67,7 @@ router.register(r'user', CustomUserViewSet, basename='cutomuser')
 router.register(r'drill-instructor/persona', DrillInstructorPersonaViewSet, basename='drill-persona')
 router.register(r'drill-instructor/config', DrillInstructorConfigViewSet, basename='drill-config')
 router.register(r'drill-instructor/message', DrillInstructorMessageViewSet, basename='drill-message')
+router.register(r'drill-instructor/echoes', LegendEchoViewSet, basename='drill-echo')
 
 urlpatterns = [
     path('api/', include([

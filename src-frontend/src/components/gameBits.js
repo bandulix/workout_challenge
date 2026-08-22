@@ -11,6 +11,8 @@ export const TAG_ICON = {
     photogenic: "📸",
     never_missed_monday: "📅",
     survived_the_dunce: "📣",
+    echo_immortal: "🜲",
+    echo_slayer: "⚔️",
 };
 
 export function MoodMeter({mood, personaName}) {

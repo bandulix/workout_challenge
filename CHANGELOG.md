@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Legend Echoes** — standout workouts (relative PB, clutch overtake, mythic size, or the first flag of a challenge) are minted as living, claimable trophies in the Echo Chamber: remixed photo (when a Hall of Roasts poster exists), coach-voiced narrative, and a power rating. Undefeated Echoes sit on the challenge page and the coach keeps referencing them. Anyone in the group can declare war (7-day window, one active challenge per Echo); beating the metric claims the Echo, raises the bar to the new feat, grows the lineage, and the originator keeps Legacy status. Three failed claims — or the end of the competition — makes it Immortal and awards the Echo Immortal dog tag (claimants earn Echo Slayer). Season chronicle: Book of Echoes.
+
+### Fixed
+- **Login spinner never giving way to the app** — visiting `/login` deleted the access token and waited on a refresh with no timeout, so a slow or hung `/token/refresh/` left people on the loading bar; a 5s `localStorage` wait after password login threw uncaught and froze the spinner for good. The form now keeps a still-valid access token, caps silent refresh at 8s, always clears the loader, and a stale in-flight refresh can no longer wipe the tokens from a login that just finished.
+- **Echo claims now move the bar** — a successful claim updates the Echo's metric, power and title to the winner's workout (the next challenger has to beat *that*), and a claiming workout cannot also plant a fresh Echo. Immortal Echoes close any open wars so they cannot be stolen after the season ends.
+
 ## [0.39.0] - 2026-08-22
 
 ### Added

@@ -87,6 +87,11 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="*/30"),
         "args": (),
     },
+    "drill_instructor_echo_windows": {
+        "task": "drill_instructor.tasks.resolve_echo_windows",
+        "schedule": crontab(minute="20", hour="21"),
+        "args": (),
+    },
     "drill_instructor_weekly_coach_vote": {
         "task": "drill_instructor.tasks.apply_weekly_persona_votes",
         "schedule": crontab(day_of_week="1", minute="15", hour="7"),

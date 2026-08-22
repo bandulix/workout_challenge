@@ -22,12 +22,15 @@ from .models import (
     DrillInstructorPersona,
     DrillInstructorPersonaVote,
     DrillInstructorPhotoVote,
+    EchoChallenge,
+    LegendEcho,
 )
 from .serializers import (
     DrillInstructorConfigSerializer,
     DrillInstructorMessageSerializer,
     DrillInstructorPersonaSerializer,
     DrillInstructorReplySerializer,
+    LegendEchoSerializer,
     RoastCardSerializer,
 )
 
@@ -571,3 +574,74 @@ class DrillInstructorTestMessageView(APIView):
         from .tasks import post_test_message
         post_test_message.delay(config.id, body)
         return Response({"status": "queued"}, status=status.HTTP_202_ACCEPTED)
+
+
+class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
+    """The Echo Chamber: list living trophies, challenge one, read the Book."""
+
+    serializer_class = LegendEchoSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = (
+            LegendEcho.objects.filter(
+                Q(config__competition__owner=user) | Q(config__competition__user=user)
+            )
+            .select_related(
+                "origin_user", "holder", "config", "config__competition", "config__persona",
+            )
+            .prefetch_related(Prefetch(
+                "challenges",
+                queryset=EchoChallenge.objects.filter(status=EchoChallenge.STATUS_ACTIVE).select_related("challenger"),
+                to_attr="active_challenges",
+            ))
+            .distinct()
+            .order_by("-power", "-created_at")
+        )
+        try:
+            competition_id = int(self.request.query_params.get("competition") or 0)
+        except (TypeError, ValueError):
+            competition_id = 0
+        if competition_id:
+            qs = qs.filter(config__competition_id=competition_id)
+        return qs
+
+    @action(detail=False, methods=["get"])
+    def book(self, request):
+        """End-of-season (or live) chronicle of every Echo in a challenge."""
+        from competition.models import Competition
+        from .echoes import book_payload
+        try:
+            competition_id = int(request.query_params.get("competition") or 0)
+        except (TypeError, ValueError):
+            competition_id = 0
+        if not competition_id:
+            return Response({"competition": "required."}, status=status.HTTP_400_BAD_REQUEST)
+        competition = get_object_or_404(
+            Competition.objects.filter(Q(owner=request.user) | Q(user=request.user)).distinct(),
+            pk=competition_id,
+        )
+        return Response(book_payload(competition))
+
+    @action(detail=True, methods=["post"])
+    def challenge(self, request, pk=None):
+        from .echoes import start_challenge
+        echo = self.get_object()
+        try:
+            start_challenge(echo, request.user)
+        except ValueError as exc:
+            raise ValidationError({"detail": str(exc)})
+        except IntegrityError:
+            raise ValidationError({"detail": "Someone is already coming for this Echo."})
+        echo = self.get_object()
+        return Response(LegendEchoSerializer(echo, context={"request": request}).data)
+
+    @action(detail=True, methods=["get"], renderer_classes=[ProtectedMediaRenderer])
+    def picture(self, request, pk=None):
+        echo = self.get_object()
+        if not echo.image:
+            raise Http404("No Echo art.")
+        from workout_challenge.images import protected_media_response
+        return protected_media_response(echo.image)
+

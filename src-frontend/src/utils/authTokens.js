@@ -19,13 +19,14 @@ export function getRefreshToken() {
     return localStorage.getItem("refresh_token");
 }
 
-function accessTokenExpiresAt(token) {
+export function accessTokenExpiresAt(token) {
     if (!token || typeof token !== "string") return 0;
     const parts = token.split(".");
     if (parts.length < 2) return 0;
     try {
-        const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/") + "===".slice((parts[1].length + 3) % 4);
-        const payload = JSON.parse(atob(padded));
+        const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+        const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+        const payload = JSON.parse(atob(b64 + pad));
         return typeof payload.exp === "number" ? payload.exp * 1000 : 0;
     } catch {
         return 0;
@@ -39,14 +40,19 @@ export function accessTokenNeedsRefresh(token = getAccessToken()) {
     return exp - Date.now() <= REFRESH_SKEW_MS;
 }
 
-// 'ok' | 'dead' | 'fail' | 'none'
+function fetchWithTimeout(url, options, ms = 10000) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    return fetch(url, {...options, signal: ctrl.signal}).finally(() => clearTimeout(timer));
+}
+
 export function refreshAccessToken() {
     if (refreshPromise) return refreshPromise;
     refreshPromise = (async () => {
         const refresh = getRefreshToken();
         if (!refresh) return "none";
         try {
-            const res = await fetch(`${getServerUrl()}/api/token/refresh/`, {
+            const res = await fetchWithTimeout(`${getServerUrl()}/api/token/refresh/`, {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({refresh}),
@@ -60,7 +66,15 @@ export function refreshAccessToken() {
                     return "ok";
                 }
             }
-            if (res.status === 400 || res.status === 401) return "dead";
+            if (res.status === 400 || res.status === 401) {
+                // A stale in-flight refresh must not wipe tokens from a
+                // login that finished while this request was on the wire.
+                if (getRefreshToken() === refresh) {
+                    localStorage.removeItem("refresh_token");
+                    localStorage.removeItem("access_token");
+                }
+                return "dead";
+            }
             return "fail";
         } catch {
             return "fail";

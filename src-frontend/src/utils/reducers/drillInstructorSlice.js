@@ -4,7 +4,7 @@ import {baseQueryWithReauth} from './baseQueryWithReauth';
 export const drillInstructorApi = createApi({
     reducerPath: 'drillInstructorApi',
     baseQuery: baseQueryWithReauth,
-    tagTypes: ['DrillPersona', 'DrillConfig', 'DrillMessage', 'DrillRoast', 'DrillBallot'],
+    tagTypes: ['DrillPersona', 'DrillConfig', 'DrillMessage', 'DrillRoast', 'DrillBallot', 'DrillEcho'],
     keepUnusedDataFor: 60 * 60 * 12,
     // Always refetch on (re)mount: the Android WebView parks its renderer
     // when hidden, so timed polls don't fire reliably in the app - and a
@@ -175,6 +175,37 @@ export const drillInstructorApi = createApi({
             invalidatesTags: (result, error, {configId}) => [{type: "DrillBallot", id: configId}],
         }),
 
+        // ---- Legend Echoes ---------------------------------------------
+        getEchoes: builder.query({
+            query: (params = {}) => ({
+                url: "drill-instructor/echoes/",
+                method: "GET",
+                params,
+            }),
+            providesTags: (result = []) => result.length
+                ? [...result.map(({id}) => ({type: "DrillEcho", id})), {type: "DrillEcho"}]
+                : [{type: "DrillEcho"}],
+        }),
+        getEchoBook: builder.query({
+            query: (competition) => ({
+                url: "drill-instructor/echoes/book/",
+                method: "GET",
+                params: {competition},
+            }),
+            providesTags: ["DrillEcho"],
+        }),
+        challengeEcho: builder.mutation({
+            query: (id) => ({
+                url: `drill-instructor/echoes/${id}/challenge/`,
+                method: "POST",
+            }),
+            invalidatesTags: (result, error, id) => [
+                {type: "DrillEcho", id},
+                "DrillEcho",
+                "DrillMessage",
+            ],
+        }),
+
         // ---- Test message (Celery task runner) -------------------------
         runTestMessage: builder.mutation({
             query: ({config_id, body}) => ({
@@ -203,5 +234,8 @@ export const {
     useVoteRoastMutation,
     useGetCoachBallotQuery,
     useVoteCoachPersonaMutation,
+    useGetEchoesQuery,
+    useGetEchoBookQuery,
+    useChallengeEchoMutation,
     useRunTestMessageMutation,
 } = drillInstructorApi;

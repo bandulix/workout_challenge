@@ -740,7 +740,7 @@ def _previous_messages_parts(previous_messages) -> "list[str]":
     return lines
 
 
-def build_workout_prompt(*, user_first_name: str, username: str, sport_type: str, duration_minutes: int, distance_km, kcal, intensity: int, competition_name: str, points_capped, user_rank: Optional[int], total_participants: Optional[int], leader_points: Optional[float] = None, user_total_points: Optional[float] = None, target_first_name: Optional[str] = None, previous_messages=None) -> str:
+def build_workout_prompt(*, user_first_name: str, username: str, sport_type: str, duration_minutes: int, distance_km, kcal, intensity: int, competition_name: str, points_capped, user_rank: Optional[int], total_participants: Optional[int], leader_points: Optional[float] = None, user_total_points: Optional[float] = None, target_first_name: Optional[str] = None, previous_messages=None, echo_lines=None) -> str:
     """Compose the user-message the LLM sees.
 
     Keeps the schema simple and stable so prompt-tuning the persona is
@@ -781,6 +781,9 @@ def build_workout_prompt(*, user_first_name: str, username: str, sport_type: str
         else:
             parts.append(f"Leader to call out: @{target_first_name}")
     parts.extend(_previous_messages_parts(previous_messages))
+    if echo_lines:
+        parts.append("Living Legend Echoes still undefeated in this challenge (reference them if it fits, do not invent extra ones):")
+        parts.extend(f"- {line}" for line in echo_lines[:3])
     parts.append(
         "Write your comment in your persona's voice and length. You MUST "
         "name the athlete with their @FirstName at least once and the "

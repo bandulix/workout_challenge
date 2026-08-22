@@ -38,6 +38,14 @@ TAG_CATALOG = {
         "title": "Survived the Dunce",
         "blurb": "Wore the megaphone and logged anyway.",
     },
+    "echo_immortal": {
+        "title": "Echo Immortal",
+        "blurb": "Planted a Legend Echo that nobody could silence.",
+    },
+    "echo_slayer": {
+        "title": "Echo Slayer",
+        "blurb": "Claimed someone else's Legend Echo.",
+    },
 }
 
 MOODS = {
@@ -324,6 +332,12 @@ def evaluate_workout_game(workout, config):
                 mondays.add(d)
         if len(mondays) >= 3:
             award_tag(user, "never_missed_monday")
+
+    try:
+        from .echoes import resolve_workout_challenges
+        resolve_workout_challenges(workout, config)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Echo resolve failed for workout %s: %s", workout.pk, exc)
 
 
 def evaluate_photo_game(photo_message):

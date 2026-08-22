@@ -168,6 +168,8 @@ class DrillInstructorMessage(models.Model):
     KIND_SIGH = "sigh"
     KIND_DUNCE = "dunce"
     KIND_HANDOVER = "handover"
+    KIND_ECHO = "echo"
+    KIND_CLAIM = "claim"
     KIND_CHOICES = [
         (KIND_ACTIVITY, "Workout comment"),
         (KIND_TEST, "Test message"),
@@ -180,6 +182,8 @@ class DrillInstructorMessage(models.Model):
         (KIND_SIGH, "Order failure"),
         (KIND_DUNCE, "Dunce crowning"),
         (KIND_HANDOVER, "Weekly coach handover"),
+        (KIND_ECHO, "Legend Echo minted"),
+        (KIND_CLAIM, "Legend Echo claimed"),
     ]
 
     config = models.ForeignKey(
@@ -383,12 +387,16 @@ class DogTag(models.Model):
     SLUG_PHOTOGENIC = "photogenic"
     SLUG_MONDAY = "never_missed_monday"
     SLUG_SURVIVED = "survived_the_dunce"
+    SLUG_ECHO_IMMORTAL = "echo_immortal"
+    SLUG_ECHO_SLAYER = "echo_slayer"
     SLUG_CHOICES = [
         (SLUG_FIRST_BLOOD, "First Blood"),
         (SLUG_GHOST_KILLER, "Ghost Killer"),
         (SLUG_PHOTOGENIC, "Photogenic"),
         (SLUG_MONDAY, "Never Missed Monday"),
         (SLUG_SURVIVED, "Survived the Dunce"),
+        (SLUG_ECHO_IMMORTAL, "Echo Immortal"),
+        (SLUG_ECHO_SLAYER, "Echo Slayer"),
     ]
 
     user = models.ForeignKey(
@@ -407,3 +415,135 @@ class DogTag(models.Model):
 
     def __str__(self):
         return f"{self.user_id}:{self.slug}"
+
+
+class LegendEcho(models.Model):
+    """A claimable, living trophy minted from a standout workout."""
+
+    STATUS_UNDEFEATED = "undefeated"
+    STATUS_CONTESTED = "contested"
+    STATUS_IMMORTAL = "immortal"
+    STATUS_RETIRED = "retired"
+    STATUS_CHOICES = [
+        (STATUS_UNDEFEATED, "Undefeated"),
+        (STATUS_CONTESTED, "Contested"),
+        (STATUS_IMMORTAL, "Immortal"),
+        (STATUS_RETIRED, "Retired"),
+    ]
+    METRIC_DURATION = "duration"
+    METRIC_DISTANCE = "distance"
+    METRIC_CHOICES = [
+        (METRIC_DURATION, "Minutes"),
+        (METRIC_DISTANCE, "Kilometres"),
+    ]
+
+    config = models.ForeignKey(
+        DrillInstructorConfig,
+        on_delete=models.CASCADE,
+        related_name="echoes",
+    )
+    origin_user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="echoes_originated",
+    )
+    origin_workout = models.ForeignKey(
+        "workouts.Workout",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="echoes_originated",
+    )
+    holder = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="echoes_held",
+    )
+    holder_workout = models.ForeignKey(
+        "workouts.Workout",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="echoes_held",
+    )
+    title = models.CharField(max_length=80)
+    narrative = models.TextField()
+    power = models.PositiveSmallIntegerField(default=1)
+    metric = models.CharField(max_length=12, choices=METRIC_CHOICES, default=METRIC_DURATION)
+    metric_value = models.FloatField()
+    sport_type = models.CharField(max_length=40)
+    image = models.ImageField(upload_to="echo_pics/", null=True, blank=True)
+    chain_length = models.PositiveIntegerField(default=1)
+    defenses = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=STATUS_UNDEFEATED)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_claimed_at = models.DateTimeField(null=True, blank=True)
+    immortalized_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-power", "-created_at"]
+        indexes = [
+            models.Index(fields=["config", "status"], name="echo_config_status"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["config", "origin_workout"],
+                condition=models.Q(origin_workout__isnull=False),
+                name="one_echo_per_origin_workout",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.status}) in config {self.config_id}"
+
+
+class EchoChallenge(models.Model):
+    """One attempt to claim a Legend Echo inside a time window."""
+
+    STATUS_ACTIVE = "active"
+    STATUS_WON = "won"
+    STATUS_LOST = "lost"
+    STATUS_EXPIRED = "expired"
+    STATUS_CHOICES = [
+        (STATUS_ACTIVE, "Active"),
+        (STATUS_WON, "Won"),
+        (STATUS_LOST, "Lost"),
+        (STATUS_EXPIRED, "Expired"),
+    ]
+
+    echo = models.ForeignKey(
+        LegendEcho,
+        on_delete=models.CASCADE,
+        related_name="challenges",
+    )
+    challenger = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="echo_challenges",
+    )
+    committed_at = models.DateTimeField(auto_now_add=True)
+    window_end = models.DateTimeField()
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
+    resolving_workout = models.ForeignKey(
+        "workouts.Workout",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="echo_resolves",
+    )
+
+    class Meta:
+        ordering = ["-committed_at"]
+        indexes = [
+            models.Index(fields=["status", "window_end"], name="echo_chal_status_end"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["echo"],
+                condition=models.Q(status="active"),
+                name="one_active_challenge_per_echo",
+            ),
+        ]
+
+    def __str__(self):
+        return f"challenge {self.pk} on echo {self.echo_id} ({self.status})"

@@ -37,11 +37,12 @@ import {sportLabelShort} from "../forms/workoutForm";
 import {Chip, EmptyState, SectionHead, VOLT} from "../components/uiBits";
 import {useDispatch} from "react-redux";
 import {teamsApi} from "../utils/reducers/teamsSlice";
-import {useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
+import {drillInstructorApi, useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
 import ProfileAvatar from "../components/ProfileAvatar";
 import usePollingInterval from "../utils/usePollingInterval";
 import {CompetitionHead, CoachCorner} from "../components/competitionChrome";
 import {HallOfRoasts, OrderRibbon} from "../components/gameBits";
+import EchoChamber from "../components/EchoChamber";
 
 ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Filler, Tooltip, Legend, BarElement, ChartDataLabels);
 
@@ -782,6 +783,7 @@ export default function Competition() {
         if (latest.id !== lastDrillMsgId.current) {
             lastDrillMsgId.current = latest.id;
             refreshPage();
+            dispatch(drillInstructorApi.util.invalidateTags(["DrillEcho"]));
         }
     }, [drillMessages]);
 
@@ -841,6 +843,8 @@ export default function Competition() {
 
                 {/* The Drill Instructor's corner */}
                 {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
+
+                {competition && <EchoChamber competitionId={competition.id} userId={user?.id}/>}
 
                 {(hall || []).length > 0 && (
                     <div className="mt-4">

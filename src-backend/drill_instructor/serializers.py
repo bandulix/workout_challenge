@@ -3,7 +3,7 @@ import re
 from django.urls import reverse
 from rest_framework import serializers
 
-from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona
+from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona, LegendEcho
 
 
 def _persona_picture_url(persona):
@@ -496,3 +496,73 @@ class RoastCardSerializer(serializers.ModelSerializer):
         if votes is None:
             votes = list(obj.photo_votes.filter(user=self.context["request"].user))
         return votes[0].hot if votes else None  # True / False / None
+
+
+class LegendEchoSerializer(serializers.ModelSerializer):
+    """Public face of a Legend Echo for the Echo Chamber."""
+
+    origin_name = serializers.SerializerMethodField()
+    origin_id = serializers.IntegerField(source="origin_user_id", read_only=True)
+    holder_name = serializers.SerializerMethodField()
+    holder_id = serializers.IntegerField(read_only=True)
+    image = serializers.SerializerMethodField()
+    my_challenge = serializers.SerializerMethodField()
+    active_challenge = serializers.SerializerMethodField()
+    metric_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LegendEcho
+        fields = [
+            "id", "title", "narrative", "power", "status", "metric", "metric_value",
+            "metric_label", "sport_type", "chain_length", "defenses",
+            "origin_name", "origin_id", "holder_name", "holder_id", "image",
+            "created_at", "last_claimed_at", "immortalized_at",
+            "my_challenge", "active_challenge",
+        ]
+        read_only_fields = fields
+
+    def get_origin_name(self, obj):
+        user = obj.origin_user
+        return (user.first_name or user.username) if user else None
+
+    def get_holder_name(self, obj):
+        user = obj.holder
+        return (user.first_name or user.username) if user else None
+
+    def get_image(self, obj):
+        if not obj.image:
+            return None
+        return reverse("drill-echo-picture", kwargs={"pk": obj.pk})
+
+    def get_metric_label(self, obj):
+        unit = "km" if obj.metric == "distance" else "min"
+        return f"{obj.metric_value:g} {unit} {obj.sport_type}"
+
+    def get_active_challenge(self, obj):
+        ch = getattr(obj, "open_challenge", None)
+        if ch is None:
+            challenges = getattr(obj, "active_challenges", None)
+            if challenges is not None:
+                ch = challenges[0] if challenges else None
+            else:
+                ch = obj.challenges.filter(status="active").select_related("challenger").first()
+        if ch is None:
+            return None
+        user = ch.challenger
+        return {
+            "id": ch.id,
+            "challenger_id": ch.challenger_id,
+            "challenger_name": (user.first_name or user.username) if user else None,
+            "window_end": ch.window_end.isoformat(),
+        }
+
+    def get_my_challenge(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        active = self.get_active_challenge(obj)
+        if not active or not user or not user.is_authenticated:
+            return None
+        if active["challenger_id"] != user.id:
+            return None
+        return active
+

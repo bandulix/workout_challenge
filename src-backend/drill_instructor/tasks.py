@@ -47,6 +47,14 @@ def _persona_icon(persona):
     return None
 
 
+def _echo_lines(config):
+    try:
+        from .echoes import live_echo_lines
+        return live_echo_lines(config)
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _recent_bodies(config, limit=2):
     """The persona's last ``limit`` message bodies for this config.
 
@@ -215,6 +223,7 @@ def post_workout_comment(self, workout_id):
             user_total_points=my_total,
             target_first_name=(target_user.first_name if target_user else None),
             previous_messages=_recent_bodies(config),
+            echo_lines=_echo_lines(config),
         )
 
         body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
@@ -272,6 +281,13 @@ def post_workout_comment(self, workout_id):
                 )
             except Exception as exc:  # noqa: BLE001 - never block workout saves
                 logger.warning("Drill Instructor: push failed for user %s: %s", workout.user_id, exc)
+
+        try:
+            from .echoes import mint_echo
+            mint_echo(workout, config)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Legend Echo eval failed for workout %s config %s: %s",
+                           workout_id, config.id, exc)
 
     return {"workout_id": workout_id, "posted": posted, "competitions": competitions.count()}
 
@@ -660,6 +676,10 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
     roast.image.save(f"roast-{photo.id}.png", ContentFile(png_bytes), save=False)
     try:
         roast.save()
+        workout = _workout_answered_to(photo, parent)
+        if workout is not None:
+            from .echoes import attach_echo_image
+            attach_echo_image(workout, config, roast.image)
         config.last_posted_at = timezone.now()
         config.messages_posted = (config.messages_posted or 0) + 1
         config.save(update_fields=["last_posted_at", "messages_posted", "updated_at"])
@@ -996,6 +1016,15 @@ def _post_coach_line(config, kind, body, llm_error=""):
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Drill Instructor: %s push failed for user %s: %s", kind, participant.id, exc)
     return message
+
+
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=120)
+def resolve_echo_windows(self):
+    """Expire Echo challenges whose clock ran out; immortalize survivors."""
+    if is_task_already_executing("resolve_echo_windows"):
+        return "Task already executing. Skipping."
+    from .echoes import expire_challenges
+    return expire_challenges()
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)

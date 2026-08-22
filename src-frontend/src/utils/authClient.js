@@ -86,7 +86,12 @@ export async function apiRefreshToken(refreshToken) {
         }
         const status = result.error?.status;
         if (status === 400 || status === 401) {
-            localStorage.removeItem("refresh_token");
+            // Only drop the stored refresh if it is still the one we
+            // sent - a login that finished while this refresh was in
+            // flight owns the current key.
+            if (localStorage.getItem("refresh_token") === refreshToken) {
+                localStorage.removeItem("refresh_token");
+            }
         }
         return [false, rtkErrorMessage(result, "Unknown error")];
     } catch (error) {

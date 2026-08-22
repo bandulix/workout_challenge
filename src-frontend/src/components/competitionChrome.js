@@ -250,6 +250,11 @@ export function CoachCorner({competition, isOwner}) {
                                     {/* break-words: long unbreakable strings (URLs, hashtag
                                         chains from the LLM) must wrap instead of pushing
                                         the page wider than the viewport. */}
+                                    {(m.kind === "echo" || m.kind === "claim") && (
+                                        <p className="mb-1 text-[10px] font-extrabold uppercase tracking-[0.18em] text-volt-500">
+                                            {m.kind === "claim" ? "Echo claimed" : "Legend Echo"}
+                                        </p>
+                                    )}
                                     <p className="text-sm leading-snug break-words dark:text-gray-100">{m.body}</p>
                                     <p className="text-[11px] text-gray-400 mt-0.5">
                                         {m.athlete_name ? `→ ${m.athlete_name} · ` : ""}{timeAgo(m.posted_at)}
