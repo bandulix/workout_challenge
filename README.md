@@ -24,14 +24,15 @@ This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/w
 
 **🎖️ AI Drill Instructor (new feature)**
 - Per-competition, owner-configured AI coach that comments on every logged workout in a chosen persona voice (any OpenAI-compatible LLM provider; runtime-configurable in Site Settings).
-- Personas have **profile pictures, taglines and accent colours** — 10 hand-crafted avatar artworks ship in `src-frontend/public/personas/`; custom personas can pick artwork or an emoji.
+- Personas have **profile pictures, taglines and accent colours** — 10 hand-crafted avatar artworks ship in `src-frontend/public/personas/`; anyone can add their own roaster (artwork or an emoji). Staff can edit or delete every roaster; everyone else only the ones they made.
 - Messages live in an in-app audit log (REST: `/api/drill-instructor/*`) and can be pushed to athletes' devices via web push.
 - **Quiet-day nudges:** if a running competition sees zero workouts in a day, the instructor posts one motivational, group-addressed message on its own (daily sweep, per-competition toggle).
-- **Arcade:** Order of the Day (sealed morning mission, ribbon on the feed), Dunce megaphone on last place until they log, Hall of Roasts, coach mood from the last 48h, and permanent dog tags (First Blood, Ghost Killer, Photogenic, Never Missed Monday, Survived the Dunce).
+- **Arcade:** Order of the Day (sealed morning mission, ribbon on the feed), Dunce megaphone on last place until they log, Hall of Roasts on the challenge page, coach mood from the last 48h, and permanent dog tags (First Blood, Ghost Killer, Photogenic, Never Missed Monday, Survived the Dunce).
+- **Weekly coach vote:** everyone in a challenge votes for next week's instructor; the winner takes over Monday morning, with a live countdown in Coach's Corner.
 
 **📱 Coach-centred PWA redesign (mobile-first)**
 - Dark athletic **volt/ink** theme (`#d7ff3e` on `#0a0d06`), self-hosted Archivo Black + Inter fonts, class-based dark mode with manual toggle. The **volt lightning** mark is the favicon, PWA icons, Apple touch icon, Android launcher and splash.
-- **Coach page** (`/coach`): persona hero, live chat-style coach feed, persona roster, platform-aware push opt-in.
+- **Coach page** (`/coach`): persona hero, live chat-style coach feed, the roaster (create yours / manage, above coach pings), platform-aware push opt-in.
 - Bottom-bar navigation (ink dock, volt pill for the active tab, breathing lime halo on the coach) with the persona at centre stage; installable PWA with offline shell and push on iOS & Android.
 - Login/welcome uses a gym / volt-neon still that stays on screen.
 
@@ -58,7 +59,8 @@ Create a competition or join one via a friend's invite link, log workouts manual
 **Features:**
 - Competitions with custom goals, teams, leaderboards and weekly email recaps — editing a goal rescores every activity in the challenge (caps reapplied in the site timezone)
 - **AI Drill Instructor** with persona avatars — comments on every workout, nudges quiet groups, optionally pings phones via push
-- **Coach arcade** — daily mission, dunce, hall of roasts, mood, dog tags
+- **Coach arcade** — daily mission, dunce, hall of roasts, mood, dog tags, weekly coach vote
+- **Your own roaster** — anyone can add a coach voice; staff can edit or delete every persona
 - **Coach page** — a live, chat-style feed of everything the coach has said
 - Workout entry manually or via Strava / Garmin Connect auto-import
 - Personal dashboard with workout stats, streak card and personal goals
@@ -147,7 +149,8 @@ Each competition can optionally activate an AI coach that generates a short, per
 - Comments on every workout in the competition, in the persona's voice.
 - **Order of the Day:** a sealed morning mission (07:05) with a ribbon on the feed; slackers hear about it at 22:05.
 - **Dunce:** last place on the board gets the megaphone until they log (assigned at 00:10).
-- **Hall of Roasts**, coach mood (Proud / Watching / Disappointed / Unleashed from the last 48h), and **dog tags** earned for the season.
+- **Hall of Roasts** on the challenge page (top remixed photos of that competition), coach mood (Proud / Watching / Disappointed / Unleashed from the last 48h), and **dog tags** earned for the season.
+- **Weekly coach vote:** participants pick next week's instructor in Coach's Corner. Votes tally Monday 07:15; the winner takes the megaphone and a countdown shows how long they are on the clock.
 - **Random daily push:** 1-2 times per day at random times (07:00–22:00) the instructor posts a pep talk pushing the whole group (toggleable per competition).
 - **Quiet-day nudge:** if a whole day passes without any workout in a running competition, the instructor posts one motivational nudge to the group (toggleable per competition).
 - With browser push enabled, messages are also dispatched to subscribed devices (nudges go to every participant).
@@ -163,7 +166,7 @@ Each competition can optionally activate an AI coach that generates a short, per
 | **British Butler** | Dry, polite, devastating one-liners. |
 | **Zen Master** | Calm and philosophical, focused on inner balance. |
 
-Owners can also create custom personas (shipped artwork or an emoji, accent colour, own system prompt). Any OpenAI-compatible provider works — pick a preset or paste base URL + key in **Site Settings → LLM / AI Provider**.
+Anyone can add a custom roaster on the Coach page (shipped artwork or an emoji, accent colour, own system prompt). Staff can edit or delete every persona; everyone else only the ones they made. Challenge owners pick the starting coach; after that the group vote seats each new week. Any OpenAI-compatible provider works — pick a preset or paste base URL + key in **Site Settings → LLM / AI Provider**.
 
 ## Admin & site settings
 The **first user to register** is automatically promoted to staff + superuser. The admin page (`/admin/site-settings`) edits runtime configuration — LLM provider, Strava, SMTP — with **database-over-env** resolution, so changes apply without restarts. Secrets are write-only on the API (masked preview only).
@@ -189,7 +192,7 @@ Apple HealthKit and Google Health Connect keep workouts **on the phone** — the
 2. `docker compose --profile health up -d` — the first start builds the Open Wearables image from a pinned upstream commit.
 3. Done — the connector logs into Open Wearables with the seeded admin developer (defaults `admin@example.com` / your `SECRET_KEY`, overridable via `OW_ADMIN_*` or Site Settings → Health); the backend reaches the API at the internal `http://openwearables:8000` by default.
 
-Athletes then open **Settings → Apple / Google Health → Connect Health App**, which shows a single-use connection code; they enter host + code in the health app on their phone (Open Wearables example/official app, or any app built with its SDK), and workouts start flowing — hourly poll, plus a manual **Re-Sync** button on Home. The activity-source selector (Settings) decides which provider imports when several are linked, and the cross-provider duplicate guard still applies.
+Athletes then open **Settings → Apple / Google Health → Connect Health App**, which shows a single-use connection code; they enter host + code in the health app on their phone (Open Wearables example/official app, or any app built with its SDK), and workouts start flowing — hourly poll, plus a manual **Re-Sync** button on Home. The Android app re-configures Health Connect sync on launch (so a process kill does not stop the phone from pushing). The activity-source selector (Settings) decides which provider imports when several are linked, and the cross-provider duplicate guard still applies.
 
 **How phones reach Open Wearables** — the container's nginx serves the OW API under the app's own domain at **`/health/`** (proxied to the `openwearables` container), and `HEALTH_PUBLIC_URL` defaults to `MAIN_HOST + /health`. One domain, one certificate, no extra proxy rules — your outer reverse proxy (if any) just keeps forwarding everything to the app. This also fixes the classic failure mode: a LAN IP or the internal docker hostname in `HEALTH_PUBLIC_URL` is unreachable from mobile data ("host not found" in the app), and plain-HTTP hosts get mixed-content-blocked by the HTTPS app. Only set `HEALTH_PUBLIC_URL` if you deliberately expose OW elsewhere (e.g. a dedicated `https://health.your-domain.com` via your own reverse proxy, no prefix rewriting then).
 

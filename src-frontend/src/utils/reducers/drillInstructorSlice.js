@@ -4,7 +4,7 @@ import {baseQueryWithReauth} from './baseQueryWithReauth';
 export const drillInstructorApi = createApi({
     reducerPath: 'drillInstructorApi',
     baseQuery: baseQueryWithReauth,
-    tagTypes: ['DrillPersona', 'DrillConfig', 'DrillMessage', 'DrillRoast'],
+    tagTypes: ['DrillPersona', 'DrillConfig', 'DrillMessage', 'DrillRoast', 'DrillBallot'],
     keepUnusedDataFor: 60 * 60 * 12,
     // Always refetch on (re)mount: the Android WebView parks its renderer
     // when hidden, so timed polls don't fire reliably in the app - and a
@@ -142,7 +142,11 @@ export const drillInstructorApi = createApi({
             providesTags: ['DrillRoast'],
         }),
         getHallOfRoasts: builder.query({
-            query: () => ({url: 'drill-instructor/message/hall/', method: 'GET'}),
+            query: (competition) => ({
+                url: 'drill-instructor/message/hall/',
+                method: 'GET',
+                params: {competition},
+            }),
             providesTags: ['DrillRoast'],
         }),
         voteRoast: builder.mutation({
@@ -152,6 +156,23 @@ export const drillInstructorApi = createApi({
                 body: {hot},
             }),
             // No refetch: the swipe box applies votes optimistically.
+        }),
+
+        // ---- Weekly coach vote -----------------------------------------
+        getCoachBallot: builder.query({
+            query: (configId) => ({
+                url: `drill-instructor/config/${configId}/ballot/`,
+                method: "GET",
+            }),
+            providesTags: (result, error, configId) => [{type: "DrillBallot", id: configId}, "DrillBallot"],
+        }),
+        voteCoachPersona: builder.mutation({
+            query: ({configId, persona}) => ({
+                url: `drill-instructor/config/${configId}/vote/`,
+                method: "POST",
+                body: {persona},
+            }),
+            invalidatesTags: (result, error, {configId}) => [{type: "DrillBallot", id: configId}],
         }),
 
         // ---- Test message (Celery task runner) -------------------------
@@ -180,5 +201,7 @@ export const {
     useGetRoastsQuery,
     useGetHallOfRoastsQuery,
     useVoteRoastMutation,
+    useGetCoachBallotQuery,
+    useVoteCoachPersonaMutation,
     useRunTestMessageMutation,
 } = drillInstructorApi;

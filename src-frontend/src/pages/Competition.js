@@ -28,6 +28,7 @@ import JoinTeamForm from "../forms/joinTeamForm";
 import ActivityGoalsForm from "../forms/activityGoalsForm";
 import {
     ChangeTeamButton,
+    Modal,
     ModifyGoalsButton,
     StravaButton,
 } from "../forms/basicComponents";
@@ -36,11 +37,11 @@ import {sportLabelShort} from "../forms/workoutForm";
 import {Chip, EmptyState, SectionHead, VOLT} from "../components/uiBits";
 import {useDispatch} from "react-redux";
 import {teamsApi} from "../utils/reducers/teamsSlice";
-import {useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
+import {useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
 import ProfileAvatar from "../components/ProfileAvatar";
 import usePollingInterval from "../utils/usePollingInterval";
 import {CompetitionHead, CoachCorner} from "../components/competitionChrome";
-import {OrderRibbon} from "../components/gameBits";
+import {HallOfRoasts, OrderRibbon} from "../components/gameBits";
 
 ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Filler, Tooltip, Legend, BarElement, ChartDataLabels);
 
@@ -317,66 +318,134 @@ function IndividualLeaderboardBox({stats, userId, dunceUserId}) {
 }
 
 
+const FEED_PREVIEW = 5;
+
+function durationLabel(entry) {
+    if (entry.workout__sport_type === "Steps") return `${entry.workout__steps?.toLocaleString() || 0} steps`;
+    const mins = Math.round(parseFloat(entry.workout__duration) / 60) || 0;
+    return `${mins} min`;
+}
+
+function feedDayLabel(entry) {
+    const ago = entry.workout__start_datetime_fmt?.days_ago;
+    if (ago === 0) return "Today";
+    if (ago === 1) return "Yesterday";
+    return entry.workout__start_datetime_fmt?.date_readable || "";
+}
+
+function groupFeedByDay(items) {
+    const groups = [];
+    for (const entry of items) {
+        const key = entry.workout__start_datetime_fmt?.date_iso || "unknown";
+        const last = groups[groups.length - 1];
+        if (!last || last.key !== key) {
+            groups.push({key, label: feedDayLabel(entry), items: [entry]});
+        } else {
+            last.items.push(entry);
+        }
+    }
+    return groups;
+}
+
+function FeedEntry({entry, open, onToggle, showDate = true}) {
+    return (
+        <li>
+            <button type="button" onClick={onToggle}
+                    className="w-full flex items-center gap-3 py-3 px-1 min-h-[44px] text-left rounded-2xl hover:bg-gray-50 dark:hover:bg-ink-800 transition">
+                <ProfileAvatar user={{first_name: entry.workout__user__username, profile_picture: entry.workout__user__profile_picture}} size={36}/>
+                <div className="min-w-0 flex-1">
+                    <p className="font-semibold truncate">{entry.workout__user__username}</p>
+                    <p className="text-xs text-gray-400">
+                        {durationLabel(entry)} {sportLabelShort(entry.workout__sport_type)}
+                        {showDate ? ` · ${entry.workout__start_datetime_fmt?.date_readable}` : ` · ${entry.workout__start_datetime_fmt?.time_24h}`}
+                    </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                    <OrderRibbon show={!!entry.order_ribbon}/>
+                    <Chip>+{Math.round(entry.points_capped || 0).toLocaleString()}P{entry.points_capped !== entry.points_raw ? "*" : ""}</Chip>
+                </div>
+            </button>
+            {open && (
+                <div className="px-3 pb-3 flex flex-wrap items-start gap-3">
+                    <ul className="flex-1 text-sm text-gray-600 dark:text-gray-300 space-y-0.5">
+                        {(entry.details || []).map((detail, i) => (
+                            <li key={i}>
+                                {detail.goal__name} +{Math.round(detail.points_capped || 0).toLocaleString()}P
+                                {detail.points_raw !== detail.points_capped && (
+                                    <span className="text-gray-400 italic"> (raw {Math.round(detail.points_raw || 0)}P)</span>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                    {(entry.workout__user__strava_allow_follow && entry.workout__strava_id) ? (
+                        <StravaButton label={"Like Activity"}
+                                      onClick={() => {
+                                          const id = String(entry.workout__strava_id).replace(/[^0-9]/g, '');
+                                          if (id) window.open("https://www.strava.com/activities/" + id, "_blank", "noopener,noreferrer");
+                                      }}/>
+                    ) : null}
+                </div>
+            )}
+        </li>
+    );
+}
+
+function FeedHistory({items, openId, setOpenId}) {
+    return (
+        <div className="max-h-[70vh] overflow-y-auto -mx-1 px-1">
+            {groupFeedByDay(items).map((group) => (
+                <section key={group.key} className="mb-2">
+                    <h3 className="sticky top-0 z-10 bg-white/95 dark:bg-ink-850/95 backdrop-blur px-1 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                        {group.label}
+                    </h3>
+                    <ul className="divide-y divide-gray-100 dark:divide-ink-700/60">
+                        {group.items.map((entry) => (
+                            <FeedEntry key={entry.workout} entry={entry} showDate={false}
+                                       open={openId === entry.workout}
+                                       onToggle={() => setOpenId(openId === entry.workout ? null : entry.workout)}/>
+                        ))}
+                    </ul>
+                </section>
+            ))}
+        </div>
+    );
+}
+
 function FeedBox({feed}) {
     const [openId, setOpenId] = useState(null);
-
-    function durationLabel(entry) {
-        if (entry.workout__sport_type === "Steps") return `${entry.workout__steps?.toLocaleString() || 0} steps`;
-        const mins = Math.round(parseFloat(entry.workout__duration) / 60) || 0;
-        return `${mins} min`;
-    }
+    const [showHistory, setShowHistory] = useState(false);
+    const items = feed || [];
+    const preview = items.slice(0, FEED_PREVIEW);
+    const older = Math.max(0, items.length - FEED_PREVIEW);
 
     return (
         <BoxSection>
-            <SectionHead title="Activity feed"/>
+            <SectionHead title="Activity feed" hint={items.length > FEED_PREVIEW ? `Latest ${FEED_PREVIEW} of ${items.length}` : null}/>
 
-            {feed.length === 0 ? (
+            {items.length === 0 ? (
                 <EmptyState title="The feed is quiet" body="The next logged workout lands here for everyone to see."/>
             ) : (
-                <ul className="mt-1 divide-y divide-gray-100 dark:divide-ink-700/60">
-                    {feed.map((entry) => {
-                        const open = openId === entry.workout;
-                        return (
-                            <li key={entry.workout}>
-                                <button type="button" onClick={() => setOpenId(open ? null : entry.workout)}
-                                        className="w-full flex items-center gap-3 py-3 px-1 min-h-[44px] text-left rounded-2xl hover:bg-gray-50 dark:hover:bg-ink-800 transition">
-                                    <ProfileAvatar user={{first_name: entry.workout__user__username, profile_picture: entry.workout__user__profile_picture}} size={36}/>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="font-semibold truncate">{entry.workout__user__username}</p>
-                                        <p className="text-xs text-gray-400">
-                                            {durationLabel(entry)} {sportLabelShort(entry.workout__sport_type)} · {entry.workout__start_datetime_fmt?.date_readable}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                        <OrderRibbon show={!!entry.order_ribbon}/>
-                                        <Chip>+{Math.round(entry.points_capped || 0).toLocaleString()}P{entry.points_capped !== entry.points_raw ? "*" : ""}</Chip>
-                                    </div>
-                                </button>
-                                {open && (
-                                    <div className="px-3 pb-3 flex flex-wrap items-start gap-3">
-                                        <ul className="flex-1 text-sm text-gray-600 dark:text-gray-300 space-y-0.5">
-                                            {(entry.details || []).map((detail, i) => (
-                                                <li key={i}>
-                                                    {detail.goal__name} +{Math.round(detail.points_capped || 0).toLocaleString()}P
-                                                    {detail.points_raw !== detail.points_capped && (
-                                                        <span className="text-gray-400 italic"> (raw {Math.round(detail.points_raw || 0)}P)</span>
-                                                    )}
-                                                </li>
-                                            ))}
-                                        </ul>
-                                        {(entry.workout__user__strava_allow_follow && entry.workout__strava_id) ? (
-                                            <StravaButton label={"Like Activity"}
-                                                          onClick={() => {
-                                                              const id = String(entry.workout__strava_id).replace(/[^0-9]/g, '');
-                                                              if (id) window.open("https://www.strava.com/activities/" + id, "_blank", "noopener,noreferrer");
-                                                          }}/>
-                                        ) : null}
-                                    </div>
-                                )}
-                            </li>
-                        );
-                    })}
-                </ul>
+                <>
+                    <ul className="mt-1 divide-y divide-gray-100 dark:divide-ink-700/60">
+                        {preview.map((entry) => (
+                            <FeedEntry key={entry.workout} entry={entry}
+                                       open={openId === entry.workout}
+                                       onToggle={() => setOpenId(openId === entry.workout ? null : entry.workout)}/>
+                        ))}
+                    </ul>
+                    {older > 0 && (
+                        <button type="button" onClick={() => setShowHistory(true)}
+                                className="mt-3 w-full min-h-[44px] rounded-2xl border border-volt-400/40 text-sm font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition">
+                            {older} older {older === 1 ? "activity" : "activities"}
+                        </button>
+                    )}
+                </>
+            )}
+
+            {showHistory && (
+                <Modal title="Activity history" setShowModal={setShowHistory}>
+                    <FeedHistory items={items} openId={openId} setOpenId={setOpenId}/>
+                </Modal>
             )}
         </BoxSection>
     )
@@ -700,6 +769,7 @@ export default function Competition() {
         {pollingInterval: pollFast, skip: !competition?.id}
     );
     const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: !competition?.id});
+    const {data: hall} = useGetHallOfRoastsQuery(id, {pollingInterval: pollSlow, skip: !id});
     const dunceUserId = (drillConfigs || []).find((c) => c.competition === competition?.id)?.dunce?.user_id ?? null;
     const lastDrillMsgId = React.useRef(null);
     useEffect(() => {
@@ -771,6 +841,12 @@ export default function Competition() {
 
                 {/* The Drill Instructor's corner */}
                 {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
+
+                {(hall || []).length > 0 && (
+                    <div className="mt-4">
+                        <HallOfRoasts cards={hall}/>
+                    </div>
+                )}
 
                 {/* KPI bar */}
                 <div className="flex flex-col xl:flex-row">

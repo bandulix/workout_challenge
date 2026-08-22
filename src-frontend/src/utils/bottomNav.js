@@ -164,9 +164,9 @@ export default function BottomNav() {
     // another device (browser picks up here on the next app start).
     useEffect(() => {
         if (user?.activity_source_effective && isNativeHealthAvailable()) {
-            nativeHealthSetSource(user.activity_source_effective);
+            nativeHealthSetSource(user.activity_source_effective, user?.health_public_url);
         }
-    }, [user?.activity_source_effective]);
+    }, [user?.activity_source_effective, user?.health_public_url]);
 
     // Native coach pings: Android notifications for new coach messages
     // (Web Push does not work inside the WebView) - runs while logged in.

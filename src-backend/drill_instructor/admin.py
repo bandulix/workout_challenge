@@ -10,11 +10,6 @@ class DrillInstructorPersonaAdmin(admin.ModelAdmin):
     search_fields = ("name", "description", "system_prompt")
     readonly_fields = ("created_at", "updated_at")
 
-    def has_delete_permission(self, request, obj=None):
-        if obj is not None and obj.is_builtin:
-            return False
-        return super().has_delete_permission(request, obj)
-
 
 @admin.register(DrillInstructorConfig)
 class DrillInstructorConfigAdmin(admin.ModelAdmin):

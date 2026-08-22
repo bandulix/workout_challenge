@@ -26,11 +26,11 @@ def _persona_picture_url(persona):
 class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
     """Persona serializer.
 
-    Read: anyone authenticated can list/retrieve (the library is global).
-    Write: admin-only (enforced at the view layer) - a user-controlled
-    system prompt would be a prompt-injection vector for competitions
-    the user doesn't own. For the same reason the ``system_prompt``
-    (the voice & style briefing) is only serialized for staff.
+    Read: built-ins plus the caller's own custom roasters (staff sees
+    every custom too). ``system_prompt`` is returned only to staff and
+    to the persona's creator - other users never see the briefing
+    (prompt-injection surface). ``mine`` is true when the caller created
+    this persona.
     """
 
     MAX_PROFILE_PICTURE_BYTES = 5 * 1024 * 1024  # 5 MB
@@ -49,6 +49,7 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
     profile_picture_upload = serializers.ImageField(
         write_only=True, required=False, allow_null=True, source="profile_picture"
     )
+    mine = serializers.SerializerMethodField()
 
     class Meta:
         model = DrillInstructorPersona
@@ -63,23 +64,27 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
             "theme_color",
             "system_prompt",
             "is_builtin",
+            "mine",
             "created_by",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["is_builtin", "created_by", "created_at", "updated_at"]
+        read_only_fields = ["is_builtin", "mine", "created_by", "created_at", "updated_at"]
 
-    # The voice & style briefing is the admin's prompt-engineering
-    # know-how and a prompt-injection surface - regular users never see it.
-    STAFF_ONLY_FIELDS = ["system_prompt"]
+    def get_mine(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return bool(user and user.is_authenticated and obj.created_by_id == user.id)
 
     def to_representation(self, instance):
         rep = super().to_representation(instance)
         request = self.context.get("request")
         user = getattr(request, "user", None)
-        if not (user and (user.is_staff or user.is_superuser)):
-            for field in self.STAFF_ONLY_FIELDS:
-                rep.pop(field, None)
+        # Voice briefing: staff see every prompt; a creator sees their own.
+        owns = bool(user and user.is_authenticated and instance.created_by_id == user.id)
+        staff = bool(user and (user.is_staff or user.is_superuser))
+        if not (staff or owns):
+            rep.pop("system_prompt", None)
         return rep
 
     def get_profile_picture(self, obj):
@@ -157,6 +162,26 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at"]
+
+    def validate_persona(self, persona):
+        # Only a built-in or one you created - assigning someone else's
+        # custom prompt to a challenge you own would let them write the
+        # coach for your group.
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            raise serializers.ValidationError("Authentication required.")
+        if user.is_staff or user.is_superuser:
+            return persona
+        if persona.is_builtin or persona.created_by_id == user.id:
+            return persona
+        # Weekly vote may have seated someone else's custom roaster;
+        # the owner can keep that incumbent without being blocked.
+        if self.instance and self.instance.persona_id == persona.id:
+            return persona
+        raise serializers.ValidationError(
+            "You can only pick a built-in persona or one you created."
+        )
 
     def _capability_flags(self):
         """(vision, image_edit) for the photo/roast features.

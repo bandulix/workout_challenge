@@ -35,6 +35,14 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="54", hour="*"),
         "args": (),
     },
+    # hourly import Apple Health / Health Connect via Open Wearables
+    # (10 min before Strava). DatabaseScheduler also has this as a
+    # PeriodicTask row (custom_user 0008/0009); keep both in sync.
+    "health_sync": {
+        "task": "custom_user.health.daily_health_sync",
+        "schedule": crontab(minute="34", hour="*"),
+        "args": (),
+    },
     # not needed - just fallback - do all pending point recalc tasks in the morning
     "point_recal": {
         "task": "custom_user.point_recalc.recalc_points",
@@ -77,6 +85,11 @@ app.conf.beat_schedule = {
     "drill_instructor_random_push": {
         "task": "drill_instructor.tasks.post_random_pushes",
         "schedule": crontab(minute="*/30"),
+        "args": (),
+    },
+    "drill_instructor_weekly_coach_vote": {
+        "task": "drill_instructor.tasks.apply_weekly_persona_votes",
+        "schedule": crontab(day_of_week="1", minute="15", hour="7"),
         "args": (),
     },
     "drill_instructor_daily_order": {

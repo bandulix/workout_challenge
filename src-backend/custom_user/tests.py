@@ -698,6 +698,30 @@ class HealthWorkoutMappingTests(TestCase):
         props = workout_to_props(self.user, self._payload(duration_seconds=None))
         self.assertEqual(props["duration"], datetime.timedelta(seconds=1800))
 
+    def test_ow_unified_start_datetime_field(self):
+        # Internal EventRecord uses start_datetime / end_datetime; the
+        # public Workout schema aliases those as start_time / end_time.
+        # Mapping only one spelling skipped the other payload shape.
+        from .health import workout_to_props
+        payload = self._payload()
+        del payload["start_time"]
+        del payload["end_time"]
+        payload["start_datetime"] = "2026-08-01T06:00:00Z"
+        payload["end_datetime"] = "2026-08-01T06:30:00Z"
+        props = workout_to_props(self.user, payload)
+        self.assertEqual(props["duration"], datetime.timedelta(seconds=1800))
+        self.assertEqual(props["start_datetime"].isoformat(), "2026-08-01T06:00:00+00:00")
+
+    def test_malformed_duration_does_not_abort_the_user_sync(self):
+        from .health import _sync_user_workouts
+        good = self._payload()
+        bad = self._payload(id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", duration_seconds="PT30M")
+        del bad["end_time"]
+        with mock.patch("custom_user.health._fetch_workouts", return_value=[bad, good]):
+            result = _sync_user_workouts(self.user)
+        self.assertEqual(result["created"], 1)
+        self.assertEqual(result["skipped"], 1)
+
     def test_missing_id_start_or_duration_returns_none(self):
         from .health import workout_to_props
         self.assertIsNone(workout_to_props(self.user, self._payload(id=None)))
@@ -814,6 +838,24 @@ class HealthConnectorTests(TestCase):
         self.assertEqual(second["updated"], 1)
         self.assertEqual(Workout.objects.filter(health_id="9f1c2a34-0000-4aaa-bbbb-111122223333").count(), 1)
 
+    def test_fetch_workouts_follows_nested_pagination_cursor(self):
+        # Open Wearables returns PaginatedResponse: data[] + pagination.next_cursor.
+        from .health import _fetch_workouts
+        page1 = {
+            "data": [self._ow_payload(id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")],
+            "pagination": {"next_cursor": "cursor-2", "has_more": True},
+        }
+        page2 = {
+            "data": [self._ow_payload(id="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")],
+            "pagination": {"next_cursor": None, "has_more": False},
+        }
+        with mock.patch("custom_user.health._ow_request", side_effect=[page1, page2]) as req:
+            workouts = _fetch_workouts("11111111-2222-3333-4444-555555555555", self.start)
+
+        self.assertEqual(len(workouts), 2)
+        self.assertEqual(req.call_count, 2)
+        self.assertEqual(req.call_args_list[1].kwargs["params"]["cursor"], "cursor-2")
+
     def test_sync_skips_cross_provider_duplicate(self):
         from .health import _sync_user_workouts
         Workout.objects.create(
@@ -894,6 +936,23 @@ class HealthConnectorTests(TestCase):
 
         response = self.client.get("/api/health/sync/")
         self.assertEqual(response.status_code, 400)
+
+
+class HealthBeatTaskTests(TestCase):
+    """Hourly Health import only fires if DatabaseScheduler has the row
+    AND the worker has the task registered (autodiscover loads tasks.py)."""
+
+    def test_periodic_task_seeded_and_enabled(self):
+        from django_celery_beat.models import PeriodicTask
+        task = PeriodicTask.objects.get(name="health_sync")
+        self.assertEqual(task.task, "custom_user.health.daily_health_sync")
+        self.assertTrue(task.enabled)
+
+    def test_worker_autodiscover_registers_daily_health_sync(self):
+        from workout_challenge.celery import app
+        import custom_user.tasks  # noqa: F401 - what autodiscover imports
+        self.assertIn("custom_user.health.daily_health_sync", app.tasks)
+        self.assertIn("custom_user.health.sync_health", app.tasks)
 
 
 @override_settings(

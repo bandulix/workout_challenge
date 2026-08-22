@@ -8,8 +8,9 @@ from custom_user.models import CustomUser
 class DrillInstructorPersona(models.Model):
     """A reusable persona/style for the AI Drill Instructor.
 
-    Personas are global and can be picked by any competition owner when
-    configuring their Drill Instructor.
+    Built-ins are a shared library any competition owner can pick.
+    Anyone can also create their own roaster; only they (or staff) can
+    edit it or assign it to a challenge they own.
     """
 
     name = models.CharField(max_length=60, unique=True)
@@ -125,6 +126,18 @@ class DrillInstructorConfig(models.Model):
     )
     dunce_since = models.DateTimeField(null=True, blank=True)
 
+    # Weekly group vote: the winner takes the megaphone each Monday.
+    # persona_changed_at is when the last automatic (or first) handover
+    # happened, so the challenge page can show a countdown for the term.
+    previous_persona = models.ForeignKey(
+        DrillInstructorPersona,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    persona_changed_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -154,6 +167,7 @@ class DrillInstructorMessage(models.Model):
     KIND_ORDER = "order"
     KIND_SIGH = "sigh"
     KIND_DUNCE = "dunce"
+    KIND_HANDOVER = "handover"
     KIND_CHOICES = [
         (KIND_ACTIVITY, "Workout comment"),
         (KIND_TEST, "Test message"),
@@ -165,6 +179,7 @@ class DrillInstructorMessage(models.Model):
         (KIND_ORDER, "Daily order"),
         (KIND_SIGH, "Order failure"),
         (KIND_DUNCE, "Dunce crowning"),
+        (KIND_HANDOVER, "Weekly coach handover"),
     ]
 
     config = models.ForeignKey(
@@ -247,8 +262,7 @@ class DrillInstructorPhotoVote(models.Model):
     """One user's hot-or-not verdict on a roasted photo.
 
     Feeds the swipe box on the Coach page: every participant of the
-    competition gets one vote per roast image, changeable until the card
-    leaves their stack (upsert on re-vote).
+    competition gets one vote per roast image. A second vote is refused.
     """
 
     message = models.ForeignKey(
@@ -274,6 +288,43 @@ class DrillInstructorPhotoVote(models.Model):
 
     def __str__(self):
         return f"{'hot' if self.hot else 'not'} by {self.user_id} on roast {self.message_id}"
+
+
+class DrillInstructorPersonaVote(models.Model):
+    """One participant's vote for next week's coach in a challenge.
+
+    Unique per (config, user): changing your mind overwrites the row.
+    Tallied Monday morning; the winner takes over and votes reset.
+    """
+
+    config = models.ForeignKey(
+        DrillInstructorConfig,
+        on_delete=models.CASCADE,
+        related_name="persona_votes",
+    )
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="drill_persona_votes",
+    )
+    persona = models.ForeignKey(
+        DrillInstructorPersona,
+        on_delete=models.CASCADE,
+        related_name="challenge_votes",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["config", "user"], name="one_persona_vote_per_user"),
+        ]
+        indexes = [
+            models.Index(fields=["config", "persona"], name="persona_vote_tally"),
+        ]
+
+    def __str__(self):
+        return f"user {self.user_id} -> persona {self.persona_id} on config {self.config_id}"
 
 
 class DailyOrder(models.Model):

@@ -336,22 +336,34 @@ def distance_km_from_ow(ow_workout: dict, duration_s) -> float | None:
     return None
 
 
+def _ow_pick(ow_workout, *keys):
+    for key in keys:
+        value = ow_workout.get(key)
+        if value not in (None, "", 0):
+            return value
+    return None
+
+
 def workout_to_props(user, ow_workout: dict) -> dict | None:
     """Map one Open Wearables workout onto Workout field values."""
-    health_id = ow_workout.get("id")
-    start_dt = _parse_dt(ow_workout.get("start_time"))
+    # OW's unified event schema uses start_datetime / end_datetime;
+    # Health Connect dumps and older docs also use start_time.
+    health_id = _ow_pick(ow_workout, "id", "uuid", "workout_id")
+    start_dt = _parse_dt(_ow_pick(ow_workout, "start_time", "start_datetime", "start"))
     if not health_id or start_dt is None:
         return None
 
-    duration_s = ow_workout.get("duration_seconds")
-    end_dt = _parse_dt(ow_workout.get("end_time"))
+    duration_raw = _ow_pick(ow_workout, "duration_seconds", "duration", "elapsed_time")
+    duration_s = _as_float(duration_raw)
+    duration_s = int(duration_s) if duration_s else None
+    end_dt = _parse_dt(_ow_pick(ow_workout, "end_time", "end_datetime", "end"))
     if not duration_s and end_dt is not None:
         duration_s = max(int((end_dt - start_dt).total_seconds()), 0)
     if not duration_s:
         return None
 
-    kcal = ow_workout.get("calories_kcal")
-    avg_hr = ow_workout.get("avg_heart_rate_bpm")
+    kcal = _ow_pick(ow_workout, "calories_kcal", "calories", "kcal")
+    avg_hr = _ow_pick(ow_workout, "avg_heart_rate_bpm", "avg_hr", "average_heart_rate")
 
     return {
         "user": user,
@@ -369,14 +381,38 @@ def workout_to_props(user, ow_workout: dict) -> dict | None:
 # Sync tasks
 # ---------------------------------------------------------------------------
 
+def _ow_dt_param(dt):
+    """UTC Z timestamp - some OW builds reject +00:00 and microseconds."""
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, datetime.timezone.utc)
+    return dt.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _ow_page_items_and_cursor(page):
+    """Unpack one OW list-workouts page (flat list or PaginatedResponse)."""
+    if isinstance(page, list):
+        return page, None
+    items = page.get("data") or page.get("items") or page.get("results") or []
+    pagination = page.get("pagination") if isinstance(page.get("pagination"), dict) else {}
+    next_cursor = (
+        pagination.get("next_cursor")
+        or page.get("next_cursor")
+        or page.get("next")
+        or page.get("cursor")
+    )
+    if pagination.get("has_more") is False:
+        next_cursor = None
+    return items, next_cursor
+
+
 def _fetch_workouts(health_user_id: str, since: datetime.datetime) -> list:
     """All OW workouts for the user since ``since`` (cursor pagination)."""
     until = timezone.now() + datetime.timedelta(minutes=5)
     workouts, cursor = [], None
     while True:
         params = {
-            "start_date": since.isoformat(),
-            "end_date": until.isoformat(),
+            "start_date": _ow_dt_param(since),
+            "end_date": _ow_dt_param(until),
             "limit": 100,
         }
         if cursor:
@@ -386,9 +422,9 @@ def _fetch_workouts(health_user_id: str, since: datetime.datetime) -> list:
             # OW 404: the user vanished server-side - treat as empty, the
             # caller decides whether to drop the linkage.
             return []
-        items = page.get("data") or page.get("items") or []
+        items, next_cursor = _ow_page_items_and_cursor(page)
         workouts.extend(items)
-        cursor = page.get("next_cursor")
+        cursor = next_cursor
         if not cursor or not items:
             break
     return workouts
@@ -400,12 +436,20 @@ def _sync_user_workouts(user, start_datetime=None) -> dict:
 
     # Only the fetched ids - not the whole table's health rows (which
     # loaded every user's full Workout instances per user per sync).
-    # workout_to_props keys on ow_workout["id"].
-    ow_ids = [str(w["id"]) for w in ow_workouts if w.get("id")]
+    ow_ids = []
+    for w in ow_workouts:
+        hid = _ow_pick(w, "id", "uuid", "workout_id")
+        if hid:
+            ow_ids.append(str(hid))
     existing_map = Workout.objects.filter(health_id__in=ow_ids).in_bulk(field_name='health_id')
     created = updated = skipped = duplicates = 0
     for ow_workout in ow_workouts:
-        props = workout_to_props(user, ow_workout)
+        try:
+            props = workout_to_props(user, ow_workout)
+        except Exception:
+            logger.exception("Health workout mapping failed for user %s", user.pk)
+            skipped += 1
+            continue
         if props is None:
             skipped += 1
             continue

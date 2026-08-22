@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-08-22
+
+### Added
+- **Weekly coach vote in each challenge** — participants pick next week's Drill Instructor from the ballot (built-ins plus roasters created by people in that challenge). Votes tally Monday 07:15; the winner takes the megaphone, a handover line lands in Coach's Corner, and a live countdown shows how long they are on the clock. You can change your vote until the switch.
+- **Anyone can create their own roaster** — custom Drill Instructor personas are no longer admin-only. Staff can add, edit and delete every roaster (including built-ins and other people's). Everyone else can only create, edit and delete the ones they made.
+
+### Changed
+- **The roaster sits above coach pings** on the Coach page, with a Create yours card and a Manage button for every user.
+- **Hall of Roasts lives on the challenge page** — it is per-competition (top remixed photos of that challenge), not a global box on the Coach page.
+- **Challenge activity feed shows the latest 5** — older workouts open in a day-grouped history sheet ("N older activities") instead of stretching the box.
+- **Hot-or-not: one rating per picture per user** — a second swipe on the same roast is refused (409); already-rated cards drop out of the selection stack (the "judge them all again" replay is gone). Hall of Roasts still shows every card.
+
+### Fixed
+- **Health Connect workouts not importing on their own** — several breaks on the same path: the Android SDK only restores background sync after `configure(host)`, which ran solely at link time, so a process kill stopped Health Connect pushing to Open Wearables; launch restore now re-configures and always re-arms WorkManager (a stale `syncActive` flag used to skip the restart). The Celery worker never imported `custom_user.health` (autodiscover only loads `tasks.py`), so the hourly poll was unregistered even when the PeriodicTask row existed; `custom_user/tasks.py` now loads it, and the `health_sync` beat job is re-seeded if it was missing. The mapper also accepts Open Wearables' `start_datetime` / `end_datetime` aliases and follows nested `pagination.next_cursor`.
+
+## [0.38.1] - 2026-08-22
+
 ### Fixed
 - **Desktop menu bar sat on the centre-left** — `animate-nav-rise` uses `transform`, which overrode `md:-translate-x-1/2`, so the dock's left edge was at 50% of the viewport. The pill is now `md:mx-auto` inside a full-width wrapper.
 - **Profile pictures 406'd** — avatar fetches sent `Accept: image/*`, which DRF's JSON renderer does not match, so every `/api/user/<id>/picture/` (and persona/photo-post pictures) returned Not Acceptable. The client no longer sends that Accept, and the picture endpoints accept any `Accept`.

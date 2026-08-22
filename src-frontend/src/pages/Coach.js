@@ -1,6 +1,6 @@
 import React, {useMemo, useState} from "react";
 import {Link} from "react-router-dom";
-import {Megaphone, Bot, ChevronRight, Radio, Sparkles, PencilLine, Flag, MessageCircle} from "lucide-react";
+import {Megaphone, Bot, ChevronRight, Radio, Sparkles, PencilLine, Flag, MessageCircle, Plus} from "lucide-react";
 import PhotoPost from "../components/PhotoPost";
 import {PageWrapper, BoxSection} from "../utils/miscellaneous";
 import {SectionHead} from "../components/uiBits";
@@ -9,9 +9,9 @@ import PersonaAvatar from "../components/PersonaAvatar";
 import RoastSwipeBox from "../components/RoastSwipeBox";
 import PushOptInCard from "../components/PushOptIn";
 import {Modal} from "../forms/basicComponents";
-import DrillInstructorPersonaModal from "../forms/drillInstructorPersonaModal";
-import {useGetPersonasQuery, useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
-import {DogTagRow, HallOfRoasts, MoodMeter, OrderCard} from "../components/gameBits";
+import DrillInstructorPersonaModal, {PersonaEditModal} from "../forms/drillInstructorPersonaModal";
+import {useGetPersonasQuery, useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
+import {DogTagRow, MoodMeter, OrderCard} from "../components/gameBits";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {timeAgo} from "../utils/time";
@@ -164,36 +164,51 @@ function PersonaCard({persona, usedIn, onOpen}) {
             <PersonaAvatar persona={persona} size={64} className="mx-auto transition group-hover:scale-105"/>
             <p className="mt-3 text-center text-sm font-bold truncate">{persona.name}</p>
             <p className="text-center text-[11px] text-gray-400 truncate">{persona.tagline || persona.description}</p>
-            {usedIn > 0 && (
-                <p className="mt-2 text-center">
+            <p className="mt-2 text-center min-h-[18px]">
+                {persona.mine ? (
+                    <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2 py-0.5">
+                        Yours
+                    </span>
+                ) : usedIn > 0 ? (
                     <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2 py-0.5">
                         On duty ×{usedIn}
                     </span>
-                </p>
-            )}
+                ) : null}
+            </p>
         </button>
     );
 }
 
 
-function PersonaDetailModal({persona, isStaff, onClose}) {
+function PersonaDetailModal({persona, canEdit, onClose, onEdit}) {
+    const showBriefing = Boolean(persona.system_prompt) && (canEdit || persona.mine);
     return (
         <Modal setShowModal={onClose} title={persona.name}>
             <div className="flex flex-col items-center text-center">
                 <PersonaAvatar persona={persona} size={96} glow/>
                 {persona.tagline && <p className="mt-3 text-sm italic text-gray-500 dark:text-gray-400">“{persona.tagline}”</p>}
+                {persona.mine && (
+                    <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
+                        Your roaster
+                    </span>
+                )}
                 {persona.is_builtin && (
                     <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
                         <Sparkles className="h-3 w-3"/> Built-in persona
                     </span>
                 )}
                 <p className="mt-4 text-sm leading-relaxed text-gray-600 dark:text-gray-300 max-w-md">{persona.description}</p>
-                {/* The voice & style briefing is admin-only (prompt-engineering know-how). */}
-                {isStaff && persona.system_prompt && (
+                {showBriefing && (
                     <div className="mt-5 w-full text-left">
                         <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 mb-2">Voice & style briefing</p>
                         <pre className="whitespace-pre-wrap rounded-2xl bg-gray-100 dark:bg-ink-900 dark:border dark:border-ink-700/60 p-4 text-xs leading-relaxed text-gray-600 dark:text-gray-300 max-h-56 overflow-y-auto">{persona.system_prompt}</pre>
                     </div>
+                )}
+                {canEdit && (
+                    <button type="button" onClick={onEdit}
+                            className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-volt-400 text-ink-950 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition">
+                        <PencilLine className="h-3.5 w-3.5"/> Edit
+                    </button>
                 )}
             </div>
         </Modal>
@@ -208,10 +223,10 @@ function CoachPage() {
     const {data: personas, isLoading: personasLoading} = useGetPersonasQuery();
     const {data: competitions} = useGetCompetitionsQuery();
     const {data: messages} = useGetDrillMessagesQuery(undefined, {pollingInterval: pollFast});
-    const {data: hall} = useGetHallOfRoastsQuery(undefined, {pollingInterval: pollFast});
 
     const [detailPersona, setDetailPersona] = useState(null);
     const [showPersonaManager, setShowPersonaManager] = useState(false);
+    const [editingPersona, setEditingPersona] = useState(null);
 
     const isLoading = userLoading || configsLoading || personasLoading;
     const isStaff = !!user?.is_staff;
@@ -251,6 +266,22 @@ function CoachPage() {
         return counts;
     }, [configs]);
 
+    const roasterPersonas = useMemo(() => {
+        const list = [...(personas || [])];
+        list.sort((a, b) => {
+            if (a.mine !== b.mine) return a.mine ? -1 : 1;
+            if (a.is_builtin !== b.is_builtin) return a.is_builtin ? -1 : 1;
+            return (a.name || "").localeCompare(b.name || "");
+        });
+        return list;
+    }, [personas]);
+
+    function canEditPersona(persona) {
+        if (!persona) return false;
+        if (isStaff) return true;
+        return Boolean(persona.mine) && !persona.is_builtin;
+    }
+
     return (
         <PageWrapper>
             <div className="container mx-auto max-w-3xl">
@@ -263,8 +294,6 @@ function CoachPage() {
                                    mood={heroConfig?.mood}/>
 
                         {heroConfig?.daily_order && <OrderCard order={heroConfig.daily_order}/>}
-
-                        <HallOfRoasts cards={hall || []}/>
 
                         {/* Hot-or-not over the coach's roasted photos -
                             the box itself decides between game, empty
@@ -281,36 +310,57 @@ function CoachPage() {
 
                         <MyChallenges competitions={myCompetitions}/>
 
-                        <PushOptInCard/>
-
                         <BoxSection>
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="font-display text-sm uppercase tracking-wider flex items-center gap-2">
                                     <Bot className="h-4 w-4 text-volt-500"/> The roaster
                                 </h2>
-                                {/* Personas are managed by the admin only. */}
-                                {isStaff && (
-                                    <button onClick={() => setShowPersonaManager(true)}
-                                            className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-300 hover:text-volt-600 dark:hover:text-volt-300 transition">
-                                        <PencilLine className="h-3.5 w-3.5"/> Manage
-                                    </button>
-                                )}
+                                <button onClick={() => setShowPersonaManager(true)}
+                                        className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-300 hover:text-volt-600 dark:hover:text-volt-300 transition">
+                                    <PencilLine className="h-3.5 w-3.5"/> Manage
+                                </button>
                             </div>
                             <div className="flex gap-3 overflow-x-auto no-scrollbar snap-x -mx-2 px-2 -my-3 py-3">
-                                {(personas || []).map((p) => (
+                                {roasterPersonas.map((p) => (
                                     <PersonaCard key={p.id} persona={p} usedIn={usageByPersona[p.id] || 0} onOpen={setDetailPersona}/>
                                 ))}
+                                <button type="button" onClick={() => setEditingPersona({})}
+                                        className="snap-start shrink-0 w-40 rounded-3xl border-2 border-dashed border-gray-300 dark:border-ink-600 bg-transparent p-4 text-center hover:border-volt-500 hover:bg-volt-400/10 transition">
+                                    <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300">
+                                        <Plus className="h-7 w-7"/>
+                                    </span>
+                                    <p className="mt-3 text-sm font-bold">Create yours</p>
+                                    <p className="text-[11px] text-gray-400">A coach in your voice</p>
+                                </button>
                             </div>
                             <div className="mt-3 rounded-xl bg-gray-100 dark:bg-ink-900 dark:border dark:border-ink-700/60 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-                                <span className="font-bold text-gray-600 dark:text-gray-300">Only challenge owners can pick a coach from the roaster</span> — via the AI Drill Instructor settings on their competition page. Tap a card to preview a persona.
+                                <span className="font-bold text-gray-600 dark:text-gray-300">Anyone can add a roaster</span> — built-ins plus the ones you create. Challenge owners pick a coach from this list in the AI Drill Instructor settings on their competition page.
                             </div>
                         </BoxSection>
+
+                        <PushOptInCard/>
                     </div>
                 )}
             </div>
 
-            {detailPersona && <PersonaDetailModal persona={detailPersona} isStaff={isStaff} onClose={() => setDetailPersona(null)}/>}
-            {showPersonaManager && isStaff && <DrillInstructorPersonaModal setModalState={setShowPersonaManager}/>}
+            {detailPersona && (
+                <PersonaDetailModal
+                    persona={detailPersona}
+                    canEdit={canEditPersona(detailPersona)}
+                    onClose={() => setDetailPersona(null)}
+                    onEdit={() => {
+                        setEditingPersona(detailPersona);
+                        setDetailPersona(null);
+                    }}
+                />
+            )}
+            {showPersonaManager && <DrillInstructorPersonaModal setModalState={setShowPersonaManager}/>}
+            {editingPersona !== null && (
+                <PersonaEditModal
+                    persona={editingPersona}
+                    setModalState={(open) => { if (open === false) setEditingPersona(null); }}
+                />
+            )}
         </PageWrapper>
     );
 }

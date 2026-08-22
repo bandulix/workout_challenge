@@ -118,9 +118,13 @@ function LogoutPage() {
         // Preserve the native app's server address across the wipe -
         // without it the app can't reach the backend after logout.
         const serverUrl = localStorage.getItem('wc_server_url');
+        const healthHost = localStorage.getItem('wc_health_host');
         localStorage.clear();
         if (serverUrl !== null) {
             localStorage.setItem('wc_server_url', serverUrl);
+        }
+        if (healthHost !== null) {
+            localStorage.setItem('wc_health_host', healthHost);
         }
 
         // The service worker caches authenticated GET /api/* responses as
@@ -270,9 +274,13 @@ function RegisterPage() {
         // Preserve the native app's server address - wiping it here
         // stranded the registration API calls on the WebView origin.
         const serverUrl = localStorage.getItem('wc_server_url');
+        const healthHost = localStorage.getItem('wc_health_host');
         localStorage.clear();
         if (serverUrl !== null) {
             localStorage.setItem('wc_server_url', serverUrl);
+        }
+        if (healthHost !== null) {
+            localStorage.setItem('wc_health_host', healthHost);
         }
     }, []);
 

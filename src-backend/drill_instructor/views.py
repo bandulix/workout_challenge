@@ -2,20 +2,27 @@ import datetime
 import mimetypes
 
 from django.conf import settings
-from django.db.models import Count, Prefetch, Q
+from django.db import IntegrityError, transaction
+from django.db.models import Count, Prefetch, ProtectedError, Q
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from workout_challenge.images import ProtectedMediaRenderer
 from .llm_client import check_vision_capability
-from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona, DrillInstructorPhotoVote
+from .models import (
+    DrillInstructorConfig,
+    DrillInstructorMessage,
+    DrillInstructorPersona,
+    DrillInstructorPersonaVote,
+    DrillInstructorPhotoVote,
+)
 from .serializers import (
     DrillInstructorConfigSerializer,
     DrillInstructorMessageSerializer,
@@ -26,26 +33,53 @@ from .serializers import (
 
 
 class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
-    """Global CRUD on personas.
+    """Persona library.
 
-    Any authenticated user can list/retrieve (competition owners need the
-    library to pick one). Writes are admin-only: a regular user editing
-    the system prompt of a persona used by someone else's competition
-    would be a prompt-injection vector.
+    Staff can create, edit and delete every roaster (built-in or
+    someone else's). Everyone else may only create/edit/delete the
+    ones they made. List for regular users is built-ins plus theirs.
     """
 
     serializer_class = DrillInstructorPersonaSerializer
-
-    def get_permissions(self):
-        if self.action in ("list", "retrieve", "picture"):
-            return [IsAuthenticated()]
-        return [IsAdminUser()]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return DrillInstructorPersona.objects.all().order_by("name")
+        qs = DrillInstructorPersona.objects.all()
+        user = self.request.user
+        if not user.is_authenticated:
+            return qs.none()
+        # List is the pickable library (built-ins + yours). Retrieve and
+        # picture stay open so a custom coach's avatar still loads for
+        # participants in that challenge. Writes are gated in perform_*.
+        if self.action == "list" and not (user.is_staff or user.is_superuser):
+            return qs.filter(Q(is_builtin=True) | Q(created_by=user)).order_by("name")
+        return qs.order_by("name")
+
+    def _may_write(self, persona):
+        user = self.request.user
+        if user.is_staff or user.is_superuser:
+            return True
+        if persona.is_builtin:
+            return False
+        return persona.created_by_id == user.id
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, is_builtin=False)
+
+    def perform_update(self, serializer):
+        if not self._may_write(serializer.instance):
+            raise PermissionDenied("You can only edit a roaster you created.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not self._may_write(instance):
+            raise PermissionDenied("You can only delete a roaster you created.")
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError(
+                {"detail": "This persona is still assigned to a challenge. Pick another coach there first."}
+            )
 
     @action(detail=True, methods=["get"], renderer_classes=[ProtectedMediaRenderer])
     def picture(self, request, pk=None):
@@ -85,7 +119,7 @@ class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
             DrillInstructorConfig.objects
             .filter(Q(competition__owner=user) | Q(competition__user=user))
             .distinct()
-            .select_related("competition", "persona", "dunce")
+            .select_related("competition", "persona", "previous_persona", "dunce")
             .prefetch_related(Prefetch(
                 "daily_orders",
                 queryset=DailyOrder.objects.filter(date=today).prefetch_related("completed_by"),
@@ -112,6 +146,39 @@ class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         self._ensure_owner(instance.competition)
         instance.delete()
+
+    @action(detail=True, methods=["get"])
+    def ballot(self, request, pk=None):
+        """Candidates, tallies, the caller's vote, and the handover countdown."""
+        from .ballot import ballot_payload_for_request
+        return Response(ballot_payload_for_request(self.get_object(), request))
+
+    @action(detail=True, methods=["post"])
+    def vote(self, request, pk=None):
+        """Cast or change the caller's vote for next week's coach."""
+        from .ballot import ballot_payload_for_request, eligible_personas
+
+        config = self.get_object()
+        if not config.enabled:
+            raise ValidationError({"detail": "The coach is not on duty in this challenge yet."})
+        today = timezone.localdate()
+        if config.competition.end_date < today:
+            raise ValidationError({"detail": "This challenge has finished."})
+        try:
+            persona_id = int(request.data.get("persona") or 0)
+        except (TypeError, ValueError):
+            persona_id = 0
+        if not persona_id:
+            raise ValidationError({"persona": "Pick a coach."})
+        persona = get_object_or_404(DrillInstructorPersona, pk=persona_id)
+        if not eligible_personas(config.competition, incumbent_id=config.persona_id).filter(pk=persona.pk).exists():
+            raise ValidationError({"persona": "That coach is not on this challenge's ballot."})
+        DrillInstructorPersonaVote.objects.update_or_create(
+            config=config,
+            user=request.user,
+            defaults={"persona": persona},
+        )
+        return Response(ballot_payload_for_request(config, request))
 
 
 class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
@@ -372,14 +439,19 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         """Roast cards for the Coach page's hot-or-not swipe box.
 
         Every coach reaction that carries an image (the remixed posters),
-        newest first, scoped to the caller's competitions.
+        newest first, scoped to the caller's competitions. Cards the
+        caller has already rated are omitted - one vote per picture.
         """
+        already_voted = DrillInstructorPhotoVote.objects.filter(
+            user=request.user,
+        ).values("message_id")
         qs = (
             DrillInstructorMessage.objects
             .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
             .filter(kind=DrillInstructorMessage.KIND_REACTION, user__isnull=True)
             .exclude(image="")
             .exclude(image__isnull=True)
+            .exclude(pk__in=already_voted)
             .select_related("config", "config__competition", "config__persona", "persona", "parent", "parent__user")
             .prefetch_related(Prefetch(
                 "photo_votes",
@@ -399,13 +471,18 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["get"])
     def hall(self, request):
-        """Top roasted photos of the current season (running challenges)."""
-        today = timezone.localdate()
+        """Top roasted photos of one challenge (the Hall of Roasts box)."""
+        try:
+            competition_id = int(request.query_params.get("competition") or 0)
+        except (TypeError, ValueError):
+            competition_id = 0
+        if not competition_id:
+            return Response({"competition": "required."}, status=status.HTTP_400_BAD_REQUEST)
         qs = (
             DrillInstructorMessage.objects
             .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
+            .filter(config__competition_id=competition_id)
             .filter(kind=DrillInstructorMessage.KIND_REACTION, user__isnull=True)
-            .filter(config__competition__start_date__lte=today, config__competition__end_date__gte=today)
             .exclude(image="")
             .exclude(image__isnull=True)
             .select_related("config", "config__competition", "config__persona", "persona", "parent", "parent__user")
@@ -425,7 +502,11 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=["post"])
     def vote(self, request, pk=None):
-        """Cast (or change) the caller's hot-or-not vote on a roast card."""
+        """Cast the caller's one hot-or-not vote on a roast card.
+
+        A second vote on the same picture is refused (409) - the unique
+        constraint is the source of truth; this is the API face of it.
+        """
         # NOT the roots-only queryset: roasts are child messages - scope
         # by competition membership directly (same pattern as picture()).
         message = get_object_or_404(
@@ -442,9 +523,16 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         if not isinstance(hot, bool):
             return Response({"hot": "true or false required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        vote, _created = DrillInstructorPhotoVote.objects.update_or_create(
-            message=message, user=request.user, defaults={"hot": hot},
-        )
+        try:
+            with transaction.atomic():
+                vote = DrillInstructorPhotoVote.objects.create(
+                    message=message, user=request.user, hot=hot,
+                )
+        except IntegrityError:
+            return Response(
+                {"detail": "You already rated this picture."},
+                status=status.HTTP_409_CONFLICT,
+            )
         tally = message.photo_votes.aggregate(
             hot_votes=Count("id", filter=Q(hot=True)),
             not_votes=Count("id", filter=Q(hot=False)),

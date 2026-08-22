@@ -204,6 +204,7 @@ class CeleryQueryView(APIView):
         "custom_user.point_recalc.recalc_points",
         "drill_instructor.tasks.post_inactivity_nudges",
         "drill_instructor.tasks.post_random_pushes",
+        "drill_instructor.tasks.apply_weekly_persona_votes",
         "custom_user.emails.celery_emails.send_all_log_workouts_email",
         "custom_user.emails.celery_emails.send_all_leaderboard_emails",
         "custom_user.emails.celery_emails.send_all_weekly_emails",

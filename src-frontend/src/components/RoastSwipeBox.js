@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useRef, useState} from "react";
-import {Flame, FlameKindling, RotateCcw, X} from "lucide-react";
+import {Flame, FlameKindling, X} from "lucide-react";
 import {BoxSection} from "../utils/miscellaneous";
 import {useGetDrillConfigsQuery, useGetRoastsQuery, useVoteRoastMutation} from "../utils/reducers/drillInstructorSlice";
 import {fetchProtectedImage} from "../utils/protectedMedia";
@@ -135,8 +135,7 @@ export default function RoastSwipeBox() {
     const {data: roasts} = useGetRoastsQuery(undefined, {pollingInterval: pollFast});
     const {data: configs} = useGetDrillConfigsQuery();
     const [voteRoast] = useVoteRoastMutation();
-    // Cards already judged leave the stack; the tally that comes back is
-    // merged in so the remaining cards show live numbers.
+    // Cards already judged leave the stack (server also omits them).
     const [doneIds, setDoneIds] = useState([]);
     const [tallies, setTallies] = useState({});
 
@@ -146,7 +145,7 @@ export default function RoastSwipeBox() {
     const imageModelSet = (configs || []).some((c) => c.image_edit_capable);
     const cards = (roasts || [])
         .map((c) => ({...c, ...(tallies[c.id] || {})}))
-        .filter((c) => !doneIds.includes(c.id));
+        .filter((c) => !doneIds.includes(c.id) && c.my_vote == null);
     const top = cards[0];
     const next = cards[1];
 
@@ -174,8 +173,8 @@ export default function RoastSwipeBox() {
                     <Flame className="h-4 w-4 text-volt-500"/> Hot or Not: Roast Edition
                 </h2>
                 <p className="text-sm text-gray-400 px-2 py-3">
-                    No roasted photos yet. Post a picture in your challenge's Coach's Corner and
-                    the coach will cook one up - then come back here and judge it.
+                    No new roasts to judge. Post a picture in your challenge's Coach's Corner and
+                    the coach will cook one up — each picture can only be rated once.
                 </p>
             </BoxSection>
         );
@@ -199,10 +198,6 @@ export default function RoastSwipeBox() {
                 <button onClick={() => handleVote(false)} aria-label="Nope"
                         className="min-h-[52px] min-w-[52px] rounded-full bg-gray-100 dark:bg-ink-800 text-red-400 hover:bg-red-50 dark:hover:bg-ink-700 transition flex items-center justify-center border border-gray-200/70 dark:border-ink-700/60">
                     <X className="h-6 w-6"/>
-                </button>
-                <button onClick={() => setDoneIds([])} title="Judge them all again" aria-label="Judge them all again"
-                        className="min-h-[40px] min-w-[40px] rounded-full text-gray-400 hover:text-volt-500 transition flex items-center justify-center">
-                    <RotateCcw className="h-4 w-4"/>
                 </button>
                 <button onClick={() => handleVote(true)} aria-label="Hot"
                         className="min-h-[52px] min-w-[52px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt flex items-center justify-center">

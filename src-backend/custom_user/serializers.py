@@ -37,6 +37,9 @@ class CustomUserSerializer(serializers.ModelSerializer):
     # settings UI only offers the Health link section when it does.
     # Computed once per request (cached on the serializer instance).
     health_configured = serializers.SerializerMethodField()
+    # Phone-facing Open Wearables URL so the Android app can re-configure
+    # the SDK after a process kill (background Health Connect sync).
+    health_public_url = serializers.SerializerMethodField()
 
     # Invite token required at registration when REGISTRATION_TOKEN is
     # configured server-side. Write-only; validated in validate().
@@ -77,7 +80,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'invite_token', 'join_code', 'profile_picture', 'profile_picture_upload', 'dog_tags', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'health_user_id', 'health_last_synced_at', 'health_configured', 'activity_source', 'activity_source_effective', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
+        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'invite_token', 'join_code', 'profile_picture', 'profile_picture_upload', 'dog_tags', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'health_user_id', 'health_last_synced_at', 'health_configured', 'health_public_url', 'activity_source', 'activity_source_effective', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
         # my_competitions / my_teams are read-only: joining happens
         # exclusively through the dedicated join views (join code +
         # participant checks). Writable M2M fields would be a
@@ -99,6 +102,13 @@ class CustomUserSerializer(serializers.ModelSerializer):
             from site_settings.models import resolve_health_settings
             self._health_configured_cache = resolve_health_settings()["enabled"]
         return self._health_configured_cache
+
+    def get_health_public_url(self, obj):
+        if not self.get_my(obj):
+            return None
+        from site_settings.models import resolve_health_settings
+        cfg = resolve_health_settings()
+        return cfg["public_url"] if cfg["enabled"] else None
 
     def validate(self, attrs):
         # Registration invite gate (only active when the server has a
@@ -160,7 +170,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
     PRIVATE_FIELDS = [
         'email', 'last_name', 'gender', 'password',
         'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at',
-        'health_user_id', 'health_last_synced_at', 'health_configured',
+        'health_user_id', 'health_last_synced_at', 'health_configured', 'health_public_url',
         'activity_source', 'activity_source_effective',
         'email_mid_week', 'is_verified', 'is_staff', 'is_superuser',
         'my_competitions', 'my_teams',

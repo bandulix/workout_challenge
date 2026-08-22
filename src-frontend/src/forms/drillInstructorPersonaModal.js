@@ -6,6 +6,7 @@ import {
     useGetPersonasQuery,
     useUpdatePersonaMutation,
 } from "../utils/reducers/drillInstructorSlice";
+import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {
     AddButton,
     DeleteButton,
@@ -17,9 +18,8 @@ import PersonaAvatar from "../components/PersonaAvatar";
 import {invalidateProtectedImage} from "../utils/protectedMedia";
 import {confirmAction, notice} from "../utils/dialogs";
 
-// Only admins reach this modal (the Coach page gates the entry point and
-// the API rejects non-staff writes); the persona library itself is global
-// so every competition owner can pick from it.
+// Anyone can create a roaster of their own; staff still manage the
+// built-in library. The API rejects edits of someone else's persona.
 
 const PICTURE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
 const MAX_PICTURE_BYTES = 5 * 1024 * 1024; // 5 MB - mirrors the API validation
@@ -35,7 +35,7 @@ export const PERSONA_COLORS = [
     "#a78bfa", "#f43f5e", "#38bdf8", "#fbbf24", "#94a3b8",
 ];
 
-function PersonaEditModal({persona, setModalState}) {
+export function PersonaEditModal({persona, setModalState}) {
     const isNew = persona?.id === undefined;
     const [values, setValues] = useState({});
     const [fieldErrors, setFieldErrors] = useState({});
@@ -217,10 +217,14 @@ function PersonaEditModal({persona, setModalState}) {
 
                 <div className="px-4 w-full">
                     <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
-                        System Prompt (voice and style)*{fieldErrors.system_prompt && <span className="text-red-600 font-normal italic"> ({fieldErrors.system_prompt})</span>}
+                        Voice & style (system prompt)*{fieldErrors.system_prompt && <span className="text-red-600 font-normal italic"> ({fieldErrors.system_prompt})</span>}
                     </label>
                     <textarea rows={8} className={inputClass} value={values.system_prompt || ""}
+                              placeholder="Who is this coach? How do they talk, what they roast, what they never say. Address the athlete as @FirstName."
                               onChange={(e) => setValues({...values, system_prompt: e.target.value})}/>
+                    <p className="text-xs text-gray-500 mt-1">
+                        This briefing is the coach's voice. Only you (and admins) can read or edit it.
+                    </p>
                 </div>
             </div>
             <div className="text-center text-red-500 text-xs italic">{formError}</div>
@@ -232,10 +236,14 @@ function PersonaEditModal({persona, setModalState}) {
 }
 
 export default function DrillInstructorPersonaModal({setModalState}) {
+    const {data: user} = useGetUserByIdQuery("me");
+    const isStaff = !!user?.is_staff;
     const {data: personas, isLoading, refetch} = useGetPersonasQuery();
     const [deletePersona, {isLoading: deleteLoading}] = useDeletePersonaMutation();
 
     const [editing, setEditing] = useState(null);
+
+    const visible = (personas || []).filter((p) => isStaff || p.mine);
 
     async function handleDelete(persona) {
         const confirmation = await confirmAction(`Delete the persona "${persona.name}"?`);
@@ -248,45 +256,52 @@ export default function DrillInstructorPersonaModal({setModalState}) {
     }
 
     return (
-        <Modal title="AI Drill Instructor Personas" landscape={true} setShowModal={setModalState} isLoading={isLoading || deleteLoading}>
+        <Modal title={isStaff ? "AI Drill Instructor Personas" : "Your roasters"} landscape={true} setShowModal={setModalState} isLoading={isLoading || deleteLoading}>
             <div className="text-sm text-gray-600 dark:text-gray-400 px-4 pb-2">
-                Personas define the voice and style of the AI Drill Instructor. Any competition owner can pick
-                any persona when configuring their Drill Instructor, but only admins can create, edit or delete
-                personas here. Built-in personas can be edited but not deleted.
+                {isStaff
+                    ? "You can add, edit or delete every roaster - built-ins and ones people made. Anyone else can only change the roasters they created."
+                    : "Create a coach in your voice. You can edit or delete only the ones you made. Built-ins are the shared lineup."}
             </div>
             <div className="grid gap-2 sm:grid-cols-2 px-2">
-                {(personas?.length ?? 0) === 0 ? (
-                    <p className="py-2 px-4 text-center text-gray-500 sm:col-span-2">No personas yet - create the first one.</p>
+                {visible.length === 0 ? (
+                    <p className="py-2 px-4 text-center text-gray-500 sm:col-span-2">No roasters yet - create the first one.</p>
                 ) : (
-                    personas.map((persona) => (
-                        <div key={"persona" + persona.id}
-                             className="flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-ink-700/60 p-3 hover:shadow-card transition">
-                            <PersonaAvatar persona={persona} size={52}/>
-                            <div className="min-w-0 flex-1">
-                                <div className="font-bold truncate">{persona.name}{persona.is_builtin && (
-                                    <span className="ml-2 text-[10px] uppercase tracking-wide text-volt-600 dark:text-volt-400 font-bold">built-in</span>
-                                )}</div>
-                                <div className="text-xs text-gray-400 italic truncate">{persona.tagline}</div>
-                                <div className="text-sm text-gray-500 dark:text-gray-400 truncate">{persona.description}</div>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <EditButton additionalClasses="mx-1" onClick={() => setEditing(persona)} label={false} larger={true}/>
-                                {!persona.is_builtin && (
-                                    <DeleteButton additionalClasses="mx-1" onClick={() => handleDelete(persona)} label={false} larger={true}/>
+                    visible.map((persona) => {
+                        const canEdit = isStaff || persona.mine;
+                        const canDelete = isStaff || persona.mine;
+                        return (
+                            <div key={"persona" + persona.id}
+                                 className="flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-ink-700/60 p-3 hover:shadow-card transition">
+                                <PersonaAvatar persona={persona} size={52}/>
+                                <div className="min-w-0 flex-1">
+                                    <div className="font-bold truncate">{persona.name}{persona.is_builtin && (
+                                        <span className="ml-2 text-[10px] uppercase tracking-wide text-volt-600 dark:text-volt-400 font-bold">built-in</span>
+                                    )}{persona.mine && !persona.is_builtin && (
+                                        <span className="ml-2 text-[10px] uppercase tracking-wide text-volt-600 dark:text-volt-400 font-bold">yours</span>
+                                    )}</div>
+                                    <div className="text-xs text-gray-400 italic truncate">{persona.tagline}</div>
+                                    <div className="text-sm text-gray-500 dark:text-gray-400 truncate">{persona.description}</div>
+                                </div>
+                                {canEdit && (
+                                    <div className="flex flex-col gap-1">
+                                        <EditButton additionalClasses="mx-1" onClick={() => setEditing(persona)} label={false} larger={true}/>
+                                        {canDelete && (
+                                            <DeleteButton additionalClasses="mx-1" onClick={() => handleDelete(persona)} label={false} larger={true}/>
+                                        )}
+                                    </div>
                                 )}
                             </div>
-                        </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
             <div className="relative flex justify-between items-center">
-                <AddButton onClick={() => setEditing({})} label="New Persona" highlighted={true} larger={true}/>
+                <AddButton onClick={() => setEditing({})} label="New roaster" highlighted={true} larger={true}/>
                 <button className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-volt-300" onClick={() => refetch()}>Refresh</button>
             </div>
             {editing !== null && (
                 <PersonaEditModal persona={editing} setModalState={(open) => {
-                    setEditing(null);
-                    if (open === false) setModalState(false);
+                    if (open === false) setEditing(null);
                 }}/>
             )}
         </Modal>

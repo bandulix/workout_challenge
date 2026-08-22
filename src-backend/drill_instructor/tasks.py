@@ -999,6 +999,37 @@ def _post_coach_line(config, kind, body, llm_error=""):
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
+def apply_weekly_persona_votes(self):
+    """Monday morning: seat next week's voted coach in every running challenge."""
+    if is_task_already_executing("apply_weekly_persona_votes"):
+        return "Task already executing. Skipping."
+
+    from .ballot import apply_persona_votes
+
+    Competition = apps.get_model("competition", "Competition")
+    today = timezone.localdate()
+    competitions = (
+        Competition.objects
+        .filter(start_date__lte=today, end_date__gte=today, drill_instructor__enabled=True)
+        .select_related("drill_instructor", "drill_instructor__persona", "drill_instructor__previous_persona")
+        .prefetch_related("user")
+    )
+    switched = 0
+    kept = 0
+    for competition in competitions:
+        try:
+            result = apply_persona_votes(competition.drill_instructor)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Weekly coach vote failed for competition %s: %s", competition.id, exc)
+            continue
+        if result["switched"]:
+            switched += 1
+        else:
+            kept += 1
+    return {"date": str(today), "switched": switched, "kept": kept, "competitions": competitions.count()}
+
+
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
 def issue_daily_orders(self):
     """Morning sealed order for every running, coached challenge."""
     if is_task_already_executing("issue_daily_orders"):

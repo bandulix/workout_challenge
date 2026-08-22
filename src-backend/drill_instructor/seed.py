@@ -120,6 +120,7 @@ def seed_default_personas():
 
     try:
         existing = set(DrillInstructorPersona.objects.values_list("name", flat=True))
+        has_any = bool(existing)
 
         created = 0
         for entry in DEFAULT_PERSONAS:
@@ -133,6 +134,13 @@ def seed_default_personas():
                     avatar=entry.get("avatar", ""),
                     theme_color=entry.get("theme_color", ""),
                 )
+                continue
+            # Staff may delete a built-in; do not resurrect it on the
+            # next process start. Only fill defaults on a first install
+            # (empty library) or when adding a brand-new default name
+            # that has never lived in this database (no personas yet
+            # would also catch a wiped table).
+            if has_any:
                 continue
             DrillInstructorPersona.objects.create(
                 name=entry["name"],

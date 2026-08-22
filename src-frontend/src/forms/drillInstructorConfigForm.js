@@ -135,9 +135,9 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
     return (
         <Modal title="AI Drill Instructor" landscape={true} setShowModal={setModalState} isLoading={configsLoading || personasLoading || addLoading || updateLoading || deleteLoading}>
             <div className="text-sm text-gray-600 dark:text-gray-400 px-4 pb-3">
-                Pick an AI persona and the instructor will generate a short, in-character comment
-                for every workout logged in this competition. Generated messages are stored in the
-                audit log below and (optionally) sent as a web push notification.
+                Pick the starting coach. Everyone in the challenge can vote for next week's
+                instructor - the winner takes over each Monday morning. Generated comments land
+                in Coach's Corner (and optionally as a push).
             </div>
 
             <Field label="Enabled" error={fieldErrors.enabled}>
@@ -152,7 +152,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                 </label>
             </Field>
 
-            <Field label="Persona" required error={fieldErrors.persona} hint="Defines the voice and style.">
+            <Field label="Persona" required error={fieldErrors.persona} hint="Built-ins plus any roaster you created on the Coach page.">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {personasList.map((p) => {
                         const selected = String(persona) === String(p.id);
@@ -166,6 +166,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                                 <div>
                                     <p className="text-sm font-bold leading-tight">{p.name}</p>
                                     <p className="text-[11px] text-gray-400 italic leading-tight mt-0.5">{p.tagline || p.description}</p>
+                                    {p.mine && <p className="text-[10px] font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 mt-1">Yours</p>}
                                 </div>
                             </button>
                         );
