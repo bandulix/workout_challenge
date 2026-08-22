@@ -16,14 +16,28 @@ export function isNativeApp() {
     return Capacitor.isNativePlatform();
 }
 
+function sanitizeOrigin(raw) {
+    // Only http(s) origins ever leave this module - never javascript:,
+    // data:, or a relative string that an <a href> could reinterpret.
+    const s = (raw || "").trim();
+    if (!s) return "";
+    try {
+        const u = new URL(s);
+        if (u.protocol !== "https:" && u.protocol !== "http:") return "";
+        return u.origin;
+    } catch {
+        return "";
+    }
+}
+
 export function getServerUrl() {
     const stored = isNativeApp() ? (localStorage.getItem(STORAGE_KEY) || "") : "";
     const raw = stored || (process.env.REACT_APP_BACKEND_URL || "");
-    return raw.trim().replace(/\/+$/, "");
+    return sanitizeOrigin(raw);
 }
 
 export function setServerUrl(url) {
-    localStorage.setItem(STORAGE_KEY, (url || "").trim());
+    localStorage.setItem(STORAGE_KEY, sanitizeOrigin(url));
 }
 
 // Whether a server is explicitly stored (vs only the baked default).

@@ -1,12 +1,11 @@
 # Abstract runtime dependencies. Image builds and CI install from
 # requirements.lock.txt (compiled from this file) so they stay
 # reproducible. After editing this file, regenerate the lock with:
-#   python3.11 -m pip install pip-tools
+#   python3.12 -m pip install pip-tools
 #   pip-compile --output-file=requirements.lock.txt --strip-extras requirements.txt
 #
-# Django is pinned to 4.2 LTS on purpose: 5.x is a deliberate migration,
-# not a surprise from an unpinned `pip install`.
-django>=4.2,<5
+# Django 5.2 is the current LTS (4.2 extended support ended April 2026).
+django>=5.2,<6
 djangorestframework>=3.15,<3.17
 djangorestframework-simplejwt>=5.3,<6
 django-cors-headers>=4.3,<5
@@ -26,7 +25,10 @@ gevent>=24.2
 pywebpush>=2.0.0
 py-vapid>=1.9.0
 Pillow>=10.0.0
-garminconnect>=0.2.0
+# 0.3.5+ requires Python 3.12 and changed login() to a tokenstore path.
+# GHSA-wjhr-76vg-2hvc is dump()-to-disk 0o644; we persist tokens via
+# dumps() into an encrypted DB column and never call dump().
+garminconnect>=0.3.2,<0.3.3
 cryptography>=41.0.0
 sentry-sdk[django]>=2.0,<3
 sentry-sdk[celery]>=2.0,<3

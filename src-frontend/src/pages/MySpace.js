@@ -37,7 +37,7 @@ import {
 import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
 import {SectionLoader} from "../utils/loaders";
 import {useDispatch} from "react-redux";
-import {assetUrl} from "../utils/platform";
+import {apkDownloadHref, useApkUpdateInfo} from "../utils/apkUpdate";
 import {useLazySyncGarminQuery, useLazySyncStravaQuery, useLazySyncHealthQuery} from "../utils/reducers/linkSlice";
 import {nativeHealthKickSync} from "../utils/nativeHealth";
 import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
@@ -45,7 +45,6 @@ import {feedApi} from "../utils/reducers/feedSlice";
 import {BeatLoader} from "react-spinners";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {Chip, EmptyState, SectionHead, SyncChip, rowClass, VOLT} from "../components/uiBits";
-import {useApkUpdateInfo} from "../utils/apkUpdate";
 import usePollingInterval from "../utils/usePollingInterval";
 import {notice} from "../utils/dialogs";
 
@@ -605,7 +604,7 @@ function ApkUpdateBanner() {
                 <p className="font-display text-xs uppercase tracking-wider">App update available</p>
                 <p className="text-[11px] text-gray-400">Version {update.versionName} — installing over the top keeps everything.</p>
             </div>
-            <a href={assetUrl("/download/workout-challenge.apk")}
+            <a href={apkDownloadHref()}
                    rel="noopener noreferrer"
                    className="shrink-0 rounded-full bg-volt-400 text-ink-950 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
                 Get it

@@ -1,6 +1,16 @@
 import {useEffect, useState} from "react";
 import {App} from "@capacitor/app";
-import {isNativeApp, assetUrl} from "./platform";
+import {isNativeApp, assetUrl, getServerUrl} from "./platform";
+
+// Always a same-origin or http(s) absolute path. The JSON-supplied URL
+// is ignored (it was previously an XSS sink). Native WebViews resolve
+// relative /download/ against https://localhost, so we prefix the
+// sanitized server origin there.
+export function apkDownloadHref() {
+    const base = getServerUrl();
+    if (!base) return "/download/workout-challenge.apk";
+    return new URL("/download/workout-challenge.apk", base + "/").href;
+}
 
 // In-app update check for the sideloaded APK: the server publishes
 // /download/apk-version.json next to the APK (scripts/build_apk.sh

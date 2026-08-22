@@ -6,7 +6,7 @@ COPY src-frontend/ /workout_challenge/src-frontend/
 # 'unsafe-inline'.
 RUN npm ci && npm run build
 
-FROM python:3.11-alpine AS backend
+FROM python:3.12-alpine AS backend
 WORKDIR /workout_challenge/src-backend
 COPY src-backend/ /workout_challenge/src-backend/
 
@@ -26,7 +26,7 @@ RUN pip install --no-cache-dir -r requirements.lock.txt
 RUN DEBUG=true SECRET_KEY=build-time-only-not-a-real-secret \
     python3 manage.py collectstatic --noinput
 
-FROM python:3.11-alpine AS final
+FROM python:3.12-alpine AS final
 
 # Release version for the "What's new" popup - CI passes the git tag.
 ARG APP_VERSION=dev

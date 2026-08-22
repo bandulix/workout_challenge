@@ -8,13 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **CI now runs the backend test suite before every release** — a new `test` job in `prod-deploy.yml` installs from the pinned lockfile and runs `manage.py test` on Python 3.11. Autotag / Docker / APK wait for it, so a red suite can no longer mint a GitHub Release. Open PRs run the same job (the workflow previously only fired on merge). The cap-math cases that lived as a `__main__` script in `point_recalc.py` are now Django tests, and `workouts` has an API test module (auth, isolation, duration/steps validators). Also: the empty `src-backend/__init__.py` is gone — unittest treated that folder as a package and imported the suite as `src-backend.competition.tests`, which crashed every app's models on `manage.py test`.
+- **CI now runs the backend test suite before every release** — a new `test` job in `prod-deploy.yml` installs from the pinned lockfile and runs `manage.py test` on Python 3.12. Autotag / Docker / APK wait for it, so a red suite can no longer mint a GitHub Release. Open PRs run the same job (the workflow previously only fired on merge). The cap-math cases that lived as a `__main__` script in `point_recalc.py` are now Django tests, and `workouts` has an API test module (auth, isolation, duration/steps validators). Also: the empty `src-backend/__init__.py` is gone — unittest treated that folder as a package and imported the suite as `src-backend.competition.tests`, which crashed every app's models on `manage.py test`.
 - **`site_settings` tests** for staff-only access, write-only secrets, and DB-over-env resolution.
 
 ### Changed
 - **Visual pass so Home and Challenge match the Coach** — workout/competition lists are tappable cards (not tables); goal bars always show caps and use a volt fill; the activity feed is a timeline with profile pictures and tap-to-expand scoring; team rosters expand on tap; this-week chart leads with a points hero; empty states use the coach face; errors/loaders/modals/forms sit on ink + volt (no leftover bootstrap blue); What's New opens on three visual beats. README phone screenshots (and the social preview) recaptured to match.
 - **Photo remix prompt is hardcoded** (the admin-editable Site Settings template is gone). A posted picture is edited into the coach's world (setting from the persona description), the coach appears in the scene with their profile-picture face locked when a portrait is uploaded, and the answered-to workout's stats are painted on the image.
-- **Python dependencies are pinned** — `requirements.txt` is the abstract spec (Django stays on 4.2 LTS); `requirements.lock.txt` is the pip-compile lock. The Docker image installs the lock, so a rebuild cannot silently pick up Django 5 or a breaking DRF.
+- **Python dependencies are pinned** — `requirements.txt` is the abstract spec (Django 5.2 LTS; 4.2 extended support ended April 2026); `requirements.lock.txt` is the pip-compile lock. The Docker image and CI run Python 3.12.
+- **Vite is 6.4.3** — patched 6.x (dev-server FS/WebSocket issues). Not the Dependabot jump to Vite 8, which is a separate major.
 - **Releases are no longer minted on every merge to main** — push/PR only run the test job. Cut a release from Actions (`workflow_dispatch`) after tests pass.
 - **Frontend build is Vite**, not CRA/CRACO. Same `build/` output for nginx and Capacitor; no inline runtime chunk (CSP unchanged).
 - **Login/register/password-reset use the same RTK API client** as the rest of the app (`usersApi` + `authClient.js`).
@@ -30,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`?my=` workout/user filters actually mean "the current user"** (they compared pk to the user id, which hid real workouts).
 
 ### Security
+- **APK update link is a hardcoded path on a sanitized http(s) origin** — the native server-address field no longer flows into `href` as raw DOM text (CodeQL `js/xss-through-dom`).
 - **User list no longer exposes co-participants' last names** (emails, staff flags, Garmin/Health ids, equalizer factors were already stripped; first name stays for the transfer-ownership picker).
 - **Activity goals and teams cannot be re-parented** onto another competition via PATCH.
 - **X-Accel-Redirect paths reject `..` / absolute names** so a poisoned ImageField cannot point nginx outside MEDIA_ROOT.
