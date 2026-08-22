@@ -1,4 +1,4 @@
-import React, {useRef, useState} from "react";
+import React, {useEffect, useRef, useState} from "react";
 import {Camera, Megaphone} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {useUploadProfilePictureMutation} from "../utils/reducers/usersSlice";
@@ -20,8 +20,10 @@ function ProfileAvatar({user, size = 96, editable = false, className = "", dunce
     const [error, setError] = useState(null);
 
     const pictureUrl = user?.profile_picture;
-    const {src: fetchedSrc} = useProtectedImage(pictureUrl || null);
-    const src = fetchedSrc || FALLBACK;
+    const {src: fetchedSrc, failed: fetchFailed} = useProtectedImage(pictureUrl || null);
+    const [imgFailed, setImgFailed] = useState(false);
+    useEffect(() => { setImgFailed(false); }, [pictureUrl, fetchedSrc]);
+    const src = (!fetchFailed && !imgFailed && fetchedSrc) || FALLBACK;
 
     async function handleFile(e) {
         const file = e.target.files?.[0];
@@ -49,6 +51,7 @@ function ProfileAvatar({user, size = 96, editable = false, className = "", dunce
             alt={user?.first_name ? `${user.first_name}'s profile picture` : "Profile picture"}
             className="rounded-full object-cover w-full h-full select-none"
             draggable={false}
+            onError={() => { if (src !== FALLBACK) setImgFailed(true); }}
         />
     );
 

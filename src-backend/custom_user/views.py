@@ -26,6 +26,7 @@ from .models import CustomUser
 from .serializers import CustomUserSerializer
 from .filters import CustomUserFilter
 from .strava import sync_strava
+from workout_challenge.images import ProtectedMediaRenderer
 
 
 def _blacklist_user_tokens(user):
@@ -180,7 +181,8 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         _blacklist_user_tokens(instance)
         return super().destroy(request, *args, **kwargs)
 
-    @action(detail=True, methods=["get"], permission_classes=[IsAuthenticated])
+    @action(detail=True, methods=["get"], permission_classes=[IsAuthenticated],
+            renderer_classes=[ProtectedMediaRenderer])
     def picture(self, request, pk=None):
         """Serve the user's profile picture - authenticated only.
 

@@ -162,6 +162,14 @@ class ProfilePictureEndpointTests(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 401)
 
+    def test_accept_image_star_does_not_406(self):
+        # The SPA used to send Accept: image/* on avatar fetches; DRF's
+        # JSON renderer does not match that and 406'd every picture.
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(self.url, HTTP_ACCEPT="image/*")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+
     def test_owner_gets_own_picture_via_internal_redirect(self):
         self.client.force_authenticate(self.owner)
         response = self.client.get(self.url)

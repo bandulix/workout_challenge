@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Desktop menu bar sat on the centre-left** — `animate-nav-rise` uses `transform`, which overrode `md:-translate-x-1/2`, so the dock's left edge was at 50% of the viewport. The pill is now `md:mx-auto` inside a full-width wrapper.
+- **Profile pictures 406'd** — avatar fetches sent `Accept: image/*`, which DRF's JSON renderer does not match, so every `/api/user/<id>/picture/` (and persona/photo-post pictures) returned Not Acceptable. The client no longer sends that Accept, and the picture endpoints accept any `Accept`.
+
 ## [0.38.0] - 2026-08-22
 
 ### Added

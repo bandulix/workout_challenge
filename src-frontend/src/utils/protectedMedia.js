@@ -36,7 +36,10 @@ function withSlot(fn) {
 }
 
 function authHeaders(token) {
-    const headers = {Accept: "image/*"};
+    // Do not send Accept: image/*. DRF negotiates Accept before the
+    // picture action runs; image/* does not match JSONRenderer and 406s
+    // every avatar. Default */* is fine - the view returns a FileResponse.
+    const headers = {};
     if (token) headers.Authorization = `Bearer ${token}`;
     // CapacitorHttp rides OkHttp, whose default UA ("okhttp/4.x") is on
     // some CrowdSec bad-user-agent lists. Speak like the rest of the app.

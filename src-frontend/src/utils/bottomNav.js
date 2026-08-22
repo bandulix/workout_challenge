@@ -209,9 +209,12 @@ export default function BottomNav() {
 
     return (
         <>
-            <nav className="fixed bottom-0 left-0 right-0 z-40 overflow-visible bg-ink-950/90 backdrop-blur-xl border-t border-volt-400/30 shadow-[0_-16px_48px_rgba(215,255,62,0.12)] pb-[env(safe-area-inset-bottom)] animate-nav-rise md:bottom-5 md:left-1/2 md:right-auto md:-translate-x-1/2 md:rounded-full md:border md:border-volt-400/40 md:px-4 md:pb-0 md:shadow-glow-volt"
+            <nav className="fixed bottom-0 inset-x-0 z-40 overflow-visible pb-[env(safe-area-inset-bottom)] animate-nav-rise pointer-events-none md:bottom-5 md:pb-0"
                  aria-label="Primary navigation">
-                <div className="flex items-stretch justify-around md:gap-1">
+                {/* Full-width wrapper + mx-auto pill: nav-rise uses transform,
+                    which would clobber md:-translate-x-1/2 and leave the dock
+                    sitting at left:50% (not centred) in the browser. */}
+                <div className="pointer-events-auto flex items-stretch justify-around bg-ink-950/90 backdrop-blur-xl border-t border-volt-400/30 shadow-[0_-16px_48px_rgba(215,255,62,0.12)] md:w-max md:mx-auto md:gap-1 md:rounded-full md:border md:border-volt-400/40 md:px-4 md:shadow-glow-volt">
                     <NavLink to="/dashboard" icon={Home} label="Home" isActive={onDashboard}/>
 
                     <NavLink

@@ -210,6 +210,12 @@ class PersonaPictureEndpointTests(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 401)
 
+    def test_accept_image_star_does_not_406(self):
+        self.client.force_authenticate(self.regular)
+        response = self.client.get(self.url, HTTP_ACCEPT="image/*")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+
     def test_authenticated_user_gets_picture_via_internal_redirect(self):
         self.client.force_authenticate(self.regular)
         response = self.client.get(self.url)

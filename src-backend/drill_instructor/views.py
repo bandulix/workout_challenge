@@ -13,6 +13,7 @@ from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from workout_challenge.images import ProtectedMediaRenderer
 from .llm_client import check_vision_capability
 from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona, DrillInstructorPhotoVote
 from .serializers import (
@@ -46,7 +47,7 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, is_builtin=False)
 
-    @action(detail=True, methods=["get"])
+    @action(detail=True, methods=["get"], renderer_classes=[ProtectedMediaRenderer])
     def picture(self, request, pk=None):
         """Serve the persona's custom profile picture - authenticated only.
 
@@ -337,7 +338,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-    @action(detail=True, methods=["get"])
+    @action(detail=True, methods=["get"], renderer_classes=[ProtectedMediaRenderer])
     def picture(self, request, pk=None):
         """Serve a photo post's image - owner/participants only.
 

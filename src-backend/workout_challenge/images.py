@@ -8,6 +8,7 @@ from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.http import FileResponse, Http404, HttpResponse
 from django.utils.text import get_valid_filename
 from rest_framework import serializers
+from rest_framework.renderers import BaseRenderer
 
 # Pillow's decompression-bomb ceiling (default ~179M px is huge; 40M is
 # a 8k x 5k photo, well above any avatar/photo-post we accept).
@@ -76,6 +77,21 @@ def validate_and_reencode_image(uploaded, *, max_bytes=_MAX_BYTES, max_side=1920
         size=len(data),
         charset=None,
     )
+
+
+class ProtectedMediaRenderer(BaseRenderer):
+    """Picture endpoints return a FileResponse, but DRF still negotiates
+    Accept in ``initial()``. ``image/*`` (what a browser ``<img>``-style
+    fetch sends) does not match JSONRenderer and used to 406 every
+    avatar. This renderer matches any Accept; the view's FileResponse
+    is returned as-is and this ``render`` is never used."""
+
+    media_type = "*/*"
+    format = "bin"
+    charset = None
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        return data if data is not None else b""
 
 
 def protected_media_response(file_field):
