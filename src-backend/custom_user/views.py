@@ -32,7 +32,7 @@ def _blacklist_user_tokens(user):
     """Invalidate every outstanding refresh token for ``user``.
 
     Called on account deletion and on Strava unlink so that even if a
-    stolen access token (lifetime 5 minutes by default) is replayed
+    stolen access token (lifetime 15 minutes by default) is replayed
     immediately after the action, the attacker can't mint a fresh
     access token by presenting the (now blacklisted) refresh token.
     """
@@ -161,7 +161,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # return all competitions the user is owner of or a participant of
         #time.sleep(3)  # throttle for testing
-        return CustomUser.objects.filter(Q(pk=self.request.user.pk) | Q(my_competitions__in=self.request.user.my_competitions.all())).distinct().order_by('username', 'id')
+        return CustomUser.objects.filter(Q(pk=self.request.user.pk) | Q(my_competitions__in=self.request.user.my_competitions.all())).distinct().prefetch_related("dog_tags").order_by('username', 'id')
 
     def get_object(self):
         lookup_value = self.kwargs.get(self.lookup_field)

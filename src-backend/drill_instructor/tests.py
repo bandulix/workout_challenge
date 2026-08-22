@@ -982,7 +982,19 @@ class PhotoPostTests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_standalone_feed_photo_is_rejected(self):
+    def test_photo_without_parent_or_competition_is_rejected(self):
+        self.client.force_authenticate(self.athlete)
+        image = SimpleUploadedFile("photo.png", PNG_1PX, content_type="image/png")
+        response = self.client.post(
+            "/api/drill-instructor/message/photo/",
+            {"image": image},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("latest workout", response.json()["parent"])
+
+    def test_standalone_feed_photo_attaches_to_last_own_activity(self):
+        own = self._activity_root(self.athlete)
         self.client.force_authenticate(self.athlete)
         image = SimpleUploadedFile("photo.png", PNG_1PX, content_type="image/png")
         response = self.client.post(
@@ -990,22 +1002,48 @@ class PhotoPostTests(TestCase):
             {"competition": self.competition.id, "image": image},
             format="multipart",
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("own workouts", response.json()["parent"])
+        self.assertEqual(response.status_code, 201, response.content)
+        message = DrillInstructorMessage.objects.get(pk=response.json()["id"])
+        self.assertEqual(message.parent, own)
 
-    def test_photo_on_nudge_or_push_is_rejected(self):
+    def test_photo_on_nudge_or_mention_attaches_to_last_own_activity(self):
+        own = self._activity_root(self.athlete)
         push = DrillInstructorMessage.objects.create(
-            config=self.config, kind=DrillInstructorMessage.KIND_PUSH, body="Show me the effort!",
+            config=self.config, kind=DrillInstructorMessage.KIND_PUSH,
+            body="Show me the effort, @Alex!",
+        )
+        response = self._post(self.athlete, parent=push)
+        self.assertEqual(response.status_code, 201, response.content)
+        message = DrillInstructorMessage.objects.get(pk=response.json()["id"])
+        self.assertEqual(message.parent, own)
+
+    def test_photo_on_someone_elses_workout_attaches_to_last_own(self):
+        own = self._activity_root(self.athlete)
+        their_root = self._activity_root(self.owner)
+        response = self._post(self.athlete, parent=their_root)
+        self.assertEqual(response.status_code, 201, response.content)
+        message = DrillInstructorMessage.objects.get(pk=response.json()["id"])
+        self.assertEqual(message.parent, own)
+        self.assertNotEqual(message.parent, their_root)
+
+    def test_photo_without_own_activity_is_rejected(self):
+        push = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PUSH, body="Show me the effort, @Alex!",
         )
         response = self._post(self.athlete, parent=push)
         self.assertEqual(response.status_code, 400)
-        self.assertIn("own workouts", response.json()["parent"])
+        self.assertIn("latest workout", response.json()["parent"])
 
-    def test_photo_on_someone_elses_workout_is_rejected(self):
-        their_root = self._activity_root(self.owner)
-        response = self._post(self.athlete, parent=their_root)
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("own workouts", response.json()["parent"])
+    def test_photo_always_uses_the_latest_own_activity(self):
+        older = self._activity_root(self.athlete)
+        DrillInstructorMessage.objects.filter(pk=older.pk).update(
+            posted_at=timezone.now() - datetime.timedelta(hours=2)
+        )
+        newer = self._activity_root(self.athlete)
+        response = self._post(self.athlete, parent=older)
+        self.assertEqual(response.status_code, 201, response.content)
+        message = DrillInstructorMessage.objects.get(pk=response.json()["id"])
+        self.assertEqual(message.parent, newer)
 
     def test_participant_can_post_and_reaction_is_queued(self):
         root = self._activity_root(self.athlete)
@@ -2113,4 +2151,215 @@ class WorkoutCommentIdempotencyTests(TestCase):
         DrillInstructorMessage.objects.create(
             config=self.config, kind=DrillInstructorMessage.KIND_REPLY,
             workout=self.workout, body="reply is fine",
+        )
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class ArcadeGameTests(TestCase):
+    """Daily order, dunce megaphone, mood, dog tags, hall of roasts."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        llm = mock.patch("drill_instructor.llm_client.generate_message", return_value=("ORDER UP", None))
+        self.addCleanup(llm.stop)
+        llm.start()
+        vision = mock.patch("drill_instructor.llm_client.read_cached_capabilities", return_value=(False, False))
+        self.addCleanup(vision.stop)
+        vision.start()
+
+        self.persona = DrillInstructorPersona.objects.create(
+            name="Arcade Sergeant", system_prompt="Bark.",
+        )
+        self.owner = _user("arcade-owner@example.com", "Omar")
+        self.alex = _user("arcade-alex@example.com", "Alex")
+        self.nina = _user("arcade-nina@example.com", "Nina")
+        today = timezone.localdate()
+        self.competition = Competition.objects.create(
+            owner=self.owner,
+            name="Arcade Cup",
+            start_date=today - datetime.timedelta(days=2),
+            end_date=today + datetime.timedelta(days=10),
+        )
+        self.alex.my_competitions.add(self.competition)
+        self.nina.my_competitions.add(self.competition)
+        self.config = DrillInstructorConfig.objects.create(
+            competition=self.competition, enabled=True, persona=self.persona,
+        )
+        self.client = APIClient()
+
+    def _workout(self, user, minutes=30, when=None):
+        w = Workout(
+            user=user, sport_type="Run",
+            start_datetime=when or timezone.now(),
+            duration=datetime.timedelta(minutes=minutes),
+            intensity_category=2,
+        )
+        w.save(score=False)
+        return w
+
+    def _points(self, user, capped):
+        from competition.models import ActivityGoal, Points
+        goal = getattr(self, "_goal", None)
+        if goal is None:
+            goal = ActivityGoal.objects.create(
+                competition=self.competition, name="Minutes", metric="min", goal=30, period="day",
+            )
+            self._goal = goal
+        w = self._workout(user, minutes=max(1, int(capped)))
+        return Points.objects.create(goal=goal, workout=w, points_raw=capped, points_capped=capped)
+
+    def test_issue_daily_order_is_idempotent(self):
+        from .tasks import issue_daily_orders
+        first = issue_daily_orders()
+        second = issue_daily_orders()
+        self.assertEqual(first["issued"], 1)
+        self.assertEqual(second["issued"], 0)
+        from .models import DailyOrder
+        self.assertEqual(DailyOrder.objects.filter(config=self.config).count(), 1)
+        self.assertTrue(DrillInstructorMessage.objects.filter(
+            config=self.config, kind=DrillInstructorMessage.KIND_ORDER,
+        ).exists())
+
+    def test_logging_completes_log_one_order(self):
+        from .game import evaluate_workout_game
+        from .models import DailyOrder
+        today = timezone.localdate()
+        order = DailyOrder.objects.create(
+            config=self.config, date=today, kind="log_one", spec={}, brief="Log one.",
+        )
+        w = self._workout(self.alex)
+        evaluate_workout_game(w, self.config)
+        self.assertTrue(order.completed_by.filter(pk=self.alex.id).exists())
+        # idempotent
+        evaluate_workout_game(w, self.config)
+        self.assertEqual(order.completed_by.count(), 1)
+
+    def test_close_order_sighs_at_slackers(self):
+        from .models import DailyOrder
+        from .tasks import close_daily_orders
+        today = timezone.localdate()
+        order = DailyOrder.objects.create(
+            config=self.config, date=today, kind="log_one", spec={}, brief="Log one.",
+        )
+        order.completed_by.add(self.alex)
+        result = close_daily_orders()
+        self.assertEqual(result["sighed"], 1)
+        self.assertTrue(DrillInstructorMessage.objects.filter(
+            config=self.config, kind=DrillInstructorMessage.KIND_SIGH,
+        ).exists())
+        order.refresh_from_db()
+        self.assertTrue(order.failed_announced)
+        close_daily_orders()
+        self.assertEqual(DrillInstructorMessage.objects.filter(
+            config=self.config, kind=DrillInstructorMessage.KIND_SIGH,
+        ).count(), 1)
+
+    def test_dunce_is_last_place_and_clears_on_log(self):
+        from .game import evaluate_workout_game, pick_last_place
+        from .tasks import assign_dunces
+        self._points(self.alex, 100)
+        self._points(self.nina, 10)
+        self.assertEqual(pick_last_place(self.competition).id, self.nina.id)
+        assign_dunces()
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.dunce_id, self.nina.id)
+        self.assertTrue(DrillInstructorMessage.objects.filter(
+            config=self.config, kind=DrillInstructorMessage.KIND_DUNCE,
+        ).exists())
+        w = self._workout(self.nina)
+        evaluate_workout_game(w, self.config)
+        self.config.refresh_from_db()
+        self.assertIsNone(self.config.dunce_id)
+        from .models import DogTag
+        self.assertTrue(DogTag.objects.filter(user=self.nina, slug="survived_the_dunce").exists())
+
+    def test_first_blood_and_photogenic_tags(self):
+        from .game import evaluate_photo_game, evaluate_workout_game
+        from .models import DogTag
+        w = self._workout(self.alex)
+        evaluate_workout_game(w, self.config)
+        self.assertTrue(DogTag.objects.filter(user=self.alex, slug="first_blood").exists())
+        photo = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PHOTO,
+            user=self.alex, body="", parent=None,
+        )
+        evaluate_photo_game(photo)
+        self.assertTrue(DogTag.objects.filter(user=self.alex, slug="photogenic").exists())
+
+    def test_mood_disappointed_then_proud(self):
+        from .game import coach_mood
+        mood = coach_mood(self.config)
+        self.assertEqual(mood["key"], "disappointed")
+        self._workout(self.alex)
+        self._workout(self.nina)
+        mood = coach_mood(self.config)
+        self.assertIn(mood["key"], ("proud", "unleashed", "watching"))
+
+    def test_config_payload_exposes_arcade(self):
+        from .models import DailyOrder
+        today = timezone.localdate()
+        DailyOrder.objects.create(config=self.config, date=today, kind="log_one", spec={}, brief="Log one.")
+        self.config.dunce = self.nina
+        self.config.dunce_since = timezone.now()
+        self.config.save()
+        self.client.force_authenticate(self.alex)
+        response = self.client.get("/api/drill-instructor/config/")
+        self.assertEqual(response.status_code, 200)
+        row = response.json()[0]
+        self.assertEqual(row["daily_order"]["brief"], "Log one.")
+        self.assertFalse(row["daily_order"]["completed"])
+        self.assertEqual(row["dunce"]["user_id"], self.nina.id)
+        self.assertEqual(row["mood"]["key"], "disappointed")
+
+    def test_me_exposes_dog_tags(self):
+        from .game import award_tag
+        award_tag(self.alex, "first_blood")
+        self.client.force_authenticate(self.alex)
+        response = self.client.get("/api/user/me/")
+        self.assertEqual(response.status_code, 200)
+        slugs = [t["slug"] for t in response.json()["dog_tags"]]
+        self.assertIn("first_blood", slugs)
+
+    def test_hall_lists_top_roasts_by_hot_votes(self):
+        a = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REACTION, body="A", user=None,
+        )
+        a.image = "message_pics/a.png"
+        a.save()
+        b = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REACTION, body="B", user=None,
+        )
+        b.image = "message_pics/b.png"
+        b.save()
+        from .models import DrillInstructorPhotoVote
+        DrillInstructorPhotoVote.objects.create(message=b, user=self.alex, hot=True)
+        DrillInstructorPhotoVote.objects.create(message=b, user=self.nina, hot=True)
+        DrillInstructorPhotoVote.objects.create(message=a, user=self.alex, hot=True)
+        self.client.force_authenticate(self.alex)
+        response = self.client.get("/api/drill-instructor/message/hall/")
+        self.assertEqual(response.status_code, 200)
+        ids = [row["id"] for row in response.json()]
+        self.assertEqual(ids[0], b.id)
+
+    def test_periodic_tasks_seeded(self):
+        from django_celery_beat.models import PeriodicTask
+        self.assertEqual(
+            PeriodicTask.objects.get(name="drill_instructor_daily_order").task,
+            "drill_instructor.tasks.issue_daily_orders",
+        )
+        self.assertEqual(
+            PeriodicTask.objects.get(name="drill_instructor_close_order").task,
+            "drill_instructor.tasks.close_daily_orders",
+        )
+        self.assertEqual(
+            PeriodicTask.objects.get(name="drill_instructor_assign_dunce").task,
+            "drill_instructor.tasks.assign_dunces",
         )

@@ -5,7 +5,7 @@ from django.apps import apps
 from django.core.cache import cache
 from django.utils import timezone
 
-from custom_user.point_recalc import bump_stats_generation, trigger_recalc_points
+from custom_user.point_recalc import bump_stats_generation, recap_goal, trigger_recalc_points
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +233,52 @@ def trigger_workout_change(instance, new, changes):
     trigger_recalc_points()
 
 
+def challenge_start_datetime(competition):
+    """Aware midnight of the challenge start in the site timezone."""
+    return timezone.make_aware(datetime.datetime.combine(competition.start_date, datetime.time.min))
+
+
+def recompute_raw_points_for_goal(goal):
+    """Rewrite each Points row's raw score from its own workout.
+
+    Must not reuse a related-manager cache (stale after adding/removing
+    Steps rows) and must not share one Workout instance across rows —
+    that was writing the same points onto every activity after a goal
+    edit.
+    """
+    Points = apps.get_model('competition', 'Points')
+    factors = get_sport_factors()
+    rows_to_update = []
+    for row in Points.objects.filter(goal=goal).select_related('workout', 'workout__user').iterator(chunk_size=500):
+        workout = row.workout
+        if workout is None:
+            continue
+        new_raw = _calculate_points_raw(goal, workout, workout.user, factors=factors)
+        if (
+            abs(float(row.points_raw) - float(new_raw)) > 1e-9
+            or row.points_capped is None
+            or abs(float(row.points_capped) - float(new_raw)) > 1e-9
+        ):
+            row.points_raw = new_raw
+            row.points_capped = new_raw
+            rows_to_update.append(row)
+    if rows_to_update:
+        Points.objects.bulk_update(rows_to_update, ['points_raw', 'points_capped'], batch_size=500)
+    return len(rows_to_update)
+
+
+def rescore_activity_goal(goal):
+    """Recompute raw points from workouts, then apply caps immediately.
+
+    Used by the management command to repair a challenge that was
+    flattened by a previous goal-edit recap.
+    """
+    n = recompute_raw_points_for_goal(goal)
+    recap_goal(goal, from_datetime=challenge_start_datetime(goal.competition))
+    bump_stats_generation([goal.competition_id])
+    return n
+
+
 def trigger_goal_change(instance, new, changes):
     RecalcRequest = apps.get_model('custom_user', 'RecalcRequest')
     Points = apps.get_model('competition', 'Points')
@@ -253,6 +299,7 @@ def trigger_goal_change(instance, new, changes):
             Points.objects.bulk_create(new_points)
         if new_requests:
             RecalcRequest.objects.bulk_create(new_requests)
+        recap_goal(instance)
     else:
         # Name-only edits don't change scoring.
         scoring_changes = {k: v for k, v in changes.items() if k != 'name'}
@@ -277,25 +324,16 @@ def trigger_goal_change(instance, new, changes):
         # edits leave points_raw alone. Either way recap from day 1 of
         # the challenge so the whole duration uses the new rules.
         if {'metric', 'goal', 'count_steps_as_walks'} & scoring_changes.keys():
-            factors = get_sport_factors()
-            rows_to_update = []
-            for row in instance.points_set.select_related('workout', 'workout__user'):
-                new_raw = _calculate_points_raw(instance, row.workout, row.workout.user, factors=factors)
-                if float(row.points_raw) != new_raw:
-                    row.points_raw = new_raw
-                    row.points_capped = new_raw
-                    rows_to_update.append(row)
-            if rows_to_update:
-                Points.objects.bulk_update(rows_to_update, ['points_raw', 'points_capped'], batch_size=500)
+            recompute_raw_points_for_goal(instance)
 
-        start_dt = timezone.make_aware(
-            datetime.datetime.combine(instance.competition.start_date, datetime.time.min),
-            timezone.get_current_timezone(),
-        )
+        start_dt = challenge_start_datetime(instance.competition)
         RecalcRequest.objects.bulk_create([
             RecalcRequest(user=user, goal=instance, start_datetime=start_dt)
             for user in instance.competition.user.all()
         ])
+        # Recap now so a 30s Celery throttle cannot leave the field on
+        # uncapped raw (which then all hit the same daily cap later).
+        recap_goal(instance, from_datetime=start_dt)
         bump_stats_generation([instance.competition_id])
 
     trigger_recalc_points()
@@ -335,7 +373,7 @@ def trigger_competition_change(instance, new, changes):
             points_to_delete.delete()
             if affected_pairs:
                 RecalcRequest.objects.bulk_create([
-                    RecalcRequest(user_id=user_id, goal_id=goal_id, start_datetime=changes['start_date'][1])
+                    RecalcRequest(user_id=user_id, goal_id=goal_id, start_datetime=timezone.make_aware(datetime.datetime.combine(changes['start_date'][1], datetime.time.min)))
                     for user_id, goal_id in affected_pairs
                 ])
             logger.info("Competition %s start_date shortened %s → %s, triggering cap recalc", instance.pk, changes['start_date'][0], changes['start_date'][1])
@@ -387,7 +425,7 @@ def trigger_user_change(instance, new, changes):
                     for workout in workout_lst:
                         points = _calculate_points_raw(goal=goal, workout=workout, user=instance, factors=factors)
                         new_points.append(Points(goal=goal, workout=workout, points_raw=points, points_capped=points))
-                    new_requests.append(RecalcRequest(user=instance, goal=goal, start_datetime=competition.start_date))
+                    new_requests.append(RecalcRequest(user=instance, goal=goal, start_datetime=challenge_start_datetime(competition)))
             if new_points:
                 Points.objects.bulk_create(new_points)
             if new_requests:

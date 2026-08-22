@@ -36,6 +36,7 @@ const SHELL_URLS = [
     "/offline.html",
     "/manifest.json",
     "/icon-192.png",
+    "/icon-192.svg",
     "/icon-512.png",
     "/icon-maskable-512.png",
     "/icon-badge.png",
@@ -54,6 +55,7 @@ const SHELL_URLS = [
     "/personas/ninja.svg",
     "/personas/robot.svg",
     "/personas/captain.svg",
+    "/login-bg.webp",
 ];
 
 self.addEventListener("install", (event) => {

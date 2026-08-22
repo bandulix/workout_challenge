@@ -1,5 +1,5 @@
 import React, {useRef, useState} from "react";
-import {Camera} from "lucide-react";
+import {Camera, Megaphone} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {useUploadProfilePictureMutation} from "../utils/reducers/usersSlice";
 import {invalidateProtectedImage, useProtectedImage} from "../utils/protectedMedia";
@@ -14,7 +14,7 @@ import {invalidateProtectedImage, useProtectedImage} from "../utils/protectedMed
 const ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
 const FALLBACK = "/profile.png";
 
-function ProfileAvatar({user, size = 96, editable = false, className = ""}) {
+function ProfileAvatar({user, size = 96, editable = false, className = "", dunce = false}) {
     const fileInput = useRef(null);
     const [upload, {isLoading}] = useUploadProfilePictureMutation();
     const [error, setError] = useState(null);
@@ -54,8 +54,14 @@ function ProfileAvatar({user, size = 96, editable = false, className = ""}) {
 
     if (!editable) {
         return (
-            <div className={"shrink-0 rounded-full " + className} style={{width: size, height: size}}>
+            <div className={"relative shrink-0 rounded-full " + className} style={{width: size, height: size}}>
                 {img}
+                {dunce && (
+                    <span title="Dunce megaphone — last on the board until they log"
+                          className="absolute -top-1 -left-1 z-10 h-5 w-5 rounded-full bg-ink-950 border border-volt-400 text-volt-400 flex items-center justify-center">
+                        <Megaphone className="h-3 w-3"/>
+                    </span>
+                )}
             </div>
         );
     }

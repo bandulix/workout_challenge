@@ -6,22 +6,27 @@ import {drillInstructorApi, usePostDrillPhotoMutation} from "../utils/reducers/d
 import {compressImage} from "../utils/imageCompress";
 
 // Photo sharing for the coach feed. The camera button is ALWAYS visible
-// while the coach is on duty - when the server's AI model can't see
-// pictures (vision probe failed), a click explains that instead of
-// opening the picker (better discoverability than a hidden feature).
-// The backend endpoint still refuses photo posts without vision - the
-// gate there protects against LLM cost abuse via the API.
+// while the coach is on duty - a click without a latest-own-workout
+// parent, or when the server's AI model can't see pictures, explains
+// that instead of opening the picker. The picture always hangs under
+// the caller's latest activity comment (resolved server-side).
 export default function PhotoPost({competitionId, visionCapable, parentId, onPosted}) {
     const [open, setOpen] = useState(false);
-    const [hint, setHint] = useState(false);
+    const [hint, setHint] = useState(null);
     return (
         <>
             <button onClick={() => {
                         if (!visionCapable) {
-                            setHint((v) => !v);
+                            setHint((v) => v === "vision" ? null : "vision");
+                            setOpen(false);
                             return;
                         }
-                        setHint(false);
+                        if (!parentId) {
+                            setHint((v) => v === "workout" ? null : "workout");
+                            setOpen(false);
+                            return;
+                        }
+                        setHint(null);
                         setOpen((v) => !v);
                     }}
                     title="Share a photo"
@@ -30,16 +35,18 @@ export default function PhotoPost({competitionId, visionCapable, parentId, onPos
                 <Camera className="h-4 w-4"/>
             </button>
             {hint && (
-                <div className="w-full px-1 pb-1 -mt-1">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Photo posts are unavailable right now - the AI model configured on this
-                        server can't see pictures. (Organizer: pick a vision-capable model in
-                        Site Settings → AI.)
+                <div className="basis-full w-full min-w-0 px-1 pb-1">
+                    <p className="text-xs text-gray-400">
+                        {hint === "workout"
+                            ? "Photos hang under your latest workout. Log one and wait for the coach to comment first."
+                            : "Photo posts are unavailable right now - the AI model configured on this server can't see pictures. (Organizer: pick a vision-capable model in Site Settings → AI.)"}
                     </p>
                 </div>
             )}
-            {open && visionCapable && (
-                <PhotoComposer competitionId={competitionId} parentId={parentId} onDone={() => setOpen(false)} onPosted={onPosted}/>
+            {open && visionCapable && parentId && (
+                <div className="basis-full w-full min-w-0">
+                    <PhotoComposer competitionId={competitionId} parentId={parentId} onDone={() => setOpen(false)} onPosted={onPosted}/>
+                </div>
             )}
         </>
     );
@@ -48,7 +55,7 @@ export default function PhotoPost({competitionId, visionCapable, parentId, onPos
 
 // The composer itself: take a picture or pick one from the gallery,
 // compress it (see utils/imageCompress.js), then attach it to the
-// caller's own workout thread (parentId is required server-side).
+// caller's latest own workout thread (parentId).
 function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
     const cameraInput = React.useRef(null);
     const galleryInput = React.useRef(null);
@@ -131,7 +138,7 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
     }
 
     return (
-        <div className="w-full px-1 py-3 space-y-2">
+        <div className="w-full min-w-0 px-1 py-3 space-y-2">
             {/* Two inputs: `capture` forces the camera on phones and
                 hides the gallery. Leaving it off opens the library.
                 Desktop treats both as a normal file picker. */}

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona
+from .models import DailyOrder, DogTag, DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona
 
 
 @admin.register(DrillInstructorPersona)
@@ -30,3 +30,17 @@ class DrillInstructorMessageAdmin(admin.ModelAdmin):
     list_filter = ("success", "kind", "config__competition")
     search_fields = ("body", "config__competition__name", "user__email")
     readonly_fields = tuple(f.name for f in DrillInstructorMessage._meta.fields)
+
+
+@admin.register(DailyOrder)
+class DailyOrderAdmin(admin.ModelAdmin):
+    list_display = ("date", "config", "kind", "brief", "failed_announced")
+    list_filter = ("kind", "failed_announced")
+    search_fields = ("brief", "config__competition__name")
+
+
+@admin.register(DogTag)
+class DogTagAdmin(admin.ModelAdmin):
+    list_display = ("user", "slug", "earned_at")
+    list_filter = ("slug",)
+    search_fields = ("user__email", "user__first_name")

@@ -5,6 +5,19 @@
 :root {
   --volt: #d7ff3e;
   --ink: #0a0d06;
+  --canvas: #dfe8c4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-kenburns,
+  .animate-nav-rise,
+  .animate-volt-breathe,
+  .animate-pulse-ring,
+  .animate-float-slow,
+  .animate-pop-in,
+  .animate-slide-up {
+    animation: none !important;
+  }
 }
 
 body {

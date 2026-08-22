@@ -6,7 +6,7 @@ export const VOLT = "#d7ff3e";
 
 export function SectionHead({title, hint, children}) {
     return (
-        <div className="flex flex-wrap items-center gap-2 border-b border-gray-200/70 dark:border-ink-700/60 pb-3 mb-1">
+        <div className="flex flex-wrap items-center gap-2 border-b border-volt-600/20 dark:border-volt-400/15 pb-3 mb-1">
             <div className="flex-1 min-w-0 px-1">
                 <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{title}</h2>
                 {hint && <p className="text-xs text-gray-400">{hint}</p>}

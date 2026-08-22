@@ -1,6 +1,7 @@
 import {fetchBaseQuery} from '@reduxjs/toolkit/query/react';
 import {throwErrorWithCode} from '../miscellaneous';
 import {getServerUrl} from '../serverUrl';
+import {ensureFreshAccessToken, refreshAccessToken} from '../authTokens';
 
 // Sentry is loaded on demand (dynamic import) so the SDK stays out of
 // the initial bundle when no DSN is configured.
@@ -129,42 +130,31 @@ export function sentryError({result, errorSource, endpointName = undefined, quer
 }
 
 
-// Deduplicate concurrent token refreshes: when a session expires, every
-// polling slice (feed/stats/drill/competitions/user) gets a 401 at roughly
-// the same time. Without a shared in-flight refresh, each fires its own
-// POST /token/refresh/ - a burst of ~10 auth 401s in seconds, which is
-// exactly what fail2ban/CrowdSec http-auth-bruteforce scenarios ban for.
-let refreshPromise = null;
+function redirectToLogin() {
+    const safeRedirect = window.location.pathname + window.location.search;
+    window.location.href = `/login?redirect=${encodeURIComponent(safeRedirect)}`;
+}
 
-function refreshTokens(api, extraOptions, refreshToken) {
-    if (!refreshPromise) {
-        refreshPromise = (async () => {
-            const refreshResult = await baseQuery(
-                {
-                    url: '/token/refresh/',
-                    method: 'POST',
-                    body: {refresh: refreshToken},
-                },
-                api,
-                extraOptions
-            );
-            if (refreshResult.data?.access) {
-                // Save new tokens
-                localStorage.setItem('access_token', refreshResult.data.access);
-                if (refreshResult.data.refresh) {
-                    localStorage.setItem('refresh_token', refreshResult.data.refresh);
-                }
-            }
-            return refreshResult;
-        })().finally(() => {
-            refreshPromise = null;
-        });
-    }
-    return refreshPromise;
+const PUBLIC_PATHS = ['/login', '/signup', '/password', '/logout'];
+
+function onPublicPath() {
+    const path = window.location.pathname;
+    return PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/'));
 }
 
 
 export const baseQueryWithReauth = async (args, api, extraOptions) => {
+    // Refresh *before* the request when the access token is expired or
+    // about to be, so polling slices never stampede the API with 401s
+    // (CrowdSec http-generic-bf / http-auth-bf).
+    if (!extraOptions?.skipReauth && !onPublicPath()) {
+        const pre = await ensureFreshAccessToken();
+        if (pre === 'dead' && !onPublicPath()) {
+            redirectToLogin();
+            throw throwErrorWithCode('(Error 401) The user is not authenticated (refresh token expired). Please re-login.', 401);
+        }
+    }
+
     let result = await baseQuery(args, api, extraOptions);
 
     // Login / register / refresh / password-reset must not enter the
@@ -200,42 +190,31 @@ export const baseQueryWithReauth = async (args, api, extraOptions) => {
         // guard its 401 redirected to /login?redirect=/logout, and the
         // next login navigated straight back to /logout (wiping the
         // just-issued tokens - a login-logout loop).
-        const PUBLIC_PATHS = ['/login', '/signup', '/password', '/logout'];
-        if (PUBLIC_PATHS.some((p) => window.location.pathname === p || window.location.pathname.startsWith(p + '/'))) {
+        if (onPublicPath()) {
             // Already on the login flow - just propagate the 401 so
             // the calling component can show its error UI.
             return result;
         }
 
         const refreshToken = localStorage.getItem('refresh_token');
-        // Only embed path + search (not hash, not an attacker-controlled
-        // query string). encodeURIComponent keeps the value URL-safe.
-        const safeRedirect = window.location.pathname + window.location.search;
-        const currentUrl = encodeURIComponent(safeRedirect);
         if (!refreshToken) {
-            window.location.href = `/login?redirect=${currentUrl}`; // force redirect
+            redirectToLogin();
             throw throwErrorWithCode('(Error 401) The user is not authenticated (no refresh token). Please re-login.', 401);
         }
 
-        // Try to refresh the token (shared in-flight promise - see above)
-        const refreshResult = await refreshTokens(api, extraOptions, refreshToken);
+        // Shared in-flight POST /token/refresh/ (also used by avatar
+        // fetches and native coach pings) - one refresh, not one per
+        // polling slice.
+        const refreshStatus = await refreshAccessToken();
 
-        if (refreshResult.data?.access) {
-            // Retry original request
+        if (refreshStatus === 'ok') {
             result = await baseQuery(args, api, extraOptions);
-        } else {
-            // Only a 400/401 from the refresh endpoint proves the refresh
-            // token is dead (invalid/expired/blacklisted) - force a
-            // re-login. Anything else (429 throttled, 5xx, network error)
-            // is transient: keep the tokens and surface the original 401
-            // so the UI shows stale data while the next poll retries -
-            // instead of logging the user out over a hiccup.
-            const refreshStatus = refreshResult.error?.status;
-            if (refreshStatus === 400 || refreshStatus === 401) {
-                window.location.href = `/login?redirect=${currentUrl}`; // force redirect
-                throw throwErrorWithCode('(Error 401) The user is not authenticated (refresh token expired). Please re-login.', 401);
-            }
+        } else if (refreshStatus === 'dead') {
+            redirectToLogin();
+            throw throwErrorWithCode('(Error 401) The user is not authenticated (refresh token expired). Please re-login.', 401);
         }
+        // 'fail' (429/5xx/network): keep tokens, surface the original 401
+        // so the UI shows stale data while the next poll retries.
     }
 
     return result;

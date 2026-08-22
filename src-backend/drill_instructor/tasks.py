@@ -165,6 +165,25 @@ def post_workout_comment(self, workout_id):
 
     summary, duration_min = _format_workout_summary(workout)
 
+    # Arcade rules (dunce, daily order, dog tags) run even when the
+    # owner has workout comments switched off.
+    try:
+        from .game import evaluate_workout_game
+        arcade_configs = DrillInstructorConfig.objects.filter(
+            enabled=True,
+            competition__user=workout.user,
+            competition__start_date__lte=start_dt.date(),
+            competition__end_date__gte=start_dt.date(),
+        ).select_related("competition")
+        for arcade_config in arcade_configs:
+            try:
+                evaluate_workout_game(workout, arcade_config)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Drill Instructor: game eval failed for workout %s config %s: %s",
+                               workout_id, arcade_config.id, exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Drill Instructor: game eval setup failed for workout %s: %s", workout_id, exc)
+
     posted = 0
     for competition in competitions:
         config = competition.drill_instructor
@@ -949,3 +968,174 @@ def post_random_pushes(self):
                         logger.warning("Drill Instructor: random push notification failed for user %s: %s", participant.id, exc)
 
     return {"date": str(today), "posted": posted, "skipped": skipped, "competitions": competitions.count()}
+
+
+def _post_coach_line(config, kind, body, llm_error=""):
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+    message = DrillInstructorMessage(
+        config=config, kind=kind, workout=None, body=body, posted_at=timezone.now(),
+    )
+    message.save()
+    config.last_posted_at = timezone.now()
+    config.messages_posted = (config.messages_posted or 0) + 1
+    config.last_error = llm_error or ""
+    config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
+    if config.send_push_on_activity and send_push_to_user is not None:
+        persona = config.persona
+        for participant in config.competition.user.all():
+            try:
+                send_push_to_user(
+                    participant,
+                    title=f"{config.competition.name} - {persona.name}",
+                    body=body,
+                    url="/coach",
+                    icon=_persona_icon(persona),
+                    badge="/icon-badge.png",
+                    tag=f"drill-{kind}-{config.competition_id}-{timezone.localdate()}",
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Drill Instructor: %s push failed for user %s: %s", kind, participant.id, exc)
+    return message
+
+
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
+def issue_daily_orders(self):
+    """Morning sealed order for every running, coached challenge."""
+    if is_task_already_executing("issue_daily_orders"):
+        return "Task already executing. Skipping."
+
+    from .game import draw_order_spec
+    from .llm_client import generate_message
+    Competition = apps.get_model("competition", "Competition")
+    DailyOrder = apps.get_model("drill_instructor", "DailyOrder")
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+
+    today = timezone.localdate()
+    competitions = (
+        Competition.objects
+        .filter(start_date__lte=today, end_date__gte=today, drill_instructor__enabled=True)
+        .select_related("drill_instructor", "drill_instructor__persona")
+        .prefetch_related("user")
+    )
+    issued = 0
+    skipped = 0
+    for competition in competitions:
+        config = competition.drill_instructor
+        if DailyOrder.objects.filter(config=config, date=today).exists():
+            skipped += 1
+            continue
+        participants = list(competition.user.all())
+        if not participants:
+            skipped += 1
+            continue
+        kind, spec, brief = draw_order_spec(config, today, participants)
+        DailyOrder.objects.create(config=config, date=today, kind=kind, spec=spec, brief=brief)
+        persona = config.persona
+        prompt = (
+            f"Competition: {competition.name}. Situation: you are issuing today's "
+            f"SEALED ORDER to the whole group. The order is: \"{brief}\" "
+            "Write one short bark (max 220 chars) in your persona's voice that "
+            "delivers that order, names nobody who isn't in the brief, and "
+            "makes it feel like a mission. Write it now."
+        )
+        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=prompt)
+        if not body:
+            body = f"{persona.name}: ORDER OF THE DAY — {brief}"
+        try:
+            _post_coach_line(config, DrillInstructorMessage.KIND_ORDER, body, llm_error or "")
+            issued += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Drill Instructor: daily order post failed for %s: %s", competition.id, exc)
+            issued += 1
+    return {"date": str(today), "issued": issued, "skipped": skipped}
+
+
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
+def close_daily_orders(self):
+    """Evening sigh at a field that ignored today's order."""
+    if is_task_already_executing("close_daily_orders"):
+        return "Task already executing. Skipping."
+
+    from .llm_client import generate_message
+    DailyOrder = apps.get_model("drill_instructor", "DailyOrder")
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+
+    today = timezone.localdate()
+    orders = (
+        DailyOrder.objects.filter(date=today, failed_announced=False)
+        .select_related("config", "config__competition", "config__persona")
+        .prefetch_related("completed_by", "config__competition__user")
+    )
+    sighed = 0
+    for order in orders:
+        config = order.config
+        members = list(config.competition.user.all()) if config.enabled else []
+        done_ids = set(order.completed_by.values_list("id", flat=True))
+        slackers = [u for u in members if u.id not in done_ids]
+        order.failed_announced = True
+        order.save(update_fields=["failed_announced"])
+        if not config.enabled or not slackers or len(done_ids) == len(members):
+            continue
+        names = ", ".join(f"@{(u.first_name or u.username)}" for u in slackers[:6])
+        persona = config.persona
+        prompt = (
+            f"Competition: {config.competition.name}. Today's order was: \"{order.brief}\". "
+            f"These athletes did NOT complete it: {names}. "
+            "Write one short public sigh (max 220 chars) in your persona's voice. "
+            "Name the slackers with their @FirstName tokens. Write it now."
+        )
+        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=prompt)
+        if not body:
+            body = f"{persona.name}: {names} — the order still stands and you ignored it."
+        try:
+            _post_coach_line(config, DrillInstructorMessage.KIND_SIGH, body, llm_error or "")
+            sighed += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Drill Instructor: order sigh failed for %s: %s", config.id, exc)
+    return {"date": str(today), "sighed": sighed}
+
+
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=180)
+def assign_dunces(self):
+    """Midnight: last on the board wears the megaphone until they log."""
+    if is_task_already_executing("assign_dunces"):
+        return "Task already executing. Skipping."
+
+    from .game import crown_dunce, pick_last_place
+    from .llm_client import generate_message
+    Competition = apps.get_model("competition", "Competition")
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+
+    today = timezone.localdate()
+    competitions = (
+        Competition.objects
+        .filter(start_date__lte=today, end_date__gte=today, drill_instructor__enabled=True)
+        .select_related("drill_instructor", "drill_instructor__persona")
+        .prefetch_related("user")
+    )
+    crowned = 0
+    for competition in competitions:
+        config = competition.drill_instructor
+        last = pick_last_place(competition)
+        if last is None:
+            continue
+        changed = crown_dunce(config, last)
+        if not changed:
+            continue
+        persona = config.persona
+        name = last.first_name or last.username or "Athlete"
+        prompt = (
+            f"Competition: {competition.name}. @{name} is last on the board. "
+            "You are hanging the dunce megaphone on them until they log a workout. "
+            "Write one short public crowning (max 220 chars) in your persona's voice. Write it now."
+        )
+        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=prompt)
+        if not body:
+            body = f"{persona.name}: @{name} wears the megaphone until they log. Last place is a costume now."
+        try:
+            _post_coach_line(config, DrillInstructorMessage.KIND_DUNCE, body, llm_error or "")
+            crowned += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Drill Instructor: dunce post failed for %s: %s", competition.id, exc)
+            crowned += 1
+    return {"date": str(today), "crowned": crowned}

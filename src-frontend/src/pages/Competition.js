@@ -36,10 +36,11 @@ import {sportLabelShort} from "../forms/workoutForm";
 import {Chip, EmptyState, SectionHead, VOLT} from "../components/uiBits";
 import {useDispatch} from "react-redux";
 import {teamsApi} from "../utils/reducers/teamsSlice";
-import {useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
+import {useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
 import ProfileAvatar from "../components/ProfileAvatar";
 import usePollingInterval from "../utils/usePollingInterval";
 import {CompetitionHead, CoachCorner} from "../components/competitionChrome";
+import {OrderRibbon} from "../components/gameBits";
 
 ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Filler, Tooltip, Legend, BarElement, ChartDataLabels);
 
@@ -272,7 +273,7 @@ const RANK_STYLES = {
     3: "text-amber-600 dark:text-amber-500",     // bronze
 };
 
-function IndividualLeaderboardBox({stats, userId}) {
+function IndividualLeaderboardBox({stats, userId, dunceUserId}) {
 
     return (
         <BoxSection>
@@ -293,7 +294,7 @@ function IndividualLeaderboardBox({stats, userId}) {
                             {/* Profile picture with the points badge hovering
                                 partly over its bottom-right corner */}
                             <div className="relative shrink-0 mr-1.5">
-                                <ProfileAvatar user={person} size={46}/>
+                                <ProfileAvatar user={person} size={46} dunce={dunceUserId === person.workout__user__id}/>
                                 <span className="absolute -bottom-1 -right-2 rounded-full bg-volt-400 text-ink-950 text-[10px] font-extrabold px-1.5 py-0.5 shadow-glow-volt whitespace-nowrap">
                                     {Math.round(person.total_capped ?? 0).toLocaleString()}P
                                 </span>
@@ -346,7 +347,10 @@ function FeedBox({feed}) {
                                             {durationLabel(entry)} {sportLabelShort(entry.workout__sport_type)} · {entry.workout__start_datetime_fmt?.date_readable}
                                         </p>
                                     </div>
-                                    <Chip>+{Math.round(entry.points_capped || 0).toLocaleString()}P{entry.points_capped !== entry.points_raw ? "*" : ""}</Chip>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <OrderRibbon show={!!entry.order_ribbon}/>
+                                        <Chip>+{Math.round(entry.points_capped || 0).toLocaleString()}P{entry.points_capped !== entry.points_raw ? "*" : ""}</Chip>
+                                    </div>
                                 </button>
                                 {open && (
                                     <div className="px-3 pb-3 flex flex-wrap items-start gap-3">
@@ -695,6 +699,8 @@ export default function Competition() {
         {competition: competition?.id},
         {pollingInterval: pollFast, skip: !competition?.id}
     );
+    const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: !competition?.id});
+    const dunceUserId = (drillConfigs || []).find((c) => c.competition === competition?.id)?.dunce?.user_id ?? null;
     const lastDrillMsgId = React.useRef(null);
     useEffect(() => {
         const latest = drillMessages?.[0];
@@ -743,7 +749,7 @@ export default function Competition() {
                                 <ErrorBoxSection
                                     errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
                             ) : (
-                                <IndividualLeaderboardBox stats={stats} userId={user?.id}/>
+                                <IndividualLeaderboardBox stats={stats} userId={user?.id} dunceUserId={dunceUserId}/>
                             )
                         }
                     </div>

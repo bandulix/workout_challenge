@@ -114,6 +114,17 @@ class DrillInstructorConfig(models.Model):
     last_posted_at = models.DateTimeField(null=True, blank=True)
     messages_posted = models.IntegerField(default=0)
 
+    # Last place on the board at the nightly sweep wears the megaphone
+    # until they log a workout. Null = nobody currently crowned.
+    dunce = models.ForeignKey(
+        CustomUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="drill_dunce_crowns",
+    )
+    dunce_since = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -140,6 +151,9 @@ class DrillInstructorMessage(models.Model):
     KIND_REPLY = "reply"
     KIND_REACTION = "reaction"
     KIND_PHOTO = "photo"
+    KIND_ORDER = "order"
+    KIND_SIGH = "sigh"
+    KIND_DUNCE = "dunce"
     KIND_CHOICES = [
         (KIND_ACTIVITY, "Workout comment"),
         (KIND_TEST, "Test message"),
@@ -148,6 +162,9 @@ class DrillInstructorMessage(models.Model):
         (KIND_REPLY, "Participant reply"),
         (KIND_REACTION, "Coach reaction"),
         (KIND_PHOTO, "Participant photo post"),
+        (KIND_ORDER, "Daily order"),
+        (KIND_SIGH, "Order failure"),
+        (KIND_DUNCE, "Dunce crowning"),
     ]
 
     config = models.ForeignKey(
@@ -257,3 +274,85 @@ class DrillInstructorPhotoVote(models.Model):
 
     def __str__(self):
         return f"{'hot' if self.hot else 'not'} by {self.user_id} on roast {self.message_id}"
+
+
+class DailyOrder(models.Model):
+    """The coach's sealed order for one competition-day.
+
+    Issued each morning. Completing it pins a ribbon on the athlete's
+    feed; a quiet field at close-of-day gets a public sigh.
+    """
+
+    KIND_LOG = "log_one"
+    KIND_MINUTES = "min_minutes"
+    KIND_RIVAL = "beat_rival"
+    KIND_PHOTO = "photo_proof"
+    KIND_CHOICES = [
+        (KIND_LOG, "Log any workout"),
+        (KIND_MINUTES, "Hit a minutes target"),
+        (KIND_RIVAL, "Beat a rival's minutes"),
+        (KIND_PHOTO, "Post photo proof"),
+    ]
+
+    config = models.ForeignKey(
+        DrillInstructorConfig,
+        on_delete=models.CASCADE,
+        related_name="daily_orders",
+    )
+    date = models.DateField()
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES)
+    spec = models.JSONField(default=dict, blank=True)
+    brief = models.CharField(max_length=280)
+    failed_announced = models.BooleanField(default=False)
+    completed_by = models.ManyToManyField(
+        CustomUser,
+        blank=True,
+        related_name="completed_daily_orders",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["config", "date"], name="one_order_per_config_day"),
+        ]
+        ordering = ["-date"]
+        indexes = [
+            models.Index(fields=["config", "date"], name="daily_order_config_day"),
+        ]
+
+    def __str__(self):
+        return f"{self.date} {self.kind} for {self.config_id}"
+
+
+class DogTag(models.Model):
+    """A permanent collector's tag. Earned once, never taken away."""
+
+    SLUG_FIRST_BLOOD = "first_blood"
+    SLUG_GHOST_KILLER = "ghost_killer"
+    SLUG_PHOTOGENIC = "photogenic"
+    SLUG_MONDAY = "never_missed_monday"
+    SLUG_SURVIVED = "survived_the_dunce"
+    SLUG_CHOICES = [
+        (SLUG_FIRST_BLOOD, "First Blood"),
+        (SLUG_GHOST_KILLER, "Ghost Killer"),
+        (SLUG_PHOTOGENIC, "Photogenic"),
+        (SLUG_MONDAY, "Never Missed Monday"),
+        (SLUG_SURVIVED, "Survived the Dunce"),
+    ]
+
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="dog_tags",
+    )
+    slug = models.CharField(max_length=32, choices=SLUG_CHOICES)
+    earned_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "slug"], name="one_dog_tag_per_user"),
+        ]
+        ordering = ["earned_at"]
+
+    def __str__(self):
+        return f"{self.user_id}:{self.slug}"

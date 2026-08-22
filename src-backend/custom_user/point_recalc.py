@@ -2,6 +2,7 @@ import datetime
 import logging
 
 from django.db.models import Min
+from django.utils import timezone
 
 from django.core.cache import cache
 from workout_challenge.celery import app, is_task_already_executing
@@ -65,18 +66,7 @@ def recalc_points(self):
 
         goal = goal_map[task_group['goal']]
 
-        scorer = Scorer()
-        scorer.set_goal(goal)
-
-        changed_rows = []
-        for points in points_lst:
-            earned_points = scorer.calculate_points(points)
-            if points.points_capped != earned_points:
-                points.points_capped = earned_points
-                changed_rows.append(points)
-        # bulk_update: one UPDATE per 500 rows instead of one per row.
-        if changed_rows:
-            Points.objects.bulk_update(changed_rows, ['points_capped'], batch_size=500)
+        recap_points_queryset(points_lst, goal)
 
     # Evaluate before the delete below empties the queryset.
     goal_ids = {task_group['goal'] for task_group in grouped_tasks}
@@ -92,6 +82,56 @@ def recalc_points(self):
     return [{k: str(v) for k, v in i.items()} for i in grouped_tasks]
 
 
+def recap_points_queryset(points_lst, goal):
+    """Apply floor/cap math to an ordered (start_datetime) Points queryset."""
+    Points = apps.get_model('competition', 'Points')
+    scorer = Scorer()
+    scorer.set_goal(goal)
+    changed_rows = []
+    for points in points_lst:
+        earned_points = scorer.calculate_points(points)
+        if points.points_capped != earned_points:
+            points.points_capped = earned_points
+            changed_rows.append(points)
+    if changed_rows:
+        Points.objects.bulk_update(changed_rows, ['points_capped'], batch_size=500)
+    return len(changed_rows)
+
+
+def recap_goal(goal, from_datetime=None):
+    """Re-apply caps for every participant of ``goal``, oldest workout first.
+
+    Used by the goal-edit path so a challenge retarget does not wait on
+    the 30s Celery throttle (and does not leave every row at uncapped raw,
+    which then all slam into the same daily cap on a later run).
+    """
+    Points = apps.get_model('competition', 'Points')
+    user_ids = (
+        Points.objects.filter(goal=goal)
+        .values_list('workout__user_id', flat=True)
+        .distinct()
+    )
+    for user_id in user_ids:
+        qs = Points.objects.filter(goal=goal, workout__user_id=user_id)
+        if from_datetime is not None:
+            qs = qs.filter(workout__start_datetime__gte=from_datetime)
+        qs = qs.select_related('workout').order_by('workout__start_datetime')
+        recap_points_queryset(qs, goal)
+
+
+def _local_dt(dt):
+    """Scorer day/week buckets must follow the competition timezone.
+
+    ``datetime.date()`` / ``isocalendar()`` on a UTC-aware timestamp use
+    the UTC calendar. A 23:00 Europe/London workout is the next UTC day,
+    so a goal-change recap of the whole challenge could dump several
+    local days into one bucket and slam them all into the same daily cap.
+    """
+    if dt is None:
+        return None
+    if timezone.is_aware(dt):
+        return timezone.localtime(dt)
+    return timezone.make_aware(dt, timezone.get_current_timezone())
 
 
 class Scorer:
@@ -113,13 +153,18 @@ class Scorer:
         self.cap_week = None if goal.max_per_week is None else goal.max_per_week / goal.goal * 100
 
     def calculate_points(self, points):
+        local = _local_dt(points.workout.start_datetime)
+        today = local.date()
+        iso = local.isocalendar()
+        this_week = (iso[0], iso[1])  # year + week; week-only wraps every January
+
         # potentially reset the memory if new day / week
-        if points.workout.start_datetime.date() != self.memory_today:
-            self.memory_today = points.workout.start_datetime.date()
+        if today != self.memory_today:
+            self.memory_today = today
             self.memory_today_points_raw = 0
             self.memory_today_points_capped = 0
-        if points.workout.start_datetime.isocalendar()[1] != self.memory_this_week:
-            self.memory_this_week = points.workout.start_datetime.isocalendar()[1]
+        if this_week != self.memory_this_week:
+            self.memory_this_week = this_week
             self.memory_week_points_raw = 0
             self.memory_week_points_capped = 0
 

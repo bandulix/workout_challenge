@@ -1,14 +1,17 @@
 import React, {useMemo, useState} from "react";
 import {Link} from "react-router-dom";
 import {Megaphone, Bot, ChevronRight, Radio, Sparkles, PencilLine, Flag, MessageCircle} from "lucide-react";
+import PhotoPost from "../components/PhotoPost";
 import {PageWrapper, BoxSection} from "../utils/miscellaneous";
+import {SectionHead} from "../components/uiBits";
 import {SectionLoader} from "../utils/loaders";
 import PersonaAvatar from "../components/PersonaAvatar";
 import RoastSwipeBox from "../components/RoastSwipeBox";
 import PushOptInCard from "../components/PushOptIn";
 import {Modal} from "../forms/basicComponents";
 import DrillInstructorPersonaModal from "../forms/drillInstructorPersonaModal";
-import {useGetPersonasQuery, useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
+import {useGetPersonasQuery, useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
+import {DogTagRow, HallOfRoasts, MoodMeter, OrderCard} from "../components/gameBits";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {timeAgo} from "../utils/time";
@@ -23,25 +26,26 @@ import usePollingInterval from "../utils/usePollingInterval";
 const FALLBACK_PERSONA = {name: "Your Coach", tagline: "Waiting for orders.", avatar: "megaphone", theme_color: "#d7ff3e"};
 
 
-function CoachHero({persona, config, latestMessage, ownedCompetitions}) {
+function CoachHero({persona, config, latestMessage, ownedCompetitions, lastOwnActivityId, mood}) {
     return (
         <div className="relative overflow-hidden rounded-3xl bg-ink-900 text-white shadow-card-dark border border-ink-700/60">
             {/* volt aura */}
-            <div className="pointer-events-none absolute -top-24 -right-16 h-64 w-64 rounded-full opacity-25 blur-3xl"
-                 style={{background: persona.theme_color || "#d7ff3e"}}/>
-            <div className="relative p-6 sm:p-8">
+            <div className="pointer-events-none absolute -top-24 -right-16 h-64 w-64 rounded-full blur-3xl"
+                 style={{background: persona.theme_color || "#d7ff3e",
+                         opacity: 0.18 + 0.12 * (mood?.intensity ?? 1)}}/>
+            <div className="relative p-5 sm:p-8">
                 <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-volt-400">
                     <Radio className="h-3.5 w-3.5"/>
-                    {config ? "On duty" : "Drill Instructor"}
+                    {config ? (mood?.label ? `On duty · ${mood.label}` : "On duty") : "Drill Instructor"}
                 </div>
 
-                <div className="mt-5 flex items-center gap-5">
-                    <div className="animate-float-slow">
-                        <PersonaAvatar persona={persona} size={92} glow/>
+                <div className="mt-5 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-5">
+                    <div className="animate-float-slow shrink-0">
+                        <PersonaAvatar persona={persona} size={80} glow className="sm:!w-[92px] sm:!h-[92px]"/>
                     </div>
-                    <div className="min-w-0">
-                        <h1 className="font-display text-2xl sm:text-3xl uppercase leading-none truncate">{persona.name}</h1>
-                        {persona.tagline && <p className="mt-2 text-sm text-gray-300 italic">“{persona.tagline}”</p>}
+                    <div className="min-w-0 w-full">
+                        <h1 className="font-display text-[1.35rem] sm:text-3xl uppercase leading-tight break-words">{persona.name}</h1>
+                        {persona.tagline && <p className="mt-2 text-sm text-gray-300 italic break-words">“{persona.tagline}”</p>}
                     </div>
                 </div>
 
@@ -76,16 +80,23 @@ function CoachHero({persona, config, latestMessage, ownedCompetitions}) {
                     )}
                 </div>
 
-                {/* Straight into the thread on the competition page - the
-                    reply param deep-links to Coach's Corner and opens it.
-                    The photo button answers the coach's latest message with
-                    a picture (same thread, competition-scoped). */}
-                {config && latestMessage && (
-                    <div className="mt-5 flex items-center gap-3">
-                        <Link to={`/competition/${latestMessage.competition_id}?reply=${latestMessage.id}`}
-                              className="inline-flex items-center gap-2 rounded-full bg-volt-400 text-ink-950 px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
-                            <MessageCircle className="h-4 w-4"/> Respond <ChevronRight className="h-4 w-4"/>
-                        </Link>
+                {mood && <MoodMeter mood={mood} personaName={persona.name}/>}
+
+                {/* Respond deep-links into Coach's Corner. The camera is
+                    always on while the coach is on duty; the picture
+                    hangs under the caller's latest own workout. */}
+                {config && (
+                    <div className="mt-5 flex flex-wrap items-center gap-3 min-w-0">
+                        {latestMessage && (
+                            <Link to={`/competition/${latestMessage.competition_id}?reply=${latestMessage.id}`}
+                                  className="inline-flex items-center gap-2 rounded-full bg-volt-400 text-ink-950 px-4 sm:px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt max-w-full">
+                                <MessageCircle className="h-4 w-4 shrink-0"/>
+                                <span>Respond</span>
+                                <ChevronRight className="h-4 w-4 shrink-0"/>
+                            </Link>
+                        )}
+                        <PhotoPost competitionId={config.competition} parentId={lastOwnActivityId}
+                                   visionCapable={Boolean(config.vision_capable)}/>
                     </div>
                 )}
 
@@ -197,6 +208,7 @@ function CoachPage() {
     const {data: personas, isLoading: personasLoading} = useGetPersonasQuery();
     const {data: competitions} = useGetCompetitionsQuery();
     const {data: messages} = useGetDrillMessagesQuery(undefined, {pollingInterval: pollFast});
+    const {data: hall} = useGetHallOfRoastsQuery(undefined, {pollingInterval: pollFast});
 
     const [detailPersona, setDetailPersona] = useState(null);
     const [showPersonaManager, setShowPersonaManager] = useState(false);
@@ -215,6 +227,14 @@ function CoachPage() {
         const latest = cfg ? (messages || []).find((m) => m.config === cfg.id) : (messages || [])[0];
         return {heroPersona: persona, heroConfig: cfg, latestMessage: latest || null};
     }, [configs, personas, messages]);
+
+    const lastOwnActivityId = useMemo(() => {
+        if (!user || !heroConfig) return null;
+        const hit = (messages || []).find(
+            (m) => m.config === heroConfig.id && m.kind === "activity" && m.workout_user_id === user.id
+        );
+        return hit?.id ?? null;
+    }, [messages, heroConfig, user]);
 
     const myCompetitions = useMemo(() => Object.values(competitions || {}), [competitions]);
 
@@ -239,13 +259,25 @@ function CoachPage() {
                 ) : (
                     <div className="flex flex-col gap-4">
                         <CoachHero persona={heroPersona} config={heroConfig} latestMessage={latestMessage}
-                                   ownedCompetitions={ownedCompetitions}/>
+                                   ownedCompetitions={ownedCompetitions} lastOwnActivityId={lastOwnActivityId}
+                                   mood={heroConfig?.mood}/>
+
+                        {heroConfig?.daily_order && <OrderCard order={heroConfig.daily_order}/>}
+
+                        <HallOfRoasts cards={hall || []}/>
 
                         {/* Hot-or-not over the coach's roasted photos -
                             the box itself decides between game, empty
                             state and hidden (image model not set + no
                             roasts yet). */}
                         <RoastSwipeBox/>
+
+                        {(heroConfig?.my_tags || user?.dog_tags)?.length > 0 && (
+                            <BoxSection>
+                                <SectionHead title="Dog tags"/>
+                                <DogTagRow tags={heroConfig?.my_tags || user?.dog_tags}/>
+                            </BoxSection>
+                        )}
 
                         <MyChallenges competitions={myCompetitions}/>
 

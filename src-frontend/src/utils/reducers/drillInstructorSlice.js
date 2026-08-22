@@ -117,10 +117,9 @@ export const drillInstructorApi = createApi({
         }),
         postDrillPhoto: builder.mutation({
             // Participant's photo post (multipart; image is compressed
-            // before upload - see utils/imageCompress.js). With `parent`
-            // the photo answers that thread (Coach page: the coach's
-            // latest message); without it, it opens a new thread. The
-            // coach's reaction is generated server-side in the background.
+            // before upload - see utils/imageCompress.js). `parent` or
+            // `competition` picks the challenge; the server hangs the
+            // picture under the caller's latest own workout comment.
             query: ({competition, parent, image, caption}) => {
                 const form = new FormData();
                 if (parent) form.append('parent', String(parent));
@@ -140,6 +139,10 @@ export const drillInstructorApi = createApi({
         // ---- Roast swipe box (hot-or-not) ------------------------------
         getRoasts: builder.query({
             query: () => ({url: 'drill-instructor/message/roasts/', method: 'GET'}),
+            providesTags: ['DrillRoast'],
+        }),
+        getHallOfRoasts: builder.query({
+            query: () => ({url: 'drill-instructor/message/hall/', method: 'GET'}),
             providesTags: ['DrillRoast'],
         }),
         voteRoast: builder.mutation({
@@ -175,6 +178,7 @@ export const {
     useReplyToDrillMessageMutation,
     usePostDrillPhotoMutation,
     useGetRoastsQuery,
+    useGetHallOfRoastsQuery,
     useVoteRoastMutation,
     useRunTestMessageMutation,
 } = drillInstructorApi;

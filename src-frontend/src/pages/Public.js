@@ -24,15 +24,22 @@ function BaseHome({children, tagline}) {
     }, [navType]);
 
     return (
-        <div className="relative min-h-screen bg-cover bg-center bg-ink-950"
-             style={{backgroundImage: "url('/running.webp')"}}>
-
-            <div className="absolute inset-0 bg-gradient-to-b from-ink-950/80 via-ink-950/70 to-ink-950/95 z-0"></div>
-            <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-96 w-96 rounded-full bg-volt-400/20 blur-3xl z-0"></div>
+        <div className="relative min-h-screen overflow-hidden bg-ink-950">
+            <img src="/login-bg.webp"
+                 alt=""
+                 width={1080}
+                 height={1920}
+                 fetchPriority="high"
+                 decoding="async"
+                 className="absolute inset-0 h-full w-full object-cover object-center animate-kenburns"/>
+            <div className="absolute inset-0 bg-gradient-to-b from-ink-950/25 via-ink-950/40 to-ink-950/88 z-0"/>
+            <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-96 w-96 rounded-full bg-volt-400/25 blur-3xl z-0"/>
 
             <div className="relative z-10 flex items-center justify-center min-h-screen px-0 md:px-4">
                 <div className="p-8 max-w-2xl text-center text-white my-4 animate-slide-up">
 
+                    <img src="/icon-192.png" alt="" width={56} height={56}
+                         className="h-14 w-14 mx-auto mb-5 rounded-2xl shadow-glow-volt animate-float-slow"/>
                     {/* the coaches */}
                     <div className="flex justify-center -space-x-3 mb-6">
                         {["sergeant", "roast", "cheerleader", "butler", "zen"].map((p) => (

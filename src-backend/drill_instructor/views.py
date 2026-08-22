@@ -78,11 +78,18 @@ class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not user.is_authenticated:
             return DrillInstructorConfig.objects.none()
+        today = timezone.localdate()
+        from .models import DailyOrder
         return (
             DrillInstructorConfig.objects
             .filter(Q(competition__owner=user) | Q(competition__user=user))
             .distinct()
-            .select_related("competition", "persona")
+            .select_related("competition", "persona", "dunce")
+            .prefetch_related(Prefetch(
+                "daily_orders",
+                queryset=DailyOrder.objects.filter(date=today).prefetch_related("completed_by"),
+                to_attr="todays_orders",
+            ))
             .order_by("competition__name")
         )
 
@@ -201,41 +208,72 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-    @action(detail=False, methods=["post"])
-    def photo(self, request):
-        """Attach a photo to the caller's own workout thread (multipart).
-
-        The parent must be a coach activity comment for a workout the
-        caller logged. Standalone feed posts, photos on someone else's
-        workout, and photos on nudges/pushes are refused.
-        """
-        parent_id = request.data.get("parent")
-        try:
-            parent_id = int(parent_id)
-        except (TypeError, ValueError):
-            return Response(
-                {"parent": "Photos can only be attached to one of your own workouts."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        parent = get_object_or_404(
+    def _visible_thread_roots(self, user):
+        return (
             DrillInstructorMessage.objects
-            .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
+            .filter(Q(config__competition__owner=user) | Q(config__competition__user=user))
             .filter(parent__isnull=True)
             .select_related("config", "config__competition", "workout")
-            .distinct(),
-            pk=parent_id,
+            .distinct()
         )
-        config = parent.config
-        workout = parent.workout
-        if (
-            parent.kind != DrillInstructorMessage.KIND_ACTIVITY
-            or workout is None
-            or workout.user_id != request.user.id
-        ):
-            return Response(
-                {"parent": "Photos can only be attached to one of your own workouts."},
-                status=status.HTTP_400_BAD_REQUEST,
+
+    def _last_own_activity(self, user, competition_id):
+        """The caller's most recent workout-comment thread in this challenge."""
+        return (
+            self._visible_thread_roots(user)
+            .filter(
+                config__competition_id=competition_id,
+                kind=DrillInstructorMessage.KIND_ACTIVITY,
+                workout__user=user,
             )
+            .order_by("-posted_at")
+            .first()
+        )
+
+    @action(detail=False, methods=["post"])
+    def photo(self, request):
+        """Attach a photo to the caller's latest own workout thread.
+
+        The camera is available on every thread (including posts that
+        @-mention the caller). The picture always hangs under their most
+        recent activity comment in that challenge — never on someone
+        else's workout and never as a standalone feed post. ``parent``
+        (a visible thread root) or ``competition`` picks the challenge;
+        the actual parent is resolved server-side.
+        """
+        no_workout = {
+            "parent": "Photos hang under your latest workout. Log one and wait for the coach to comment first.",
+        }
+        user = request.user
+        roots = self._visible_thread_roots(user)
+
+        parent_id = request.data.get("parent")
+        competition_id = request.data.get("competition")
+        if parent_id not in (None, ""):
+            try:
+                parent_id = int(parent_id)
+            except (TypeError, ValueError):
+                return Response(no_workout, status=status.HTTP_400_BAD_REQUEST)
+            hint = get_object_or_404(roots, pk=parent_id)
+            competition_id = hint.config.competition_id
+        elif competition_id not in (None, ""):
+            try:
+                competition_id = int(competition_id)
+            except (TypeError, ValueError):
+                return Response(no_workout, status=status.HTTP_400_BAD_REQUEST)
+            get_object_or_404(
+                DrillInstructorConfig.objects.filter(
+                    Q(competition__owner=user) | Q(competition__user=user),
+                    competition_id=competition_id,
+                ).distinct()
+            )
+        else:
+            return Response(no_workout, status=status.HTTP_400_BAD_REQUEST)
+
+        parent = self._last_own_activity(user, competition_id)
+        if parent is None:
+            return Response(no_workout, status=status.HTTP_400_BAD_REQUEST)
+        config = parent.config
         if not config.enabled:
             return Response({"competition": "The coach is benched for this competition - photo posts are paused."},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -284,6 +322,12 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             body=caption,
             image=image,
         )
+
+        try:
+            from .game import evaluate_photo_game
+            evaluate_photo_game(message)
+        except Exception:
+            pass
 
         from .tasks import post_reply_reaction
         post_reply_reaction.delay(message.id)
@@ -347,6 +391,34 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             )
             .distinct()
             .order_by("-posted_at")[: self.ROAST_BOX_LIMIT]
+        )
+        return Response(RoastCardSerializer(qs, many=True, context={"request": request}).data)
+
+    HALL_SIZE = 3
+
+    @action(detail=False, methods=["get"])
+    def hall(self, request):
+        """Top roasted photos of the current season (running challenges)."""
+        today = timezone.localdate()
+        qs = (
+            DrillInstructorMessage.objects
+            .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
+            .filter(kind=DrillInstructorMessage.KIND_REACTION, user__isnull=True)
+            .filter(config__competition__start_date__lte=today, config__competition__end_date__gte=today)
+            .exclude(image="")
+            .exclude(image__isnull=True)
+            .select_related("config", "config__competition", "config__persona", "persona", "parent", "parent__user")
+            .prefetch_related(Prefetch(
+                "photo_votes",
+                queryset=DrillInstructorPhotoVote.objects.filter(user=request.user),
+                to_attr="my_votes",
+            ))
+            .annotate(
+                hot_votes=Count("photo_votes", filter=Q(photo_votes__hot=True), distinct=True),
+                not_votes=Count("photo_votes", filter=Q(photo_votes__hot=False), distinct=True),
+            )
+            .distinct()
+            .order_by("-hot_votes", "-posted_at")[: self.HALL_SIZE]
         )
         return Response(RoastCardSerializer(qs, many=True, context={"request": request}).data)
 

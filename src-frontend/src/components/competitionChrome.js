@@ -131,7 +131,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
 
 // One photo post in the feed: the author's picture + caption bubble,
 // then the thread (coach reaction + participant replies) underneath.
-function PhotoMessage({message, persona, canReply, defaultOpen, competitionId, visionCapable, currentUserId}) {
+function PhotoMessage({message, persona, canReply, defaultOpen, competitionId, visionCapable, lastOwnActivityId}) {
     const {src} = useProtectedImage(message.image);
     return (
         <div className="min-w-0 flex-1">
@@ -146,7 +146,8 @@ function PhotoMessage({message, persona, canReply, defaultOpen, competitionId, v
                 {message.author_name || "Participant"} · {timeAgo(message.posted_at)}
             </p>
             <CoachThread message={message} persona={persona} canReply={canReply} defaultOpen={defaultOpen}
-                         competitionId={competitionId} visionCapable={visionCapable} currentUserId={currentUserId}/>
+                         competitionId={competitionId} visionCapable={visionCapable}
+                         lastOwnActivityId={lastOwnActivityId}/>
         </div>
     );
 }
@@ -182,8 +183,8 @@ export function CoachCorner({competition, isOwner}) {
         return (
             <div className="mb-4 relative overflow-hidden rounded-3xl bg-ink-900 text-white border border-ink-700/60 shadow-card-dark">
                 <div className="pointer-events-none absolute -top-16 -right-10 h-40 w-40 rounded-full bg-volt-400/25 blur-3xl"/>
-                <div className="relative flex items-center gap-4 p-5">
-                    <img src="/personas/megaphone.svg" alt="" className="h-14 w-14 rounded-full animate-float-slow"/>
+                <div className="relative flex flex-wrap items-center gap-4 p-5">
+                    <img src="/personas/megaphone.svg" alt="" className="h-14 w-14 rounded-full animate-float-slow shrink-0"/>
                     <div className="flex-1 min-w-0">
                         <p className="font-display text-sm uppercase tracking-wider">Unleash the Drill Instructor</p>
                         <p className="text-xs text-gray-400 mt-0.5">An AI coach that comments on every workout - with push pings to keep everyone honest.</p>
@@ -200,17 +201,20 @@ export function CoachCorner({competition, isOwner}) {
 
     const persona = config.persona_detail || {};
     const latest = (messages || []).slice(0, 3);
+    const lastOwnActivityId = (messages || []).find(
+        (m) => m.kind === "activity" && m.workout_user_id === me?.id
+    )?.id ?? null;
 
     return (
         <div ref={cornerRef} className="mb-4 rounded-3xl bg-white dark:bg-ink-850 dark:border dark:border-ink-700/60 shadow-card dark:shadow-card-dark overflow-hidden">
-            <div className="flex flex-wrap items-center gap-3 px-5 pt-4 pb-3 border-b border-gray-100 dark:border-ink-700/60">
+            <div className="flex flex-wrap items-center gap-3 px-4 sm:px-5 pt-4 pb-3 border-b border-gray-100 dark:border-ink-700/60">
                 <PersonaAvatar persona={persona} size={44} glow={config.enabled}/>
                 <div className="flex-1 min-w-0">
                     <p className="font-display text-xs uppercase tracking-wider flex items-center gap-2">
                         Coach's Corner
                         <span className={"inline-block h-2 w-2 rounded-full " + (config.enabled ? "bg-volt-500 animate-pulse" : "bg-gray-300")}/>
                     </p>
-                    <p className="text-xs text-gray-400 truncate">
+                    <p className="text-xs text-gray-400 break-words">
                         {persona.name}{config.enabled ? " is on duty" : " is benched"} · {config.messages_posted || 0} messages
                     </p>
                 </div>
@@ -222,23 +226,23 @@ export function CoachCorner({competition, isOwner}) {
                 )}
             </div>
             {latest.length > 0 ? (
-                <ul className="px-4 py-3 space-y-3">
+                <ul className="px-3 sm:px-4 py-3 space-y-3">
                     {latest.map((m) => {
                         const threadPersona = {avatar: m.persona_avatar, profile_picture: m.persona_profile_picture, theme_color: m.persona_theme_color, name: m.persona_name};
                         if (m.kind === "photo") {
                             return (
-                                <li key={m.id} className="flex items-start gap-2.5">
+                                <li key={m.id} className="flex items-start gap-2 min-w-0">
                                     <ProfileAvatar user={{profile_picture: m.author_profile_picture, first_name: m.author_name}} size={30}/>
                                     <PhotoMessage message={m} persona={threadPersona} canReply={config.enabled}
                                                   defaultOpen={m.id === replyTargetId}
                                                   competitionId={competition.id}
                                                   visionCapable={config.vision_capable}
-                                                  currentUserId={me?.id}/>
+                                                  lastOwnActivityId={lastOwnActivityId}/>
                                 </li>
                             );
                         }
                         return (
-                            <li key={m.id} className="flex items-start gap-2.5">
+                            <li key={m.id} className="flex items-start gap-2 min-w-0">
                                 <PersonaAvatar persona={threadPersona} size={30}/>
                                 <div className="min-w-0 flex-1">
                                     {/* break-words: long unbreakable strings (URLs, hashtag
@@ -252,7 +256,7 @@ export function CoachCorner({competition, isOwner}) {
                                                  defaultOpen={m.id === replyTargetId}
                                                  competitionId={competition.id}
                                                  visionCapable={config.vision_capable}
-                                                 currentUserId={me?.id}/>
+                                                 lastOwnActivityId={lastOwnActivityId}/>
                                 </div>
                             </li>
                         );

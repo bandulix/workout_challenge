@@ -1,6 +1,7 @@
 import {useEffect, useState} from "react";
 import {CapacitorHttp} from "@capacitor/core";
 import {getServerUrl, isNativeApp} from "./serverUrl";
+import {ensureFreshAccessToken, getAccessToken, refreshAccessToken} from "./authTokens";
 
 // Authenticated image loader for media that is NOT publicly reachable
 // (e.g. uploaded persona profile pictures - copyright-safe by design).
@@ -10,10 +11,61 @@ import {getServerUrl, isNativeApp} from "./serverUrl";
 
 const cache = new Map(); // url -> Promise<localURL | null>
 
+// Cap concurrent picture fetches so a feed of avatars doesn't look like
+// an HTTP crawl (CrowdSec http-crawl-non_statics counts distinct paths).
+const MAX_INFLIGHT = 4;
+let inflight = 0;
+const waiters = [];
+
+function withSlot(fn) {
+    return new Promise((resolve, reject) => {
+        const run = () => {
+            inflight += 1;
+            Promise.resolve()
+                .then(fn)
+                .then(resolve, reject)
+                .finally(() => {
+                    inflight -= 1;
+                    const next = waiters.shift();
+                    if (next) next();
+                });
+        };
+        if (inflight < MAX_INFLIGHT) run();
+        else waiters.push(run);
+    });
+}
+
+function authHeaders(token) {
+    const headers = {Accept: "image/*"};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    // CapacitorHttp rides OkHttp, whose default UA ("okhttp/4.x") is on
+    // some CrowdSec bad-user-agent lists. Speak like the rest of the app.
+    if (isNativeApp()) headers["User-Agent"] = "WorkoutChallenge/1.0 (Android)";
+    return headers;
+}
+
+async function authorizedGet(url) {
+    await ensureFreshAccessToken();
+    let token = getAccessToken();
+    try {
+        return await doGet(url, token);
+    } catch (err) {
+        if (!String(err?.message || "").includes("HTTP 401")) throw err;
+        const status = await refreshAccessToken();
+        if (status !== "ok") throw err;
+        return await doGet(url, getAccessToken());
+    }
+}
+
+async function doGet(url, token) {
+    if (isNativeApp()) return fetchNative(url, token);
+    return fetchBrowser(url, token);
+}
+
 // Browser/PWA: same-origin fetch, rendered from a blob: object URL.
 async function fetchBrowser(url, token) {
     const res = await fetch(getServerUrl() + url, {
-        headers: token ? {Authorization: `Bearer ${token}`} : {},
+        headers: authHeaders(token),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return URL.createObjectURL(await res.blob());
@@ -27,7 +79,7 @@ async function fetchBrowser(url, token) {
 async function fetchNative(url, token) {
     const resp = await CapacitorHttp.get({
         url: getServerUrl() + url,
-        headers: token ? {Authorization: `Bearer ${token}`} : {},
+        headers: authHeaders(token),
         responseType: "blob",
     });
     if (resp.status >= 400) throw new Error(`HTTP ${resp.status}`);
@@ -59,8 +111,7 @@ export function fetchProtectedImage(url) {
         return Promise.resolve(null);
     }
     if (!cache.has(url)) {
-        const token = localStorage.getItem("access_token");
-        const promise = (isNativeApp() ? fetchNative(url, token) : fetchBrowser(url, token))
+        const promise = withSlot(() => authorizedGet(url))
             .catch(() => {
                 // Drop failed fetches so the next mount retries (e.g. once
                 // a fresh access token exists after a background refresh).

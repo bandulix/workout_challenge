@@ -126,6 +126,10 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
     # endpoint's image models). Gates the hot-or-not roast box on the
     # Coach page.
     image_edit_capable = serializers.SerializerMethodField()
+    mood = serializers.SerializerMethodField()
+    daily_order = serializers.SerializerMethodField()
+    dunce = serializers.SerializerMethodField()
+    my_tags = serializers.SerializerMethodField()
 
     class Meta:
         model = DrillInstructorConfig
@@ -145,6 +149,10 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
             "last_error",
             "vision_capable",
             "image_edit_capable",
+            "mood",
+            "daily_order",
+            "dunce",
+            "my_tags",
             "created_at",
             "updated_at",
         ]
@@ -174,6 +182,45 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
 
     def get_image_edit_capable(self, obj):
         return self._capability_flags()[1]
+
+    def get_mood(self, obj):
+        if not obj.pk:
+            return None
+        from .game import coach_mood
+        try:
+            return coach_mood(obj)
+        except Exception:
+            return None
+
+    def get_daily_order(self, obj):
+        if not obj.pk:
+            return None
+        from .game import order_payload
+        orders = getattr(obj, "todays_orders", None)
+        if orders is None:
+            from django.utils import timezone
+            orders = list(obj.daily_orders.filter(date=timezone.localdate()).prefetch_related("completed_by"))
+        if not orders:
+            return None
+        request = self.context.get("request")
+        return order_payload(orders[0], getattr(request, "user", None))
+
+    def get_dunce(self, obj):
+        if not obj.pk:
+            return None
+        from .game import dunce_payload
+        return dunce_payload(obj)
+
+    def get_my_tags(self, obj):
+        from .game import tag_payload
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return []
+        try:
+            return tag_payload(user)
+        except Exception:
+            return []
 
     persona_detail = DrillInstructorPersonaSerializer(source="persona", read_only=True)
 

@@ -1,5 +1,6 @@
 import {LocalNotifications} from "@capacitor/local-notifications";
 import {apiUrl, isNativeApp} from "./platform";
+import {ensureFreshAccessToken, getAccessToken} from "./authTokens";
 
 // Coach pings in the Android app. Web Push (VAPID) does not work inside
 // an Android WebView, so the native app drives pings itself: it polls
@@ -15,10 +16,12 @@ import {apiUrl, isNativeApp} from "./platform";
 //   - silent without notification permission or when logged out.
 const LAST_KEY = "wc_last_coach_msg_id";
 const POLL_MS = 90000;
-const NOTIFY_KINDS = new Set(["activity", "push", "nudge", "reaction"]);
+const NOTIFY_KINDS = new Set(["activity", "push", "nudge", "reaction", "order", "sigh", "dunce"]);
 
 async function fetchLatestCoachMessage() {
-    const token = localStorage.getItem("access_token");
+    const status = await ensureFreshAccessToken();
+    if (status === "dead" || status === "none") return null;
+    const token = getAccessToken();
     if (!token) return null;
     const resp = await fetch(apiUrl("/drill-instructor/message/"), {
         headers: {Authorization: `Bearer ${token}`},

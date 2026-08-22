@@ -79,6 +79,21 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="*/30"),
         "args": (),
     },
+    "drill_instructor_daily_order": {
+        "task": "drill_instructor.tasks.issue_daily_orders",
+        "schedule": crontab(minute="5", hour="7"),
+        "args": (),
+    },
+    "drill_instructor_close_order": {
+        "task": "drill_instructor.tasks.close_daily_orders",
+        "schedule": crontab(minute="5", hour="22"),
+        "args": (),
+    },
+    "drill_instructor_assign_dunce": {
+        "task": "drill_instructor.tasks.assign_dunces",
+        "schedule": crontab(minute="10", hour="0"),
+        "args": (),
+    },
 }
 
 

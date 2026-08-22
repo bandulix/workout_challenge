@@ -62,6 +62,18 @@ module.exports = {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0' },
         },
+        'nav-rise': {
+          '0%': { transform: 'translateY(110%)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+        'volt-breathe': {
+          '0%, 100%': { opacity: '0.35', transform: 'scale(1)' },
+          '50%': { opacity: '0.8', transform: 'scale(1.08)' },
+        },
+        'kenburns': {
+          '0%': { transform: 'scale(1) translate3d(0,0,0)' },
+          '100%': { transform: 'scale(1.12) translate3d(0,-2%,0)' },
+        },
       },
       animation: {
         'slide-up': 'slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both',
@@ -69,6 +81,9 @@ module.exports = {
         'pulse-ring': 'pulse-ring 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'float-slow': 'float-slow 4s ease-in-out infinite',
         'blink-caret': 'blink-caret 1s step-end infinite',
+        'nav-rise': 'nav-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both',
+        'volt-breathe': 'volt-breathe 3.2s ease-in-out infinite',
+        'kenburns': 'kenburns 28s ease-out forwards',
       },
     },
   },

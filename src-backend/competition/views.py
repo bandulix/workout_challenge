@@ -320,6 +320,23 @@ class FeedQueryView(APIView):
                 grouped_points[i['workout']]['details'].append(i)
 
             response_obj = list(grouped_points.values())
+            try:
+                from django.utils import timezone as dj_tz
+                from drill_instructor.models import DailyOrder
+                today = dj_tz.localdate()
+                order = DailyOrder.objects.filter(config__competition_id=competition, date=today).prefetch_related("completed_by").first()
+                completers = set(order.completed_by.values_list("id", flat=True)) if order else set()
+                for row in response_obj:
+                    uid = row.get("workout__user")
+                    start = row.get("workout__start_datetime")
+                    on_today = False
+                    if start is not None:
+                        d = start.date() if hasattr(start, "date") else None
+                        on_today = d == today
+                    row["order_ribbon"] = bool(uid in completers and on_today)
+            except Exception:
+                for row in response_obj:
+                    row["order_ribbon"] = False
             cache.set(cache_key, response_obj, self.FEED_CACHE_TTL)
 
         return Response(response_obj)

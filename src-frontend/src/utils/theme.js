@@ -5,7 +5,7 @@ import {useCallback, useEffect, useState} from "react";
 // first paint; this module is the React-side source of truth.
 
 const STORAGE_KEY = "wc-theme";
-const LIGHT_COLOR = "#f4f6ee";
+const LIGHT_COLOR = "#dfe8c4";
 const DARK_COLOR = "#0a0d06";
 
 export function getStoredTheme() {

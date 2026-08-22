@@ -28,7 +28,7 @@ function ReplyImage({url, alt}) {
 // Coach bubbles use the persona's avatar/accent, participant bubbles the
 // user's profile picture + first name, so it is always clear who spoke.
 
-function CoachThread({message, persona, canReply = true, defaultOpen = false, competitionId, visionCapable, currentUserId}) {
+function CoachThread({message, persona, canReply = true, defaultOpen = false, competitionId, visionCapable, lastOwnActivityId}) {
     const [open, setOpen] = useState(defaultOpen);
     // Deep links pass defaultOpen; the messages query usually resolves
     // after the first render, so sync the prop in when it flips true.
@@ -40,10 +40,10 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
     const [sendReply, {isLoading}] = useReplyToDrillMessageMutation();
     const dispatch = useDispatch();
     const replies = message.replies || [];
-    const ownWorkout = Boolean(
-        canReply && competitionId && message.kind === "activity" && currentUserId
-        && message.workout_user_id === currentUserId
-    );
+    // Camera stays on every thread while the coach is on duty (own
+    // workouts, @-mentions, group pushes). The picture always hangs
+    // under lastOwnActivityId — your latest session, not this bubble.
+    const showPhoto = Boolean(canReply && competitionId);
 
     // Benched coach (disabled config): existing threads stay readable,
     // but new replies are pointless - the coach can't react.
@@ -68,7 +68,7 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
     }
 
     return (
-        <div className="mt-1">
+        <div className="mt-1 min-w-0 w-full">
             <button onClick={() => setOpen((v) => !v)}
                     className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[32px]">
                 <MessageCircle className="h-3.5 w-3.5"/>
@@ -77,7 +77,7 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
             </button>
 
             {open && (
-                <div className="mt-1.5 ml-1.5 pl-3 border-l-2 border-volt-400/40 space-y-3">
+                <div className="mt-1.5 ml-1 pl-2 sm:ml-1.5 sm:pl-3 border-l-2 border-volt-400/40 space-y-3 min-w-0">
                     {replies.map((r) => (
                         <div key={r.id} className="flex items-start gap-2">
                             {r.is_coach ? (
@@ -99,12 +99,12 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
                     ))}
 
                     {canReply && (
-                        <>
-                            {ownWorkout && (
-                                <PhotoPost competitionId={competitionId} parentId={message.id}
+                        <div className="min-w-0 w-full space-y-1">
+                            {showPhoto && (
+                                <PhotoPost competitionId={competitionId} parentId={lastOwnActivityId}
                                            visionCapable={Boolean(visionCapable)}/>
                             )}
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 min-w-0 w-full">
                                 <input
                                     type="text"
                                     value={text}
@@ -113,16 +113,16 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
                                     onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
                                     placeholder={`Reply to ${persona?.name || "the coach"}…`}
                                     aria-label={`Reply to ${persona?.name || "the coach"}`}
-                                    className="flex-1 shadow border border-gray-200 dark:border-ink-700/60 rounded-full py-2 px-4 text-sm text-gray-700 dark:bg-ink-900 dark:text-gray-300 dark:placeholder-gray-600 leading-tight focus:outline-none focus:border-volt-500"
+                                    className="min-w-0 w-0 flex-1 shadow border border-gray-200 dark:border-ink-700/60 rounded-full py-2 px-3 sm:px-4 text-sm text-gray-700 dark:bg-ink-900 dark:text-gray-300 dark:placeholder-gray-600 leading-tight focus:outline-none focus:border-volt-500"
                                 />
                                 <button onClick={handleSend} disabled={isLoading || !text.trim()}
                                         aria-label="Send reply"
-                                        className="shrink-0 min-h-[44px] min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none flex items-center justify-center">
+                                        className="shrink-0 h-10 w-10 min-h-[40px] min-w-[40px] sm:h-11 sm:w-11 sm:min-h-[44px] sm:min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none flex items-center justify-center">
                                     {isLoading ? <BeatLoader size={5} color="#0a0d06"/> : <Send className="h-4 w-4"/>}
                                 </button>
                             </div>
                             {error && <p className="text-xs text-red-500">{error}</p>}
-                        </>
+                        </div>
                     )}
                 </div>
             )}

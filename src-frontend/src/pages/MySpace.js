@@ -44,6 +44,7 @@ import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
 import {feedApi} from "../utils/reducers/feedSlice";
 import {BeatLoader} from "react-spinners";
 import ProfileAvatar from "../components/ProfileAvatar";
+import {DogTagRow} from "../components/gameBits";
 import {Chip, EmptyState, SectionHead, SyncChip, rowClass, VOLT} from "../components/uiBits";
 import usePollingInterval from "../utils/usePollingInterval";
 import {notice} from "../utils/dialogs";
@@ -77,6 +78,7 @@ function WelcomeBox({user, workouts}) {
                 <div className="flex-1 min-w-0 basis-40">
                     <p className="text-xs text-gray-500">Welcome back,</p>
                     <p className="text-xl font-display uppercase tracking-wide truncate">{user.first_name}</p>
+                    <DogTagRow tags={user.dog_tags}/>
                 </div>
                 <div className="flex items-baseline gap-1.5 shrink-0 ml-auto sm:ml-0">
                     <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>

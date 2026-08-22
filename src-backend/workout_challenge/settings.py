@@ -236,16 +236,22 @@ REST_FRAMEWORK = {
         # rate exists to stop password guessing on token/, but a refresh
         # token is a 256-bit random value (not brute-forceable), and the
         # app legitimately needs one refresh per access-token expiry
-        # (~12/hour per foreground device) - plus mobile users share the
-        # per-IP budget via carrier-grade NAT. 30/hour here logged users
-        # out whenever the app was used regularly.
+        # (~4/hour per foreground device at 15 min) - plus mobile users
+        # share the per-IP budget via carrier-grade NAT. 30/hour here
+        # logged users out whenever the app was used regularly.
         'auth_refresh': '300/hour',
         'join': '60/hour',
     },
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': datetime.timedelta(minutes=5),
+    # 15 min (was 5): the SPA polls several endpoints plus per-avatar
+    # picture fetches. A 5-minute JWT expired in the middle of a session
+    # and every poller + every <img> hit the API with a dead token at
+    # once - a burst of 401s that CrowdSec http-auth-bf / http-generic-bf
+    # treats as credential stuffing. The frontend now also refreshes
+    # 60s before expiry; this is the server-side half.
+    'ACCESS_TOKEN_LIFETIME': datetime.timedelta(minutes=15),
     # Effective "stay logged in" duration. With rotation the refresh token
     # is re-issued on every app use, so users only see the login screen
     # after this much *inactivity* - default 31 days = login at most once

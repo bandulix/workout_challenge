@@ -37,7 +37,7 @@ class ThrottledTokenObtainPairView(TokenObtainPairView):
 class ThrottledTokenRefreshView(TokenRefreshView):
     throttle_classes = [ScopedRateThrottle]
     # Separate from 'auth' (password login): refresh traffic is
-    # continuous (~12/hour/device, see ACCESS_TOKEN_LIFETIME) and per-IP
+    # continuous (~4/hour/device at a 15-minute access token) and per-IP
     # budgets are shared behind carrier-grade NAT - see settings
     # 'auth_refresh' rate.
     throttle_scope = 'auth_refresh'

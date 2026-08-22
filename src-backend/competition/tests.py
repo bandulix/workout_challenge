@@ -262,6 +262,37 @@ class ScorerCapMathTests(TestCase):
                     earned += scorer.calculate_points(_Dummy(points_raw=raw, workout=workout))
                 self.assertEqual(earned, expected)
 
+    @override_settings(TIME_ZONE="Europe/Berlin")
+    def test_buckets_use_local_date_not_utc(self):
+        from custom_user.point_recalc import Scorer
+
+        timezone.activate("Europe/Berlin")
+        self.addCleanup(timezone.deactivate)
+        scorer = Scorer()
+        scorer.set_goal(_Dummy(goal=150, max_per_day=60))
+        utc = datetime.timezone.utc
+        morning = _Dummy(start_datetime=datetime.datetime(2026, 8, 21, 10, 0, tzinfo=utc))
+        late = _Dummy(start_datetime=datetime.datetime(2026, 8, 21, 23, 30, tzinfo=utc))
+        first = scorer.calculate_points(_Dummy(points_raw=30, workout=morning))
+        second = scorer.calculate_points(_Dummy(points_raw=30, workout=late))
+        self.assertEqual(first, 30)
+        # UTC date is 21 Aug for both; Berlin local dates are 21 and 22.
+        self.assertEqual(second, 30)
+
+    def test_week_bucket_includes_iso_year(self):
+        from custom_user.point_recalc import Scorer
+
+        scorer = Scorer()
+        scorer.set_goal(_Dummy(goal=100, max_per_week=30))
+        utc = datetime.timezone.utc
+        # Monday 2024-12-30 is ISO week 1 of 2025; 2026-01-01 is week 1 of 2026.
+        week1_2025 = _Dummy(start_datetime=datetime.datetime(2024, 12, 30, 12, 0, tzinfo=utc))
+        week1_2026 = _Dummy(start_datetime=datetime.datetime(2026, 1, 1, 12, 0, tzinfo=utc))
+        first = scorer.calculate_points(_Dummy(points_raw=20, workout=week1_2025))
+        second = scorer.calculate_points(_Dummy(points_raw=20, workout=week1_2026))
+        self.assertEqual(first, 20)
+        self.assertEqual(second, 20)
+
 
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
@@ -412,3 +443,120 @@ class GoalEditRescoresChallengeTests(TestCase):
         self.assertAlmostEqual(float(self.points.points_raw), original, places=2)
         request = RecalcRequest.objects.get(user=self.athlete, goal=self.goal)
         self.assertEqual(timezone.localtime(request.start_datetime).date(), self.competition.start_date)
+
+    def test_different_durations_stay_different_after_retarget(self):
+        # Regression: a whole-challenge rescore + daily cap must not write
+        # the same points onto every activity (30 min vs 40 min both sit
+        # under the default 60 min/day cap).
+        short = self.workout  # 30 min
+        long = Workout.objects.create(
+            user=self.athlete,
+            sport_type="Run",
+            start_datetime=timezone.now() - datetime.timedelta(days=2),
+            duration=datetime.timedelta(minutes=40),
+            intensity_category=2,
+        )
+        self.goal.goal = 300
+        self.goal.save()
+        short_pts = Points.objects.get(goal=self.goal, workout=short)
+        long_pts = Points.objects.get(goal=self.goal, workout=long)
+        # 30 min / 300 * 100 = 10; 40 min / 300 * 100 = 13.33
+        self.assertAlmostEqual(float(short_pts.points_raw), 10.0, places=2)
+        self.assertAlmostEqual(float(long_pts.points_raw), 40 / 300 * 100, places=2)
+        self.assertAlmostEqual(float(short_pts.points_capped), float(short_pts.points_raw), places=2)
+        self.assertAlmostEqual(float(long_pts.points_capped), float(long_pts.points_raw), places=2)
+        self.assertNotAlmostEqual(float(short_pts.points_capped), float(long_pts.points_capped), places=2)
+
+    def test_retarget_recaps_immediately_without_celery(self):
+        # Default Exercise max_per_day=60 min. A 90 min run at a 150 min
+        # weekly goal is 60 raw, capped at 40. Recap must run on save even
+        # when Celery is mocked out (production throttle used to skip it).
+        long = Workout.objects.create(
+            user=self.athlete,
+            sport_type="Run",
+            start_datetime=timezone.now() - datetime.timedelta(days=2),
+            duration=datetime.timedelta(minutes=90),
+            intensity_category=2,
+        )
+        # Touch a cap field so save() is a scoring change; raw stays
+        # duration-based, recap_goal runs inline.
+        self.goal.max_per_week = 239
+        self.goal.save()
+        thirty = Points.objects.get(goal=self.goal, workout=self.workout)
+        ninety = Points.objects.get(goal=self.goal, workout=long)
+        self.assertAlmostEqual(float(thirty.points_raw), 20.0, places=2)
+        self.assertAlmostEqual(float(ninety.points_raw), 60.0, places=2)
+        # 30 min sits under the 60 min/day cap; 90 min is clipped to it.
+        self.assertAlmostEqual(float(thirty.points_capped), 20.0, places=2)
+        self.assertAlmostEqual(float(ninety.points_capped), 40.0, places=2)
+
+    def test_flattened_raw_is_repaired_on_retarget(self):
+        # Production symptom: every row already holds the same raw score
+        # after a bad recap. Changing the target must rewrite from each
+        # workout's duration, not leave the flattened value in place.
+        long = Workout.objects.create(
+            user=self.athlete,
+            sport_type="Run",
+            start_datetime=timezone.now() - datetime.timedelta(days=2),
+            duration=datetime.timedelta(minutes=45),
+            intensity_category=2,
+        )
+        Points.objects.filter(goal=self.goal).update(points_raw=40, points_capped=40)
+        self.goal.goal = 300
+        self.goal.save()
+        short_pts = Points.objects.get(goal=self.goal, workout=self.workout)
+        long_pts = Points.objects.get(goal=self.goal, workout=long)
+        self.assertAlmostEqual(float(short_pts.points_raw), 10.0, places=2)
+        self.assertAlmostEqual(float(long_pts.points_raw), 15.0, places=2)
+        self.assertNotAlmostEqual(float(short_pts.points_capped), float(long_pts.points_capped), places=2)
+
+    def test_rescore_repairs_flattened_rows_without_changing_the_goal(self):
+        from competition.scorer import rescore_activity_goal
+
+        long = Workout.objects.create(
+            user=self.athlete,
+            sport_type="Run",
+            start_datetime=timezone.now() - datetime.timedelta(days=2),
+            duration=datetime.timedelta(minutes=45),
+            intensity_category=2,
+        )
+        Points.objects.filter(goal=self.goal).update(points_raw=40, points_capped=40)
+        rescore_activity_goal(self.goal)
+        short_pts = Points.objects.get(goal=self.goal, workout=self.workout)
+        long_pts = Points.objects.get(goal=self.goal, workout=long)
+        self.assertAlmostEqual(float(short_pts.points_raw), 20.0, places=2)
+        self.assertAlmostEqual(float(long_pts.points_raw), 30.0, places=2)
+        self.assertAlmostEqual(float(short_pts.points_capped), 20.0, places=2)
+        self.assertAlmostEqual(float(long_pts.points_capped), 30.0, places=2)
+
+    @override_settings(TIME_ZONE="Europe/Berlin")
+    def test_utc_same_day_local_different_days_do_not_share_cap(self):
+        # 23:30 UTC is the next calendar morning in Europe/Berlin year-round
+        # (CET +1 / CEST +2). A UTC day-bucket recap would share the
+        # 40-point daily cap (30 + 10); local buckets keep both at 30.
+        timezone.activate("Europe/Berlin")
+        self.addCleanup(timezone.deactivate)
+        utc = datetime.timezone.utc
+        day = timezone.localdate() - datetime.timedelta(days=1)
+        morning = Workout.objects.create(
+            user=self.athlete,
+            sport_type="Run",
+            start_datetime=datetime.datetime.combine(day, datetime.time(10, 0), tzinfo=utc),
+            duration=datetime.timedelta(minutes=45),
+            intensity_category=2,
+        )
+        late = Workout.objects.create(
+            user=self.athlete,
+            sport_type="Run",
+            start_datetime=datetime.datetime.combine(day, datetime.time(23, 30), tzinfo=utc),
+            duration=datetime.timedelta(minutes=45),
+            intensity_category=2,
+        )
+        self.goal.max_per_week = 239
+        self.goal.save()
+        morning_pts = Points.objects.get(goal=self.goal, workout=morning)
+        late_pts = Points.objects.get(goal=self.goal, workout=late)
+        self.assertAlmostEqual(float(morning_pts.points_raw), 30.0, places=2)
+        self.assertAlmostEqual(float(late_pts.points_raw), 30.0, places=2)
+        self.assertAlmostEqual(float(morning_pts.points_capped), 30.0, places=2)
+        self.assertAlmostEqual(float(late_pts.points_capped), 30.0, places=2)
