@@ -290,6 +290,52 @@ def _estimate_intensity(avg_hr, kcal, duration_seconds) -> int:
     return 1
 
 
+def _as_float(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number:  # NaN
+        return None
+    return number
+
+
+def distance_km_from_ow(ow_workout: dict, duration_s) -> float | None:
+    """OW workout payload -> kilometres.
+
+    Canonical unit is metres (``distance_meters``). Health Connect
+    sometimes omits it, sends a generic ``distance``, or (rarely) already
+    ships kilometres as a small number. Prefer explicit metres, then
+    derive from average pace, then treat a small value as km only when
+    the implied pace is athletic.
+    """
+    raw = (
+        ow_workout.get("distance_meters")
+        if ow_workout.get("distance_meters") not in (None, "", 0)
+        else None
+    )
+    if raw is None:
+        for key in ("distance_m", "distance", "total_distance"):
+            if ow_workout.get(key) not in (None, "", 0):
+                raw = ow_workout.get(key)
+                break
+    metres = _as_float(raw)
+    if metres is not None and metres > 0:
+        if metres >= 200:
+            return round(metres / 1000, 2)
+        duration_min = (duration_s or 0) / 60
+        # Athletic 2.5–20 min/km: a 5 km run sent as 5.0 with a 25 min
+        # duration matches; a 50 m sprint in 10 s does not (treated as m).
+        if metres >= 0.2 and duration_min >= metres * 2.5 and duration_min <= metres * 20:
+            return round(metres, 2)
+        return round(metres / 1000, 2)
+
+    pace = _as_float(ow_workout.get("avg_pace_sec_per_km"))
+    if pace and pace > 0 and duration_s:
+        return round(float(duration_s) / pace, 2)
+    return None
+
+
 def workout_to_props(user, ow_workout: dict) -> dict | None:
     """Map one Open Wearables workout onto Workout field values."""
     health_id = ow_workout.get("id")
@@ -304,7 +350,6 @@ def workout_to_props(user, ow_workout: dict) -> dict | None:
     if not duration_s:
         return None
 
-    distance_m = ow_workout.get("distance_meters") or 0
     kcal = ow_workout.get("calories_kcal")
     avg_hr = ow_workout.get("avg_heart_rate_bpm")
 
@@ -314,7 +359,7 @@ def workout_to_props(user, ow_workout: dict) -> dict | None:
         "sport_type": map_health_sport_type(ow_workout.get("type")),
         "start_datetime": start_dt,
         "duration": datetime.timedelta(seconds=int(duration_s)),
-        "distance": None if not distance_m else round(float(distance_m) / 1000, 2),
+        "distance": distance_km_from_ow(ow_workout, duration_s),
         "kcal": None if kcal is None else round(float(kcal)),
         "intensity_category": _estimate_intensity(avg_hr, kcal, int(duration_s)),
     }
@@ -413,7 +458,7 @@ def daily_health_sync(self):
         is_active=True,
     ).exclude(health_user_id="").order_by("health_last_synced_at", "pk")
 
-    print(f"Syncing Health for {user_lst.count()} users")
+    logger.info('Syncing Health for %s users', user_lst.count())
     for user in user_lst:
         # Per-user throttle matching the hourly beat schedule (55 < 60 so
         # scheduler jitter can't push anyone to a two-hour cadence).
@@ -422,9 +467,9 @@ def daily_health_sync(self):
         try:
             sync_health(user__id=user.id)
         except (HealthConfigError, HealthUnavailableError) as exc:
-            print(f"Health sync failed for user {user.pk} - {exc}")
+            logger.exception('Health sync failed for user %s', user.pk)
         except Exception as exc:  # noqa: BLE001 - never sink the whole sweep
-            print(f"Health sync failed for user {user.pk} - {exc}")
+            logger.exception('Health sync failed for user %s', user.pk)
 
-    print("Finished syncing Health.")
+    logger.info('Finished syncing Health.')
     return "done"

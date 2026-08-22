@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8"/>
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico"/>
+    <link rel="icon" href="/favicon.ico"/>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"/>
     <meta name="theme-color" content="#0a0d06"/>
     <meta name="description" content="Compete with friends and coworkers - with an AI Drill Instructor in your corner."/>
@@ -12,28 +12,24 @@
     <meta name="mobile-web-app-capable" content="yes"/>
     <meta name="application-name" content="Workout Challenge"/>
     <meta name="format-detection" content="telephone=no"/>
-    <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/icon-192.svg" sizes="any"/>
-    <link rel="icon" type="image/png" href="%PUBLIC_URL%/favicon-32x32.png" sizes="32x32"/>
-    <link rel="icon" type="image/png" href="%PUBLIC_URL%/favicon-16x16.png" sizes="16x16"/>
-    <link rel="shortcut icon" href="%PUBLIC_URL%/favicon.ico"/>
-    <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/apple-touch-icon.png"/>
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json"/>
-    <link rel="stylesheet" href="%PUBLIC_URL%/fonts/fonts.css"/>
-    <link rel="preload" href="%PUBLIC_URL%/fonts/Inter-var.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
-    <link rel="preload" href="%PUBLIC_URL%/fonts/ArchivoBlack-400.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
-    <script src="%PUBLIC_URL%/config.js"></script>
+    <link rel="icon" type="image/svg+xml" href="/icon-192.svg" sizes="any"/>
+    <link rel="icon" type="image/png" href="/favicon-32x32.png" sizes="32x32"/>
+    <link rel="icon" type="image/png" href="/favicon-16x16.png" sizes="16x16"/>
+    <link rel="shortcut icon" href="/favicon.ico"/>
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"/>
+    <link rel="manifest" href="/manifest.json"/>
+    <link rel="stylesheet" href="/fonts/fonts.css"/>
+    <link rel="preload" href="/fonts/Inter-var.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
+    <link rel="preload" href="/fonts/ArchivoBlack-400.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
+    <script src="/config.js"></script>
     <!-- External file so CSP can run without script-src 'unsafe-inline'. -->
-    <script src="%PUBLIC_URL%/theme-init.js"></script>
+    <script src="/theme-init.js"></script>
     <title>Workout Challenge</title>
     <style>
-        /* Reserve safe-area for the iPhone notch / home indicator so
-           the app doesn't render under them on first paint. */
         :root { --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px); }
         body { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
         html, body { overscroll-behavior-y: contain; }
-        /* Don't let iOS auto-zoom inputs on focus. */
         input, textarea, select { font-size: 16px; }
-        /* Pre-paint background so standalone launch never flashes white. */
         html { background: #f2f4ec; }
         html.dark { background: #0a0d06; }
     </style>
@@ -41,5 +37,6 @@
 <body>
 <noscript>You need to enable JavaScript to run this app.</noscript>
 <div id="root"></div>
+<script type="module" src="/src/index.js"></script>
 </body>
 </html>

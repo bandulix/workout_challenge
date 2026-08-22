@@ -45,12 +45,21 @@ class TeamSerializer(serializers.ModelSerializer):
             return any(u.id == request.user.id for u in obj.user.all())
         return False
 
+    def update(self, instance, validated_data):
+        validated_data.pop("competition", None)
+        return super().update(instance, validated_data)
+
 
 class ActivityGoalSerializer(serializers.ModelSerializer):
     class Meta:
         model = ActivityGoal
         fields = '__all__'
-        read_only_fields = []
+
+    def update(self, instance, validated_data):
+        # Moving a goal onto another competition would let an owner
+        # attach scoring rules to a challenge they don't run.
+        validated_data.pop("competition", None)
+        return super().update(instance, validated_data)
 
 
 class PointsSerializer(serializers.ModelSerializer):

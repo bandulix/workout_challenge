@@ -59,24 +59,8 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
         persona = self.get_object()
         if not persona.profile_picture:
             raise Http404("No custom profile picture.")
-
-        content_type = (
-            mimetypes.guess_type(persona.profile_picture.name)[0]
-            or "application/octet-stream"
-        )
-        if settings.DEBUG:
-            response = FileResponse(
-                persona.profile_picture.open("rb"), content_type=content_type
-            )
-        else:
-            response = HttpResponse(content_type=content_type)
-            response["X-Accel-Redirect"] = f"/protected-media/{persona.profile_picture.name}"
-        # The URL is stable per persona, so it must revalidate on every
-        # use (ETag → cheap 304) - otherwise a changed picture would stay
-        # stale in browser caches. Private: never stored by shared caches.
-        response["Cache-Control"] = "private, no-cache"
-        response["X-Robots-Tag"] = "noindex, nofollow"
-        return response
+        from workout_challenge.images import protected_media_response
+        return protected_media_response(persona.profile_picture)
 
 
 class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
@@ -153,7 +137,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             .filter(Q(config__competition__owner=user) | Q(config__competition__user=user))
             .filter(parent__isnull=True)
             .distinct()
-            .select_related("config", "config__competition", "config__persona", "workout", "workout__user")
+            .select_related("config", "config__competition", "config__persona", "persona", "workout", "workout__user")
             # Ordered prefetch the serializer actually iterates - a plain
             # prefetch_related was defeated by get_replies' own order_by,
             # costing one extra query per thread root.
@@ -219,49 +203,39 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["post"])
     def photo(self, request):
-        """Post a photo into the competition's coach feed (multipart).
+        """Attach a photo to the caller's own workout thread (multipart).
 
-        Two shapes: without ``parent`` the picture + optional caption
-        become a thread root (coach reaction via ``post_photo_reaction``,
-        roast remix when an image-edit model is set). With ``parent``
-        (a thread root id) the photo answers that message - e.g. the
-        Coach page's button replies to the coach's latest message - and
-        the coach reacts via ``post_reply_reaction``. Only while the
-        coach is on duty - same gate as thread replies.
+        The parent must be a coach activity comment for a workout the
+        caller logged. Standalone feed posts, photos on someone else's
+        workout, and photos on nudges/pushes are refused.
         """
-        parent = None
         parent_id = request.data.get("parent")
-        if parent_id not in (None, ""):
-            try:
-                parent_id = int(parent_id)
-            except (TypeError, ValueError):
-                return Response({"parent": "A valid message id is required."},
-                                status=status.HTTP_400_BAD_REQUEST)
-            parent = get_object_or_404(
-                DrillInstructorMessage.objects
-                .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
-                .filter(parent__isnull=True)
-                .distinct(),
-                pk=parent_id,
+        try:
+            parent_id = int(parent_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"parent": "Photos can only be attached to one of your own workouts."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-            config = parent.config
-        else:
-            competition_id = request.data.get("competition")
-            try:
-                competition_id = int(competition_id)
-            except (TypeError, ValueError):
-                return Response({"competition": "A valid competition id is required."},
-                                status=status.HTTP_400_BAD_REQUEST)
-            config = (
-                DrillInstructorConfig.objects
-                .filter(Q(competition__owner=request.user) | Q(competition__user=request.user))
-                .filter(competition_id=competition_id)
-                .select_related("competition", "persona")
-                .first()
+        parent = get_object_or_404(
+            DrillInstructorMessage.objects
+            .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
+            .filter(parent__isnull=True)
+            .select_related("config", "config__competition", "workout")
+            .distinct(),
+            pk=parent_id,
+        )
+        config = parent.config
+        workout = parent.workout
+        if (
+            parent.kind != DrillInstructorMessage.KIND_ACTIVITY
+            or workout is None
+            or workout.user_id != request.user.id
+        ):
+            return Response(
+                {"parent": "Photos can only be attached to one of your own workouts."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-            # 404, not 403: don't leak which competitions exist.
-            if config is None:
-                return Response({"competition": "Competition not found."}, status=status.HTTP_404_NOT_FOUND)
         if not config.enabled:
             return Response({"competition": "The coach is benched for this competition - photo posts are paused."},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -278,11 +252,14 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         image = request.FILES.get("image")
         if image is None:
             return Response({"image": "A picture file is required."}, status=status.HTTP_400_BAD_REQUEST)
-        content_type = getattr(image, "content_type", "") or ""
-        if not content_type.startswith("image/"):
-            return Response({"image": "File must be an image."}, status=status.HTTP_400_BAD_REQUEST)
-        if image.size > self.MAX_PHOTO_BYTES:
-            return Response({"image": "Picture too large (max 5 MB)."}, status=status.HTTP_400_BAD_REQUEST)
+        from rest_framework.exceptions import ValidationError as DrfValidationError
+        from workout_challenge.images import validate_and_reencode_image
+        try:
+            image = validate_and_reencode_image(image, max_bytes=self.MAX_PHOTO_BYTES, max_side=1600)
+        except DrfValidationError as exc:
+            detail = exc.detail
+            message = detail[0] if isinstance(detail, list) else detail
+            return Response({"image": str(message)}, status=status.HTTP_400_BAD_REQUEST)
 
         caption = (request.data.get("caption") or "").strip()
         if len(caption) > self.MAX_PHOTO_CAPTION_LEN:
@@ -308,15 +285,8 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             image=image,
         )
 
-        if parent is not None:
-            # Photo answer inside an existing thread: the coach reacts
-            # with the reply pipeline (which also attaches the image when
-            # the model can see).
-            from .tasks import post_reply_reaction
-            post_reply_reaction.delay(message.id)
-        else:
-            from .tasks import post_photo_reaction
-            post_photo_reaction.delay(message.id)
+        from .tasks import post_reply_reaction
+        post_reply_reaction.delay(message.id)
 
         return Response(
             DrillInstructorMessageSerializer(message, context={"request": request}).data,
@@ -344,24 +314,8 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         )
         if not message.image:
             raise Http404("No picture on this message.")
-
-        content_type = (
-            mimetypes.guess_type(message.image.name)[0]
-            or "application/octet-stream"
-        )
-        if settings.DEBUG:
-            response = FileResponse(
-                message.image.open("rb"), content_type=content_type
-            )
-        else:
-            response = HttpResponse(content_type=content_type)
-            response["X-Accel-Redirect"] = f"/protected-media/{message.image.name}"
-        # Photos are immutable per message id, but revalidate anyway -
-        # a deleted-and-reposted edge must never serve a stale image.
-        # Private: never stored by shared caches.
-        response["Cache-Control"] = "private, no-cache"
-        response["X-Robots-Tag"] = "noindex, nofollow"
-        return response
+        from workout_challenge.images import protected_media_response
+        return protected_media_response(message.image)
 
     # The swipe box shows the newest roasts across the user's
     # competitions; older cards fall off the edge (they stay in the
@@ -381,7 +335,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             .filter(kind=DrillInstructorMessage.KIND_REACTION, user__isnull=True)
             .exclude(image="")
             .exclude(image__isnull=True)
-            .select_related("config", "config__competition", "config__persona", "parent", "parent__user")
+            .select_related("config", "config__competition", "config__persona", "persona", "parent", "parent__user")
             .prefetch_related(Prefetch(
                 "photo_votes",
                 queryset=DrillInstructorPhotoVote.objects.filter(user=request.user),

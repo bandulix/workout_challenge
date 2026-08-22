@@ -1,14 +1,7 @@
-import {useNavigate, useNavigationType, useParams, useSearchParams} from 'react-router-dom';
+import {useNavigationType, useParams} from 'react-router-dom';
 import React, {useEffect, useState} from "react";
-import {competitionsApi, useGetCompetitionByIdQuery} from "../utils/reducers/competitionsSlice";
+import {useGetCompetitionByIdQuery} from "../utils/reducers/competitionsSlice";
 import {
-    ArrowDownToLine,
-    ArrowUpToLine,
-    DoorOpen,
-    Info,
-    Megaphone,
-    Settings,
-    UserRoundPlus,
     UsersRound,
 } from "lucide-react";
 import {Bar, Line} from 'react-chartjs-2';
@@ -28,16 +21,9 @@ import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import lodFilter from 'lodash/filter';
 import lodFlatmap from 'lodash/flatMap';
-import lodFrompairs from 'lodash/fromPairs';
-import lodGroupby from 'lodash/groupBy';
-import lodMapvalues from 'lodash/mapValues';
-import lodOrderby from 'lodash/orderBy';
 import lodSumby from 'lodash/sumBy';
-import lodTopairs from 'lodash/toPairs';
-import lodValues from 'lodash/values';
 import {SectionLoader} from "../utils/loaders";
 import {useGetFeedByIdQuery} from "../utils/reducers/feedSlice";
-import CompetitionForm from "../forms/competitionForm";
 import JoinTeamForm from "../forms/joinTeamForm";
 import ActivityGoalsForm from "../forms/activityGoalsForm";
 import {
@@ -47,254 +33,15 @@ import {
 } from "../forms/basicComponents";
 import {BoxSection, ErrorBoxSection, PageWrapper, useDarkMode} from "../utils/miscellaneous";
 import {sportLabelShort} from "../forms/workoutForm";
-import CoachThread from "../components/CoachThread";
-import PhotoPost from "../components/PhotoPost";
-import CompetitionInviteModal from "../forms/shareModal";
+import {Chip, EmptyState, SectionHead, VOLT} from "../components/uiBits";
 import {useDispatch} from "react-redux";
-import {useLeaveCompetitionMutation} from "../utils/reducers/joinSlice";
-import TransferOwnershipForm from "../forms/transferOwnershipForm";
 import {teamsApi} from "../utils/reducers/teamsSlice";
-import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
-import {useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
-import PersonaAvatar from "../components/PersonaAvatar";
-import PointsInfoModal from "../components/PointsInfo";
+import {useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
 import ProfileAvatar from "../components/ProfileAvatar";
-import {timeAgo} from "../utils/time";
-import {useProtectedImage} from "../utils/protectedMedia";
+import usePollingInterval from "../utils/usePollingInterval";
+import {CompetitionHead, CoachCorner} from "../components/competitionChrome";
 
 ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Filler, Tooltip, Legend, BarElement, ChartDataLabels);
-
-
-function HeaderIconButton({onClick, title, icon: Icon, danger = false, isLoading = false}) {
-    return (
-        <button onClick={onClick} title={title} aria-label={title} disabled={isLoading}
-                className={"p-2 rounded-full min-h-[40px] min-w-[40px] flex items-center justify-center transition active:scale-95 " +
-                    (danger ? "text-gray-400 hover:text-red-500 hover:bg-red-500/10"
-                            : "text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 hover:bg-gray-100 dark:hover:bg-ink-800")}>
-            <Icon className={"h-5 w-5 " + (isLoading ? "animate-pulse" : "")}/>
-        </button>
-    );
-}
-
-
-function CompetitionHead({competition, feed, isOwner, goals, user}) {
-
-    const [showEditCompetitionModal, setShowEditCompetitionModal] = useState(false);
-    const [showInviteCompetitionModal, setShowInviteCompetitionModal] = useState(false);
-    const [showTransferCompetitionModal, setShowTransferCompetitionModal] = useState(false);
-    const [showDrillInstructorModal, setShowDrillInstructorModal] = useState(false);
-    const [showPointsInfoModal, setShowPointsInfoModal] = useState(false);
-    const [countTotal, setCountTotal] = useState(0);
-    const [countGroups, setCountGroups] = useState({});
-
-    useEffect(() => {
-        const filteredFeed = lodFilter(lodValues(feed), item => item.workout !== null && item.workout__sport_type !== 'Steps');
-        const totalCount = filteredFeed.length;
-        setCountTotal(totalCount);
-        const grouped = lodMapvalues(lodGroupby(lodValues(filteredFeed), 'workout__sport_type'), group => group.length);
-        const sorted = lodFrompairs(lodOrderby(lodTopairs(grouped), ([, value]) => value, 'desc'));
-        const limited = Object.fromEntries(Object.entries(sorted).slice(0, 4));
-        setCountGroups(limited);
-    }, [feed]);
-
-    const navigate = useNavigate();
-    const dispatch = useDispatch();
-
-    const [leaveCompetition, {
-        isLoading: leaveIsLoading,
-    }] = useLeaveCompetitionMutation();
-
-    async function triggerLeaveCompetition() {
-        const confirmation = window.confirm('Are you sure you want to leave the competition? Your earned points for yourself and your team will be unrecoverably deleted and you loose your spot on the leaderboard.');
-        if (confirmation) {
-            try {
-                const data = await leaveCompetition(competition.id).unwrap();
-                console.log('Successfully left competition:', data);
-                dispatch(competitionsApi.util.invalidateTags([{ type: 'Competition', id: competition.id }]));
-                navigate('/dashboard');
-            } catch (err) {
-                console.error('Error leaving completion:', err);
-                window.alert('Error leaving competition. Please try again.');
-            }
-
-        }
-    }
-
-
-
-    return (
-        <BoxSection additionalClasses="mb-4">
-            {/* Two-row header on small screens: the title gets the full
-                width first (it used to truncate between the counts and
-                the action buttons), counts + icon actions sit below. */}
-            <div className="px-1 sm:px-3">
-                <p className="text-xl font-display uppercase tracking-wide">{competition.name}</p>
-                <p className="text-xs text-gray-500">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
-                <div className="mt-2.5 flex items-center gap-3">
-                    <div className="flex items-baseline gap-1.5 shrink-0">
-                        <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
-                        <span className="uppercase text-[10px] tracking-wide text-gray-500">workouts</span>
-                    </div>
-                    {Object.entries(countGroups).map(([label, count], index) => (
-                        <div key={"stat" + index} className="hidden lg:flex lg:flex-col lg:items-center shrink-0 px-1">
-                            <span className="text-lg font-semibold leading-tight">{count}</span>
-                            <span className="uppercase text-[10px] tracking-wide text-gray-500">{sportLabelShort(label)}</span>
-                        </div>
-                    ))}
-                    <div className="flex items-center shrink-0 ml-auto">
-                        <HeaderIconButton title="How Points Work" icon={Info} onClick={() => setShowPointsInfoModal(true)}/>
-                        {
-                            (isOwner) ? <HeaderIconButton title="Settings" icon={Settings} onClick={() => setShowEditCompetitionModal(competition.id)}/> :
-                                <HeaderIconButton title="Leave Competition" icon={DoorOpen} danger onClick={() => triggerLeaveCompetition()} isLoading={leaveIsLoading}/>
-                        }
-                        {isOwner && (
-                            <HeaderIconButton title="AI Drill Instructor" icon={Megaphone} onClick={() => setShowDrillInstructorModal(true)}/>
-                        )}
-                        <HeaderIconButton title="Invite Others" icon={UserRoundPlus} onClick={() => setShowInviteCompetitionModal(true)}/>
-                    </div>
-                </div>
-            </div>
-
-            {(showEditCompetitionModal) && <CompetitionForm setModalState={setShowEditCompetitionModal} setShowTransferCompetitionModal={setShowTransferCompetitionModal} competition={competition}/>}
-            {(showInviteCompetitionModal) && <CompetitionInviteModal setModalState={setShowInviteCompetitionModal} competition={competition}/>}
-            {(showTransferCompetitionModal) && <TransferOwnershipForm setModalState={setShowTransferCompetitionModal} competition={competition}/>}
-            {(showDrillInstructorModal) && <DrillInstructorConfigForm competition={competition} setModalState={setShowDrillInstructorModal}/>}
-            {(showPointsInfoModal) && <PointsInfoModal competition={competition} goals={goals} user={user} setModalState={setShowPointsInfoModal}/>}
-
-        </BoxSection>
-    )
-}
-
-
-// One photo post in the feed: the author's picture + caption bubble,
-// then the thread (coach reaction + participant replies) underneath.
-function PhotoMessage({message, persona, canReply, defaultOpen}) {
-    const {src} = useProtectedImage(message.image);
-    return (
-        <div className="min-w-0 flex-1">
-            {src && (
-                <img src={src} alt={message.body || `Shared by ${message.author_name || "a participant"}`}
-                     className="max-h-72 w-auto max-w-full rounded-xl border border-gray-200/70 dark:border-ink-700/60"/>
-            )}
-            {message.body && (
-                <p className="text-sm leading-snug break-words dark:text-gray-100 mt-1.5">{message.body}</p>
-            )}
-            <p className="text-[11px] text-gray-400 mt-0.5">
-                {message.author_name || "Participant"} · {timeAgo(message.posted_at)}
-            </p>
-            <CoachThread message={message} persona={persona} canReply={canReply} defaultOpen={defaultOpen}/>
-        </div>
-    );
-}
-
-
-function CoachCorner({competition, isOwner}) {
-    // The Drill Instructor's presence on the competition page: latest
-    // coach messages for this competition + a setup CTA for owners.
-    const {data: configs} = useGetDrillConfigsQuery();
-    const config = (configs || []).find((c) => c.competition === competition.id) || null;
-    const {data: messages} = useGetDrillMessagesQuery(
-        {competition: competition.id},
-        {pollingInterval: 60000, skip: !config}
-    );
-    const [showConfigModal, setShowConfigModal] = useState(false);
-
-    // Deep link from the Coach page's "Respond" button
-    // (/competition/<id>?reply=<messageId>): scroll Coach's Corner into
-    // view and open the matching thread (defaultOpen below).
-    const [searchParams] = useSearchParams();
-    const replyTargetId = parseInt(searchParams.get("reply") || "", 10) || null;
-    const cornerRef = React.useRef(null);
-    useEffect(() => {
-        if (replyTargetId && config && cornerRef.current) {
-            cornerRef.current.scrollIntoView({behavior: "smooth", block: "start"});
-        }
-    }, [replyTargetId, config]);
-
-    if (!config) {
-        if (!isOwner) return null;
-        return (
-            <div className="mb-4 relative overflow-hidden rounded-3xl bg-ink-900 text-white border border-ink-700/60 shadow-card-dark">
-                <div className="pointer-events-none absolute -top-16 -right-10 h-40 w-40 rounded-full bg-volt-400/25 blur-3xl"/>
-                <div className="relative flex items-center gap-4 p-5">
-                    <img src="/personas/megaphone.svg" alt="" className="h-14 w-14 rounded-full animate-float-slow"/>
-                    <div className="flex-1 min-w-0">
-                        <p className="font-display text-sm uppercase tracking-wider">Unleash the Drill Instructor</p>
-                        <p className="text-xs text-gray-400 mt-0.5">An AI coach that comments on every workout - with push pings to keep everyone honest.</p>
-                    </div>
-                    <button onClick={() => setShowConfigModal(true)}
-                            className="shrink-0 rounded-full bg-volt-400 text-ink-950 px-4 py-2.5 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
-                        Activate
-                    </button>
-                </div>
-                {showConfigModal && <DrillInstructorConfigForm competition={competition} setModalState={setShowConfigModal}/>}
-            </div>
-        );
-    }
-
-    const persona = config.persona_detail || {};
-    const latest = (messages || []).slice(0, 3);
-
-    return (
-        <div ref={cornerRef} className="mb-4 rounded-3xl bg-white dark:bg-ink-850 dark:border dark:border-ink-700/60 shadow-card dark:shadow-card-dark overflow-hidden">
-            <div className="flex flex-wrap items-center gap-3 px-5 pt-4 pb-3 border-b border-gray-100 dark:border-ink-700/60">
-                <PersonaAvatar persona={persona} size={44} glow={config.enabled}/>
-                <div className="flex-1 min-w-0">
-                    <p className="font-display text-xs uppercase tracking-wider flex items-center gap-2">
-                        Coach's Corner
-                        <span className={"inline-block h-2 w-2 rounded-full " + (config.enabled ? "bg-volt-500 animate-pulse" : "bg-gray-300")}/>
-                    </p>
-                    <p className="text-xs text-gray-400 truncate">
-                        {persona.name}{config.enabled ? " is on duty" : " is benched"} · {config.messages_posted || 0} messages
-                    </p>
-                </div>
-                {/* The camera is always offered while the coach is on
-                    duty; PhotoPost explains when the server's model can't
-                    see pictures instead of hiding the feature. */}
-                {config.enabled && <PhotoPost competitionId={competition.id} visionCapable={Boolean(config.vision_capable)}/>}
-                {isOwner && (
-                    <button onClick={() => setShowConfigModal(true)}
-                            className="text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition">
-                        Configure
-                    </button>
-                )}
-            </div>
-            {latest.length > 0 ? (
-                <ul className="px-4 py-3 space-y-3">
-                    {latest.map((m) => {
-                        const threadPersona = {avatar: m.persona_avatar, profile_picture: m.persona_profile_picture, theme_color: m.persona_theme_color, name: m.persona_name};
-                        if (m.kind === "photo") {
-                            return (
-                                <li key={m.id} className="flex items-start gap-2.5">
-                                    <ProfileAvatar user={{profile_picture: m.author_profile_picture, first_name: m.author_name}} size={30}/>
-                                    <PhotoMessage message={m} persona={threadPersona} canReply={config.enabled} defaultOpen={m.id === replyTargetId}/>
-                                </li>
-                            );
-                        }
-                        return (
-                            <li key={m.id} className="flex items-start gap-2.5">
-                                <PersonaAvatar persona={threadPersona} size={30}/>
-                                <div className="min-w-0 flex-1">
-                                    {/* break-words: long unbreakable strings (URLs, hashtag
-                                        chains from the LLM) must wrap instead of pushing
-                                        the page wider than the viewport. */}
-                                    <p className="text-sm leading-snug break-words dark:text-gray-100">{m.body}</p>
-                                    <p className="text-[11px] text-gray-400 mt-0.5">
-                                        {m.athlete_name ? `→ ${m.athlete_name} · ` : ""}{timeAgo(m.posted_at)}
-                                    </p>
-                                    <CoachThread message={m} persona={threadPersona} canReply={config.enabled} defaultOpen={m.id === replyTargetId}/>
-                                </div>
-                            </li>
-                        );
-                    })}
-                </ul>
-            ) : (
-                <p className="px-5 py-4 text-sm text-gray-400">No orders yet - the coach speaks after the next logged workout.</p>
-            )}
-            {showConfigModal && <DrillInstructorConfigForm competition={competition} setModalState={setShowConfigModal}/>}
-        </div>
-    );
-}
 
 
 function ChartThisWeek({history}) {
@@ -307,23 +54,23 @@ function ChartThisWeek({history}) {
             {
                 label: 'Me',
                 data: history['Me'],
-                backgroundColor: '#b8e62e',
-                borderRadius: 5,
+                backgroundColor: VOLT,
+                borderRadius: 6,
                 clip: false,
             },
             {
                 label: 'My Team',
                 data: history['My Team'],
-                backgroundColor: 'rgb(75, 192, 192)',
-                borderRadius: 5,
+                backgroundColor: '#3a4a26',
+                borderRadius: 6,
                 clip: false,
                 hidden: true,
             },
             {
                 label: 'Average',
                 data: history['Average'],
-                backgroundColor: 'rgb(156, 163, 175)',
-                borderRadius: 5,
+                backgroundColor: isDarkMode ? '#27331a' : '#d1d5db',
+                borderRadius: 6,
                 clip: false,
                 hidden: true,
             },
@@ -347,58 +94,71 @@ function ChartThisWeek({history}) {
         plugins: {
             legend: {
                 display: true,
-                position: 'bottom', // move legend to bottom
+                position: 'bottom',
                 labels: {
                     boxWidth: 12,
                     padding: 20,
+                    color: isDarkMode ? '#c5d0b0' : '#4b5563',
                 },
             },
             tooltip: false,
             datalabels: {
                 anchor: 'end',
                 align: 'end',
-                color: isDarkMode ? '#fff' : '#000',
+                color: isDarkMode ? '#d7ff3e' : '#6f8f0f',
                 font: {weight: 'bold'},
             },
         },
     }), [isDarkMode]);
 
+    const weekTotal = React.useMemo(
+        () => (history.Me || []).reduce((sum, n) => sum + (Number(n) || 0), 0),
+        [history],
+    );
+
     return (
-        <Bar data={data} options={options} plugins={[ChartDataLabels]}/>
+        <div>
+            <div className="px-2 pb-3 flex items-baseline gap-2">
+                <span className="font-display text-3xl text-volt-500 dark:text-volt-400 leading-none">{Math.round(weekTotal)}</span>
+                <span className="text-xs uppercase tracking-wide text-gray-400">pts this week</span>
+            </div>
+            <Bar data={data} options={options} plugins={[ChartDataLabels]}/>
+        </div>
     )
 }
 
 
 function ChartHistory({history}) {
+    const isDarkMode = useDarkMode();
     const data = React.useMemo(() => ({
         labels: history['Legend'],
         datasets: [
             {
                 label: 'Me',
                 data: history['Me'],
-                borderColor: '#b8e62e',
-                tension: 0.3, // slight smoothing
+                borderColor: VOLT,
+                tension: 0.3,
                 fill: false,
                 spanGaps: true,
             },
             {
                 label: 'My Team',
                 data: history['My Team'],
-                borderColor: 'rgb(75, 192, 192)',
-                tension: 0.3, // slight smoothing
+                borderColor: '#3a4a26',
+                tension: 0.3,
                 fill: false,
                 spanGaps: true,
             },
             {
                 label: 'Average',
                 data: history['Average'],
-                borderColor: 'rgb(156, 163, 175)',
-                tension: 0.3, // slight smoothing
+                borderColor: isDarkMode ? '#6b7a52' : '#9ca3af',
+                tension: 0.3,
                 fill: false,
                 spanGaps: true,
             },
         ],
-    }), [history]);
+    }), [history, isDarkMode]);
 
     const options = React.useMemo(() => ({
         scales: {
@@ -409,7 +169,7 @@ function ChartHistory({history}) {
                 grid: {display: false},
                 ticks: {
                     padding: 10,
-                    color: '#666',
+                    color: isDarkMode ? '#d7ff3e' : '#6f8f0f',
                 },
             },
         },
@@ -423,15 +183,16 @@ function ChartHistory({history}) {
         plugins: {
             legend: {
                 display: true,
-                position: 'bottom', // move legend to bottom
+                position: 'bottom',
                 labels: {
                     boxWidth: 12,
                     padding: 20,
+                    color: isDarkMode ? '#c5d0b0' : '#4b5563',
                 },
             },
             datalabels: {display: false},
         },
-    }), []);
+    }), [isDarkMode]);
     return (
         <Line data={data} options={options}/>
     )
@@ -441,6 +202,7 @@ function ChartHistory({history}) {
 
 function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
     const dispatch = useDispatch();
+    const [openTeam, setOpenTeam] = useState(null);
 
     const [showChangeTeamModal, setShowChangeTeamModal] = useState(false);
     function setShowChangeTeamModalMiddleware(state) {
@@ -453,58 +215,49 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
     return (
         <>
             <BoxSection>
-                <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
-                    <span className="mx-4 text-gray-500 uppercase font-bold">Team Leaderboard</span>
+                <SectionHead title="Team leaderboard">
                     {(!competition.organizer_assigns_teams || isOwner) && (
-                        <div className="p-0 mt-2.5 sm:mt-0">
-                            <ChangeTeamButton onClick={() => setShowChangeTeamModalMiddleware(true)} larger={false}/>
-                        </div>
+                        <ChangeTeamButton onClick={() => setShowChangeTeamModalMiddleware(true)} larger={false}/>
                     )}
-                </div>
+                </SectionHead>
 
-
-                <table className="min-w-full my-2">
-                    <tbody>
-                    {(stats.leaderboard.team.length === 0) ? (
-                        <tr className="hover:bg-gray-100 dark:hover:bg-ink-800 border-b">
-                            <td className="py-2 px-4 pb-3 text-center text-gray-500">Create the first team!
-                            </td>
-                        </tr>
-                    ) : (
-                        stats.leaderboard.team.map((team, index) => (
-                            <tr key={team.workout__user__my_teams__id}
-                                className={((parseInt(teamId) === team.workout__user__my_teams__id) ? "bg-volt-400/10 dark:bg-volt-400/5 " : "") + "hover:bg-gray-100 dark:hover:bg-ink-800 border-b"}>
-                                <td className="py-2 px-2">
-                                    <span className="font-semibold">#{team.rank}</span>
-                                </td>
-                                <td className="py-2 px-2">
-                                    <span className="font-semibold">{team.name}</span>
-                                </td>
-                                <td className="py-2 px-2 group relative inline-block cursor-pointer">
-                                <span className="text-sm text-gray-500 flex items-center gap-1">
-                                    <UsersRound className="h-3.5 w-3.5"/> {team.members.length}
-                                </span>
-                                    <div
-                                        className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 p-2 bg-white dark:bg-gray-800 border dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none group-hover:pointer-events-auto z-10">
-                                        <p className="text-sm font-semibold">Members:</p>
-                                        <ul className="text-sm list-disc pl-5">
-                                            {team.members.map((user, usr_index) => (
-                                                <li key={"leader_user" + usr_index}>{user.username} {Math.round(user.total_capped, 0).toLocaleString()}P</li>
+                {stats.leaderboard.team.length === 0 ? (
+                    <EmptyState title="No teams yet" body="Create the first team and start scoring together."
+                                actionLabel={(!competition.organizer_assigns_teams || isOwner) ? "Add a team" : null}
+                                onAction={(!competition.organizer_assigns_teams || isOwner) ? () => setShowChangeTeamModalMiddleware(true) : null}/>
+                ) : (
+                    <ul className="mt-1 divide-y divide-gray-100 dark:divide-ink-700/60">
+                        {stats.leaderboard.team.map((team) => {
+                            const id = team.workout__user__my_teams__id;
+                            const mine = parseInt(teamId) === id;
+                            const open = openTeam === id;
+                            return (
+                                <li key={id} className={mine ? "bg-volt-400/10 dark:bg-volt-400/5 rounded-2xl" : ""}>
+                                    <button type="button" onClick={() => setOpenTeam(open ? null : id)}
+                                            className="w-full flex items-center gap-3 py-3 px-2 min-h-[44px] text-left">
+                                        <span className="w-8 shrink-0 font-display text-lg text-gray-400">#{team.rank}</span>
+                                        <span className="flex-1 min-w-0 font-semibold truncate">{team.name}</span>
+                                        <span className="text-xs text-gray-400 inline-flex items-center gap-1 shrink-0">
+                                            <UsersRound className="h-3.5 w-3.5"/>{team.members.length}
+                                        </span>
+                                        <span className="font-semibold shrink-0">{Math.round(team.total_capped || 0).toLocaleString()}P</span>
+                                    </button>
+                                    {open && (
+                                        <ul className="px-4 pb-3 space-y-1">
+                                            {team.members.map((member, i) => (
+                                                <li key={i} className="flex justify-between text-sm text-gray-600 dark:text-gray-300">
+                                                    <span>{member.username}</span>
+                                                    <span>{Math.round(member.total_capped || 0).toLocaleString()}P</span>
+                                                </li>
                                             ))}
                                         </ul>
-
-                                    </div>
-                                </td>
-                                <td className="py-2 px-2 text-right">
-                                <span
-                                    className="font-semibold">{Math.round(team.total_capped, 0).toLocaleString()}P</span>
-                                </td>
-                            </tr>
-                        ))
-                    )}
-                    </tbody>
-                </table>
-                {(competition.organizer_assigns_teams) ? <div className="pt-1 w-full text-center text-sm text-gray-500 italic"><b>Note:</b> The organizer assigns teams!</div> : null}
+                                    )}
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+                {competition.organizer_assigns_teams ? <p className="pt-2 text-center text-xs text-gray-400">The organizer assigns teams.</p> : null}
             </BoxSection>
 
             {(showChangeTeamModal) && <JoinTeamForm setModalState={setShowChangeTeamModalMiddleware} competition={competition} user={user} isOwner={isOwner}/>}
@@ -523,17 +276,15 @@ function IndividualLeaderboardBox({stats, userId}) {
 
     return (
         <BoxSection>
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
-                <span className="mx-4 text-gray-500 uppercase font-bold">Leaderboard</span>
-            </div>
+            <SectionHead title="Leaderboard"/>
 
             {(stats.leaderboard.individual.length === 0) ? (
-                <p className="py-4 px-4 text-center text-gray-500">Here participants will show up!</p>
+                <EmptyState title="Waiting for the field" body="The first logged workout puts someone on the board."/>
             ) : (
                 <ul className="my-1">
                     {stats.leaderboard.individual.map((person, index) => (
                         <li key={person.workout__user__id}
-                            className={"flex items-center gap-3 px-3 py-2.5 " + ((userId === person.workout__user__id) ? "bg-volt-400/10 dark:bg-volt-400/5 " : "")}>
+                            className={"flex items-center gap-3 px-3 py-2.5 rounded-2xl " + ((userId === person.workout__user__id) ? "bg-volt-400/10 dark:bg-volt-400/5 " : "")}>
                             {/* Rank - medal colours for the podium */}
                             <span className={"w-8 shrink-0 text-center font-display text-lg " + (RANK_STYLES[person.rank] || "text-gray-400")}>
                                 {person.rank !== null ? `#${person.rank}` : "–"}
@@ -566,75 +317,63 @@ function IndividualLeaderboardBox({stats, userId}) {
 
 
 function FeedBox({feed}) {
+    const [openId, setOpenId] = useState(null);
+
+    function durationLabel(entry) {
+        if (entry.workout__sport_type === "Steps") return `${entry.workout__steps?.toLocaleString() || 0} steps`;
+        const mins = Math.round(parseFloat(entry.workout__duration) / 60) || 0;
+        return `${mins} min`;
+    }
 
     return (
         <BoxSection>
+            <SectionHead title="Activity feed"/>
 
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
-                <span className="mx-4 text-gray-500 uppercase font-bold">Activity Feed</span>
-            </div>
-
-            <table className="min-w-full my-2">
-                <tbody>
-                {(feed.length === 0) ? (
-                    <tr className="hover:bg-gray-100 dark:hover:bg-ink-800 border-b">
-                        <td className="py-2 px-4 pb-3 text-center text-gray-500">Here participants' activities will show
-                            up!
-                        </td>
-                    </tr>
-                ) : (feed.map((entry, index) => {
+            {feed.length === 0 ? (
+                <EmptyState title="The feed is quiet" body="The next logged workout lands here for everyone to see."/>
+            ) : (
+                <ul className="mt-1 divide-y divide-gray-100 dark:divide-ink-700/60">
+                    {feed.map((entry) => {
+                        const open = openId === entry.workout;
                         return (
-                            <tr key={entry.workout} className="hover:bg-gray-100 dark:hover:bg-ink-800 border-b">
-                                <td className="py-2 px-4 text-sm md:text-base">
-                                    <span className="font-semibold">{entry.workout__start_datetime_fmt.date_readable}</span><br/>
-                                    <span className="text-sm hidden sm:block">{entry.workout__start_datetime_fmt.time_24h}</span>
-                                </td>
-                                <td className="py-2 px-4 block md:table-cell">
-                                    {/* Mobile view (stacked) */}
-                                    <div className="md:hidden">
-                                        <div className="font-medium">{entry.workout__user__username}</div>
-                                        <div className="text-sm text-gray-600 dark:text-gray-400">{(entry.workout__sport_type === "Steps") ? entry.workout__steps?.toLocaleString() : Math.round(parseFloat(entry.workout__duration) / 60, 0).toLocaleString() + "min"}<span className="font-semibold"> {sportLabelShort(entry.workout__sport_type)}</span></div>
+                            <li key={entry.workout}>
+                                <button type="button" onClick={() => setOpenId(open ? null : entry.workout)}
+                                        className="w-full flex items-center gap-3 py-3 px-1 min-h-[44px] text-left rounded-2xl hover:bg-gray-50 dark:hover:bg-ink-800 transition">
+                                    <ProfileAvatar user={{first_name: entry.workout__user__username, profile_picture: entry.workout__user__profile_picture}} size={36}/>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="font-semibold truncate">{entry.workout__user__username}</p>
+                                        <p className="text-xs text-gray-400">
+                                            {durationLabel(entry)} {sportLabelShort(entry.workout__sport_type)} · {entry.workout__start_datetime_fmt?.date_readable}
+                                        </p>
                                     </div>
-                                    {/* Desktop view (normal) */}
-                                    <div className="hidden md:block">{entry.workout__user__username}</div>
-                                </td>
-                                <td className="py-2 px-4 hidden md:table-cell">{(entry.workout__sport_type === "Steps") ? entry.workout__steps?.toLocaleString() : Math.round(parseFloat(entry.workout__duration) / 60, 0).toLocaleString() + "min"}<span
-                                    className="font-semibold"> {sportLabelShort(entry.workout__sport_type)}</span>
-                                </td>
-                                <td className="py-2 px-0 sm:px-4">
-                                    {(entry.workout__user__strava_allow_follow && entry.workout__strava_id) ? (
-                                        <StravaButton label={"Like Activity"} additionalClasses={"hidden sm:flex"}
-                                                      onClick={() => {
-                                                          // Coerce to string and strip anything that isn't a digit
-                                                          // so a poisoned strava_id (e.g. "../../evil") can't
-                                                          // turn the click into an open redirect.
-                                                          const id = String(entry.workout__strava_id).replace(/[^0-9]/g, '');
-                                                          if (id) window.open("https://www.strava.com/activities/" + id, "_blank", "noopener,noreferrer");
-                                                      }}/>
-                                    ) : null}
-                                </td>
-                                <td className="py-2 px-4 group relative inline-block pt-5 cursor-pointer">
-                                    <span
-                                        className="">+{Math.round(entry.points_capped, 0).toLocaleString()}P{(entry.points_capped !== entry.points_raw) ?
-                                        <span className="text-gray-500">*</span> : null}</span>
-                                    <div
-                                        className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 p-2 bg-white border dark:bg-gray-800 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none group-hover:pointer-events-auto z-10">
-                                        <p className="text-sm font-semibold">Breakdown:</p>
-                                        <ul className="text-sm list-disc pl-5">
-                                            {entry.details.map((detail, detail_index) => (
-                                                <li key={"feed" + detail_index + "detail" + detail_index}>{detail.goal__name} +{Math.round(detail.points_capped, 0).toLocaleString()}P {(detail.points_raw !== detail.points_capped) ? (
-                                                    <span
-                                                        className="text-gray-500 italic"> (uncapped +{Math.round(detail.points_raw, 0).toLocaleString()}P)</span>) : null}</li>
+                                    <Chip>+{Math.round(entry.points_capped || 0).toLocaleString()}P{entry.points_capped !== entry.points_raw ? "*" : ""}</Chip>
+                                </button>
+                                {open && (
+                                    <div className="px-3 pb-3 flex flex-wrap items-start gap-3">
+                                        <ul className="flex-1 text-sm text-gray-600 dark:text-gray-300 space-y-0.5">
+                                            {(entry.details || []).map((detail, i) => (
+                                                <li key={i}>
+                                                    {detail.goal__name} +{Math.round(detail.points_capped || 0).toLocaleString()}P
+                                                    {detail.points_raw !== detail.points_capped && (
+                                                        <span className="text-gray-400 italic"> (raw {Math.round(detail.points_raw || 0)}P)</span>
+                                                    )}
+                                                </li>
                                             ))}
                                         </ul>
+                                        {(entry.workout__user__strava_allow_follow && entry.workout__strava_id) ? (
+                                            <StravaButton label={"Like Activity"}
+                                                          onClick={() => {
+                                                              const id = String(entry.workout__strava_id).replace(/[^0-9]/g, '');
+                                                              if (id) window.open("https://www.strava.com/activities/" + id, "_blank", "noopener,noreferrer");
+                                                          }}/>
+                                        ) : null}
                                     </div>
-                                </td>
-                            </tr>
-                        )
-                    }
-                ))}
-                </tbody>
-            </table>
+                                )}
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
         </BoxSection>
     )
 }
@@ -713,100 +452,51 @@ function ActivityGoalsBox({user, stats, feed, competitionId, userId, isOwner}) {
 
     return (
         <BoxSection>
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
-                <span className="mx-4 text-gray-500 uppercase font-bold">Activity Goals</span>
-                {isOwner && (
-                    <div className="p-0 mt-2.5 sm:mt-0">
-                        <ModifyGoalsButton onClick={() => setShowModifyGoals(true)}/>
-                    </div>
-                )}
-            </div>
-            <div className="flex flex-col">
-                {finalGoals.map((goal, index) => (
-                    <div key={goal.id}
-                         className="bg-gray-100 dark:bg-gray-900 rounded-lg p-5 m-4 mb-1 group relative">
-                        <div className="flex flex-col px-4 text-left">
-                            <div className="flex flex-row justify-between items-center text-gray-500 mb-0.5">
-                                <div className="tracking-wide"><span className="font-semibold">{goal.name}</span>
-                                </div>
-                                <div>{Math.round(goal.goal).toLocaleString()} {goal.metric} <span
-                                    className="text-xs">/ {goal.period}</span>
-                                </div>
+            <SectionHead title="Activity goals">
+                {isOwner && <ModifyGoalsButton onClick={() => setShowModifyGoals(true)}/>}
+            </SectionHead>
+            {finalGoals.length === 0 ? (
+                <EmptyState title="No goals yet"
+                            body={isOwner ? "Set the first target so the field knows what to chase." : "The organizer hasn't set activity goals yet."}
+                            actionLabel={isOwner ? "Add goals" : null}
+                            onAction={isOwner ? () => setShowModifyGoals(true) : null}/>
+            ) : (
+            <div className="flex flex-col gap-3 mt-3">
+                {finalGoals.map((goal) => {
+                    const pct = Math.min(Math.max(Number(goal.points_capped) || 0, 0), 100);
+                    const complete = (Number(goal.points_capped) || 0) >= 100;
+                    const empty = (Number(goal.points_capped) || 0) <= 0;
+                    const limits = [];
+                    if (goal.min_per_workout) limits.push(`min ${Math.round(goal.min_per_workout)} / workout`);
+                    if (goal.max_per_workout) limits.push(`max ${Math.round(goal.max_per_workout)} / workout`);
+                    if (goal.min_per_day) limits.push(`min ${Math.round(goal.min_per_day)} / day`);
+                    if (goal.max_per_day) limits.push(`max ${Math.round(goal.max_per_day)} / day`);
+                    if (goal.min_per_week) limits.push(`min ${Math.round(goal.min_per_week)} / week`);
+                    if (goal.max_per_week) limits.push(`max ${Math.round(goal.max_per_week)} / week`);
+                    return (
+                        <div key={goal.id} className="rounded-2xl bg-gray-50 dark:bg-ink-900 border border-gray-200/60 dark:border-ink-700/60 p-4">
+                            <div className="flex justify-between items-baseline gap-2">
+                                <p className="font-semibold truncate">{goal.name}</p>
+                                <p className="text-xs text-gray-400 shrink-0">{Math.round(goal.goal).toLocaleString()} {goal.metric} / {goal.period}</p>
                             </div>
-                            <div className="flex flex-row pt-2.5 pb-1 justify-between items-center">
-                                <div className="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-4"
-                                     style={{width: "75%"}}>
-                                    <div className="h-4 rounded-full"
-                                         style={{
-                                             width: Math.min(goal.points_capped, 100) + "%",
-                                             backgroundColor: "#b8e62e"
-                                         }}></div>
+                            <div className="mt-2 flex items-center gap-3">
+                                <div className="flex-1 h-3 rounded-full bg-gray-200 dark:bg-ink-700 overflow-hidden">
+                                    <div className={"h-full rounded-full transition-all " + (empty ? "bg-ink-600" : complete ? "bg-volt-400" : "bg-gradient-to-r from-volt-600 to-volt-400")}
+                                         style={{width: pct + "%"}}/>
                                 </div>
-                                <div className="text-volt-600 dark:text-volt-400 text-right"
-                                     style={{width: "25%"}}>{Math.round(goal.points_capped).toLocaleString()} P<span
-                                    className="text-sm"></span>
-                                </div>
+                                <span className="text-sm font-bold text-volt-700 dark:text-volt-400 w-12 text-right">{Math.round(goal.points_capped || 0)}P</span>
                             </div>
-
-                            <div className="text-sm text-gray-400 pt-1.5 hidden group-hover:block">
-                                <span className="font-semibold">Limits: </span>
-                                {(!(goal.min_per_workout || goal.max_per_workout || goal.min_per_day || goal.max_per_day || goal.min_per_week || goal.max_per_week)) && (
-                                    <>None</>
+                            <p className="mt-1.5 text-[11px] text-gray-400">
+                                {limits.length ? limits.join(" · ") : "No caps"}
+                                {['kcal', 'kj', 'km'].includes(goal.metric) && user && (Math.abs((user.scaling_distance || 1) - 1) >= 0.01 || Math.abs((user.scaling_kcal || 1) - 1) >= 0.01) && (
+                                    <> · equalizer {goal.metric === "km" ? Math.round(user.scaling_distance * 1000) / 10 : Math.round(user.scaling_kcal * 10000) / 100}%</>
                                 )}
-                                {(goal.min_per_workout) && (
-                                    <><ArrowDownToLine
-                                        className="w-4 h-4 inline"/> {Math.round(goal.min_per_workout).toLocaleString()} </>
-                                )}
-                                {(goal.max_per_workout) && (
-                                    <><ArrowUpToLine
-                                        className="w-4 h-4 inline"/> {Math.round(goal.max_per_workout).toLocaleString()} </>
-                                )}
-                                {(goal.min_per_workout || goal.max_per_workout) && (
-                                    <span className="text-xs">{goal.metric} / workout </span>
-                                )}
-                                {(goal.min_per_day) && (
-                                    <><ArrowDownToLine
-                                        className="w-4 h-4 inline"/> {Math.round(goal.min_per_day).toLocaleString()} </>
-                                )}
-                                {(goal.max_per_day) && (
-                                    <><ArrowUpToLine
-                                        className="w-4 h-4 inline"/> {Math.round(goal.max_per_day).toLocaleString()} </>
-                                )}
-                                {(goal.min_per_day || goal.max_per_day) && (
-                                    <span className="text-xs">{goal.metric} / day </span>
-                                )}
-                                {(goal.min_per_week) && (
-                                    <><ArrowDownToLine
-                                        className="w-4 h-4 inline"/> {Math.round(goal.min_per_week).toLocaleString()} </>
-                                )}
-                                {(goal.max_per_week) && (
-                                    <><ArrowUpToLine
-                                        className="w-4 h-4 inline"/> {Math.round(goal.max_per_week).toLocaleString()} </>
-                                )}
-                                {(goal.min_per_week || goal.max_per_week) && (
-                                    <span className="text-xs">{goal.metric} / week </span>
-                                )}
-
-                                {
-                                    (['kcal', 'kj', 'km'].includes(goal.metric) && (Math.abs(user.scaling_distance - 1) >= 0.01 || Math.abs(user.scaling_kcal - 1) >= 0.01)) && (
-                                        <>
-                                            <br/>
-                                            <span className="font-semibold">Equalizing Factor: </span>
-                                            {
-                                                (goal.metric === 'km') ? (
-                                                    <span className="text-xs">{Math.round(user.scaling_distance * 100 * 10) / 10}% x {Math.round(goal.goal / user.scaling_distance).toLocaleString()} {goal.metric}</span>
-                                                ) : (
-                                                    <span className="text-xs">{Math.round(user.scaling_kcal * 100 * 100) / 100}% x {Math.round(goal.goal / user.scaling_kcal).toLocaleString()} {goal.metric}</span>
-                                                )
-                                            }
-                                        </>
-                                    )
-                                }
-                            </div>
+                            </p>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
+            )}
             {
                 (showModifyGoals) ?
                     <ActivityGoalsForm setModalState={setShowModifyGoals} competitionId={competitionId}/> : null
@@ -864,9 +554,7 @@ function Activity7DaysBox({stats, userId, teamId}) {
 
     return (
         <BoxSection>
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
-                <span className="mx-4 text-gray-500 uppercase font-bold">This Week</span>
-            </div>
+            <SectionHead title="This week"/>
             <div className="my-3">
                 <ChartThisWeek history={chartData}/>
             </div>
@@ -930,9 +618,7 @@ function ActivityCompetitionBox({stats, userId, teamId}) {
 
     return (
         <BoxSection>
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
-                <span className="mx-4 text-gray-500 uppercase font-bold">The Trend</span>
-            </div>
+            <SectionHead title="The trend"/>
             <div className="my-3">
                 <ChartHistory history={chartData}/>
             </div>
@@ -951,6 +637,8 @@ export default function Competition() {
 
     const dispatch = useDispatch();
     const {id} = useParams();
+    const pollSlow = usePollingInterval(90000);
+    const pollFast = usePollingInterval(60000);
 
     const {
         data: user,
@@ -970,7 +658,7 @@ export default function Competition() {
         isLoading: feedLoading,
         refetch: refreshFeed,
     } = useGetFeedByIdQuery(id, {
-        pollingInterval: 90000, // 90 seconds
+        pollingInterval: pollSlow,
     });
 
     const {
@@ -979,7 +667,7 @@ export default function Competition() {
         isLoading: statsLoading,
         refetch: refreshStats,
     } = useGetStatsByIdQuery(id, {
-        pollingInterval: 90000, // 90 seconds
+        pollingInterval: pollSlow,
     });
 
     const isOwner = (user !== undefined) && (user?.id === competition?.owner);
@@ -1005,7 +693,7 @@ export default function Competition() {
     // Shares the messages cache with CoachCorner - no extra requests.
     const {data: drillMessages} = useGetDrillMessagesQuery(
         {competition: competition?.id},
-        {pollingInterval: 60000, skip: !competition?.id}
+        {pollingInterval: pollFast, skip: !competition?.id}
     );
     const lastDrillMsgId = React.useRef(null);
     useEffect(() => {
@@ -1024,7 +712,7 @@ export default function Competition() {
     if (competitionError) {
         // Constant format string: the URL param must never end up in the
         // format position of console.log (CodeQL js/tainted-format-string).
-        console.log('Error retrieving competition:', id, competitionError);
+        console.error('Error retrieving competition:', id, competitionError);
         return <PageWrapper additionClasses="h-screen flex items-center justify-center"><ErrorBoxSection
             errorMsg={competitionError?.status + ' / ' + (competitionError?.error || competitionError?.message || competitionError?.data?.detail)}/></PageWrapper>;
     }

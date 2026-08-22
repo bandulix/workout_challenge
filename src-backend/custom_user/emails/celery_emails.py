@@ -1,3 +1,4 @@
+import logging
 import datetime, random
 from openai import OpenAI
 from django.core.cache import cache
@@ -10,6 +11,8 @@ from django.db.models.functions import TruncDate, TruncDay
 
 from .multipurpose import send_email, email_settings_context
 from competition.stats import get_competition_stats
+
+logger = logging.getLogger(__name__)
 
 
 @app.task()
@@ -42,7 +45,7 @@ def welcome_email(user_pk):
 
 @app.task()
 def send_all_log_workouts_email():
-    print("Scheduling log workout emails...")
+    logger.info('Scheduling log workout emails')
     CustomUser = apps.get_model('custom_user', 'CustomUser')
     user_lst = CustomUser.objects.filter(
         Q(my_competitions__start_date__lte=datetime.date.today()) &
@@ -91,7 +94,7 @@ def log_workouts_email(user_pk):
 
 @app.task()
 def send_all_competition_start_email():
-    print("Scheduling competition start emails...")
+    logger.info('Scheduling competition start emails')
     Competition = apps.get_model('competition', 'Competition')
     competition_lst = Competition.objects.filter(start_date=datetime.date.today() + datetime.timedelta(days=1)).order_by('pk')
     task_log = []
@@ -143,7 +146,7 @@ def competition_start_email(competition_pk, user_pk):
 
 @app.task()
 def send_all_leaderboard_emails():
-    print("Scheduling leaderboard emails...")
+    logger.info('Scheduling leaderboard emails')
     CustomUser = apps.get_model('custom_user', 'CustomUser')
     user_lst = CustomUser.objects.filter(my_competitions__start_date__lt=datetime.date.today(), my_competitions__end_date__gte=datetime.date.today()).order_by('pk').distinct()  # distinct: one row per user, not per active competition
     task_log = []
@@ -204,7 +207,7 @@ def leaderboard_email(user_pk):
 
 @app.task()
 def send_all_weekly_emails():
-    print("Scheduling weekly emails...")
+    logger.info('Scheduling weekly emails')
     CustomUser = apps.get_model('custom_user', 'CustomUser')
     user_lst = CustomUser.objects.filter(email_mid_week=True).order_by('pk')
     task_log = []
@@ -250,7 +253,7 @@ def openai_quote():
         todays_ai_quote = response.choices[0].message.content
         cache.set('todays_ai_quote', todays_ai_quote, 60 * 60 * 20)
 
-        print('Todays AI Quote:', todays_ai_quote)
+        logger.info('Today AI quote: %s', todays_ai_quote)
 
     return todays_ai_quote
 

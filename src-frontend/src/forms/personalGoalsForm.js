@@ -65,8 +65,7 @@ export default function PersonalGoalsForm({user, setModalState}) {
         // update personal goals
         try {
             const cleanedValues = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value === "" ? null : value])); // replace empty strings with null
-            const result = await updateEntry({id: 'me', ...cleanedValues}).unwrap();
-            console.log('Update Personal Goals success:', result);
+            await updateEntry({id: 'me', ...cleanedValues}).unwrap();
             setModalState(false);
             document.body.classList.remove('body-no-scroll');
         } catch (err) {

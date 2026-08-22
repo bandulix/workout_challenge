@@ -1,5 +1,8 @@
+import logging
 import os
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 from django.core.mail import get_connection
 from django.core.mail.message import EmailMultiAlternatives
 from django.test.utils import override_settings
@@ -55,7 +58,7 @@ def send_email(subject, body, to_email, cc=[], reply_to=[]):
             settings.DEBUG or '.local' in to_email.lower()
         ) else [to_email]
 
-        print(f'Email Server: {settings.EMAIL_HOST}')
+        logger.info('Email server: %s', settings.EMAIL_HOST)
         connection = get_connection()
         mail = EmailMultiAlternatives(
             subject=subject, body="", from_email=from_email, to=to_email,
@@ -65,7 +68,7 @@ def send_email(subject, body, to_email, cc=[], reply_to=[]):
         mail.content_subtype = "html"
 
         mail.send()
-        print(f'Email "{subject}" sent to {to_email}')
+        logger.info('Email "%s" sent to %s', subject, to_email)
 
 
 def email_settings_context():

@@ -1,10 +1,9 @@
 import React, {useMemo, useState} from "react";
-import {Link, useNavigate} from "react-router-dom";
+import {Link} from "react-router-dom";
 import {Megaphone, Bot, ChevronRight, Radio, Sparkles, PencilLine, Flag, MessageCircle} from "lucide-react";
 import {PageWrapper, BoxSection} from "../utils/miscellaneous";
 import {SectionLoader} from "../utils/loaders";
 import PersonaAvatar from "../components/PersonaAvatar";
-import PhotoPost from "../components/PhotoPost";
 import RoastSwipeBox from "../components/RoastSwipeBox";
 import PushOptInCard from "../components/PushOptIn";
 import {Modal} from "../forms/basicComponents";
@@ -13,6 +12,7 @@ import {useGetPersonasQuery, useGetDrillConfigsQuery, useGetDrillMessagesQuery} 
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {timeAgo} from "../utils/time";
+import usePollingInterval from "../utils/usePollingInterval";
 
 // ---------------------------------------------------------------------------
 // The Coach page: the Drill Instructor as the heart of the app.
@@ -24,7 +24,6 @@ const FALLBACK_PERSONA = {name: "Your Coach", tagline: "Waiting for orders.", av
 
 
 function CoachHero({persona, config, latestMessage, ownedCompetitions}) {
-    const navigate = useNavigate();
     return (
         <div className="relative overflow-hidden rounded-3xl bg-ink-900 text-white shadow-card-dark border border-ink-700/60">
             {/* volt aura */}
@@ -87,12 +86,6 @@ function CoachHero({persona, config, latestMessage, ownedCompetitions}) {
                               className="inline-flex items-center gap-2 rounded-full bg-volt-400 text-ink-950 px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
                             <MessageCircle className="h-4 w-4"/> Respond <ChevronRight className="h-4 w-4"/>
                         </Link>
-                        {config.enabled && (
-                            <PhotoPost competitionId={config.competition}
-                                       parentId={latestMessage.id}
-                                       visionCapable={Boolean(config.vision_capable)}
-                                       onPosted={() => navigate(`/competition/${latestMessage.competition_id}?reply=${latestMessage.id}`)}/>
-                        )}
                     </div>
                 )}
 
@@ -119,12 +112,12 @@ function challengeStatus(c) {
 function MyChallenges({competitions}) {
     return (
         <BoxSection>
-            <h2 className="font-display text-sm uppercase tracking-wider flex items-center gap-2 mb-2">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2 mb-2">
                 <Flag className="h-4 w-4 text-volt-500"/> My challenges
             </h2>
             {competitions.length === 0 ? (
                 <p className="text-sm text-gray-400 px-2 py-3">
-                    No challenges yet. Create or join one from the <Link to="/dashboard" className="font-semibold text-volt-600 dark:text-volt-300 hover:underline">Home page</Link>.
+                    No challenges yet. Create or join one from the <Link to="/dashboard" className="font-semibold text-volt-700 dark:text-volt-300 hover:underline">Home page</Link>.
                 </p>
             ) : (
                 <ul className="divide-y divide-gray-100 dark:divide-ink-700/60">
@@ -198,11 +191,12 @@ function PersonaDetailModal({persona, isStaff, onClose}) {
 
 
 function CoachPage() {
+    const pollFast = usePollingInterval(60000);
     const {data: user, isLoading: userLoading} = useGetUserByIdQuery('me');
     const {data: configs, isLoading: configsLoading} = useGetDrillConfigsQuery();
     const {data: personas, isLoading: personasLoading} = useGetPersonasQuery();
     const {data: competitions} = useGetCompetitionsQuery();
-    const {data: messages} = useGetDrillMessagesQuery(undefined, {pollingInterval: 60000});
+    const {data: messages} = useGetDrillMessagesQuery(undefined, {pollingInterval: pollFast});
 
     const [detailPersona, setDetailPersona] = useState(null);
     const [showPersonaManager, setShowPersonaManager] = useState(false);

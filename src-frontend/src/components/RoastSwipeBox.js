@@ -4,6 +4,7 @@ import {BoxSection} from "../utils/miscellaneous";
 import {useGetDrillConfigsQuery, useGetRoastsQuery, useVoteRoastMutation} from "../utils/reducers/drillInstructorSlice";
 import {fetchProtectedImage} from "../utils/protectedMedia";
 import {timeAgo} from "../utils/time";
+import usePollingInterval from "../utils/usePollingInterval";
 
 // The coach's roasted photos as a hot-or-not swipe game: drag (or tap a
 // button) right for HOT, left for NOPE. One card at a time, the next one
@@ -130,7 +131,8 @@ function useProtectedImageState(url) {
 
 
 export default function RoastSwipeBox() {
-    const {data: roasts} = useGetRoastsQuery(undefined, {pollingInterval: 60000});
+    const pollFast = usePollingInterval(60000);
+    const {data: roasts} = useGetRoastsQuery(undefined, {pollingInterval: pollFast});
     const {data: configs} = useGetDrillConfigsQuery();
     const [voteRoast] = useVoteRoastMutation();
     // Cards already judged leave the stack; the tally that comes back is

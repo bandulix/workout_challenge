@@ -1,6 +1,6 @@
 import {useEffect, useState} from "react";
 import {App} from "@capacitor/app";
-import {isNativeApp, getServerUrl} from "./serverUrl";
+import {isNativeApp, assetUrl} from "./platform";
 
 // In-app update check for the sideloaded APK: the server publishes
 // /download/apk-version.json next to the APK (scripts/build_apk.sh
@@ -20,7 +20,7 @@ export function useApkUpdateInfo() {
             try {
                 const [info, resp] = await Promise.all([
                     App.getInfo(),
-                    fetch(`${getServerUrl()}/download/apk-version.json`, {cache: "no-store"}),
+                    fetch(assetUrl("/download/apk-version.json"), {cache: "no-store"}),
                 ]);
                 if (!resp.ok) return;
                 const latest = await resp.json();
@@ -29,9 +29,8 @@ export function useApkUpdateInfo() {
                 const dismissed = parseInt(localStorage.getItem(DISMISS_KEY) || "0", 10) || 0;
                 if (alive && latestCode > currentCode && latestCode > dismissed) {
                     setUpdate({
-                        versionName: latest.versionName || "",
+                        versionName: String(latest.versionName || ""),
                         versionCode: latestCode,
-                        url: `${getServerUrl()}${latest.url || "/download/workout-challenge.apk"}`,
                     });
                 }
             } catch (e) {

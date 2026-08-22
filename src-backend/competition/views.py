@@ -15,7 +15,7 @@ from django.db.models import Sum
 
 logger = logging.getLogger(__name__)
 
-from custom_user.views import IsOwnerOrReadOnly
+from custom_user.permissions import IsCompetitionOwner, IsRelatedCompetitionOwner
 from custom_user.models import CustomUser
 from custom_user.point_recalc import recalc_points
 from .models import Competition, Team, ActivityGoal, Points
@@ -29,7 +29,7 @@ class CompetitionViewSet(viewsets.ModelViewSet):
     #queryset = Competition.objects.all()
     serializer_class = CompetitionSerializer
 
-    permission_classes = [IsOwnerOrReadOnly]
+    permission_classes = [IsCompetitionOwner]
 
     def get_queryset(self):
         # return all competitions the user is owner of or a participant of
@@ -45,7 +45,7 @@ class TeamViewSet(viewsets.ModelViewSet):
     #queryset = Team.objects.all()
     serializer_class = TeamSerializer
 
-    permission_classes = [IsOwnerOrReadOnly]
+    permission_classes = [IsRelatedCompetitionOwner]
 
     def get_queryset(self):
         # return all teams the user is a member of and all teams of competitions the user participates in
@@ -75,7 +75,7 @@ class ActivityGoalViewSet(viewsets.ModelViewSet):
     #queryset = ActivityGoal.objects.all()
     serializer_class = ActivityGoalSerializer
 
-    permission_classes = [IsOwnerOrReadOnly]
+    permission_classes = [IsRelatedCompetitionOwner]
 
     def get_queryset(self):
         # return all competition categories the user is owner of or a participant of
@@ -103,7 +103,7 @@ class PointsViewSet(viewsets.ReadOnlyModelViewSet):
     """
     serializer_class = PointsSerializer
 
-    permission_classes = [IsOwnerOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         # return all points the user is owner of, a participant of, or of his/her own workouts
@@ -186,11 +186,7 @@ class CeleryQueryView(APIView):
         else:
             # List all registered tasks
             try:
-                registered_tasks = [
-                    name
-                    for name, task in sorted(current_app.tasks.items())
-                    if not name.startswith('celery.')
-                ]
+                registered_tasks = sorted(self.ALLOWED_TASKS)
                 return Response(registered_tasks)
             except Exception:
                 logger.exception("Error listing celery tasks")
@@ -198,6 +194,21 @@ class CeleryQueryView(APIView):
                     {"error": "Error retrieving tasks."},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
+
+    # Staff can only enqueue these operational tasks - not an arbitrary
+    # registered name (that used to be "run any celery task with JSON args").
+    ALLOWED_TASKS = frozenset({
+        "custom_user.strava.daily_strava_sync",
+        "custom_user.garmin.daily_garmin_sync",
+        "custom_user.health.daily_health_sync",
+        "custom_user.point_recalc.recalc_points",
+        "drill_instructor.tasks.post_inactivity_nudges",
+        "drill_instructor.tasks.post_random_pushes",
+        "custom_user.emails.celery_emails.send_all_log_workouts_email",
+        "custom_user.emails.celery_emails.send_all_leaderboard_emails",
+        "custom_user.emails.celery_emails.send_all_weekly_emails",
+        "custom_user.emails.celery_emails.send_all_competition_start_email",
+    })
 
     def post(self, request):
         task = request.query_params.get('task')
@@ -208,6 +219,11 @@ class CeleryQueryView(APIView):
             return Response(
                 {"error": "Task name is required"}, 
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        if task not in self.ALLOWED_TASKS:
+            return Response(
+                {"error": "This task cannot be started from the API."},
+                status=status.HTTP_403_FORBIDDEN,
             )
             
         try:
@@ -265,16 +281,13 @@ class CompetitionStatsQueryView(APIView):
 
 class FeedPermissions(BasePermission):
     def has_permission(self, request, view):
-        # Only authenticated users
-        if request.user.is_authenticated:
-            return True
-        return False
-
-    def has_object_permission(self, request, view, obj):
-        if len(obj) == 0:
+        if not request.user.is_authenticated:
             return False
-        obj = obj[0]
-        return request.user.id in [obj.owner.pk] + list(obj.user.all().values_list('pk', flat=True))
+        # Same pattern as StatsPermissions: membership MUST be checked
+        # here so a cached feed is never served to a non-participant.
+        return Competition.objects.filter(
+            Q(pk=view.kwargs.get("competition", 0)) & (Q(owner=request.user) | Q(user=request.user))
+        ).exists()
 
 
 class FeedQueryView(APIView):
@@ -284,9 +297,6 @@ class FeedQueryView(APIView):
     FEED_CACHE_TTL = 30  # seconds - burst absorption between changes
 
     def get(self, request, competition):
-        competition_obj = Competition.objects.filter(id=competition)
-        self.check_object_permissions(request, competition_obj)
-
         # Same generation key as the stats view: workout/point changes
         # bump the generation, making old snapshots unreachable within
         # seconds; between changes the short TTL absorbs poll bursts.
@@ -298,7 +308,11 @@ class FeedQueryView(APIView):
         if response_obj is None:
             all_points = Points.objects.filter(Q(award__competition__id=competition) | Q(goal__competition_id=competition)).order_by('-workout__start_datetime', '-workout__steps', '-workout__duration', '-workout', '-workout__user')
 
-            grouped_points = {i['workout']: i for i in all_points.values('workout__user', 'workout__user__username', 'workout__user__strava_allow_follow', 'workout', 'workout__sport_type', 'workout__start_datetime', 'workout__duration', 'workout__steps', 'workout__strava_id', 'award').annotate(points_capped=Sum('points_capped'), points_raw=Sum('points_raw')).order_by('-workout__start_datetime', '-workout__duration', '-workout', '-workout__user')}
+            grouped_points = {i['workout']: i for i in all_points.values('workout__user', 'workout__user__username', 'workout__user__strava_allow_follow', 'workout__user__profile_picture', 'workout', 'workout__sport_type', 'workout__start_datetime', 'workout__duration', 'workout__steps', 'workout__strava_id', 'award').annotate(points_capped=Sum('points_capped'), points_raw=Sum('points_raw')).order_by('-workout__start_datetime', '-workout__duration', '-workout', '-workout__user')}
+            for row in grouped_points.values():
+                pic = row.pop('workout__user__profile_picture', None)
+                uid = row.get('workout__user')
+                row['workout__user__profile_picture'] = f"/api/user/{uid}/picture/" if pic and uid else None
 
             for i in all_points.values('workout', 'id', 'goal', 'goal__name', 'award', 'award__name', 'points_capped', 'points_raw'):
                 if 'details' not in grouped_points[i['workout']]:
@@ -324,7 +338,8 @@ class JoinCompetitionView(APIView):
             return Response({"message": "Invalid join code."}, status=status.HTTP_400_BAD_REQUEST)
         competition = competition[0]
         competition.user.add(request.user)
-        competition.save()
+        # m2m add already fires the scorer; a full save() would re-run
+        # competition-change plumbing for no field change.
         return Response({"message": "Successfully joined competition.", "competition": competition.id}, status=status.HTTP_200_OK)
 
     def delete(self, request, join_code):
@@ -345,11 +360,7 @@ class JoinCompetitionView(APIView):
             return Response({"message": "Successfully left competition.", "competition": competition_id}, status=status.HTTP_200_OK)
 
         request.user.my_competitions.remove(competition_id)
-        teams = request.user.my_teams.filter(competition=competition_id)
-        for team in teams:
-            team.user.remove(request.user)
-            team.save()
-        request.user.save()
+        request.user.my_teams.remove(*list(request.user.my_teams.filter(competition=competition_id)))
 
         Points.objects.filter((Q(award__competition__id=competition_id) | Q(goal__competition_id=competition_id)) & Q(workout__user=request.user)).delete()
 
@@ -359,6 +370,8 @@ class JoinCompetitionView(APIView):
 class JoinTeamView(APIView):
     """ API post view for users to join a team and make sure they are only a member of one team per competition. """
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "join"
 
     def post(self, request):
         team_id = request.query_params.get('team')
@@ -430,10 +443,7 @@ class JoinTeamView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        for competition_team in competition_teams:
-            competition_team.user.remove(user.id)
-            competition_team.save()
-        user.my_teams.add(team.id)
-        user.save()
+        user.my_teams.remove(*list(user.my_teams.filter(competition=competition)))
+        user.my_teams.add(team)
 
         return Response({"message": "Successfully joined team.", "team": team.id, "user": user.id}, status=status.HTTP_200_OK)

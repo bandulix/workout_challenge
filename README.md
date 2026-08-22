@@ -10,11 +10,12 @@
 Turn staying active into a rivalry your friends actually care about. Compete with friends and co-workers on the metrics you choose — kilometres, minutes, calories, steps — from any device, with your privacy fully intact. Workouts import themselves from Strava or Garmin Connect, teams and leaderboards keep the score honest, and your personal **AI Drill Instructor** — voiced by a persona you pick — comments on every workout, nudges quiet groups, and pings your lock screen when the banter demands it. Self-hosted. Installable as a PWA. Entirely yours.
 
 <p align="center">
-  <a href="docs/imgs/preview-mobile-login-dark.png"><img src="docs/imgs/preview-mobile-login-dark.png" width="230" alt="Login - Workout Challenge PWA"></a>
-  <a href="docs/imgs/preview-mobile-competition-dark.png"><img src="docs/imgs/preview-mobile-competition-dark.png" width="230" alt="Competition with AI Drill Instructor - Workout Challenge PWA"></a>
-  <a href="docs/imgs/preview-mobile-coach-dark.png"><img src="docs/imgs/preview-mobile-coach-dark.png" width="230" alt="Coach page - Workout Challenge PWA"></a>
+  <a href="docs/imgs/preview-mobile-login-dark.png"><img src="docs/imgs/preview-mobile-login-dark.png" width="180" alt="Login - Workout Challenge PWA"></a>
+  <a href="docs/imgs/preview-mobile-myspace-dark.png"><img src="docs/imgs/preview-mobile-myspace-dark.png" width="180" alt="Home - Workout Challenge PWA"></a>
+  <a href="docs/imgs/preview-mobile-competition-dark.png"><img src="docs/imgs/preview-mobile-competition-dark.png" width="180" alt="Challenge with AI Drill Instructor - Workout Challenge PWA"></a>
+  <a href="docs/imgs/preview-mobile-coach-dark.png"><img src="docs/imgs/preview-mobile-coach-dark.png" width="180" alt="Coach page - Workout Challenge PWA"></a>
 </p>
-<p align="center"><i>The PWA on a phone: login, the competition with its AI coach, and the coach wire.</i></p>
+<p align="center"><i>The PWA on a phone: login, Home, a challenge, and the Coach.</i></p>
 
 **Contents:** [Changes from the original](#changes-from-the-original) · [How it works](#how-it-works) · [Getting started](#getting-started) · [AI Drill Instructor](#ai-drill-instructor) · [Admin & site settings](#admin--site-settings) · [Mobile app & push](#mobile-app--push-notifications) · [Apple / Google Health](#apple--google-health-open-wearables) · [Android app](#android-app-sideload-apk) · [Strava API credentials](#strava-api-credentials)
 
@@ -77,6 +78,8 @@ docker compose up -d    # pulls the pre-built image - no local build needed
 
 The stack starts nginx (app on port 80), Django/gunicorn, Celery worker + beat, Redis and Postgres. In production set `HOSTS` / `MAIN_HOST` to your public URL and `DEBUG=false`. Migrations and static files are handled automatically at container start.
 
+**Releases** are deliberate: pushes and PRs only run the backend test suite. To cut a version (Docker image + GitHub Release + APK), run **Actions → Production Deployment → Run workflow**. Merging to `main` does not tag or publish.
+
 **Updating to a new release** — the compose file pins `pull_policy: missing`, so `up -d` alone never re-pulls the image. To update:
 
 ```bash
@@ -114,7 +117,15 @@ server {
 
 Matching `.env` entries: `MAIN_HOST=https://workout.your-domain.com`, `HOSTS=https://workout.your-domain.com,https://localhost` (the `https://localhost` origin is needed by the Android app), and for the health connector `HEALTH_PUBLIC_URL=https://workout.your-domain.com/health` (or the subdomain variant — see [Apple / Google Health](#apple--google-health-open-wearables)).
 
-The pre-built multi-arch image (amd64 + arm64) comes from [`ghcr.io/bandulix/workout_challenge`](https://github.com/bandulix/workout_challenge/pkgs/container/workout_challenge) and is rebuilt on every release. Use `docker compose up -d --build` to build from source instead (e.g. after changing code). *(The `vanalmsick/workout_challenge` image on DockerHub ships the original upstream app, not this fork.)*
+The pre-built multi-arch image (amd64 + arm64) comes from [`ghcr.io/bandulix/workout_challenge`](https://github.com/bandulix/workout_challenge/pkgs/container/workout_challenge) and is rebuilt when you run the release workflow. Use `docker compose up -d --build` to build from source instead (e.g. after changing code). Source builds install Python deps from `src-backend/requirements.lock.txt` (regenerate with `pip-compile` after editing `requirements.txt`) and the frontend with Vite (`npm start` / `npm run build` in `src-frontend`). *(The `vanalmsick/workout_challenge` image on DockerHub ships the original upstream app, not this fork.)*
+
+Backend tests (no Redis required):
+
+```bash
+cd src-backend
+DEBUG=true SECRET_KEY=ci-test-not-a-real-secret-32bytes-min \
+  python manage.py test --settings=workout_challenge.test_settings --top-level-directory=.
+```
 
 ## AI Drill Instructor
 Each competition can optionally activate an AI coach that generates a short, persona-voiced comment for every logged activity, stores it in an in-app audit log, and optionally pushes it to athletes' devices.
@@ -128,6 +139,7 @@ Each competition can optionally activate an AI coach that generates a short, per
 - **Random daily push:** 1-2 times per day at random times (07:00–22:00) the instructor posts a pep talk pushing the whole group (toggleable per competition).
 - **Quiet-day nudge:** if a whole day passes without any workout in a running competition, the instructor posts one motivational nudge to the group (toggleable per competition).
 - With browser push enabled, messages are also dispatched to subscribed devices (nudges go to every participant).
+- Participants can talk back in the coach feed, including **photo posts from the camera or the gallery**.
 
 **Built-in personas** (each with profile picture, tagline and accent colour):
 
@@ -189,7 +201,7 @@ Toolchain (once per build machine): JDK 21 (e.g. `~/jdk21`) + Android SDK platfo
 - **Install:** the script also **publishes the APK onto your stack** — nginx serves it at `/download/workout-challenge.apk` (volume-backed, survives recreations), and *Settings → Apple / Google Health* offers that download to Android browsers automatically. Manual alternative: copy the APK to the phone. On the phone: "Install unknown apps" once → enter the server address on first start → log in → Settings → Connect Health Connect.
 - **Signing:** release builds sign with `~/.gradle/workout-signing.properties` (generated once, lives outside the repo); without it they fall back to the debug key so `assembleRelease` always works. **Keep the release keystore safe** — updates must be signed with the same key.
 - **Updates:** the script stamps every build with `versionName` (git tag) + `versionCode` (commit count, monotonic) and publishes `apk-version.json` next to the APK. The app compares it to its own build and shows a **"App update available" banner** on the dashboard when yours is newer — tap → download → Android installs over the top, all data kept. Dismissing hides the banner until the *next* newer build.
-- **Releases ship the APK automatically:** the CI (`apk` job in `prod-deploy.yml`) builds a **generic APK** on every release and attaches it (+ `apk-version.json`) to the GitHub Release — so the app always matches the deployed version. After pulling a new image, run `scripts/update_apk_from_release.sh` to fetch it onto your stack (cron-friendly; pass a tag for a specific release). Locally built APKs via `build_apk.sh` stay the pre-filled alternative.
+- **Releases ship the APK automatically:** the CI (`apk` job in `prod-deploy.yml`) builds a **generic APK** on every *dispatched* release and attaches it (+ `apk-version.json`) to the GitHub Release — so the app always matches the deployed version. After pulling a new image, run `scripts/update_apk_from_release.sh` to fetch it onto your stack (cron-friendly; pass a tag for a specific release). Locally built APKs via `build_apk.sh` stay the pre-filled alternative.
 - **Activity source switching:** the Settings selector (Strava / Garmin / Google Health Connect) also drives the phone-side sync in the app — Health starts it, anything else pauses it, and switches made on other devices reconcile on the next app start.
 - **Play Store later:** `./gradlew bundleRelease` produces the AAB; Health Connect permission declaration + privacy policy are the remaining store chores.
 

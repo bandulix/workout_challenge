@@ -15,6 +15,7 @@ import {
 } from "./basicComponents";
 import PersonaAvatar from "../components/PersonaAvatar";
 import {invalidateProtectedImage} from "../utils/protectedMedia";
+import {confirmAction, notice} from "../utils/dialogs";
 
 // Only admins reach this modal (the Coach page gates the entry point and
 // the API rejects non-staff writes); the persona library itself is global
@@ -237,12 +238,12 @@ export default function DrillInstructorPersonaModal({setModalState}) {
     const [editing, setEditing] = useState(null);
 
     async function handleDelete(persona) {
-        const confirmation = window.confirm(`Delete the persona "${persona.name}"?`);
+        const confirmation = await confirmAction(`Delete the persona "${persona.name}"?`);
         if (!confirmation) return;
         try {
             await deletePersona(persona.id).unwrap();
         } catch (err) {
-            window.alert("Could not delete persona: " + JSON.stringify(err?.data || err?.message));
+            await notice("Could not delete persona: " + JSON.stringify(err?.data || err?.message));
         }
     }
 

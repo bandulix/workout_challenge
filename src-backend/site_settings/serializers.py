@@ -27,7 +27,6 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
             "llm_base_url",
             "llm_model",
             "llm_email_model",
-            "roast_image_prompt",
             # Strava
             "strava_client_id",
             "strava_client_secret",

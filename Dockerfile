@@ -2,18 +2,20 @@ FROM node:20 AS frontend
 WORKDIR /workout_challenge/src-frontend
 COPY src-frontend/ /workout_challenge/src-frontend/
 # npm ci: install exactly what package-lock.json pins (reproducible).
-# INLINE_RUNTIME_CHUNK=false: no inline <script> in the built
-# index.html, so nginx can serve a CSP without script-src 'unsafe-inline'.
-RUN npm ci && INLINE_RUNTIME_CHUNK=false npm run build
+# Vite emits no inline runtime script, so nginx CSP can omit script-src
+# 'unsafe-inline'.
+RUN npm ci && npm run build
 
 FROM python:3.11-alpine AS backend
 WORKDIR /workout_challenge/src-backend
 COPY src-backend/ /workout_challenge/src-backend/
 
-# psycopg2-binary is in requirements.txt, so no C build toolchain needed.
+# psycopg2-binary is in the lock, so no C build toolchain needed.
 # (Kept just the runtime libs for any wheel that needs them.)
+# Install from the compiled lock, not the abstract requirements.txt,
+# so a new Django 5.x / DRF cannot sneak in on an image rebuild.
 RUN apk add --no-cache postgresql-libs
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.lock.txt
 
 # Collect Django static files. site_settings/apps.py:ready() is now
 # defensive against a missing table so it works even before migrations.
@@ -48,9 +50,9 @@ WORKDIR /workout_challenge
 # Copy backend code
 COPY --from=backend /workout_challenge/src-backend /workout_challenge/src-backend
 
-# Copy requirements and install them again
-COPY src-backend/requirements.txt /workout_challenge/src-backend/requirements.txt
-RUN pip install --no-cache-dir -r /workout_challenge/src-backend/requirements.txt && pip install gunicorn
+# Copy the lock and install exactly those versions (gunicorn is in the lock).
+COPY src-backend/requirements.lock.txt /workout_challenge/src-backend/requirements.lock.txt
+RUN pip install --no-cache-dir -r /workout_challenge/src-backend/requirements.lock.txt
 
 # Copy frontend build
 COPY --from=frontend /workout_challenge/src-frontend/build /usr/share/nginx/html

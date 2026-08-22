@@ -52,19 +52,6 @@ class SiteSettings(models.Model):
     llm_base_url = models.CharField(max_length=300, blank=True, default="")
     llm_model = models.CharField(max_length=80, blank=True, default="")
     llm_email_model = models.CharField(max_length=80, blank=True, default="")
-    # The edit instruction for the coach's roasted-photo remix (the
-    # prompt sent to the image-edit model). Blank = the built-in default
-    # in drill_instructor.llm_client.build_roast_image_prompt.
-    roast_image_prompt = models.TextField(
-        blank=True,
-        default="",
-        help_text=(
-            "Template for the photo-roast image edit. Blank = built-in default. "
-            "Optional placeholders: {persona_name}, {persona_style}, {caption}, "
-            "{caption_instruction} (the dynamic 'work the caption into the joke / "
-            "no text' sentence)."
-        ),
-    )
 
     # ---- Strava OAuth + rate limits ------------------------------------
     strava_client_id = models.IntegerField(null=True, blank=True)

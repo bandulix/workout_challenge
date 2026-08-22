@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 import os
+import logging
 import datetime, pytz
 from pathlib import Path
 from urllib.parse import urlparse
@@ -68,7 +69,7 @@ GARMIN_TOKEN_KEY = os.environ.get("GARMIN_TOKEN_KEY", "").strip() or None
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
-print(f'Debug modus is turned {"on" if DEBUG else "off"}')
+logging.getLogger(__name__).info('Debug mode is %s', 'on' if DEBUG else 'off')
 
 MAIN_HOST = os.environ.get("MAIN_HOST", "http://localhost")
 HOSTS = os.environ.get("HOSTS", "http://localhost,http://127.0.0.1").split(",")

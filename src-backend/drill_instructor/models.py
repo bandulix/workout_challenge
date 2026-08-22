@@ -155,6 +155,16 @@ class DrillInstructorMessage(models.Model):
         on_delete=models.CASCADE,
         related_name="messages",
     )
+    # Snapshotted at write time so switching the competition's coach
+    # later does not rewrite historical avatars / names in the feed.
+    persona = models.ForeignKey(
+        DrillInstructorPersona,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="messages",
+        help_text="Persona that was on duty when this message was written.",
+    )
     kind = models.CharField(
         max_length=12,
         choices=KIND_CHOICES,
@@ -206,6 +216,11 @@ class DrillInstructorMessage(models.Model):
             # The coach feed filters by config and orders by recency.
             models.Index(fields=["config", "-posted_at"], name="drill_msg_config_time"),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.persona_id and self.config_id:
+            self.persona_id = self.config.persona_id
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"[{self.posted_at:%Y-%m-%d %H:%M}] {self.config.competition.name}: {self.body[:60]}"

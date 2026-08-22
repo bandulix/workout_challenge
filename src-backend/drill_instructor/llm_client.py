@@ -431,15 +431,29 @@ def _image_client(timeout=30):
     return client, config["model"], candidates, _image_endpoint_style(config.get("base_url"))
 
 
-def _images_edit(client, style: str, model: str, image_bytes: bytes, prompt: str, timeout: int):
+def _xai_image_part(image_bytes: bytes) -> dict:
+    return {
+        "url": f"data:image/png;base64,{base64.b64encode(image_bytes).decode()}",
+        "type": "image_url",
+    }
+
+
+def _images_edit(client, style: str, model: str, image_bytes: bytes, prompt: str, timeout: int, extra_images=None):
     """One images.edit call in the provider's wire format.
 
     Returns the raw SDK result (openai) or the parsed JSON dict (xai);
     raises on failure - the caller classifies via the status code.
+
+    ``extra_images`` are additional source PNGs (coach portrait for
+    face-lock). xAI accepts up to 3 images as a JSON array; OpenAI
+    gpt-image-* takes a list of file-like objects. dall-e-2 is
+    single-image only - extras are ignored there.
     """
+    extras = [b for b in (extra_images or []) if b]
     if style == "xai":
         import requests as _requests
 
+        parts = [_xai_image_part(image_bytes)] + [_xai_image_part(b) for b in extras]
         resp = _requests.post(
             f"{client.base_url}/images/edits",
             headers={
@@ -449,10 +463,9 @@ def _images_edit(client, style: str, model: str, image_bytes: bytes, prompt: str
             json={
                 "model": model,
                 "prompt": prompt,
-                "image": {
-                    "url": f"data:image/png;base64,{base64.b64encode(image_bytes).decode()}",
-                    "type": "image_url",
-                },
+                # Single object when there's one image: that's the
+                # format the original integration was tested against.
+                "image": parts[0] if len(parts) == 1 else parts,
             },
             timeout=timeout,
         )
@@ -461,9 +474,19 @@ def _images_edit(client, style: str, model: str, image_bytes: bytes, prompt: str
             error.status_code = resp.status_code
             raise error
         return resp.json()
+
+    image_arg = image_bytes
+    if extras and model != "dall-e-2":
+        from io import BytesIO
+        files = []
+        for index, payload in enumerate([image_bytes, *extras]):
+            buf = BytesIO(payload)
+            buf.name = f"edit-{index}.png"
+            files.append(buf)
+        image_arg = files
     return client.images.edit(
         model=model,
-        image=image_bytes,
+        image=image_arg,
         prompt=prompt,
         size="1024x1024",
         n=1,
@@ -582,9 +605,12 @@ def _prepare_edit_image(image_path: str, square_png: bool) -> bytes:
         return buf.getvalue()
 
 
-def generate_roast_image(image_path: str, roast_prompt: str, model: str) -> "tuple[Optional[bytes], Optional[str]]":
+def generate_roast_image(image_path: str, roast_prompt: str, model: str, extra_image_paths=None) -> "tuple[Optional[bytes], Optional[str]]":
     """Edit ``image_path`` per the roast prompt; return ``(png_bytes, None)``
     or ``(None, reason)``.
+
+    ``extra_image_paths`` are additional source images (typically the
+    coach's profile picture for a face lock). Ignored for dall-e-2.
 
     The result arrives as b64_json (gpt-image-1 always) or a URL (dall-e-2
     default) - the URL variant is downloaded with the same size cap.
@@ -602,12 +628,21 @@ def generate_roast_image(image_path: str, roast_prompt: str, model: str) -> "tup
         logger.warning("Drill Instructor: could not prepare image %s: %s", image_path, exc)
         return None, f"image preparation failed ({type(exc).__name__})"
 
+    extra_bytes = []
+    if model != "dall-e-2":
+        for path in extra_image_paths or []:
+            try:
+                extra_bytes.append(_prepare_edit_image(path, square_png=False))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Drill Instructor: could not prepare extra image %s: %s", path, exc)
+
     try:
         result = _images_edit(
             client, style, model,
             image_bytes=image_bytes,
             prompt=roast_prompt[:3900],  # dall-e-2 caps prompts at 4000 chars
             timeout=180,
+            extra_images=extra_bytes or None,
         )
         return _extract_image_payload(result)
     except Exception as exc:  # noqa: BLE001 - OpenAI raises many subclasses
@@ -618,64 +653,57 @@ def generate_roast_image(image_path: str, roast_prompt: str, model: str) -> "tup
 MAX_ROAST_IMAGE_BYTES = 8 * 1024 * 1024
 
 
-def _roast_caption_instruction(caption: str) -> str:
-    """The dynamic closing line of the roast prompt: caption-aware when the
-    athlete wrote one, no-text otherwise."""
-    if caption:
-        return (
-            f"Work the caption \"{caption[:120]}\" into the joke. If you render "
-            "it as poster text, spell it EXACTLY as written."
-        )
-    return "Do not render any text - let the imagery do the roasting."
+def build_roast_image_prompt(*, persona_name: str, persona_description: str = "", caption: str = "", workout_summary: str = "", has_coach_portrait: bool = False) -> str:
+    """Hardcoded edit instruction: put the athlete into the coach's world.
 
-
-def _custom_roast_image_template() -> str:
-    """The admin's roast-prompt template from Site Settings ('' = default).
-
-    Looked up per roast (rare, and the edit call itself costs an API
-    request), never cached beyond the resolver TTL used elsewhere. Any
-    failure means "no override" - the roast must never break on a
-    settings lookup.
+    Image 1 is the posted photo. Image 2 (when ``has_coach_portrait``) is
+    the persona's profile picture and is a face lock - the coach in the
+    result must match that face. The setting comes from the persona
+    description. Workout stats of the answered-to activity are painted
+    on the picture when present.
     """
-    try:
-        from site_settings.models import SiteSettings
+    setting = (persona_description or "").strip()[:500]
+    if not setting:
+        setting = f"a vivid training world that fits coach {persona_name}"
 
-        return (SiteSettings.get_solo().roast_image_prompt or "").strip()
-    except Exception:  # noqa: BLE001 - never block a roast on a settings lookup
-        logger.warning("Drill Instructor: could not read the custom roast image prompt, using the default.", exc_info=True)
-        return ""
-
-
-def build_roast_image_prompt(*, persona_name: str, persona_system_prompt: str, caption: str = "") -> str:
-    """The edit instruction for the coach's roasted photo remix.
-
-    Style comes from the persona (the system prompt is the owner's own
-    voice briefing - clamped), the mechanic is a bootcamp-poster roast:
-    playful and over the top, never mean-spirited.
-
-    Admins can override the whole prompt in Site Settings
-    (``roast_image_prompt``) - a template with optional {persona_name},
-    {persona_style}, {caption} and {caption_instruction} placeholders.
-    Blank keeps the built-in default below. Substitution uses plain
-    str.replace so stray braces in the template can't crash formatting.
-    """
-    template = _custom_roast_image_template()
-    if template:
-        return (
-            template
-            .replace("{persona_name}", persona_name)
-            .replace("{persona_style}", (persona_system_prompt or "").strip()[:400])
-            .replace("{caption}", (caption or "")[:120])
-            .replace("{caption_instruction}", _roast_caption_instruction(caption or ""))
-        )
     parts = [
-        f"Edit this photo into a funny, over-the-top bootcamp propaganda poster that playfully roasts the person in it, in the style of the drill-instructor persona \"{persona_name}\".",
-        f"Persona style briefing: \"{(persona_system_prompt or '').strip()[:400]}\"",
-        "Rules: keep the person clearly recognizable and the edit good-natured "
-        "(exaggerate effort, scenery and drama - never appearance, body or "
-        "identity). Bold poster look, dramatic lightning optional.",
+        "Edit IMAGE 1, the athlete's photo, into a new scene.",
+        f"Place the athlete together with their coach \"{persona_name}\" in this setting:",
+        f"SETTING: {setting}",
+        "The coach must be clearly visible in the picture with the athlete "
+        "(standing next to them, coaching them, or otherwise interacting). "
+        "Match the coach's clothing and vibe to the setting.",
+        "Keep the athlete's face from IMAGE 1 clearly recognizable. Do not "
+        "beautify, distort, swap, or replace the athlete. The edit is "
+        "good-natured - never mock body, appearance, or identity.",
     ]
-    parts.append(_roast_caption_instruction(caption or ""))
+    if has_coach_portrait:
+        parts.append(
+            f"FACE LOCK: IMAGE 2 is the official portrait of coach \"{persona_name}\". "
+            "The coach's face in the result MUST be an exact likeness of IMAGE 2 "
+            "(same face, same identity, same distinguishing features). "
+            "Do not genericize, age-shift, or invent a different person."
+        )
+    else:
+        parts.append(
+            f"There is no portrait reference. Invent a distinctive look for "
+            f"coach \"{persona_name}\" that fits the setting above, and still "
+            "include them in the scene."
+        )
+    if workout_summary:
+        parts.append(
+            "STATS OVERLAY: paint these workout stats as clean, readable "
+            "on-image text (HUD, chalkboard, race bib, or scoreboard — pick "
+            "what fits the setting). Do not cover faces. Spell the numbers "
+            f"exactly: {workout_summary}"
+        )
+    if caption:
+        parts.append(
+            f"If you add a small sign or speech bubble, you may use this "
+            f"caption spelled EXACTLY: \"{caption[:120]}\"."
+        )
+    else:
+        parts.append("Do not invent extra slogans or poster headlines.")
     return "\n".join(parts)
 
 

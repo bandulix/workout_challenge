@@ -1,5 +1,6 @@
 import datetime
 import logging
+import os
 import random
 
 from django.apps import apps
@@ -309,7 +310,7 @@ def post_reply_reaction(self, reply_id):
     try:
         reply = (
             DrillInstructorMessage.objects
-            .select_related("config", "config__competition", "config__persona", "parent", "user")
+            .select_related("config", "config__competition", "config__persona", "parent", "parent__workout", "workout", "user")
             .get(pk=reply_id)
         )
     except DrillInstructorMessage.DoesNotExist:
@@ -452,7 +453,7 @@ def post_photo_reaction(self, photo_id):
     try:
         photo = (
             DrillInstructorMessage.objects
-            .select_related("config", "config__competition", "config__persona", "user")
+            .select_related("config", "config__competition", "config__persona", "user", "workout", "parent", "parent__workout")
             .get(pk=photo_id)
         )
     except DrillInstructorMessage.DoesNotExist:
@@ -550,6 +551,34 @@ def post_photo_reaction(self, photo_id):
     return {"photo_id": photo_id, "reaction_id": message.id, "roast_id": roast_id}
 
 
+def _workout_answered_to(photo, parent=None):
+    """The workout this photo is answering, if any.
+
+    A Coach-page photo is a reply to the latest coach message; when that
+    message is a workout comment, its ``workout`` is the one whose stats
+    belong on the remixed picture. A thread-root photo has no workout.
+    """
+    for candidate in (photo, parent, getattr(photo, "parent", None)):
+        if candidate is None:
+            continue
+        workout = getattr(candidate, "workout", None)
+        if workout is not None:
+            return workout
+    return None
+
+
+def _persona_portrait_path(persona):
+    """Filesystem path of the persona's uploaded profile picture, or None."""
+    picture = getattr(persona, "profile_picture", None)
+    if not picture:
+        return None
+    try:
+        path = picture.path
+    except (ValueError, NotImplementedError):
+        return None
+    return path if path and os.path.isfile(path) else None
+
+
 def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
     """The entertainment payload: edit the posted photo into a persona-
     styled roast poster and post it as a second coach reaction.
@@ -567,13 +596,21 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
     DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
     persona = config.persona
     author_first_name = photo.user.first_name or photo.user.username or "Athlete"
+    portrait_path = _persona_portrait_path(persona)
+    workout = _workout_answered_to(photo, parent)
+    workout_summary = _format_workout_summary(workout)[0] if workout is not None else ""
 
     roast_prompt = build_roast_image_prompt(
         persona_name=persona.name,
-        persona_system_prompt=persona.system_prompt,
+        persona_description=persona.description or "",
         caption=photo.body or "",
+        workout_summary=workout_summary,
+        has_coach_portrait=bool(portrait_path),
     )
-    png_bytes, roast_error = generate_roast_image(image_path, roast_prompt, roast_model)
+    png_bytes, roast_error = generate_roast_image(
+        image_path, roast_prompt, roast_model,
+        extra_image_paths=[portrait_path] if portrait_path else None,
+    )
     if not png_bytes:
         config.last_error = f"photo roast skipped: {roast_error}"
         config.save(update_fields=["last_error", "updated_at"])

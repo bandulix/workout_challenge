@@ -58,7 +58,6 @@ export default function JoinCompetitionForm({setModalState, join_code= null}) {
     async function joinCompetition(joinCode, redirect = true) {
         try {
             const result = await updateEntry(joinCode).unwrap();
-            console.log('Join Competition success:', result);
             setModalState(false);
             document.body.classList.remove('body-no-scroll');
             if (redirect) {

@@ -6,6 +6,7 @@ import {
 } from "../utils/reducers/competitionsSlice";
 import {useNavigate} from "react-router-dom";
 import {ChangeOwnerButton, DeleteButton, Modal, SaveButton, SingleForm} from "./basicComponents";
+import {confirmAction, notice} from "../utils/dialogs";
 
 
 const fields = {
@@ -101,10 +102,9 @@ export default function CompetitionForm({competition, setModalState, setShowTran
         if (competition !== undefined) {
             // delete competition
             try {
-                const confirmation = window.confirm('You are deleting this competition. This is irreversible. Are you sure?');
+                const confirmation = await confirmAction('You are deleting this competition. This is irreversible. Are you sure?');
                 if (confirmation) {
-                    const result = await deleteEntry(values.id).unwrap();
-                    console.log('Delete Competition success:', result);
+                    await deleteEntry(values.id).unwrap();
                     setModalState(false);
                     document.body.classList.remove('body-no-scroll');
                     navigate('/dashboard/');
@@ -125,11 +125,10 @@ export default function CompetitionForm({competition, setModalState, setShowTran
         if (competition !== undefined) {
             // update competition
             try {
-                const result = await updateEntry(values).unwrap();
-                console.log('Update Competition success:', result);
+                await updateEntry(values).unwrap();
                 setModalState(false);
                 document.body.classList.remove('body-no-scroll');
-                window.alert('Saved. Changes might take up to 10 minutes to reflect on the competition page for all users.');
+                await notice('Saved. Changes might take up to 10 minutes to reflect on the competition page for all users.');
             } catch (err) {
                 console.error('Update Competition failed', err);
                 setFieldErrors(err.data);
@@ -137,8 +136,7 @@ export default function CompetitionForm({competition, setModalState, setShowTran
         } else {
             // create competition
             try {
-                const result = await createEntry(values).unwrap();
-                console.log('Create Competition success:', result);
+                await createEntry(values).unwrap();
                 setModalState(false);
                 document.body.classList.remove('body-no-scroll');
                 // The new challenge page is interesting for about one

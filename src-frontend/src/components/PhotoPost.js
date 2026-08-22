@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from "react";
-import {Camera, Send, X} from "lucide-react";
+import {Camera, Image as ImageIcon, Send, X} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {useDispatch} from "react-redux";
 import {drillInstructorApi, usePostDrillPhotoMutation} from "../utils/reducers/drillInstructorSlice";
@@ -46,34 +46,60 @@ export default function PhotoPost({competitionId, visionCapable, parentId, onPos
 }
 
 
-// The composer itself: pick (or take, on mobile) a picture, it gets
-// compressed before upload (see utils/imageCompress.js), then posted as
-// a thread root - the coach reacts, participants reply through the
-// regular thread UI.
+// The composer itself: take a picture or pick one from the gallery,
+// compress it (see utils/imageCompress.js), then attach it to the
+// caller's own workout thread (parentId is required server-side).
 function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
-    const fileInput = React.useRef(null);
+    const cameraInput = React.useRef(null);
+    const galleryInput = React.useRef(null);
     const [file, setFile] = useState(null);
     const [error, setError] = useState(null);
     const [posting, setPosting] = useState(false);
     const [postPhoto] = usePostDrillPhotoMutation();
     const dispatch = useDispatch();
 
-    // Open the picker as soon as the composer mounts (the button already
-    // said "I want to share a photo" - no second tap).
-    useEffect(() => {
-        fileInput.current?.click();
-    }, []);
+    function onPicked(e) {
+        const picked = e.target.files?.[0] || null;
+        e.target.value = "";
+        setError(null);
+        // SVG/HTML as image/* can carry script; only bitmap types for preview + upload.
+        if (picked && picked.type && !/^image\/(jpeg|png|webp|gif)$/i.test(picked.type)) {
+            setFile(null);
+            setError("Please pick a JPEG, PNG, WebP or GIF.");
+            return;
+        }
+        setFile(picked);
+    }
 
-    // Local preview of the picked file (instant, no upload needed).
+    // Decode to a canvas JPEG so the <img> src is pixels, not a blob: of
+    // the raw pick (CodeQL js/xss-through-dom; also defangs SVG).
     const [preview, setPreview] = useState(null);
     useEffect(() => {
         if (!file) {
             setPreview(null);
             return;
         }
-        const url = URL.createObjectURL(file);
-        setPreview(url);
-        return () => URL.revokeObjectURL(url);
+        let cancelled = false;
+        (async () => {
+            try {
+                const bitmap = await createImageBitmap(file);
+                const max = 800;
+                const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+                const canvas = document.createElement("canvas");
+                canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+                canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+                canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                bitmap.close();
+                const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+                if (!cancelled) setPreview(dataUrl);
+            } catch {
+                if (!cancelled) {
+                    setPreview(null);
+                    setError("Could not preview that file.");
+                }
+            }
+        })();
+        return () => { cancelled = true; };
     }, [file]);
 
     function reset() {
@@ -106,12 +132,13 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
 
     return (
         <div className="w-full px-1 py-3 space-y-2">
-            {/* capture="user": on mobile the SELFIE camera opens directly
-                instead of the file chooser (proof-of-workout is usually a
-                sweaty face for the coach; the camera UI still allows
-                flipping to the rear cam, and desktop is unaffected). */}
-            <input ref={fileInput} type="file" accept="image/*" capture="user" className="hidden"
-                   onChange={(e) => { setError(null); setFile(e.target.files?.[0] || null); e.target.value = ""; }}/>
+            {/* Two inputs: `capture` forces the camera on phones and
+                hides the gallery. Leaving it off opens the library.
+                Desktop treats both as a normal file picker. */}
+            <input ref={cameraInput} type="file" accept="image/*" capture="user" className="hidden"
+                   onChange={onPicked}/>
+            <input ref={galleryInput} type="file" accept="image/*" className="hidden"
+                   onChange={onPicked}/>
             {file && (
                 <div className="relative inline-block">
                     <img src={preview} alt="Upload preview"
@@ -124,10 +151,18 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
             )}
             <div className="flex items-center gap-2">
                 {!file && (
-                    <button onClick={() => fileInput.current?.click()}
-                            className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px]">
-                        Choose a different picture
-                    </button>
+                    <>
+                        <button type="button" onClick={() => cameraInput.current?.click()}
+                                className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5">
+                            <Camera className="h-3.5 w-3.5"/>
+                            Camera
+                        </button>
+                        <button type="button" onClick={() => galleryInput.current?.click()}
+                                className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5">
+                            <ImageIcon className="h-3.5 w-3.5"/>
+                            Gallery
+                        </button>
+                    </>
                 )}
                 <div className="flex-1"/>
                 <button onClick={handleSend} disabled={posting || !file}

@@ -1,5 +1,8 @@
+import logging
 import requests
 import time, datetime
+
+logger = logging.getLogger(__name__)
 
 from django.core.cache import cache
 from django.contrib.auth import get_user_model
@@ -78,19 +81,19 @@ def daily_strava_sync(self, refresh_all=False):
     # Log pks/usernames only - email addresses are PII and shouldn't
     # land in container logs.
     user_lst_names = [{'pk': i.pk, 'username': i.username} for i in user_lst]
-    print(f'Syncing Strava for {len(user_lst)} users: {user_lst_names}')
+    logger.info('Syncing Strava for %s users', len(user_lst))
 
     for user in user_lst:
         try:
             sync_strava(user__id=user.id)
         except RateLimitExceeded as exc:
             sleep_time = _seconds_until_next_interval() + 60
-            print(f'Strava sync rate limit exceeded - sleeping for {sleep_time // 60 } mins')
+            logger.info('Strava sync rate limit exceeded - sleeping %s min', sleep_time // 60)
             raise self.retry(exc=exc, countdown=sleep_time)  # retry in next Strava 15min api period
         except Exception as exc:
-            print(f'Strava sync failed for user {user.pk} - {exc}')
+            logger.exception('Strava sync failed for user %s', user.pk)
 
-    print('Finished syncing Strava.')
+    logger.info('Finished syncing Strava.')
     return user_lst_names
 
 
@@ -104,7 +107,7 @@ def sync_strava(self, user__id, start_datetime=None):
     # Strava must not import - the same activities would arrive twice.
     # Checked before any cache/Strava API access so it costs nothing.
     if user.get_activity_source() != 'strava':
-        print(f'User {user__id} - Strava sync skipped: Strava is not the selected activity source')
+        logger.info('User %s - Strava sync skipped: Strava is not the selected activity source', user__id)
         return {'user': user__id, 'skipped': 'strava is not the selected activity source'}
 
     access_token = cache.get(f"strava_access_token_{user__id}")
@@ -262,6 +265,6 @@ def sync_strava(self, user__id, start_datetime=None):
     if start_datetime is None:
         setattr(user, 'strava_last_synced_at', strava_last_synced_at)
         user.save()
-    print(f'User {user__id} - fetched {cnt_new_strava_activities} new strava activities, updated {cnt_updated_strava_activities} existing strava activities and skipped {cnt_duplicate_strava_activities} cross-provider duplicates')
+    logger.info('User %s - fetched %s new strava activities, updated %s existing, skipped %s cross-provider duplicates', user__id, cnt_new_strava_activities, cnt_updated_strava_activities, cnt_duplicate_strava_activities)
 
     return {'user': user__id, 'total_activities': (page - 1) * per_page + len(activities), 'new_activities': cnt_new_strava_activities, 'updated_activities': cnt_updated_strava_activities, 'duplicates_skipped': cnt_duplicate_strava_activities, 'sync_time': strava_last_synced_at}

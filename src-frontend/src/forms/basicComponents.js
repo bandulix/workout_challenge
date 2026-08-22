@@ -10,6 +10,7 @@ import {
     Pencil,
     ThumbsUp,
     UserRoundPen,
+    X,
 } from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import { isMobile } from "react-device-detect";
@@ -43,18 +44,19 @@ export function Modal({setShowModal, title = null, landscape = false, isLoading 
                         " w-full space-y-4 max-sm:w-full max-sm:min-h-screen max-sm:rounded-none max-sm:p-4 max-sm:m-0 max-sm:shadow-none max-sm:border-0 max-sm:pb-[max(2rem,env(safe-area-inset-bottom))]"}
                 >
                     <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-xl font-display uppercase tracking-wide">{title}</h2>
-                        <button className="text-gray-400 hover:text-gray-600 dark:hover:text-volt-300 text-2xl leading-none min-h-[44px] min-w-[44px]"
+                        <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+                        <button className="text-gray-400 hover:text-gray-600 dark:hover:text-volt-300 min-h-[44px] min-w-[44px] flex items-center justify-center"
                                 onClick={() => closeModal()}
+                                aria-label="Close"
                         >
-                            &times;
+                            <X className="h-5 w-5"/>
                         </button>
                     </div>
 
                     {
                         (isLoading) ? (
                                 <div className="w-full h-64 flex items-center justify-center">
-                                    <BeatLoader height={6} width={200} color="rgb(209 213 219)"/>
+                                    <BeatLoader color="#d7ff3e"/>
                                 </div>
                             ) :
                             (
@@ -97,10 +99,10 @@ export function FormInput({
 
     let additionalClasses = "";
     if (readOnly) {
-        additionalClasses += " text-gray-500 dark:text-gray-500 " + ((highlight) ? "": " bg-gray-100 dark:bg-gray-700 ");
+        additionalClasses += " text-gray-500 dark:text-gray-500 " + ((highlight) ? "": " bg-gray-100 dark:bg-ink-800 ");
     }
     if (disabled) {
-        additionalClasses += " text-gray-500 dark:text-gray-500 cursor-not-allowed " + ((highlight) ? "": " bg-gray-100 dark:bg-gray-700 ");
+        additionalClasses += " text-gray-500 dark:text-gray-500 cursor-not-allowed " + ((highlight) ? "": " bg-gray-100 dark:bg-ink-800 ");
     }
 
     return (
@@ -274,7 +276,7 @@ export function MultiForm({fields, values, setValues, errors = {}}) {
     return (
         <div>
             {values?.map((value_row, index) => (
-                <div key={index} className="relative border border-gray-300 rounded-lg p-4 mb-4">
+                <div key={index} className="relative border border-gray-200/70 dark:border-ink-700/60 rounded-2xl p-4 mb-4">
                     <button className="absolute top-2 right-2 text-gray-500 hover:text-red-500"
                             onClick={() => deleteRow(index)}
                     >
@@ -319,7 +321,7 @@ function GenericButton({onClick, icon, label, highlighted, larger, IconObject, i
 
     return (
         <button
-            className={"flex items-center gap-2 transition hover:shadow active:scale-[0.97] " + tapTargetClass + " " + (larger ? (label ? " px-5 py-2.5 font-semibold rounded-full " : " px-3 py-3 rounded-2xl ") : (label ? " px-4 py-2 rounded-full " : " p-2 rounded-2xl ")) + (isLoading ? " bg-white hover:bg-white shadow-none border border-gray-200 dark:bg-ink-850 dark:hover:bg-ink-850 " : (highlighted ? " bg-volt-400 text-ink-950 font-bold hover:bg-volt-300 " : " bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:text-gray-200 dark:hover:bg-ink-700 ")) + additionalClasses}
+            className={"flex items-center gap-2 transition hover:shadow active:scale-[0.97] " + tapTargetClass + " " + (larger ? (label ? " px-5 py-2.5 font-semibold rounded-full " : " px-3 py-3 rounded-2xl ") : (label ? " px-4 py-2 rounded-full " : " p-2 rounded-2xl ")) + (isLoading ? " bg-white hover:bg-white shadow-none border border-gray-200/70 dark:bg-ink-850 dark:hover:bg-ink-850 dark:border-ink-700/60 " : (highlighted ? " bg-volt-400 text-ink-950 font-bold hover:bg-volt-300 " : " bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:text-gray-200 dark:hover:bg-ink-700 ")) + additionalClasses}
             onClick={onClick}
             disabled={isLoading}
         >

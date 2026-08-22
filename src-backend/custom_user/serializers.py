@@ -63,12 +63,8 @@ class CustomUserSerializer(serializers.ModelSerializer):
     def validate_profile_picture_upload(self, value):
         if value is None:
             return value
-        if value.size > self.MAX_PROFILE_PICTURE_BYTES:
-            raise serializers.ValidationError("Profile picture too large (max 5 MB).")
-        content_type = getattr(value, "content_type", "") or ""
-        if not content_type.startswith("image/"):
-            raise serializers.ValidationError("File must be an image.")
-        return value
+        from workout_challenge.images import validate_and_reencode_image
+        return validate_and_reencode_image(value, max_bytes=self.MAX_PROFILE_PICTURE_BYTES, max_side=512)
 
     class Meta:
         model = CustomUser
@@ -153,7 +149,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
     # co-participants (PII, PII-adjacent settings, and cross-competition
     # membership rosters).
     PRIVATE_FIELDS = [
-        'email', 'first_name', 'last_name', 'gender', 'password',
+        'email', 'last_name', 'gender', 'password',
         'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at',
         'health_user_id', 'health_last_synced_at', 'health_configured',
         'activity_source', 'activity_source_effective',

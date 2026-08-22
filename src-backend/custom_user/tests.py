@@ -222,6 +222,54 @@ class ProfilePictureEndpointTests(TestCase):
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
 )
+class UserListPrivacyTests(TestCase):
+    """Co-participants appear on GET /api/user/ for team pickers, but
+    their email, staff flag, and provider tokens must not."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.client = APIClient()
+        today = timezone.localdate()
+        self.owner = CustomUser.objects.create_user(
+            email="priv-owner@example.com", password="test-pw", first_name="Pat", last_name="Owner",
+            is_staff=True,
+        )
+        self.mate = CustomUser.objects.create_user(
+            email="priv-mate@example.com", password="test-pw", first_name="Mel", last_name="Secret",
+        )
+        self.mate.garmin_email = "garmin-secret@example.com"
+        self.mate.save()
+        competition = Competition.objects.create(
+            owner=self.owner, name="Privacy Cup",
+            start_date=today, end_date=today + datetime.timedelta(days=7),
+        )
+        self.mate.my_competitions.add(competition)
+
+    def test_list_hides_other_users_email_and_staff(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.get("/api/user/")
+        self.assertEqual(response.status_code, 200)
+        by_id = {row["id"]: row for row in response.json()}
+        me = by_id[self.owner.id]
+        other = by_id[self.mate.id]
+        self.assertEqual(me["email"], "priv-owner@example.com")
+        self.assertTrue(me["is_staff"])
+        self.assertNotIn("email", other)
+        self.assertNotIn("is_staff", other)
+        self.assertNotIn("garmin_email", other)
+        self.assertNotIn("last_name", other)
+        self.assertEqual(other["first_name"], "Mel")
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
 class ResetStravaTests(TestCase):
     """The Strava reset is the repair path for a broken connection: it
     wipes the whole connection state (including the cached access token
@@ -647,6 +695,35 @@ class HealthWorkoutMappingTests(TestCase):
         self.assertIsNone(workout_to_props(self.user, self._payload(id=None)))
         self.assertIsNone(workout_to_props(self.user, self._payload(start_time=None)))
         self.assertIsNone(workout_to_props(self.user, self._payload(duration_seconds=None, end_time=None)))
+
+    def test_missing_distance_stays_none_not_zero(self):
+        from .health import workout_to_props
+        props = workout_to_props(self.user, self._payload(distance_meters=0))
+        self.assertIsNone(props["distance"])
+        props = workout_to_props(self.user, self._payload(distance_meters=None))
+        self.assertIsNone(props["distance"])
+
+    def test_distance_already_in_km_is_not_divided_again(self):
+        from .health import workout_to_props
+        # 5 km run in 25 min shipped as 5.0 under distance_meters.
+        props = workout_to_props(self.user, self._payload(
+            distance_meters=5.0, duration_seconds=1500,
+        ))
+        self.assertEqual(props["distance"], 5.0)
+
+    def test_distance_derived_from_pace_when_metres_missing(self):
+        from .health import workout_to_props
+        props = workout_to_props(self.user, self._payload(
+            distance_meters=0, duration_seconds=1500, avg_pace_sec_per_km=300,
+        ))
+        self.assertEqual(props["distance"], 5.0)
+
+    def test_short_sprint_metres_stay_metres(self):
+        from .health import workout_to_props
+        props = workout_to_props(self.user, self._payload(
+            distance_meters=50.0, duration_seconds=8,
+        ))
+        self.assertEqual(props["distance"], 0.05)
 
 
 @override_settings(

@@ -10,6 +10,7 @@ import {
 import {BeatLoader} from "react-spinners";
 import {DeleteButton, Modal, SaveButton} from "./basicComponents";
 import PersonaAvatar from "../components/PersonaAvatar";
+import {confirmAction, notice} from "../utils/dialogs";
 
 const PLACEHOLDER_BODY = "AI Drill Instructor standing by. Drop a workout to see me in action.";
 
@@ -87,20 +88,20 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             await refetchConfigs();
             setModalState(false);
             document.body.classList.remove("body-no-scroll");
-            window.alert(existing ? "Saved." : "Drill Instructor created.");
+            await notice(existing ? "Saved." : "Drill Instructor created.");
         } catch (err) {
             console.error("Config save failed", err);
             setFieldErrors(err?.data || {});
             // A failed save must be unmistakable - e.g. enabling without
             // picking a persona only showed a small inline error before,
             // which read as "the app forgot my activation".
-            window.alert("Could not save the Drill Instructor config: " + JSON.stringify(err?.data || err?.message));
+            await notice("Could not save the Drill Instructor config: " + JSON.stringify(err?.data || err?.message));
         }
     }
 
     async function handleDelete() {
         if (!existing) return;
-        const confirmation = window.confirm("Remove the Drill Instructor from this competition?");
+        const confirmation = await confirmAction("Remove the Drill Instructor from this competition?");
         if (!confirmation) return;
         try {
             await deleteDrillConfig(existing.id).unwrap();
@@ -108,24 +109,24 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             setModalState(false);
             document.body.classList.remove("body-no-scroll");
         } catch (err) {
-            window.alert("Could not delete: " + JSON.stringify(err?.data || err?.message));
+            await notice("Could not delete: " + JSON.stringify(err?.data || err?.message));
         }
     }
 
     async function handleTest() {
         if (!existing) {
-            window.alert("Save the configuration first before sending a test message.");
+            await notice("Save the configuration first before sending a test message.");
             return;
         }
         try {
             const res = await runTestMessage({config_id: existing.id, body: testBody || PLACEHOLDER_BODY}).unwrap();
             if (res?.error) {
-                window.alert("Drill Instructor could not save the test message: " + res.error);
+                await notice("Drill Instructor could not save the test message: " + res.error);
             } else {
-                window.alert("Test message saved to the audit log (id " + (res?.id || "n/a") + ").");
+                await notice("Test message saved to the audit log (id " + (res?.id || "n/a") + ").");
             }
         } catch (err) {
-            window.alert("Failed to run test task: " + JSON.stringify(err?.data || err?.message));
+            await notice("Failed to run test task: " + JSON.stringify(err?.data || err?.message));
         }
     }
 
@@ -253,16 +254,16 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                     <div className="flex flex-wrap gap-2 items-start">
                         <input
                             type="text"
-                            className="flex-1 min-w-[16rem] shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                            className="flex-1 min-w-[16rem] shadow border border-gray-200 dark:border-ink-700/60 rounded-xl py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-300 leading-tight focus:outline-none focus:border-volt-500"
                             value={testBody}
                             onChange={(e) => setTestBody(e.target.value)}
                         />
                         <button
                             onClick={handleTest}
                             disabled={testLoading}
-                            className="px-4 py-2 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm font-semibold"
+                            className="px-4 py-2 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-sm font-semibold transition"
                         >
-                            {testLoading ? <BeatLoader size={6} color="rgb(209 213 219)"/> : "Send"}
+                            {testLoading ? <BeatLoader size={6} color="#d7ff3e"/> : "Send"}
                         </button>
                     </div>
                     {testError && (

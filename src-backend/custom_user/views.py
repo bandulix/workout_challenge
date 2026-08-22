@@ -38,8 +38,11 @@ def _blacklist_user_tokens(user):
     """
     try:
         from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
-        for token in OutstandingToken.objects.filter(user=user):
-            BlacklistedToken.objects.get_or_create(token=token)
+        outstanding = list(OutstandingToken.objects.filter(user=user))
+        BlacklistedToken.objects.bulk_create(
+            [BlacklistedToken(token=token) for token in outstanding],
+            ignore_conflicts=True,
+        )
     except Exception:
         # The blacklist app may not be migrated yet on a brand-new
         # install. Swallow the error so the caller's primary action
@@ -191,24 +194,8 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         user = self.get_object()
         if not user.profile_picture:
             raise Http404("No profile picture.")
-
-        content_type = (
-            mimetypes.guess_type(user.profile_picture.name)[0]
-            or "application/octet-stream"
-        )
-        if settings.DEBUG:
-            response = FileResponse(
-                user.profile_picture.open("rb"), content_type=content_type
-            )
-        else:
-            response = HttpResponse(content_type=content_type)
-            response["X-Accel-Redirect"] = f"/protected-media/{user.profile_picture.name}"
-        # The URL is stable per user, so it must revalidate on every use
-        # (ETag → cheap 304) - otherwise a changed picture would stay
-        # stale in browser caches. Private: never stored by shared caches.
-        response["Cache-Control"] = "private, no-cache"
-        response["X-Robots-Tag"] = "noindex, nofollow"
-        return response
+        from workout_challenge.images import protected_media_response
+        return protected_media_response(user.profile_picture)
 
 
 class PasswordResetView(APIView):
@@ -350,7 +337,7 @@ class LinkStravaView(APIView):
             try:
                 running_task.get(timeout=100)
             except TimeoutError:
-                print(f"Strava sync task is still running ({running_task.id}). Don't let the user wait so long.")
+                logger.info('Strava sync task still running (%s); returning without waiting', running_task.id)
         except requests.exceptions.HTTPError as err:
             if '401 Client Error: Unauthorized' in str(err):
                 return Response({'message': 'Access to activities denied by Strava. Not sufficient permissions to download activities.'}, status=status.HTTP_403_FORBIDDEN)

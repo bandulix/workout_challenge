@@ -1,20 +1,19 @@
 from rest_framework import viewsets
 from django_filters.rest_framework import DjangoFilterBackend
 
-from custom_user.views import IsOwnerOrReadOnly
+from custom_user.permissions import IsWorkoutOwner
 from .models import Workout
 from .serializers import WorkoutSerializer
 from .filters import WorkoutFilter
 
 
 class WorkoutViewSet(viewsets.ModelViewSet):
-    #queryset = Competition.objects.all()
     serializer_class = WorkoutSerializer
 
     filter_backends = [DjangoFilterBackend]
     filterset_class = WorkoutFilter
 
-    permission_classes = [IsOwnerOrReadOnly]
+    permission_classes = [IsWorkoutOwner]
 
     def get_queryset(self):
         # return all workouts from the user himself/herself

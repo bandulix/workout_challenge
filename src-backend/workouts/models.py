@@ -7,7 +7,7 @@ from django.db import models
 from django.db.models import Sum
 
 from custom_user.models import CustomUser
-from competition.scorer import trigger_workout_change, trigger_workout_delete
+from competition.scorer import score_workout, unscore_workout
 
 # Create your models here.
 
@@ -196,7 +196,14 @@ class Workout(models.Model):
         }
 
     def save(self, *args, **kwargs):
-        """ trigger recalculation of points_capped if workout changes """
+        """Persist the row, then optionally score it.
+
+        Scoring is a separate step (``score_workout``) so callers that
+        only need to persist (tests of save-without-score, nested Steps
+        recomputes) can pass ``score=False``. Default True so
+        ``objects.create`` / import syncs still mint points.
+        """
+        do_score = kwargs.pop("score", True)
         is_create = self.pk is None
         scaling_kcal = float((1 if kwargs.get('user', None) is None else kwargs.get('user').scaling_kcal) if self.user is None else self.user.scaling_kcal)
         scaling_distance = float((1 if kwargs.get('user', None) is None else kwargs.get('user').scaling_distance) if self.user is None else self.user.scaling_distance)
@@ -218,8 +225,12 @@ class Workout(models.Model):
             self.start_datetime = timezone.make_aware(server_time).astimezone(datetime.timezone.utc)
 
         if self.sport_type in ["Ride", "EBikeRide", "GravelRide", "Handcycle", "Velomobile", "VirtualRide", "MountainBikeRide", "EMountainBikeRide", "Run", "TrailRun", "VirtualRun", "Walk"]:
-            # estimate distance using database MET values
-            if self.distance is None or self.distance == "":
+            # Estimate distance from MET only for manual entries. Imported
+            # activities (Strava/Garmin/Health) already have GPS distance or
+            # they don't - inventing ~2-3 km from duration for a 5k that
+            # Health Connect shipped without metres is worse than blank.
+            imported = bool(self.strava_id or self.garmin_id or self.health_id)
+            if not imported and (self.distance is None or self.distance == ""):
                 self.distance = SPORT_MET.get(self.sport_type, SPORT_MET['Workout'])[self.intensity_category] * (self.duration.seconds / (60 * 60)) * scaling_distance # default human 1000m scaled up/down by scaler
 
         # default intensity 2
@@ -232,11 +243,8 @@ class Workout(models.Model):
 
         super().save(*args, **kwargs)
         changed = self.get_changed_fields()
-        trigger_workout_change(
-            instance=self,
-            new=is_create,
-            changes=changed
-        )
+        if do_score:
+            score_workout(self, new=is_create, changes=changed)
         self._original = self._dict()  # reset
 
         # if workout is run or walk and steps were recorded on the same day, update steps to avoid double counting
@@ -261,14 +269,12 @@ class Workout(models.Model):
                 for steps in recorded_steps:
                     setattr(steps, 'distance', None)
                     setattr(steps, 'kcal', None)
-                    steps.save()
+                    steps.save(score=True)
 
     def delete(self, *args, **kwargs):
-        """ trigger recalculation of points_capped if workout deleted """
+        """Drop points, then the row."""
         deleted_run_or_walk = self.sport_type in ['Run', 'Walk']
-        trigger_workout_delete(
-            instance=self
-        )
+        unscore_workout(self)
         super().delete(*args, **kwargs)
         # if deleted workout was run or walk, update steps to give back counting
         if deleted_run_or_walk:
@@ -278,7 +284,7 @@ class Workout(models.Model):
                     setattr(steps, 'distance', None)
                     setattr(steps, 'kcal', None)
                     setattr(steps, 'duration', datetime.timedelta(seconds=0))
-                    steps.save()
+                    steps.save(score=True)
 
 
 def find_duplicate_workout(user, start_datetime, duration, provider=None):

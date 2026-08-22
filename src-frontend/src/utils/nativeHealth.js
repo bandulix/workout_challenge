@@ -63,6 +63,20 @@ export async function nativeHealthSetSource(source) {
     }
 }
 
+// Nudge WorkManager to pull Health Connect now. Manual "Re-Sync" used
+// to only poll the server, so nothing new arrived until the phone had
+// already pushed. Best-effort: a missing native session is a no-op.
+export async function nativeHealthKickSync({daysBack} = {}) {
+    if (!isNativeHealthAvailable()) return;
+    try {
+        const status = await OWHealth.getStatus();
+        if (!status.sessionValid) return;
+        await OWHealth.startSync(daysBack != null ? {daysBack} : {});
+    } catch (e) {
+        console.warn("native health kick failed (ignored)", e);
+    }
+}
+
 export async function nativeHealthDisconnect() {
     // Best-effort: a stale native session must not block an unlink.
     try {

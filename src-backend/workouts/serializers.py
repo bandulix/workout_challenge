@@ -25,6 +25,19 @@ class WorkoutSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'duration': 'Duration must be positive.'})
         return data
 
+    def create(self, validated_data):
+        # Explicit: persist then score. ``save(score=True)`` is the
+        # public scoring path used by the three import connectors too.
+        workout = Workout(**validated_data)
+        workout.save(score=True)
+        return workout
+
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save(score=True)
+        return instance
+
     class Meta:
         model = Workout
         fields = ['id', 'sport_type', 'start_datetime', 'duration', 'duration_seconds', 'intensity_category', 'kcal', 'distance', 'steps', 'strava_id']

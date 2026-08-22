@@ -55,7 +55,7 @@ function compareDictLists(oldDict, newDict) {
 
 function BoxSection({additionalClasses = '', children}) {
     return (
-        <div className={"bg-white dark:bg-ink-850 rounded-3xl shadow-card dark:shadow-card-dark dark:border dark:border-ink-700/60 p-5 sm:p-6 " + additionalClasses}>
+        <div className={"bg-white dark:bg-ink-850 rounded-3xl shadow-card dark:shadow-card-dark border border-gray-200/70 dark:border-ink-700/60 p-5 sm:p-6 " + additionalClasses}>
             {children}
         </div>
     )
@@ -71,22 +71,23 @@ function ErrorBoxSection({errorMsg, additionalClasses = ''}) {
 
     async function handleReload() {
         await dispatch(resetStoreAsync());
-        console.log('Store has been reset');
         window.location.reload();
     }
 
     return (
         <BoxSection additionalClasses={"flex items-center justify-center " + additionalClasses}>
-            <div
-                className="flex items-start gap-3 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded max-w-md">
-                <AlertCircle className="w-20 h-20 mt-1 text-red-700"/>
-                <div>
-                    <p className="font-semibold">Oops, that didn't work!</p>
-                    <p>Please <a href='' className='text-blue-500 hover:underline' onClick={() => handleReload()}>reset & reload the page (click here)</a>. If the issue remains, <a className='text-blue-500 hover:underline' target='_self' href="/logout">log out (click here)</a> and log back in. If it still persists, contact the administrator.</p>
-                    <br/>
-                    <p className="font-semibold italic">This error occurred:</p>
-                    <p className="bg-red-200 text-sm p-2 rounded font-mono">{errorMsg}</p>
-                </div>
+            <div className="flex flex-col items-center text-center gap-3 max-w-md px-2 py-2">
+                <AlertCircle className="w-12 h-12 text-red-500"/>
+                <p className="font-display text-lg uppercase tracking-wide">That didn't work</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Reload usually fixes it. If it keeps happening, log out and back in.
+                </p>
+                <button type="button" onClick={handleReload}
+                        className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
+                    Reset & reload
+                </button>
+                <a href="/logout" className="text-sm font-semibold text-volt-700 dark:text-volt-300 hover:underline">Log out</a>
+                {errorMsg && <p className="text-xs text-gray-400 font-mono break-all">{errorMsg}</p>}
             </div>
         </BoxSection>
     )
@@ -128,7 +129,7 @@ class ErrorBoundary extends React.Component {
                         Reload the app
                     </button>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                        If the problem keeps coming back, <a href="/logout" className="text-blue-500 hover:underline">log out</a> and
+                        If the problem keeps coming back, <a href="/logout" className="text-volt-700 dark:text-volt-300 hover:underline">log out</a> and
                         log back in. If it still persists, contact the administrator.
                     </p>
                 </div>

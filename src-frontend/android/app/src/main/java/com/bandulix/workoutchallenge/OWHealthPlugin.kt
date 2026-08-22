@@ -1,6 +1,6 @@
 package com.bandulix.workoutchallenge
 
-import android.net.Uri
+import android.util.Log
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -9,6 +9,8 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.openwearables.health.sdk.OpenWearablesHealthSDK
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 // Bridge between the web app and the Open Wearables Android SDK: the
@@ -17,7 +19,7 @@ import kotlinx.coroutines.launch
 @CapacitorPlugin(name = "OWHealth")
 class OWHealthPlugin : Plugin() {
 
-    private val pluginScope = CoroutineScope(Dispatchers.Main)
+    private val pluginScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     // Data types we ask Health Connect for - covers every metric the
     // workout sync consumes (sessions, plus steps/energy for dailies).
@@ -34,6 +36,11 @@ class OWHealthPlugin : Plugin() {
         activity?.let { sdk().setActivity(it) }
     }
 
+    override fun handleOnDestroy() {
+        pluginScope.cancel()
+        super.handleOnDestroy()
+    }
+
     private fun sdk(): OpenWearablesHealthSDK = OpenWearablesHealthSDK.getInstance()
 
     @PluginMethod
@@ -47,8 +54,7 @@ class OWHealthPlugin : Plugin() {
         // it reports whether a previous background sync was auto-restored
         // (always false on a fresh connect). Validate the URL shape
         // ourselves instead of rejecting on that flag.
-        val uri = Uri.parse(host)
-        if (uri == null || (uri.scheme != "http" && uri.scheme != "https") || uri.host.isNullOrBlank()) {
+        if (!HealthHost.isAllowed(host)) {
             call.reject("invalid host URL")
             return
         }
@@ -70,7 +76,8 @@ class OWHealthPlugin : Plugin() {
                 sdk().signIn(userId = userId, accessToken = accessToken, refreshToken = refreshToken, apiKey = null)
                 call.resolve()
             } catch (e: Exception) {
-                call.reject("signIn failed: ${e.message}", e)
+                Log.w(TAG, "signIn failed", e)
+                call.reject("signIn failed")
             }
         }
     }
@@ -90,7 +97,8 @@ class OWHealthPlugin : Plugin() {
                 ret.put("granted", granted)
                 call.resolve(ret)
             } catch (e: Exception) {
-                call.reject("requestAuthorization failed: ${e.message}", e)
+                Log.w(TAG, "requestAuthorization failed", e)
+                call.reject("requestAuthorization failed")
             }
         }
     }
@@ -107,7 +115,8 @@ class OWHealthPlugin : Plugin() {
                 }
                 call.resolve()
             } catch (e: Exception) {
-                call.reject("startBackgroundSync failed: ${e.message}", e)
+                Log.w(TAG, "startBackgroundSync failed", e)
+                call.reject("startBackgroundSync failed")
             }
         }
     }
@@ -119,7 +128,8 @@ class OWHealthPlugin : Plugin() {
                 sdk().stopBackgroundSync()
                 call.resolve()
             } catch (e: Exception) {
-                call.reject("stopBackgroundSync failed: ${e.message}", e)
+                Log.w(TAG, "stopBackgroundSync failed", e)
+                call.reject("stopBackgroundSync failed")
             }
         }
     }
@@ -139,8 +149,13 @@ class OWHealthPlugin : Plugin() {
                 sdk().signOut()
                 call.resolve()
             } catch (e: Exception) {
-                call.reject("signOut failed: ${e.message}", e)
+                Log.w(TAG, "signOut failed", e)
+                call.reject("signOut failed")
             }
         }
+    }
+
+    companion object {
+        private const val TAG = "OWHealth"
     }
 }

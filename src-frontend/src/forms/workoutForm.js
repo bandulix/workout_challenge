@@ -257,8 +257,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
         if (id !== true) {
             // delete workout
             try {
-                const result = await deleteEntry(values.id).unwrap();
-                console.log('Delete Workout success:', result);
+                await deleteEntry(values.id).unwrap();
                 setModalState(false);
                 document.body.classList.remove('body-no-scroll');
             } catch (err) {
@@ -276,8 +275,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
                 if (tmpValues.duration.length === 5) {
                     tmpValues.duration += ":00";
                 }
-                const result = await createEntry(tmpValues).unwrap();
-                console.log('Create Workout success:', result);
+                await createEntry(tmpValues).unwrap();
                 setValues({...defaultValues});
             } catch (err) {
                 console.error('Create Workout failed', err);
@@ -303,8 +301,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
         if (id !== true) {
             // update workout
             try {
-                const result = await updateEntry(tmpValues).unwrap();
-                console.log('Update Workout success:', result);
+                await updateEntry(tmpValues).unwrap();
                 setModalState(false);
                 document.body.classList.remove('body-no-scroll');
             } catch (err) {
@@ -314,8 +311,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
         } else {
             // create workout
             try {
-                const result = await createEntry(tmpValues).unwrap();
-                console.log('Create Workout success:', result);
+                await createEntry(tmpValues).unwrap();
                 setModalState(false);
                 document.body.classList.remove('body-no-scroll');
             } catch (err) {

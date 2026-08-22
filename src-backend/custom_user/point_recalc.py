@@ -1,4 +1,5 @@
 import datetime
+import logging
 
 from django.db.models import Min
 
@@ -6,6 +7,8 @@ from django.core.cache import cache
 from workout_challenge.celery import app, is_task_already_executing
 from django.apps import apps
 from django.contrib.auth import get_user_model
+
+logger = logging.getLogger(__name__)
 
 
 def trigger_recalc_points():
@@ -16,7 +19,7 @@ def trigger_recalc_points():
         eta = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10)
         recalc_points.apply_async(eta=eta)
     else:
-        print('Recalc points task skipped because it was triggered less than 30 seconds ago')
+        logger.info('Recalc points task skipped because it was triggered less than 30 seconds ago')
 
 
 def bump_stats_generation(competition_ids):
@@ -38,10 +41,10 @@ def bump_stats_generation(competition_ids):
 @app.task(bind=True, time_limit=60 * 30, max_retries=3)  # 30 min time limit
 def recalc_points(self):
     if is_task_already_executing('recalc_points'):
-        print('Recalc points task skipped because it is already running')
+        logger.info('Recalc points task skipped because it is already running')
         return 'Skipped because it is already running.'
 
-    print('Recalculating points...')
+    logger.info('Recalculating points...')
 
     ActivityGoal = apps.get_model('competition', 'ActivityGoal')
     Points = apps.get_model('competition', 'Points')
@@ -85,9 +88,8 @@ def recalc_points(self):
     competition_ids = ActivityGoal.objects.filter(pk__in=goal_ids).values_list('competition_id', flat=True)
     bump_stats_generation(competition_ids)
 
-    print('All points recalculated.')
+    logger.info('All points recalculated.')
     return [{k: str(v) for k, v in i.items()} for i in grouped_tasks]
-
 
 
 
@@ -154,62 +156,3 @@ class Scorer:
         self.memory_today_points_capped += earned_points
         self.memory_week_points_capped += earned_points
         return earned_points
-
-
-class DummyObject:
-    def __init__(self, **kwargs):
-        self.min_per_workout = None
-        self.max_per_workout = None
-        self.min_per_day = None
-        self.max_per_day = None
-        self.min_per_week = None
-        self.max_per_week = None
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
-
-def test_scorer():
-
-    for goal_kwargs, points, expected_result in (
-        ({'goal': 100, 'min_per_workout': 10}, [10], 0),
-        ({'goal': 100, 'min_per_workout': 10}, [20], 10),
-        ({'goal': 100, 'max_per_workout': 30}, [30], 30),
-        ({'goal': 100, 'max_per_workout': 30}, [40], 30),
-        ({'goal': 100, 'min_per_workout': 10, 'max_per_workout': 30}, [40], 20),
-        ({'goal': 100, 'min_per_day': 10}, [10], 0),
-        ({'goal': 100, 'min_per_day': 10}, [20], 10),
-        ({'goal': 100, 'min_per_day': 10}, [8, 8], 6),
-        ({'goal': 100, 'max_per_day': 30}, [20], 20),
-        ({'goal': 100, 'max_per_day': 30}, [20, 20], 30),
-        ({'goal': 100, 'min_per_day': 10, 'max_per_day': 30}, [8, 12, 8, 8, 14], 20),
-        ({'goal': 100, 'min_per_week': 10}, [10], 0),
-        ({'goal': 100, 'min_per_week': 10}, [20], 10),
-        ({'goal': 100, 'max_per_week': 30}, [20], 20),
-        ({'goal': 100, 'max_per_week': 30}, [20, 20], 30),
-        ({'goal': 100, 'min_per_week': 10, 'max_per_week': 30}, [8, 12, 8, 8, 14], 20),
-        ({'goal': 100, 'min_per_workout': 10, 'min_per_day': 20}, [5, 20, 5, 20], 15),
-        ({'goal': 100, 'min_per_workout': 20, 'min_per_day': 10}, [5, 30, 30], 20),
-        ({'goal': 100, 'max_per_workout': 20, 'max_per_day': 30}, [20, 25, 25, 25], 30),
-        ({'goal': 100, 'max_per_workout': 30, 'max_per_day': 20}, [20, 25, 25, 25], 20),
-        ({'goal': 100, 'min_per_workout': 10, 'max_per_day': 15}, [5, 5, 5, 5], 0),
-        ({'goal': 100, 'min_per_workout': 10, 'max_per_day': 30}, [15, 35, 5, 15], 30),
-    ):
-        workout = DummyObject(start_datetime=datetime.datetime.fromisoformat('2023-01-01T00:00:00'))
-        goal = DummyObject(**goal_kwargs)
-        scorer = Scorer()
-        scorer.set_goal(goal)
-
-        earned_points = 0
-        for point in points:
-            point_obj = DummyObject(points_raw=point, workout = workout)
-            earned_points += scorer.calculate_points(point_obj)
-
-        assert earned_points == expected_result, f'Expected {expected_result}, got {earned_points} for goal {goal_kwargs}'
-
-
-
-
-
-if __name__ == '__main__':
-    test_scorer()
-

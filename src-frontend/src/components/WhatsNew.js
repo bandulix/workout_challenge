@@ -1,7 +1,13 @@
 import React, {useEffect, useState} from "react";
-import {PartyPopper} from "lucide-react";
+import {Camera, PartyPopper, RefreshCw, Sparkles} from "lucide-react";
 import {Modal} from "../forms/basicComponents";
-import {getServerUrl} from "../utils/serverUrl";
+import {apiUrl} from "../utils/platform";
+
+const HIGHLIGHTS = [
+    {icon: Camera, title: "Photos on your workout", body: "Reply to your own session from the gallery — the coach remixes it."},
+    {icon: RefreshCw, title: "Goals rescore the field", body: "Change a target and every workout in the challenge is recalculated."},
+    {icon: Sparkles, title: "Home matches the Coach", body: "Cards, ink, volt — the rest of the app caught up."},
+];
 
 // "What's new" release popup: after every release, the user gets one
 // popup with the changelog and a reload button.
@@ -25,7 +31,7 @@ function WhatsNew() {
                 // getServerUrl(): inside the native app a relative URL
                 // resolves to the WebView origin (https://localhost) -
                 // the popup could never appear there.
-                const res = await fetch(getServerUrl() + "/api/version/");
+                const res = await fetch(apiUrl("/version/"));
                 if (!res.ok) return;
                 const data = await res.json();
                 const version = (data?.version || "").trim();
@@ -76,19 +82,36 @@ function WhatsNew() {
                     <PartyPopper className="h-5 w-5 text-volt-500"/>
                 </span>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                    A new release just landed. Reload to make sure you're running it.
+                    A new release just landed. Here's what you'll notice.
                 </p>
             </div>
 
-            <div className="space-y-4 max-h-[55vh] overflow-y-auto px-1">
+            <ul className="space-y-3 px-1">
+                {HIGHLIGHTS.map((h) => (
+                    <li key={h.title} className="flex items-start gap-3 rounded-2xl bg-gray-50 dark:bg-ink-900 border border-gray-200/70 dark:border-ink-700/60 p-3">
+                        <span className="h-9 w-9 rounded-xl bg-volt-400/15 flex items-center justify-center shrink-0">
+                            <h.icon className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                        </span>
+                        <div className="min-w-0">
+                            <p className="text-sm font-semibold">{h.title}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{h.body}</p>
+                        </div>
+                    </li>
+                ))}
+            </ul>
+
+            <div className="space-y-3 max-h-[32vh] overflow-y-auto px-1">
+                {sections.length > 0 && (
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Full notes</p>
+                )}
                 {sections.length === 0 ? (
                     <p className="text-sm text-gray-600 dark:text-gray-300">Bug fixes and improvements under the hood.</p>
                 ) : (
                     sections.map((sec, i) => (
                         <div key={i}>
-                            <p className="font-display text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">{sec.title}</p>
-                            <ul className="space-y-1.5 list-disc list-outside ml-4 text-sm text-gray-700 dark:text-gray-300">
-                                {sec.items.map((item, j) => <li key={j}>{item}</li>)}
+                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">{sec.title}</p>
+                            <ul className="space-y-1 list-disc list-outside ml-4 text-sm text-gray-700 dark:text-gray-300">
+                                {sec.items.slice(0, 4).map((item, j) => <li key={j}>{item}</li>)}
                             </ul>
                         </div>
                     ))

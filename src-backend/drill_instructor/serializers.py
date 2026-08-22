@@ -88,12 +88,8 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
     def validate_profile_picture_upload(self, value):
         if value is None:
             return value
-        if value.size > self.MAX_PROFILE_PICTURE_BYTES:
-            raise serializers.ValidationError("Profile picture too large (max 5 MB).")
-        content_type = getattr(value, "content_type", "") or ""
-        if not content_type.startswith("image/"):
-            raise serializers.ValidationError("File must be an image.")
-        return value
+        from workout_challenge.images import validate_and_reencode_image
+        return validate_and_reencode_image(value, max_bytes=self.MAX_PROFILE_PICTURE_BYTES, max_side=512)
 
     def validate_avatar(self, value):
         # Either a built-in artwork key (letters/digits/dash/underscore -
@@ -196,6 +192,15 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
         return attrs
 
 
+def _persona_for_message(obj):
+    """Persona that was on duty when this message was written.
+
+    New rows snapshot ``persona`` at insert; older rows fall back to
+    the config's current persona (the pre-snapshot behaviour).
+    """
+    return obj.persona or obj.config.persona
+
+
 def _user_picture_url(user):
     """Profile picture URL for a thread author - the authenticated
     endpoint (never the raw /media/ path), shared helper shape with
@@ -255,12 +260,13 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
 
     competition_id = serializers.IntegerField(source="config.competition_id", read_only=True)
     competition_name = serializers.CharField(source="config.competition.name", read_only=True)
-    persona_name = serializers.CharField(source="config.persona.name", read_only=True)
-    persona_tagline = serializers.CharField(source="config.persona.tagline", read_only=True)
-    persona_avatar = serializers.CharField(source="config.persona.avatar", read_only=True)
+    persona_name = serializers.SerializerMethodField()
+    persona_tagline = serializers.SerializerMethodField()
+    persona_avatar = serializers.SerializerMethodField()
     persona_profile_picture = serializers.SerializerMethodField()
-    persona_theme_color = serializers.CharField(source="config.persona.theme_color", read_only=True)
+    persona_theme_color = serializers.SerializerMethodField()
     athlete_name = serializers.SerializerMethodField()
+    workout_user_id = serializers.SerializerMethodField()
     workout_summary = serializers.SerializerMethodField()
     replies = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
@@ -286,6 +292,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             "persona_profile_picture",
             "persona_theme_color",
             "athlete_name",
+            "workout_user_id",
             "workout_summary",
             "replies",
             "image",
@@ -300,8 +307,25 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
         # Uses the view's ordered Prefetch cache - no query per root.
         return DrillInstructorReplySerializer(obj.replies.all(), many=True, context=self.context).data
 
+    def get_persona_name(self, obj):
+        persona = _persona_for_message(obj)
+        return persona.name if persona else None
+
+    def get_persona_tagline(self, obj):
+        persona = _persona_for_message(obj)
+        return persona.tagline if persona else None
+
+    def get_persona_avatar(self, obj):
+        persona = _persona_for_message(obj)
+        return persona.avatar if persona else None
+
+    def get_persona_theme_color(self, obj):
+        persona = _persona_for_message(obj)
+        return persona.theme_color if persona else None
+
     def get_persona_profile_picture(self, obj):
-        return _persona_picture_url(obj.config.persona)
+        persona = _persona_for_message(obj)
+        return _persona_picture_url(persona) if persona else None
 
     def get_image(self, obj):
         """Photo post image - the authenticated endpoint, never the raw
@@ -326,6 +350,9 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
         if user is None:
             return None
         return user.first_name or user.username or None
+
+    def get_workout_user_id(self, obj):
+        return getattr(obj.workout, "user_id", None)
 
     def get_workout_summary(self, obj):
         workout = obj.workout
@@ -353,7 +380,7 @@ class RoastCardSerializer(serializers.ModelSerializer):
 
     image = serializers.SerializerMethodField()
     competition_name = serializers.CharField(source="config.competition.name", read_only=True)
-    persona_name = serializers.CharField(source="config.persona.name", read_only=True)
+    persona_name = serializers.SerializerMethodField()
     athlete_name = serializers.SerializerMethodField()
     hot_votes = serializers.IntegerField(read_only=True)
     not_votes = serializers.IntegerField(read_only=True)
@@ -379,6 +406,10 @@ class RoastCardSerializer(serializers.ModelSerializer):
         if not obj.image:
             return None
         return reverse("drill-message-picture", kwargs={"pk": obj.pk})
+
+    def get_persona_name(self, obj):
+        persona = _persona_for_message(obj)
+        return persona.name if persona else None
 
     def get_athlete_name(self, obj):
         # The roast hangs under the photo post; its user is the athlete.

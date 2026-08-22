@@ -2,6 +2,8 @@ import React, {useEffect, useState} from "react";
 import {Bell, BellOff, BellRing, Share, PlusSquare, Download, Smartphone} from "lucide-react";
 import {useGetPushStatusQuery, useSubscribePushMutation, useUnsubscribePushMutation, useTestPushMutation} from "../utils/reducers/pushSlice";
 import {subscribeToPush, unsubscribeFromPush, promptInstall} from "../index";
+import usePollingInterval from "../utils/usePollingInterval";
+import {notice} from "../utils/dialogs";
 
 // Platform-aware push opt-in card. Handles the iOS "install to home
 // screen first" dance, the Android/desktop native install prompt, and
@@ -23,7 +25,8 @@ function PushOptInCard({compact = false}) {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
 
-    const {data: status, refetch} = useGetPushStatusQuery(undefined, {pollingInterval: 60000});
+    const pollFast = usePollingInterval(60000);
+    const {data: status, refetch} = useGetPushStatusQuery(undefined, {pollingInterval: pollFast});
     const [subscribePush] = useSubscribePushMutation();
     const [unsubscribePush] = useUnsubscribePushMutation();
     const [testPush] = useTestPushMutation();
@@ -91,15 +94,15 @@ function PushOptInCard({compact = false}) {
             const results = res?.results || [];
             const failed = results.filter((r) => !r.ok);
             if (results.length === 0) {
-                window.alert("No subscription is stored on the server for this account. Turn pings off and on again, then retry.");
+                await notice("No subscription is stored on the server for this account. Turn pings off and on again, then retry.");
             } else if (failed.length > 0) {
                 const f = failed[0];
-                window.alert(`The server could not deliver the ping: HTTP ${f.status || "?"} - ${f.error || "unknown error"}`);
+                await notice(`The server could not deliver the ping: HTTP ${f.status || "?"} - ${f.error || "unknown error"}`);
             } else {
-                window.alert(`Ping sent to ${results.length} device(s). If nothing shows up, the block is on the device (notification permission / battery optimization / Brave push setting).`);
+                await notice(`Ping sent to ${results.length} device(s). If nothing shows up, the block is on the device (notification permission / battery optimization / Brave push setting).`);
             }
         } catch (err) {
-            window.alert("Test ping failed: " + JSON.stringify(err?.data || err?.message));
+            await notice("Test ping failed: " + JSON.stringify(err?.data || err?.message));
         } finally {
             setBusy(false);
         }

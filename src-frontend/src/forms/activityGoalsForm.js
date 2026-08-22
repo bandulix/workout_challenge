@@ -10,6 +10,7 @@ import {
 } from "../utils/reducers/goalsSlice";
 import {compareDictLists} from "../utils/miscellaneous";
 import {refreshChallengeSoon} from "./workoutForm";
+import {confirmAction, notice} from "../utils/dialogs";
 
 const fields = {
 
@@ -205,8 +206,6 @@ export default function ActivityGoalsForm({competitionId, setModalState}) {
                 noErrors = false;
                 console.error('Create Goal Error', result.error);
                 setFormError(prev => prev + 'Error (' + result?.error?.status + ') when creating goal "' + newItem?.name + '": ' + result?.error?.data?.detail + '; ');
-            } else {
-                console.log('Added Goal', newItem, result);
             }
         }
         for (const deletedItem of deletedEntries) {
@@ -215,8 +214,6 @@ export default function ActivityGoalsForm({competitionId, setModalState}) {
                 noErrors = false;
                 console.error('Delete Goal Error', result.error);
                 setFormError(prev => prev + 'Error (' + result?.error?.status + ') when deleting goal "' + deletedItem?.name + '" (' + deletedItem?.id + '): ' + result?.error?.data?.detail + '; ');
-            } else {
-                console.log('Deleted Goal', deletedItem, result);
             }
         }
         for (const changedItem of changedEntries) {
@@ -225,8 +222,6 @@ export default function ActivityGoalsForm({competitionId, setModalState}) {
                 noErrors = false;
                 console.error('Update Goal Error', result.error);
                 setFieldErrors(prev => ({...prev, [`${changedItem.index}`]: result.error.data}));
-            } else {
-                console.log('Changed Goal', changedItem, result);
             }
         }
         if (noErrors) {
@@ -236,7 +231,7 @@ export default function ActivityGoalsForm({competitionId, setModalState}) {
             refreshChallengeSoon(dispatch);
             document.body.classList.remove('body-no-scroll');
             setModalState(false);
-            window.alert('Saved. Points are being recalculated - the challenge page updates itself within a minute.');
+            await notice('Saved. Points are being recalculated - the challenge page updates itself within a minute.');
         } else {
             // Partial failure: rows created above now exist server-side
             // but their local copies still have no id - a retry would

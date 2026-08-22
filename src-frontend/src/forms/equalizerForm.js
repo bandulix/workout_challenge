@@ -1,6 +1,7 @@
 import {useUpdateUserMutation} from "../utils/reducers/usersSlice";
 import React, {useEffect, useState} from "react";
 import {Modal, SaveButton, SingleForm} from "./basicComponents";
+import {confirmAction, notice} from "../utils/dialogs";
 
 
 const fields = {
@@ -94,10 +95,10 @@ const fields = {
 }
 
 
-// The raw inputs (gender/age/height/weight) are never sent to the server -
-// only the two derived equalizing factors are saved. To keep the promise
-// "inputs stay on your device" WITHOUT resetting the form on every open,
-// they are persisted in this device's localStorage only.
+// Age/height/weight are never sent to the server - only the two derived
+// equalizing factors are saved. Persist those three inputs on this
+// device so the form doesn't reset on every open. Gender is already on
+// the profile (and must not sit in localStorage in the clear).
 const INPUTS_STORAGE_KEY = 'wc_equalizer_inputs';
 
 function loadSavedInputs() {
@@ -133,8 +134,10 @@ export default function GoalEqualizerForm({user, setModalState}) {
         const saved = loadSavedInputs();
         setValues(values => ({
             ...values,
-            ...saved,
-            gender: saved.gender || ((user?.gender === null || user?.gender === '' || user?.gender === undefined) ? 'M' : user.gender),
+            age: saved.age,
+            height: saved.height,
+            weight: saved.weight,
+            gender: (user?.gender === null || user?.gender === '' || user?.gender === undefined) ? 'M' : user.gender,
         }));
     }, [])
 
@@ -148,9 +151,9 @@ export default function GoalEqualizerForm({user, setModalState}) {
         // Persist the raw inputs on this device once anything was typed -
         // never before (the mount run sees empty values and must not wipe
         // the saved inputs before the load effect's setState lands).
-        if (values.gender || values.age || values.height || values.weight) {
+        if (values.age || values.height || values.weight) {
             localStorage.setItem(INPUTS_STORAGE_KEY, JSON.stringify({
-                gender: values.gender, age: values.age, height: values.height, weight: values.weight,
+                age: values.age, height: values.height, weight: values.weight,
             }));
         }
 
@@ -173,11 +176,10 @@ export default function GoalEqualizerForm({user, setModalState}) {
     async function handleSubmit() {
         // update personal scaling factors
         try {
-            const result = await updateEntry({id: 'me', scaling_kcal: Math.round(values.scaling_kcal * 100) / 10000, scaling_distance: Math.round(values.scaling_distance * 100) / 10000}).unwrap();
-            console.log('Update Personal Scaling Factors success:', result);
+            await updateEntry({id: 'me', scaling_kcal: Math.round(values.scaling_kcal * 100) / 10000, scaling_distance: Math.round(values.scaling_distance * 100) / 10000}).unwrap();
             setModalState(false);
             document.body.classList.remove('body-no-scroll');
-            window.alert('Saved. The re-calculation of your competition points might take a few minutes.');
+            await notice('Saved. The re-calculation of your competition points might take a few minutes.');
         } catch (err) {
             console.error('Update Personal Scaling Factors failed', err);
             setFieldErrors(err.data);
@@ -187,8 +189,8 @@ export default function GoalEqualizerForm({user, setModalState}) {
 
     return (
         <Modal title="Equalize Goals" landscape={false} setShowModal={setModalState} isLoading={updateIsLoading}>
-            <p className="text-gray-700 dark:text-gray-300">Everyone has a unique <b>Basal Metabolic Rate (BMR)</b>, dependent on factors like age, gender, height, and weight. To ensure a fair competition, the calculator below estimates your personal equalizing factors, which will be used to scale the competition goals. Your inputs <u>stay on your device</u> — only the final two equalizing percent factors (blue fields) are saved to equalize your points.</p>
-            <p className="text-gray-500 text-sm italic">You still don't trust it? Check the <a className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick/workout_challenge/blob/main/src-frontend/src/forms/equalizerForm.js#L149">public source code yourself (here)</a>!</p>
+            <p className="text-gray-700 dark:text-gray-300">Everyone has a unique <b>Basal Metabolic Rate (BMR)</b>, dependent on factors like age, gender, height, and weight. To ensure a fair competition, the calculator below estimates your personal equalizing factors, which will be used to scale the competition goals. Your inputs <u>stay on your device</u> — only the final two equalizing percent factors (highlighted fields) are saved to equalize your points.</p>
+            <p className="text-gray-500 text-sm italic">You still don't trust it? Check the <a className="text-volt-700 dark:text-volt-300 font-semibold hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick/workout_challenge/blob/main/src-frontend/src/forms/equalizerForm.js#L149">public source code yourself (here)</a>!</p>
             <SingleForm fields={fields} values={values} setValues={setValues} errors={fieldErrors}/>
             <div className="text-center text-red-500 text-xs italic">{formError}</div>
             <div className="text-center text-gray-700 dark:text-gray-300 text-xs italic"><b>Current Effort Factor:</b> {Math.round(user.scaling_kcal * 100)}% / <b>Current Distance Factor:</b> {Math.round(user.scaling_distance * 100)}%</div>

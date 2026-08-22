@@ -7,6 +7,7 @@ import ProfileAvatar from "./ProfileAvatar";
 import {drillInstructorApi, useReplyToDrillMessageMutation} from "../utils/reducers/drillInstructorSlice";
 import {useProtectedImage} from "../utils/protectedMedia";
 import {timeAgo} from "../utils/time";
+import PhotoPost from "./PhotoPost";
 
 // A reply's image (the coach's roasted-photo remix) - authenticated
 // endpoint, so loaded through the protected-media cache like avatars.
@@ -27,7 +28,7 @@ function ReplyImage({url, alt}) {
 // Coach bubbles use the persona's avatar/accent, participant bubbles the
 // user's profile picture + first name, so it is always clear who spoke.
 
-function CoachThread({message, persona, canReply = true, defaultOpen = false}) {
+function CoachThread({message, persona, canReply = true, defaultOpen = false, competitionId, visionCapable, currentUserId}) {
     const [open, setOpen] = useState(defaultOpen);
     // Deep links pass defaultOpen; the messages query usually resolves
     // after the first render, so sync the prop in when it flips true.
@@ -39,6 +40,10 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false}) {
     const [sendReply, {isLoading}] = useReplyToDrillMessageMutation();
     const dispatch = useDispatch();
     const replies = message.replies || [];
+    const ownWorkout = Boolean(
+        canReply && competitionId && message.kind === "activity" && currentUserId
+        && message.workout_user_id === currentUserId
+    );
 
     // Benched coach (disabled config): existing threads stay readable,
     // but new replies are pointless - the coach can't react.
@@ -95,6 +100,10 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false}) {
 
                     {canReply && (
                         <>
+                            {ownWorkout && (
+                                <PhotoPost competitionId={competitionId} parentId={message.id}
+                                           visionCapable={Boolean(visionCapable)}/>
+                            )}
                             <div className="flex items-center gap-2">
                                 <input
                                     type="text"

@@ -2,6 +2,7 @@ import React, {useEffect, useState} from "react";
 import {Modal, SaveButton} from "./basicComponents";
 import {useGetSiteSettingsQuery, useUpdateSiteSettingsMutation} from "../utils/reducers/siteSettingsSlice";
 import {workoutTypes} from "./workoutForm";
+import {confirmAction, notice} from "../utils/dialogs";
 
 // Admin editor for the site-wide per-activity-type point multipliers.
 // The map is stored sparsely (only factors != 1.0 are sent/saved); the
@@ -45,7 +46,7 @@ export default function SportFactorsForm({setModalState}) {
             await updateSettings({points_sport_factors: sparse}).unwrap();
             setModalState(false);
             document.body.classList.remove('body-no-scroll');
-            window.alert('Saved. The re-calculation of all competition points runs in the background and might take a few minutes.');
+            await notice('Saved. The re-calculation of all competition points runs in the background and might take a few minutes.');
         } catch (err) {
             setFormError('Save failed (' + (err?.status ?? '') + ') - please try again.');
         }

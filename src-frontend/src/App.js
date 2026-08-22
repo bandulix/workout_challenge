@@ -14,6 +14,7 @@ import {
 } from "./pages/Public";
 import BottomNav from "./utils/bottomNav";
 import WhatsNew from "./components/WhatsNew";
+import DialogHost from "./components/DialogHost";
 import {InitStravaLink, ReturnStravaLink} from "./pages/StravaLink";
 
 // Lazy-loaded heavy pages - keeps the initial bundle small on mobile.
@@ -56,6 +57,7 @@ function App() {
             </Routes>
 
             <BottomNav/>
+            <DialogHost/>
             {/* Release popup: one changelog + reload prompt per release. */}
             <WhatsNew/>
         </Router>

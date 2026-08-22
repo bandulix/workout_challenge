@@ -96,6 +96,26 @@ export const usersApi = createApi({
                 return tags;
             },
         }),
+        login: builder.mutation({
+            query: (body) => ({url: "token/", method: "POST", body}),
+            extraOptions: {skipReauth: true},
+        }),
+        register: builder.mutation({
+            query: (body) => ({url: "user/", method: "POST", body}),
+            extraOptions: {skipReauth: true},
+        }),
+        refreshToken: builder.mutation({
+            query: (body) => ({url: "token/refresh/", method: "POST", body}),
+            extraOptions: {skipReauth: true},
+        }),
+        passwordResetRequest: builder.mutation({
+            query: (body) => ({url: "password-reset/request/", method: "POST", body}),
+            extraOptions: {skipReauth: true},
+        }),
+        passwordResetConfirm: builder.mutation({
+            query: (body) => ({url: "password-reset/confirm/", method: "POST", body}),
+            extraOptions: {skipReauth: true},
+        }),
         uploadProfilePicture: builder.mutation({
             query: (file) => {
                 const formData = new FormData();

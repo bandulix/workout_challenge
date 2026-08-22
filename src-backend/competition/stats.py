@@ -107,7 +107,7 @@ def get_competition_stats(competition, last_seven_days=False):
 
     # Custom query logic
     try:
-        competition_obj = Competition.objects.select_related('owner').get(id=competition)
+        competition_obj = Competition.objects.select_related('owner').prefetch_related('user', 'activitygoal_set').get(id=competition)
     except Competition.DoesNotExist:
         return Response({"detail": "Competition not found."}, status=status.HTTP_404_NOT_FOUND)
     all_points = Points.objects.filter(Q(award__competition__id=competition) | Q(goal__competition_id=competition))

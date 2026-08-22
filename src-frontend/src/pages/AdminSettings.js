@@ -87,7 +87,7 @@ export default function AdminSettings() {
                         <p>
                             To promote other users to admin, run:
                         </p>
-                        <pre className="bg-gray-100 dark:bg-gray-900 rounded p-3 text-xs overflow-x-auto">
+                        <pre className="bg-gray-100 dark:bg-ink-900 rounded-2xl border border-gray-200/70 dark:border-ink-700/60 p-3 text-xs overflow-x-auto">
                             <code>docker compose exec workoutchallenge python manage.py promotetostaff user@example.com</code>
                         </pre>
                     </div>

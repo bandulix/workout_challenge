@@ -65,8 +65,7 @@ export default function TransferOwnershipForm({competition, setModalState}) {
     async function handleSubmit() {
         // update competition
         try {
-            const result = await updateEntry({id: competition.id, owner: parseInt(values['owner'])}).unwrap();
-            console.log('Update Competition Ownership success:', result);
+            await updateEntry({id: competition.id, owner: parseInt(values['owner'])}).unwrap();
             setModalState(false);
             document.body.classList.remove('body-no-scroll');
             dispatch(competitionsApi.util.invalidateTags(['Competition']));

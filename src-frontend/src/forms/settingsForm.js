@@ -7,6 +7,8 @@ import {useDispatch} from "react-redux";
 import {Watch, Smartphone, Download} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {isNativeHealthAvailable, nativeHealthConnect, nativeHealthDisconnect, nativeHealthSetSource} from "../utils/nativeHealth";
+import {confirmAction, notice} from "../utils/dialogs";
+import {assetUrl} from "../utils/platform";
 
 
 const PROVIDER_LABELS = {strava: "Strava", garmin: "Garmin", health: "Apple/Google Health"};
@@ -100,7 +102,7 @@ function HealthSection({user, onChanged}) {
     const [apkAvailable, setApkAvailable] = useState(false);
     useEffect(() => {
         if (!isAndroidBrowser) return;
-        fetch("/download/workout-challenge.apk", {method: "HEAD"})
+        fetch(assetUrl("/download/workout-challenge.apk"), {method: "HEAD"})
             .then((r) => setApkAvailable(r.ok))
             .catch(() => setApkAvailable(false));
     }, [isAndroidBrowser]);
@@ -199,12 +201,12 @@ function HealthSection({user, onChanged}) {
                 <div className="flex gap-2">
                     <button onClick={handleLink} disabled={linkLoading}
                             className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
-                        {linkLoading ? <BeatLoader size={6}/> : (linked ? (isNative ? "Reconnect Health" : "New connection code") : (isNative ? "Connect Health Connect" : "Connect Health App"))}
+                        {linkLoading ? <BeatLoader size={6} color="#0a0d06"/> : (linked ? (isNative ? "Reconnect Health" : "New connection code") : (isNative ? "Connect Health Connect" : "Connect Health App"))}
                     </button>
                     {linked && (
                         <button onClick={handleUnlink} disabled={unlinkLoading}
                                 className="px-4 py-2 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-sm font-semibold transition disabled:opacity-50">
-                            {unlinkLoading ? <BeatLoader size={6}/> : "Unlink Health"}
+                            {unlinkLoading ? <BeatLoader size={6} color="#d7ff3e"/> : "Unlink Health"}
                         </button>
                     )}
                 </div>
@@ -272,7 +274,7 @@ function GarminSection({user, onChanged}) {
                         </p>
                         <button onClick={handleUnlink} disabled={unlinkLoading}
                                 className="px-4 py-2 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-sm font-semibold transition disabled:opacity-50">
-                            {unlinkLoading ? <BeatLoader size={6}/> : "Unlink Garmin"}
+                            {unlinkLoading ? <BeatLoader size={6} color="#d7ff3e"/> : "Unlink Garmin"}
                         </button>
                     </>
                 ) : (
@@ -287,7 +289,7 @@ function GarminSection({user, onChanged}) {
                                value={password} onChange={(e) => setPassword(e.target.value)}/>
                         <button onClick={handleLink} disabled={linkLoading || !email || !password}
                                 className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
-                            {linkLoading ? <BeatLoader size={6}/> : "Connect Garmin"}
+                            {linkLoading ? <BeatLoader size={6} color="#0a0d06"/> : "Connect Garmin"}
                         </button>
                     </>
                 )}
@@ -444,10 +446,9 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
     async function handleDelete() {
         // delete account
         try {
-            const confirmation = window.confirm('You are deleting your account. All workouts and the competitions you organised will be deleted. This is irreversible. Are you sure?');
+            const confirmation = await confirmAction('You are deleting your account. All workouts and the competitions you organised will be deleted. This is irreversible. Are you sure?');
             if (confirmation) {
-                const result = await deleteEntry(user.id).unwrap();
-                console.log('Delete User success:', result);
+                await deleteEntry(user.id).unwrap();
                 setModalState(false);
                 document.body.classList.remove('body-no-scroll');
                 navigate('/logout');
@@ -466,15 +467,14 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
             // from mount time - sending its stale copy here would
             // silently revert a source switch made in between.
             const {activity_source, activity_source_effective, ...profileValues} = values;
-            const result = await updateEntry({
+            await updateEntry({
                 id: 'me',
                 ...profileValues,
                 email: values.email.toLowerCase()
             }).unwrap();
-            console.log('Update Personal Settings success:', result);
             setModalState(false);
             document.body.classList.remove('body-no-scroll');
-            window.alert('Saved. Strava and username changes might take up to 10 minutes to reflect on the competition page for all users.');
+            await notice('Saved. Strava and username changes might take up to 10 minutes to reflect on the competition page for all users.');
         } catch (err) {
             console.error('Update Personal Settings failed', err);
             setFieldErrors(err.data);
@@ -484,15 +484,14 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
     // Repair path for a broken Strava connection: wipe the connection
     // state server-side, then the user links again from scratch.
     async function handleStravaReset() {
-        const confirmation = window.confirm('Reset the Strava connection? This removes the stored linkage and sync state so you can link Strava again from scratch. Your workouts are kept.');
+        const confirmation = await confirmAction('Reset the Strava connection? This removes the stored linkage and sync state so you can link Strava again from scratch. Your workouts are kept.');
         if (!confirmation) return;
         try {
-            const result = await resetStrava().unwrap();
-            console.log('Reset Strava success:', result);
+            await resetStrava().unwrap();
             dispatch(usersApi.util.invalidateTags(['User']));
             setModalState(false);
             document.body.classList.remove('body-no-scroll');
-            window.alert('Strava connection reset. Open the settings again and use "Link Strava Account" to connect from scratch.');
+            await notice('Strava connection reset. Open the settings again and use "Link Strava Account" to connect from scratch.');
         } catch (err) {
             console.error('Reset Strava failed', err);
             setFieldErrors(err.data);
@@ -504,8 +503,7 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
         if (linked) {
             // currently linked - unlink
             try {
-                const result = await unlinkStrava().unwrap();
-                console.log('Unlink Strava success:', result);
+                await unlinkStrava().unwrap();
                 setModalState(false);
                 dispatch(usersApi.util.invalidateTags(['User']));
                 document.body.classList.remove('body-no-scroll');

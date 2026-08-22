@@ -1,5 +1,8 @@
 # myapp/monitor.py
+import logging
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 
 class RateLimitExceeded(Exception):
@@ -57,7 +60,7 @@ class APIRequestMonitor:
             raise RateLimitExceeded("API rate limit probably exceeded")
 
         self.count_15min += 1
-        print(f'Strava API Request (15min: {self.count_15min} / {limit_15min}, day: {self.count_day} / {limit_day})')
+        logger.info('Strava API request (15min: %s / %s, day: %s / %s)', self.count_15min, limit_15min, self.count_day, limit_day)
         return True
 
     def count_requests(self):

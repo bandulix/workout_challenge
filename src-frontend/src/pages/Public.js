@@ -3,9 +3,17 @@ import {Link, useLocation, useNavigationType, useParams} from "react-router-dom"
 import {useDispatch} from 'react-redux';
 import {useNavigate} from 'react-router-dom';
 import {BarLoader} from "react-spinners";
-import {getServerUrl, setServerUrl, hasStoredServerUrl, isNativeApp} from '../utils/serverUrl';
+import {getServerUrl, setServerUrl, hasStoredServerUrl, isNativeApp} from '../utils/platform';
 import {PageWrapper} from "../utils/miscellaneous";
-import {sentryError} from "../utils/reducers/baseQueryWithReauth";
+import {notice} from "../utils/dialogs";
+import {
+    apiCreateAccount,
+    apiLogin,
+    apiRequestNewPassword,
+    apiSetNewPassword,
+    apiRefreshToken,
+    sanitizeRedirect,
+} from "../utils/authClient";
 
 function BaseHome({children, tagline}) {
     const navType = useNavigationType();
@@ -94,7 +102,6 @@ function LogoutPage() {
     // Side effects belong in useEffect, not in the render body (they ran
     // twice under StrictMode and triggered update-during-render warnings).
     useEffect(() => {
-        console.log('Clear localStorage and redux state on logout');
         // RESET_STORE wipes ALL slice caches (users/workouts/competitions/
         // stats/feed/drillInstructor AND teams/goals/join/link/siteSettings/
         // push) - a partial reset left the rest in the store, and the
@@ -191,278 +198,11 @@ const LoadingForm = () => {
     return (
         <div className="bg-ink-850/95 backdrop-blur border border-ink-700/60 shadow-card-dark rounded-3xl px-8 pt-6 pb-8 mb-4 flex items-center justify-center"
              style={{minWidth: '310px'}}>
-            <BarLoader height={6} width={200}/>
+            <BarLoader height={6} width={200} color="#d7ff3e"/>
         </div>
     )
 }
 
-
-const apiCreateAccount = async (email, first_name, last_name, gender, password, invite_token, join_code) => {
-    try {
-        const response = await fetch(getServerUrl() + '/api/user/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                email: email.toLowerCase(),
-                first_name: first_name,
-                last_name: last_name,
-                gender: gender,
-                password: password,
-                invite_token: invite_token,
-                join_code: join_code || ""
-            }),
-        });
-        
-        if (response.ok) {
-            console.log('Registration Success');
-            return [true, undefined];
-        } else {
-            console.log('Registration Error:', response.status, response.statusText);
-            let error_msg = 'Registration Error (' + response.status + '): ' + response.statusText + ', ';
-            try {
-                const error = await response.json();
-                for (const key in error) {
-                    error_msg += key + ': ' + error[key] + ', ';
-                }
-            } catch (e) {
-                error_msg += ' Unknown error';
-            }
-            return [false, error_msg];
-        }
-    } catch (error) {
-        console.error('Network or server error during registration:', error);
-        // Capture network errors in Sentry
-        sentryError({
-            result: error,
-            errorSource: 'manual-api',
-            endpointName: 'register',
-        });
-        return [false, 'Network or server error occurred. Please try again.'];
-    }
-}
-
-const apiLogin = async (email, password) => {
-    try {
-        const response = await fetch(getServerUrl() + '/api/token/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                email: email.toLowerCase(),
-                password: password
-            }),
-        });
-
-        if (response.ok) {
-            console.log('Login Successful');
-            const token = await response.json();
-            localStorage.setItem('access_token', token.access);
-            localStorage.setItem('refresh_token', token.refresh);
-            return [true, undefined];
-        } else {
-            console.log('Login Error:', response.status, response.statusText);
-            let parsedError = null;
-            try {
-                parsedError = await response.json();
-            } catch (e) {
-                parsedError = null;
-            }
-            return [false, response.statusText + ' (' + response.status + ') - ' + (parsedError ? parsedError.detail : 'Unknown error')];
-        }
-    } catch (error) {
-        console.error('Network or server error during login:', error);
-        // Capture network errors in Sentry
-        sentryError({
-            result: error,
-            errorSource: 'manual-api',
-            endpointName: 'login',
-        });
-        return [false, 'Network or server error occurred. Please try again.'];
-    }
-};
-
-
-// DRF error payloads come in several shapes: {"detail": "..."} for
-// view-level errors, {"non_field_errors": [...]} for serializer-wide
-// failures (invalid/expired reset token, weak password) and
-// {"field": [...]} for field errors. Pick the first human-readable one
-// so the user sees the real reason instead of "Unknown error".
-function firstErrorMessage(parsedError) {
-    if (!parsedError) return null;
-    if (typeof parsedError.detail === 'string') return parsedError.detail;
-    if (Array.isArray(parsedError.non_field_errors) && parsedError.non_field_errors.length) return parsedError.non_field_errors.join(' ');
-    for (const value of Object.values(parsedError)) {
-        if (Array.isArray(value) && value.length) return value.join(' ');
-        if (typeof value === 'string') return value;
-    }
-    return null;
-}
-
-
-const apiRequestNewPassword = async (email) => {
-    try {
-        const response = await fetch(getServerUrl() + '/api/password-reset/request/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                email: email,
-            }),
-        });
-        
-        if (response.ok) {
-            console.log('Password Reset Request Successful');
-            return [true, undefined];
-        } else {
-            console.log('Password Reset Request Error:', response.status, response.statusText, response);
-            let parsedError = null;
-            try {
-                parsedError = await response.json();
-            } catch (e) {
-                parsedError = null;
-            }
-            return [false, response.statusText + ' (' + response.status + ') - ' + (firstErrorMessage(parsedError) || 'Unknown error')];
-        }
-    } catch (error) {
-        console.error('Network or server error during password reset request:', error);
-        // Capture network errors in Sentry
-        sentryError({
-            result: error,
-            errorSource: 'manual-api',
-            endpointName: 'new-password-request',
-        });
-        return [false, 'Network or server error occurred. Please try again.'];
-    }
-};
-
-
-const apiSetNewPassword = async (uid, token, newPassword) => {
-    try {
-        const response = await fetch(getServerUrl() + '/api/password-reset/confirm/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                uid: uid,
-                token: token,
-                new_password: newPassword,
-            }),
-        });
-
-        if (response.ok) {
-            console.log('Set New Password Successful');
-            return [true, undefined];
-        } else {
-            console.log('Set New Password Error:', response.status, response.statusText, response);
-            let parsedError = null;
-            try {
-                parsedError = await response.json();
-            } catch (e) {
-                parsedError = null;
-            }
-            return [false, response.statusText + ' (' + response.status + ') - ' + (firstErrorMessage(parsedError) || 'Unknown error')];
-        }
-    } catch (error) {
-        console.error('Network or server error during password reset:', error);
-        // Capture network errors in Sentry
-        sentryError({
-            result: error,
-            errorSource: 'manual-api',
-            endpointName: 'set-new-password',
-        });
-        return [false, 'Network or server error occurred. Please try again.'];
-    }
-}
-
-
-// Only honour a redirect target if it points at the same origin and
-// is a real path. Anything else (absolute URL, javascript:, protocol-
-// relative //evil.com) is dropped to prevent open-redirect abuse.
-function sanitizeRedirect(value) {
-    if (!value) return null;
-    let raw;
-    try {
-        raw = decodeURIComponent(value);
-    } catch (e) {
-        return null;
-    }
-    if (!raw || typeof raw !== 'string') return null;
-    // Must start with a single forward slash and a second char that's
-    // not '/' or '\' (avoids protocol-relative URLs).
-    if (!raw.startsWith('/')) return null;
-    if (raw.startsWith('//') || raw.startsWith('/\\')) return null;
-    // Reject anything that looks like a scheme prefix followed by
-    // characters (e.g. '/javascript:foo'). Same-origin query strings
-    // may contain '://' inside values and that's fine - we only look
-    // for the scheme prefix.
-    if (/^\/[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw)) return null;
-    return raw;
-}
-
-
-const apiRefreshToken = async (refreshToken) => {
-    try {
-        const response = await fetch(getServerUrl() + '/api/token/refresh/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                refresh: refreshToken,
-            }),
-        });
-        
-        if (response.ok) {
-            console.log('Token Refresh Successful');
-            const token = await response.json();
-            localStorage.setItem('access_token', token.access);
-            // The backend rotates refresh tokens (ROTATE_REFRESH_TOKENS +
-            // BLACKLIST_AFTER_ROTATION): the token we just used is now
-            // dead and the response carries its replacement. Dropping it
-            // here (as this code used to) left a blacklisted token in
-            // localStorage, so the next refresh failed and every app
-            // reopen ended back on the login screen.
-            if (token.refresh) {
-                localStorage.setItem('refresh_token', token.refresh);
-            }
-            return [true, undefined];
-        } else {
-            console.log('Token Refresh Error:', response.status, response.statusText);
-            let error = null;
-            try {
-                error = await response.json();
-            } catch (e) {
-                error = { detail: 'Unknown error' };
-            }
-            // Only a 400/401 proves the refresh token is dead
-            // (invalid/expired/blacklisted) - drop it so the user gets a
-            // clean login form. 429 (throttled) and 5xx are transient:
-            // KEEP the token so a later retry succeeds instead of
-            // forcing a needless re-login.
-            if (response.status === 400 || response.status === 401) {
-                localStorage.removeItem('refresh_token');
-            }
-            return [false, response.statusText + ' (' + response.status + ') - ' + error.detail];
-        }
-    } catch (error) {
-        console.error('Network or server error during token refresh:', error);
-        // Network failure (offline, flaky mobile data): the refresh token
-        // is very likely still valid - keep it so the next app start or
-        // poll retries transparently instead of logging the user out.
-        // Capture network errors in Sentry
-        sentryError({
-            result: error,
-            errorSource: 'manual-api',
-            endpointName: 'refresh-token',
-        });
-        return [false, 'Network or server error occurred during token refresh. Please try again.'];
-    }
-};
 
 
 function RegisterPage() {
@@ -502,7 +242,6 @@ function RegisterPage() {
                 await waitForLocalStorage('access_token');
                 // Never log token values - console output ends up in
                 // Sentry breadcrumbs and shared-device devtools.
-                console.log('Register and Login Successful - redirect');
                 navigate(`/dashboard/?${params.toString()}`);
             } else if (!success_register) {
                 setErrorMessage(msg_register.split(", "));
@@ -520,7 +259,6 @@ function RegisterPage() {
     }
 
     useEffect(() => {
-        console.log('Clear localStorage as new user wants to register');
         dispatch({type: 'RESET_STORE'});
         // Preserve the native app's server address - wiping it here
         // stranded the registration API calls on the WebView origin.
@@ -724,7 +462,6 @@ function LogInPage() {
             // success logging in - redirect to dashboard
             await waitForLocalStorage('access_token');
             setIsLoading(false);
-            console.log('redirect');
             if (params.has('redirect')) {
                 // Only honour the redirect param when it points at a
                 // same-origin path. Anything else (absolute URL, scheme
@@ -732,7 +469,6 @@ function LogInPage() {
                 // dropped to prevent open-redirect abuse.
                 const redirectUrl = sanitizeRedirect(params.get('redirect'));
                 if (redirectUrl) {
-                    console.log('Redirect to:', redirectUrl);
                     navigate(redirectUrl);
                 } else {
                     navigate(`/dashboard/${location.search}`);
@@ -749,20 +485,17 @@ function LogInPage() {
 
     // check if refreshToken already exists and user is already logged in
     async function checkRefreshToken(refreshToken) {
-        console.log('refresh_token already exists - check if still valid');
         setIsLoading(true);
         const [success] = await apiRefreshToken(refreshToken);
         if (success) {
             // success refreshing access_token - redirecting to dashboard
             await waitForLocalStorage('access_token');
-            console.log('refresh_token exists and is valid - redirect');
             navigate(`/dashboard/${location.search}`);
         } else {
             // Refresh failed. apiRefreshToken already dropped the
             // refresh_token when the backend confirmed it dead (400/401);
             // on transient failures (429/network) the token stays, so the
             // next app start retries automatically.
-            console.log('refresh_token exists but refresh failed - manual login or automatic retry');
         }
         setIsLoading(false);
     }
@@ -856,9 +589,8 @@ function ResetPasswordPage() {
         const [success, msg] = await apiRequestNewPassword(email);
         if (success) {
             // success reset request - redirect to start page
-            window.alert('Success! Please check your email for a reset link.');
+            notice('Success! Please check your email for a reset link.');
             setIsLoading(false);
-            console.log('redirect to login page');
             navigate(`/`);
         } else {
             // error reset request - user try again
@@ -927,8 +659,7 @@ function SetNewPasswordPage() {
             if (success) {
                 // success reset password - redirect to login page
                 setIsLoading(false);
-                console.log('redirect to login page');
-                navigate(`/login/`);
+                    navigate(`/login/`);
             } else {
                 // error resetting password - user try again
                 setErrorMessage(msg);
@@ -983,7 +714,7 @@ const NotFound = () => {
                 <h1 className="text-4xl font-bold mb-4">404</h1>
                 <p className="text-xl mb-4">Page Not Found</p>
                 <p className="mb-8">The page you're looking for doesn't exist or has been moved.</p>
-                <Link to="/dashboard" className="text-blue-500 hover:text-blue-700">
+                <Link to="/dashboard" className="text-volt-700 dark:text-volt-300 font-semibold hover:underline">
                     Go to Home
                 </Link>
             </div>
@@ -993,3 +724,4 @@ const NotFound = () => {
 
 
 export {WelcomePage, NotFound, RegisterPage, LogInPage, LogoutPage, ResetPasswordPage, SetNewPasswordPage};
+// Auth HTTP lives in utils/authClient.js (same RTK baseQuery as the rest of the app).

@@ -89,7 +89,7 @@ function PushSubscribeButton({status, onSubscribed}) {
         <div className="px-4 w-full">
             {status.subscribed ? (
                 <button onClick={handleUnsubscribe} disabled={busy}
-                        className="px-4 py-2 rounded-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-sm font-semibold min-h-[44px]">
+                        className="px-4 py-2 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-sm font-semibold min-h-[44px] transition">
                     {busy ? "Working..." : "Disable browser notifications"}
                 </button>
             ) : (
@@ -137,7 +137,6 @@ export default function SiteSettingsForm({setModalState}) {
                 llm_base_url: settings.llm_base_url || "",
                 llm_model: settings.llm_model || "",
                 llm_email_model: settings.llm_email_model || "",
-                roast_image_prompt: settings.roast_image_prompt || "",
                 strava_client_id: settings.strava_client_id ?? "",
                 strava_limit_15min: settings.strava_limit_15min ?? "",
                 strava_limit_day: settings.strava_limit_day ?? "",
@@ -225,7 +224,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Provider Preset" error={fieldErrors.llm_provider}
                            hint="Picking MiniMax auto-fills the base URL and model below. You can still override either. 'Deployment default' follows the .env values (LLM_PROVIDER/LLM_BASE_URL/LLM_MODEL) - a docker recreate applies them.">
                         <select
-                            className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                            className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                             value={values.llm_provider ?? ""}
                             onChange={(e) => handleProviderChange(e.target.value)}>
                             <option value="">Deployment default (.env)</option>
@@ -238,14 +237,14 @@ export default function SiteSettingsForm({setModalState}) {
                 <Field label="API Key" error={fieldErrors.llm_api_key}
                        hint={<>Currently stored: <code>{settings?.llm_api_key_masked || "(not set)"}</code></>}>
                     <input type="password" autoComplete="off"
-                           className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                           className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                            value={values.llm_api_key || ""}
                            onChange={(e) => setField("llm_api_key", e.target.value)}
                            placeholder="leave blank to keep current"/>
                 </Field>
                 <Field label="Base URL" error={fieldErrors.llm_base_url}>
                     <input type="text"
-                           className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                           className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                            value={values.llm_base_url || ""}
                            onChange={(e) => setField("llm_base_url", e.target.value)}
                            placeholder="https://openrouter.ai/api/v1"/>
@@ -254,7 +253,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Drill Instructor Model" error={fieldErrors.llm_model}
                            hint="Default: gpt-4o-mini">
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.llm_model || ""}
                                onChange={(e) => setField("llm_model", e.target.value)}
                                placeholder="gpt-4o-mini"/>
@@ -264,20 +263,12 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Weekly Email Model" error={fieldErrors.llm_email_model}
                            hint="Default: gpt-4o">
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.llm_email_model || ""}
                                onChange={(e) => setField("llm_email_model", e.target.value)}
                                placeholder="gpt-4o"/>
                     </Field>
                 </div>
-                <Field label="Roast Image Prompt" error={fieldErrors.roast_image_prompt}
-                       hint="The edit instruction sent to the image model when the coach remixes a participant's photo into a roast poster. Leave blank for the built-in default (a good-natured bootcamp propaganda poster). Optional placeholders: {persona_name}, {persona_style}, {caption} and {caption_instruction} (the dynamic 'work the caption into the joke / no text' line).">
-                    <textarea rows={6}
-                              className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
-                              value={values.roast_image_prompt || ""}
-                              onChange={(e) => setField("roast_image_prompt", e.target.value)}
-                              placeholder={'Edit this photo into a funny, over-the-top bootcamp propaganda poster that playfully roasts the person in it, in the style of the drill-instructor persona "{persona_name}".'}/>
-                </Field>
             </Section>
 
             <Section title="Strava"
@@ -285,7 +276,7 @@ export default function SiteSettingsForm({setModalState}) {
                 <div className="px-4 w-full sm:w-1/2">
                     <Field label="Client ID" error={fieldErrors.strava_client_id}>
                         <input type="number"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.strava_client_id ?? ""}
                                onChange={(e) => setField("strava_client_id", e.target.value)}
                                placeholder="123456"/>
@@ -295,7 +286,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Client Secret" error={fieldErrors.strava_client_secret}
                            hint={<>Currently stored: <code>{settings?.strava_client_secret_masked || "(not set)"}</code></>}>
                         <input type="password" autoComplete="off"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.strava_client_secret || ""}
                                onChange={(e) => setField("strava_client_secret", e.target.value)}
                                placeholder="leave blank to keep current"/>
@@ -305,7 +296,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Rate Limit / 15min" error={fieldErrors.strava_limit_15min}
                            hint="Default 100 (300 with Strava developer program).">
                         <input type="number"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.strava_limit_15min ?? ""}
                                onChange={(e) => setField("strava_limit_15min", e.target.value)}
                                placeholder="100"/>
@@ -315,7 +306,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Rate Limit / Day" error={fieldErrors.strava_limit_day}
                            hint="Default 1000 (3000 with Strava developer program).">
                         <input type="number"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.strava_limit_day ?? ""}
                                onChange={(e) => setField("strava_limit_day", e.target.value)}
                                placeholder="1000"/>
@@ -329,7 +320,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Base URL" error={fieldErrors.health_base_url}
                            hint="The Open Wearables instance, e.g. https://health.your-domain.com">
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.health_base_url || ""}
                                onChange={(e) => setField("health_base_url", e.target.value)}
                                placeholder="https://health.your-domain.com"/>
@@ -339,7 +330,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Public URL (phones)" error={fieldErrors.health_public_url}
                            hint="Shown in the connection code - the address athletes' phones must reach. Leave blank to use the Base URL.">
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.health_public_url || ""}
                                onChange={(e) => setField("health_public_url", e.target.value)}
                                placeholder="https://health.your-domain.com"/>
@@ -349,7 +340,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Developer Email" error={fieldErrors.health_developer_email}
                            hint="The Open Wearables developer login the connector uses (its JWT works on all OW endpoints).">
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.health_developer_email || ""}
                                onChange={(e) => setField("health_developer_email", e.target.value)}
                                placeholder="admin@example.com"/>
@@ -359,7 +350,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Developer Password" error={fieldErrors.health_developer_password}
                            hint={<>Currently stored: <code>{settings?.health_developer_password_masked || "(not set)"}</code></>}>
                         <input type="password" autoComplete="off"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.health_developer_password || ""}
                                onChange={(e) => setField("health_developer_password", e.target.value)}
                                placeholder="leave blank to keep current"/>
@@ -372,7 +363,7 @@ export default function SiteSettingsForm({setModalState}) {
                 <div className="px-4 w-full sm:w-1/2">
                     <Field label="Host" error={fieldErrors.email_host}>
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.email_host || ""}
                                onChange={(e) => setField("email_host", e.target.value)}
                                placeholder="smtp.gmail.com"/>
@@ -381,7 +372,7 @@ export default function SiteSettingsForm({setModalState}) {
                 <div className="px-4 w-full sm:w-1/2">
                     <Field label="Port" error={fieldErrors.email_port}>
                         <input type="number"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.email_port ?? ""}
                                onChange={(e) => setField("email_port", e.target.value)}
                                placeholder="465"/>
@@ -400,7 +391,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Password" error={fieldErrors.email_host_password}
                            hint={<>Currently stored: <code>{settings?.email_host_password_masked || "(not set)"}</code></>}>
                         <input type="password" autoComplete="off"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                                value={values.email_host_password || ""}
                                onChange={(e) => setField("email_host_password", e.target.value)}
                                placeholder="leave blank to keep current"/>
@@ -430,7 +421,7 @@ export default function SiteSettingsForm({setModalState}) {
                 </div>
                 <Field label="From Address" error={fieldErrors.email_from}>
                     <input type="email"
-                           className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                           className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                            value={values.email_from || ""}
                            onChange={(e) => setField("email_from", e.target.value)}
                            placeholder="competition@yourdomain.com"/>
@@ -438,7 +429,7 @@ export default function SiteSettingsForm({setModalState}) {
                 <Field label="Reply-To" error={fieldErrors.email_reply_to}
                        hint="Comma-separated list of addresses.">
                     <input type="text"
-                           className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-gray-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                           className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
                            value={values.email_reply_to || ""}
                            onChange={(e) => setField("email_reply_to", e.target.value)}
                            placeholder="support@yourdomain.com, admin@yourdomain.com"/>

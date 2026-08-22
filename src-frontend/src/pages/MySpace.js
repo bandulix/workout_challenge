@@ -30,20 +30,24 @@ import JoinCompetitionForm from "../forms/joinCompetitionForm";
 import SettingsForm from "../forms/settingsForm";
 import {LinkStravaScreen} from "./HowTo";
 import {
-    AddButton, EditButton,
+    AddButton,
     JoinButton,
     ModifyGoalsButton,
-    SyncStravaButton,
 } from "../forms/basicComponents";
 import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
 import {SectionLoader} from "../utils/loaders";
 import {useDispatch} from "react-redux";
+import {assetUrl} from "../utils/platform";
 import {useLazySyncGarminQuery, useLazySyncStravaQuery, useLazySyncHealthQuery} from "../utils/reducers/linkSlice";
+import {nativeHealthKickSync} from "../utils/nativeHealth";
 import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
 import {feedApi} from "../utils/reducers/feedSlice";
 import {BeatLoader} from "react-spinners";
 import ProfileAvatar from "../components/ProfileAvatar";
+import {Chip, EmptyState, SectionHead, SyncChip, rowClass, VOLT} from "../components/uiBits";
 import {useApkUpdateInfo} from "../utils/apkUpdate";
+import usePollingInterval from "../utils/usePollingInterval";
+import {notice} from "../utils/dialogs";
 
 
 function WelcomeBox({user, workouts}) {
@@ -123,14 +127,13 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
             dispatch(usersApi.util.invalidateTags(['User']));
             dispatch(statsApi.util.invalidateTags(['Stats']));
             dispatch(feedApi.util.invalidateTags(['Feed']));
-            console.log(`${provider} sync successful!`);
         } else if (error) {
             dispatch(workoutsApi.util.invalidateTags(['Workout']));
             dispatch(usersApi.util.invalidateTags(['User']));
             if (error?.status === 429) {
-                window.alert(`${error?.data?.message}`);
+                notice(`${error?.data?.message}`);
             } else {
-                window.alert(`${provider} sync failed! ${error?.data?.message || "Unknown error. Please try again later."}`);
+                notice(`${provider} sync failed! ${error?.data?.message || "Unknown error. Please try again later."}`);
             }
         }
     }
@@ -150,67 +153,54 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
     return (
         <BoxSection>
 
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3 gap-2">
-                <span className="mx-4 text-gray-500 uppercase font-bold mb-1.5 sm:mb-0">My Workouts <span className="normal-case font-normal text-gray-400">· latest 5</span></span>
-                <div className="p-0 flex gap-2">
-                    {
-                        (stravaLinked) ? (showSourceButton(stravaLinked, 'strava') &&
-                            <SyncStravaButton additionalClasses="my-0.5 sm:my-0" isLoading={stravaSyncIsFetching} onClick={() => triggerStravaSync()}/>) :
-                            <SyncStravaButton additionalClasses="my-0.5 sm:my-0" label={"Link a Service"}
-                                              onClick={() => setShowSettings(true)}/>
-                    }
-                    {showSourceButton(garminLinked, 'garmin') && (
-                        <SyncStravaButton additionalClasses="my-0.5 sm:my-0" label={"Re-Sync with Garmin"}
-                                          isLoading={garminSyncIsFetching} onClick={() => triggerGarminSync()}/>
-                    )}
-                    {showSourceButton(healthLinked, 'health') && (
-                        <SyncStravaButton additionalClasses="my-0.5 sm:my-0" label={"Re-Sync Apple/Google Health"}
-                                          isLoading={healthSyncIsFetching} onClick={() => triggerHealthSync()}/>
-                    )}
-                </div>
-
-                <div className="p-0">
-                    <AddButton additionalClasses="my-0.5 sm:my-0" label={"Add Workout Manually"} onClick={() => setShowEditWorkoutModal(true)}/>
-                </div>
-            </div>
-
-            <table className="min-w-full my-2">
-                <tbody>
-                {(recentWorkouts.length === 0) ? (
-                    <tr className="border-b border-gray-100 dark:border-ink-700/60 hover:bg-gray-50 dark:hover:bg-ink-800">
-                        <td className="py-4 px-4 text-center text-gray-400 text-sm">No workouts yet.</td>
-                    </tr>
-                ) : (
-                    recentWorkouts.map((workout, iWorkout) => (
-                        <tr key={workout.id} className="border-b border-gray-100 dark:border-ink-700/60 hover:bg-gray-50 dark:hover:bg-ink-800">
-                            <td className="py-2 px-4 text-sm md:text-base">
-                                <span className="font-semibold">{workout.start_datetime_fmt.date_readable}</span><br/>
-                                <span className="text-sm hidden sm:block">{workout.start_datetime_fmt.time_24h}</span>
-                            </td>
-                            <td className="py-2 px-4 text-sm md:text-base">
-                                {/* Mobile view (stacked) */}
-                                <div className="md:hidden">
-                                    <div className="font-base">{(workout.sport_type === "Steps") ? workout.steps?.toLocaleString() : workout.duration.substring(0, 5)} <span className="font-semibold">{sportLabelShort(workout.sport_type)}</span></div>
-                                    {(workout.sport_type !== "Steps") && <div className="text-sm text-gray-600 dark:text-gray-400">{Math.round(workout.kcal).toLocaleString()}<span className="text-sm"> kcal < /span></div>}
-                                </div>
-                                {/* Desktop view (normal) */}
-                                <div className="hidden md:block">{(workout.sport_type === "Steps") ? workout.steps?.toLocaleString() : workout.duration.substring(0, 5)} <span className="font-semibold text-base">{sportLabelShort(workout.sport_type)}</span> {(workout.distance && workout.sport_type !== "Steps") ? (<span className="hidden sm:inline">({workout.distance}km)</span>) : (null)}</div>
-                            </td>
-                            <td className="py-2 px-4 hidden md:table-cell">
-                                {(workout.kcal) ? (
-                                    (workout.sport_type !== "Steps") && (<>{Math.round(workout.kcal).toLocaleString()} <span className="text-sm"> kcal < /span></>)
-                                ) : null}
-                            </td>
-                            <td className="py-2 px-4">
-                                <EditButton additionalClasses={"mx-auto"}
-                                            onClick={() => setShowEditWorkoutModal(workout.id)} label={false}
-                                            larger={true}/>
-                            </td>
-                        </tr>
-                    ))
+            <SectionHead title="Latest workouts" hint="Last 5">
+                {!stravaLinked && !garminLinked && !healthLinked && (
+                    <SyncChip onClick={() => setShowSettings(true)} short="Link" long="Link a service"/>
                 )}
-                </tbody>
-            </table>
+                {showSourceButton(stravaLinked, 'strava') && (
+                    <SyncChip onClick={() => triggerStravaSync()} isLoading={stravaSyncIsFetching} short="Sync" long="Sync Strava"/>
+                )}
+                {showSourceButton(garminLinked, 'garmin') && (
+                    <SyncChip onClick={() => triggerGarminSync()} isLoading={garminSyncIsFetching} short="Sync" long="Sync Garmin"/>
+                )}
+                {showSourceButton(healthLinked, 'health') && (
+                    <SyncChip onClick={async () => { await nativeHealthKickSync({daysBack: 3}); triggerHealthSync(); }}
+                              isLoading={healthSyncIsFetching} short="Sync" long="Sync Health"/>
+                )}
+            </SectionHead>
+
+            {recentWorkouts.length === 0 ? (
+                <EmptyState title="No workouts yet"
+                            body="Log this week's first session — the coach is waiting."
+                            actionLabel="Log a workout"
+                            onAction={() => setShowEditWorkoutModal(true)}/>
+            ) : (
+                <ul className="divide-y divide-gray-100 dark:divide-ink-700/60 mt-1">
+                    {recentWorkouts.map((workout) => {
+                        const isSteps = workout.sport_type === "Steps";
+                        const primary = isSteps
+                            ? `${workout.steps?.toLocaleString() || 0} steps`
+                            : (workout.duration || "").substring(0, 5);
+                        return (
+                            <li key={workout.id}>
+                                <button type="button" onClick={() => setShowEditWorkoutModal(workout.id)} className={rowClass}>
+                                    <div className="h-10 w-10 rounded-2xl bg-volt-400/15 flex items-center justify-center shrink-0">
+                                        <Dumbbell className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="font-semibold truncate">{sportLabelShort(workout.sport_type)} · {primary}</p>
+                                        <p className="text-xs text-gray-400">{workout.start_datetime_fmt?.date_readable}</p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        {!isSteps && workout.distance ? <Chip>{workout.distance} km</Chip> : null}
+                                        {!isSteps && workout.kcal ? <Chip>{Math.round(workout.kcal).toLocaleString()} kcal</Chip> : null}
+                                    </div>
+                                </button>
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
 
             {(showEditWorkoutModal) && (
                 <WorkoutForm setModalState={setShowEditWorkoutModal} id={showEditWorkoutModal} scaling_distance={parseFloat(user?.scaling_distance || "1.0")}/>
@@ -228,13 +218,14 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
 
 
 function CompetitionRow({competition, user}) {
+    const pollSlow = usePollingInterval(90000);
 
     const {
         data: stats,
         isLoading: statsLoading,
         error: statsError,
     } = useGetStatsByIdQuery(competition.id, {
-        pollingInterval: 90000, // 90 seconds
+        pollingInterval: pollSlow,
     });
 
     const [teamId, setTeamId] = useState(undefined);
@@ -250,34 +241,36 @@ function CompetitionRow({competition, user}) {
         return navigate(`/competition/${id}`);
     }
 
+    const rank = stats?.users?.[user.id]?.rank;
+    const started = stats?.competition?.start_date_count >= 0;
+
     return (
-        <tr onClick={() => handleClick(competition.id)}
-            className="hover:bg-gray-100 dark:hover:bg-gray-900 border-b cursor-pointer">
-            <td className="py-2 px-4">
-                <span className="font-semibold">{competition.name}</span><br/>
-                <span className="text-sm text-gray-400">{competition.start_date_fmt} - {competition.end_date_fmt}</span>
-            </td>
-            <td className="py-2 px-4 text-right text-sm">
-                {(statsLoading) ? (
-                    <div><BeatLoader color="rgb(209 213 219)" /></div>
-                ) : (statsError || !stats?.competition) ? (
-                    <span className="text-gray-400">-</span>
-                ) : (stats.competition.start_date_count >= 0) ? (
-                        ((stats.users[user.id]?.rank == null) ? (
-                            <span className="text-gray-400">Time to work out!</span>
-                        ) : (
-                            <>No. <span className="text-xl font-semibold">{stats.users[user.id]?.rank}</span>
-                                {(competition.has_teams) ? (
-                                    <span className="text-gray-400 italic"><br/><span className="font-semibold">My Team:</span> #{stats.teams[teamId]?.rank}</span>
-                                ) : null
-                                }
-                            </>
-                        ))
-                ) :
-                <span className="text-gray-400">Not yet started</span>
-            }
-            </td>
-        </tr>
+        <li>
+            <button type="button" onClick={() => handleClick(competition.id)} className={rowClass}>
+                <div className="min-w-0 flex-1">
+                    <p className="font-semibold truncate">{competition.name}</p>
+                    <p className="text-xs text-gray-400">{competition.start_date_fmt} – {competition.end_date_fmt}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                    {statsLoading ? (
+                        <BeatLoader color={VOLT} size={6}/>
+                    ) : (statsError || !stats?.competition) ? (
+                        <span className="text-gray-400 text-sm">—</span>
+                    ) : !started ? (
+                        <span className="text-xs text-gray-400">Not started</span>
+                    ) : rank == null ? (
+                        <span className="text-xs font-semibold text-volt-600 dark:text-volt-300">Time to work out!</span>
+                    ) : (
+                        <>
+                            <p className="font-display text-xl text-volt-600 dark:text-volt-400 leading-none">#{rank}</p>
+                            {competition.has_teams && stats.teams[teamId]?.rank != null && (
+                                <Chip>Team #{stats.teams[teamId].rank}</Chip>
+                            )}
+                        </>
+                    )}
+                </div>
+            </button>
+        </li>
     )
 }
 
@@ -290,30 +283,24 @@ function CompetitionsBox({user, competitions, setJoinCompetition}) {
     return (
         <BoxSection additionalClasses={"mb-4"}>
 
-            <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center border-b border-gray-200/70 dark:border-ink-700/60 pb-3">
-                <span className="mx-4 text-gray-500 uppercase font-bold mb-1.5 sm:mb-0">My Competitions</span>
-                <div className="p-0">
-                    <JoinButton additionalClasses="my-0.5 sm:my-0" onClick={() => setJoinCompetition(true)}/>
-                </div>
-                <div className="p-0">
-                    <AddButton additionalClasses="my-0.5 sm:my-0" label={"Create"}
-                               onClick={() => setShowEditCompetitionModal(true)}/>
-                </div>
-            </div>
+            <SectionHead title="My challenges">
+                <JoinButton additionalClasses="my-0.5 sm:my-0" onClick={() => setJoinCompetition(true)}/>
+                <AddButton additionalClasses="my-0.5 sm:my-0" label={"Create"}
+                           onClick={() => setShowEditCompetitionModal(true)}/>
+            </SectionHead>
 
-            <table className="min-w-full my-2">
-                <tbody>
-                {(competitions.length === 0) ? (
-                    <tr className="border-b border-gray-100 dark:border-ink-700/60 hover:bg-gray-50 dark:hover:bg-ink-800">
-                        <td className="py-4 px-4 text-center text-gray-400 text-sm">No competitions yet.</td>
-                    </tr>
-                ) : (
-                    competitions.map((competition, iCompetition) => (
+            {competitions.length === 0 ? (
+                <EmptyState title="No challenges yet"
+                            body="Create one, or join with a code from a friend."
+                            actionLabel="Create a challenge"
+                            onAction={() => setShowEditCompetitionModal(true)}/>
+            ) : (
+                <ul className="divide-y divide-gray-100 dark:divide-ink-700/60 mt-1">
+                    {competitions.map((competition) => (
                         <CompetitionRow key={competition.id} competition={competition} user={user} />
-                    ))
-                )}
-                </tbody>
-            </table>
+                    ))}
+                </ul>
+            )}
 
             {(showEditCompetitionModal) && (
                 <CompetitionForm setModalState={setShowEditCompetitionModal}/>
@@ -618,7 +605,8 @@ function ApkUpdateBanner() {
                 <p className="font-display text-xs uppercase tracking-wider">App update available</p>
                 <p className="text-[11px] text-gray-400">Version {update.versionName} — installing over the top keeps everything.</p>
             </div>
-            <a href={update.url}
+            <a href={assetUrl("/download/workout-challenge.apk")}
+                   rel="noopener noreferrer"
                    className="shrink-0 rounded-full bg-volt-400 text-ink-950 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
                 Get it
             </a>
@@ -631,6 +619,8 @@ function ApkUpdateBanner() {
 
 
 export default function MySpace() {
+    const pollSlow = usePollingInterval(90000);
+    const pollFast = usePollingInterval(60000);
     const navType = useNavigationType();
     useEffect(() => {
         if (navType === "POP") {
@@ -649,7 +639,7 @@ export default function MySpace() {
         error: workoutsError,
         isLoading: workoutsIsLoading,
     } = useGetWorkoutsQuery(undefined, {
-        pollingInterval: 60000, // 60 seconds - keep devices in sync
+        pollingInterval: pollFast,
     });
 
     const {
@@ -657,7 +647,7 @@ export default function MySpace() {
         error: competitionError,
         isLoading: competitionLoading,
     } = useGetCompetitionsQuery(undefined, {
-        pollingInterval: 60000, // 60 seconds - keep devices in sync
+        pollingInterval: pollFast,
     });
 
     const [searchParams, setSearchParams] = useSearchParams();
@@ -681,7 +671,7 @@ export default function MySpace() {
 
 
     if (userError) {
-        console.log('Error retrieving user:', userError);
+        console.error('Error retrieving user:', userError);
         return <PageWrapper additionClasses="h-screen flex items-center justify-center"><ErrorBoxSection
             errorMsg={userError?.status + ' / ' + (userError?.error || userError?.message || userError?.data?.detail)}/></PageWrapper>;
     }

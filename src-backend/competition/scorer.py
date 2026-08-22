@@ -3,6 +3,7 @@ import logging
 
 from django.apps import apps
 from django.core.cache import cache
+from django.utils import timezone
 
 from custom_user.point_recalc import bump_stats_generation, trigger_recalc_points
 
@@ -127,11 +128,26 @@ def apply_sport_factor_changes(old_factors: dict, new_factors: dict):
                 sorted(changed_sports), len(rows_to_update), len(recalc_pairs))
 
 
+def score_workout(instance, *, new, changes):
+    """Public scoring entry: persist Points for a saved workout.
+
+    Call this from the API serializer / syncs after ``Workout.save``.
+    ``Workout.save(score=True)`` (the default) delegates here so ORM
+    creates used by tests and the three import connectors keep working.
+    """
+    trigger_workout_change(instance, new, changes)
+
+
+def unscore_workout(instance):
+    """Public scoring entry: drop Points for a workout about to be deleted."""
+    trigger_workout_delete(instance)
+
+
 def trigger_workout_delete(instance):
     RecalcRequest = apps.get_model('custom_user', 'RecalcRequest')
     for points in instance.points_set.all():
         RecalcRequest(user=instance.user, goal=points.goal, start_datetime=instance.start_datetime).save()
-    print(f"Workout ({instance.pk}) deletion triggered point cap recalc - after {instance.start_datetime.isoformat()}")
+    logger.info("Workout %s deletion triggered point cap recalc after %s", instance.pk, instance.start_datetime.isoformat())
 
     _bust_stats_cache_for(instance.user)
     trigger_recalc_points()
@@ -173,7 +189,7 @@ def trigger_workout_change(instance, new, changes):
             from drill_instructor.tasks import post_workout_comment
             post_workout_comment.delay(instance.pk)
         except Exception:  # noqa: BLE001 - never block workout saves on instructor plumbing
-            print(f"Drill Instructor: failed to enqueue comment for workout {instance.pk}")
+            logger.exception("Drill Instructor: failed to enqueue comment for workout %s", instance.pk)
     else:
         # updated existing workout
         # check if relevant field was changed
@@ -238,28 +254,49 @@ def trigger_goal_change(instance, new, changes):
         if new_requests:
             RecalcRequest.objects.bulk_create(new_requests)
     else:
-        # updated existing workout
-        # check if relevant field was changed
-        _ = changes.pop('name', None)
-        if len(changes) > 0:
-            if 'count_steps_as_walks' in changes:
-                # add steps
-                if changes['count_steps_as_walks'][1]:
-                    factors = get_sport_factors()
-                    new_points = []
-                    for workout in Workout.objects.filter(start_datetime__gte=instance.competition.start_date, start_datetime__lte=instance.competition.end_date + datetime.timedelta(days=1), user__in=instance.competition.user.all(), sport_type='Steps').select_related('user'):
-                        points = _calculate_points_raw(goal=instance, workout=workout, user=workout.user, factors=factors)
-                        new_points.append(Points(goal=instance, workout=workout, points_raw=points, points_capped=points))
-                    if new_points:
-                        Points.objects.bulk_create(new_points)
-                # remove steps
-                else:
-                    for point in instance.points_set.filter(workout__sport_type='Steps'):
-                        point.delete()
-            RecalcRequest.objects.bulk_create([
-                RecalcRequest(user=user, goal=instance, start_datetime=instance.competition.start_date)
-                for user in instance.competition.user.all()
-            ])
+        # Name-only edits don't change scoring.
+        scoring_changes = {k: v for k, v in changes.items() if k != 'name'}
+        if not scoring_changes:
+            return
+
+        if 'count_steps_as_walks' in scoring_changes:
+            # add steps
+            if scoring_changes['count_steps_as_walks'][1]:
+                factors = get_sport_factors()
+                new_points = []
+                for workout in Workout.objects.filter(start_datetime__gte=instance.competition.start_date, start_datetime__lte=instance.competition.end_date + datetime.timedelta(days=1), user__in=instance.competition.user.all(), sport_type='Steps').select_related('user'):
+                    points = _calculate_points_raw(goal=instance, workout=workout, user=workout.user, factors=factors)
+                    new_points.append(Points(goal=instance, workout=workout, points_raw=points, points_capped=points))
+                if new_points:
+                    Points.objects.bulk_create(new_points)
+            # remove steps
+            else:
+                instance.points_set.filter(workout__sport_type='Steps').delete()
+
+        # Target / metric / step-counting change the raw formula. Cap-only
+        # edits leave points_raw alone. Either way recap from day 1 of
+        # the challenge so the whole duration uses the new rules.
+        if {'metric', 'goal', 'count_steps_as_walks'} & scoring_changes.keys():
+            factors = get_sport_factors()
+            rows_to_update = []
+            for row in instance.points_set.select_related('workout', 'workout__user'):
+                new_raw = _calculate_points_raw(instance, row.workout, row.workout.user, factors=factors)
+                if float(row.points_raw) != new_raw:
+                    row.points_raw = new_raw
+                    row.points_capped = new_raw
+                    rows_to_update.append(row)
+            if rows_to_update:
+                Points.objects.bulk_update(rows_to_update, ['points_raw', 'points_capped'], batch_size=500)
+
+        start_dt = timezone.make_aware(
+            datetime.datetime.combine(instance.competition.start_date, datetime.time.min),
+            timezone.get_current_timezone(),
+        )
+        RecalcRequest.objects.bulk_create([
+            RecalcRequest(user=user, goal=instance, start_datetime=start_dt)
+            for user in instance.competition.user.all()
+        ])
+        bump_stats_generation([instance.competition_id])
 
     trigger_recalc_points()
 
@@ -288,7 +325,7 @@ def trigger_competition_change(instance, new, changes):
                 Points.objects.bulk_create(new_points)
             if new_requests:
                 RecalcRequest.objects.bulk_create(new_requests)
-            print(f"Competition ({instance.pk}) start_date was extended from {changes['start_date'][0]} to {changes['start_date'][1]} triggering point cap recalc")
+            logger.info("Competition %s start_date extended %s → %s, triggering cap recalc", instance.pk, changes['start_date'][0], changes['start_date'][1])
         else:
             # remove point entries before changes['start_date'][1]
             points_to_delete = Points.objects.filter(goal__competition=instance, workout__start_datetime__lt=changes['start_date'][1])
@@ -301,7 +338,7 @@ def trigger_competition_change(instance, new, changes):
                     RecalcRequest(user_id=user_id, goal_id=goal_id, start_datetime=changes['start_date'][1])
                     for user_id, goal_id in affected_pairs
                 ])
-            print(f"Competition ({instance.pk}) start_date was shortened from {changes['start_date'][0]} to {changes['start_date'][1]} triggering point cap recalc")
+            logger.info("Competition %s start_date shortened %s → %s, triggering cap recalc", instance.pk, changes['start_date'][0], changes['start_date'][1])
 
         trigger_recalc_points()
 
@@ -321,11 +358,11 @@ def trigger_competition_change(instance, new, changes):
                 Points.objects.bulk_create(new_points)
             if new_requests:
                 RecalcRequest.objects.bulk_create(new_requests)
-            print(f"Competition ({instance.pk}) end_date was extended from {changes['end_date'][0]} to {changes['end_date'][1]} triggering point cap recalc")
+            logger.info("Competition %s end_date extended %s → %s, triggering cap recalc", instance.pk, changes['end_date'][0], changes['end_date'][1])
         else:
             # remove point entries after changes['end_date'][1]
             Points.objects.filter(goal__competition=instance, workout__start_datetime__gt=changes['end_date'][1]).delete()
-            print(f"Competition ({instance.pk}) end_date was shortened from {changes['end_date'][0]} to {changes['end_date'][1]} NOT triggering point cap recalc")
+            logger.info("Competition %s end_date shortened %s → %s, not triggering cap recalc", instance.pk, changes['end_date'][0], changes['end_date'][1])
 
         trigger_recalc_points()
 
@@ -355,11 +392,11 @@ def trigger_user_change(instance, new, changes):
                 Points.objects.bulk_create(new_points)
             if new_requests:
                 RecalcRequest.objects.bulk_create(new_requests)
-            print(f"User ({instance.pk}) join competitions {changes['my_competitions'][1]} triggering point cap recalc")
+            logger.info("User %s joined competitions %s, triggering cap recalc", instance.pk, changes['my_competitions'][1])
         else:
             # remove/leave competition
             Points.objects.filter(goal__competition__in=changes['my_competitions'][0], workout__user=instance).delete()
-            print(f"User ({instance.pk}) left competitions {changes['my_competitions'][0]} NOT triggering point cap recalc")
+            logger.info("User %s left competitions %s, not triggering cap recalc", instance.pk, changes['my_competitions'][0])
 
         trigger_recalc_points()
 
@@ -383,4 +420,4 @@ def trigger_user_change(instance, new, changes):
         if requests:
             RecalcRequest.objects.bulk_create(requests)
 
-        print(f"User ({instance.pk}) scaling factors {goal_metrics} changed triggering point cap recalc")
+        logger.info("User %s scaling factors %s changed, triggering cap recalc", instance.pk, goal_metrics)

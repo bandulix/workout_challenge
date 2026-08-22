@@ -139,6 +139,7 @@ class StatsCacheTests(TestCase):
         self.assertEqual(response1.status_code, 200)
         rows1 = response1.json()
         self.assertEqual(len(rows1), 1)
+        self.assertIn("workout__user__profile_picture", rows1[0])
 
         # A new points row WITHOUT a generation bump (Points.objects.create
         # fires no triggers) must NOT show up while the cache is warm...
@@ -198,3 +199,216 @@ class StatsCacheTests(TestCase):
         self.assertEqual(float(row.points_raw), 75.0)
         self.assertEqual(float(row.points_capped), 50.0)
         self.assertFalse(RecalcRequest.objects.filter(done=False).exists())
+
+
+class _Dummy:
+    """Stand-in for Goal / Workout / Points in the pure cap-math tests.
+
+    The Scorer only reads a handful of attributes; it does not touch the
+    database. Defaults match ActivityGoal's nullable min/max fields.
+    """
+
+    def __init__(self, **kwargs):
+        self.min_per_workout = None
+        self.max_per_workout = None
+        self.min_per_day = None
+        self.max_per_day = None
+        self.min_per_week = None
+        self.max_per_week = None
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+
+class ScorerCapMathTests(TestCase):
+    """Table-driven floor/cap math. These cases used to live as a
+    ``__main__`` script at the bottom of ``point_recalc.py`` and were
+    never run by ``manage.py test`` (or CI)."""
+
+    CASES = (
+        ({'goal': 100, 'min_per_workout': 10}, [10], 0),
+        ({'goal': 100, 'min_per_workout': 10}, [20], 10),
+        ({'goal': 100, 'max_per_workout': 30}, [30], 30),
+        ({'goal': 100, 'max_per_workout': 30}, [40], 30),
+        ({'goal': 100, 'min_per_workout': 10, 'max_per_workout': 30}, [40], 20),
+        ({'goal': 100, 'min_per_day': 10}, [10], 0),
+        ({'goal': 100, 'min_per_day': 10}, [20], 10),
+        ({'goal': 100, 'min_per_day': 10}, [8, 8], 6),
+        ({'goal': 100, 'max_per_day': 30}, [20], 20),
+        ({'goal': 100, 'max_per_day': 30}, [20, 20], 30),
+        ({'goal': 100, 'min_per_day': 10, 'max_per_day': 30}, [8, 12, 8, 8, 14], 20),
+        ({'goal': 100, 'min_per_week': 10}, [10], 0),
+        ({'goal': 100, 'min_per_week': 10}, [20], 10),
+        ({'goal': 100, 'max_per_week': 30}, [20], 20),
+        ({'goal': 100, 'max_per_week': 30}, [20, 20], 30),
+        ({'goal': 100, 'min_per_week': 10, 'max_per_week': 30}, [8, 12, 8, 8, 14], 20),
+        ({'goal': 100, 'min_per_workout': 10, 'min_per_day': 20}, [5, 20, 5, 20], 15),
+        ({'goal': 100, 'min_per_workout': 20, 'min_per_day': 10}, [5, 30, 30], 20),
+        ({'goal': 100, 'max_per_workout': 20, 'max_per_day': 30}, [20, 25, 25, 25], 30),
+        ({'goal': 100, 'max_per_workout': 30, 'max_per_day': 20}, [20, 25, 25, 25], 20),
+        ({'goal': 100, 'min_per_workout': 10, 'max_per_day': 15}, [5, 5, 5, 5], 0),
+        ({'goal': 100, 'min_per_workout': 10, 'max_per_day': 30}, [15, 35, 5, 15], 30),
+    )
+
+    def test_floors_and_caps(self):
+        from custom_user.point_recalc import Scorer
+
+        workout = _Dummy(start_datetime=datetime.datetime.fromisoformat('2023-01-01T00:00:00'))
+        for goal_kwargs, points, expected in self.CASES:
+            with self.subTest(goal=goal_kwargs, points=points):
+                scorer = Scorer()
+                scorer.set_goal(_Dummy(**goal_kwargs))
+                earned = 0
+                for raw in points:
+                    earned += scorer.calculate_points(_Dummy(points_raw=raw, workout=workout))
+                self.assertEqual(earned, expected)
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class CeleryAllowlistTests(TestCase):
+    """Staff can enqueue a known operational task, not an arbitrary name."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.client = APIClient()
+        self.admin = CustomUser.objects.create_user(
+            email="celery-admin@example.com", password="test-pw",
+            first_name="Cel", last_name="", is_staff=True, is_superuser=True,
+        )
+
+    def test_unknown_task_is_forbidden(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post("/api/celery/?task=os.system")
+        self.assertEqual(response.status_code, 403)
+
+    def test_list_only_returns_allowlisted_names(self):
+        from .views import CeleryQueryView
+        self.client.force_authenticate(self.admin)
+        response = self.client.get("/api/celery/tasks/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(set(response.json()), set(CeleryQueryView.ALLOWED_TASKS))
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class GoalCompetitionImmutableTests(TestCase):
+    """An owner must not re-parent a goal onto someone else's challenge."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.client = APIClient()
+        today = timezone.localdate()
+        self.alice = CustomUser.objects.create_user(
+            email="alice-goal@example.com", password="test-pw", first_name="Alice", last_name="",
+        )
+        self.bob = CustomUser.objects.create_user(
+            email="bob-goal@example.com", password="test-pw", first_name="Bob", last_name="",
+        )
+        self.a_cup = Competition.objects.create(
+            owner=self.alice, name="Alice Cup",
+            start_date=today, end_date=today + datetime.timedelta(days=7),
+        )
+        self.b_cup = Competition.objects.create(
+            owner=self.bob, name="Bob Cup",
+            start_date=today, end_date=today + datetime.timedelta(days=7),
+        )
+        self.goal = self.a_cup.activitygoal_set.first()
+
+    def test_patch_cannot_move_goal_to_another_competition(self):
+        self.client.force_authenticate(self.alice)
+        response = self.client.patch(
+            f"/api/goal/{self.goal.id}/",
+            {"competition": self.b_cup.id, "name": "Still Alice's"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.goal.refresh_from_db()
+        self.assertEqual(self.goal.competition_id, self.a_cup.id)
+        self.assertEqual(self.goal.name, "Still Alice's")
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class GoalEditRescoresChallengeTests(TestCase):
+    """Changing a goal's target/metric recomputes points_raw for every
+    workout in the challenge; cap-only edits still recap from day 1."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "drill_instructor.tasks.post_workout_comment.delay",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        today = timezone.localdate()
+        self.owner = CustomUser.objects.create_user(
+            email="goal-owner@example.com", password="test-pw", first_name="Gia", last_name="",
+        )
+        self.athlete = CustomUser.objects.create_user(
+            email="goal-athlete@example.com", password="test-pw", first_name="Pat", last_name="",
+        )
+        self.competition = Competition.objects.create(
+            owner=self.owner, name="Rescore Cup",
+            start_date=today - datetime.timedelta(days=3),
+            end_date=today + datetime.timedelta(days=4),
+        )
+        self.athlete.my_competitions.add(self.competition)
+        self.goal = self.competition.activitygoal_set.get(metric="min")
+        self.workout = Workout.objects.create(
+            user=self.athlete,
+            sport_type="Run",
+            start_datetime=timezone.now() - datetime.timedelta(days=1),
+            duration=datetime.timedelta(minutes=30),
+            intensity_category=2,
+        )
+        self.points = Points.objects.get(goal=self.goal, workout=self.workout)
+
+    def test_changing_target_recomputes_raw_points(self):
+        # Default Exercise goal is 150 min/week → 30 min = 20 points.
+        self.assertAlmostEqual(float(self.points.points_raw), 20.0, places=2)
+        RecalcRequest.objects.all().delete()
+
+        self.goal.goal = 300
+        self.goal.save()
+
+        self.points.refresh_from_db()
+        self.assertAlmostEqual(float(self.points.points_raw), 10.0, places=2)
+        request = RecalcRequest.objects.get(user=self.athlete, goal=self.goal)
+        self.assertEqual(timezone.localtime(request.start_datetime).date(), self.competition.start_date)
+
+    def test_renaming_a_goal_does_not_touch_points(self):
+        original = float(self.points.points_raw)
+        RecalcRequest.objects.all().delete()
+        self.goal.name = "Cardio minutes"
+        self.goal.save()
+        self.points.refresh_from_db()
+        self.assertAlmostEqual(float(self.points.points_raw), original, places=2)
+        self.assertFalse(RecalcRequest.objects.filter(goal=self.goal).exists())
+
+    def test_cap_only_edit_keeps_raw_but_recaps_from_day_one(self):
+        original = float(self.points.points_raw)
+        RecalcRequest.objects.all().delete()
+        self.goal.max_per_day = 20
+        self.goal.save()
+        self.points.refresh_from_db()
+        self.assertAlmostEqual(float(self.points.points_raw), original, places=2)
+        request = RecalcRequest.objects.get(user=self.athlete, goal=self.goal)
+        self.assertEqual(timezone.localtime(request.start_datetime).date(), self.competition.start_date)

@@ -35,15 +35,12 @@ export function InitStravaLink() {
         urlFirstPart = 'https://www.strava.com/oauth/mobile/authorize?';
     }
 
-    console.log('Strava linkage url:', baseUrl);
-
     useEffect(() => {
         // redirect if user valid and logged in and the OAuth state
         // token (CSRF protection) has arrived. Never leave with an
         // empty state - Strava drops it on the way back, which breaks
         // the return URL and surfaces as an opaque "parsing error".
         if (userIsSuccess && stateIsSuccess && stateToken) {
-            console.log('Redirect to Strava Auth page');
             window.location.href = (urlFirstPart + urlSecondPart);
         }
     }, [userIsSuccess, stateIsSuccess, stateToken]);
@@ -67,7 +64,7 @@ export function InitStravaLink() {
         <PageWrapper additionClasses="h-screen flex items-center justify-center">
             <div className="text-center">
                 <p className="p-2">Could not start the Strava linking (your session may have expired).</p>
-                <p className="p-0.5"><a className="text-blue-500 hover:underline" href='/strava/link'>Click here
+                <p className="p-0.5"><a className="text-volt-700 dark:text-volt-300 font-semibold hover:underline" href='/strava/link'>Click here
                     to <b>try again</b></a></p>
             </div>
         </PageWrapper>
@@ -78,7 +75,7 @@ export function InitStravaLink() {
     return (
         <PageWrapper>
             {stateToken ? (
-                <>If you are not redirected automatically, follow this <a className="text-blue-500 hover:underline"
+                <>If you are not redirected automatically, follow this <a className="text-volt-700 dark:text-volt-300 font-semibold hover:underline"
                                                                           href={(urlFirstPart + urlSecondPart)}>link to
                 Strava</a>.</>
             ) : (
@@ -113,7 +110,6 @@ export function ReturnStravaLink() {
         if (!(linkStravaIsLoading || linkStravaIsSuccess || linkStravaIsError)) {
             if (searchCode === null) {
                 // send user back to set up link page
-                console.log('No auth strava code');
                 setErrorMsg('No auth code received from Strava. Please try again.');
                 navigate('/strava/link');
             } else if (!searchState) {
@@ -126,8 +122,6 @@ export function ReturnStravaLink() {
                 linkStrava({code: searchCode, state: searchState || ''})
                     .unwrap()
                     .then(() => {
-                        // successful linkage - redirect user to dashboard
-                        console.log('Successfully linked Strava');
                         dispatch(workoutsApi.util.invalidateTags(['Workout']));
                         dispatch(usersApi.util.invalidateTags(['User']));
                         navigate('/dashboard');
@@ -154,9 +148,9 @@ export function ReturnStravaLink() {
             <PageWrapper additionClasses="h-screen flex items-center justify-center">
                 <div className="text-center">
                     <p className="p-2">{errorMsg}</p>
-                    <p className="p-0.5"><a className="text-blue-500 hover:underline" href='/strava/link'>Click here
+                    <p className="p-0.5"><a className="text-volt-700 dark:text-volt-300 font-semibold hover:underline" href='/strava/link'>Click here
                         to <b>try again linking Strava</b></a></p>
-                    <p className="p-0.5"><a className="text-blue-500 hover:underline" href='/dashboard'>Or go back to
+                    <p className="p-0.5"><a className="text-volt-700 dark:text-volt-300 font-semibold hover:underline" href='/dashboard'>Or go back to
                         the <b>Dashboard</b></a></p>
                 </div>
             </PageWrapper>

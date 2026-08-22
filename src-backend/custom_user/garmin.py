@@ -324,7 +324,7 @@ def daily_garmin_sync(self):
         is_active=True,
     ).exclude(garmin_tokens_enc="").order_by("garmin_last_synced_at", "pk")
 
-    print(f"Syncing Garmin for {user_lst.count()} users")
+    logger.info('Syncing Garmin for %s users', user_lst.count())
     for user in user_lst:
         # Per-user throttle matching the hourly beat schedule (55 < 60 so
         # scheduler jitter can't push anyone to a two-hour cadence).
@@ -340,7 +340,7 @@ def daily_garmin_sync(self):
             user.garmin_email = None
             user.save()
         except Exception as exc:  # noqa: BLE001
-            print(f"Garmin sync failed for user {user.email} - {exc}")
+            logger.exception('Garmin sync failed for user %s', user.pk)
 
-    print("Finished syncing Garmin.")
+    logger.info('Finished syncing Garmin.')
     return "done"

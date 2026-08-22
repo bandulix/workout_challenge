@@ -817,6 +817,22 @@ class CoachThreadReplyTests(TestCase):
         self.assertTrue(replies[1]["is_coach"])
         self.assertEqual(replies[0]["author_name"], "Alex")
 
+    def test_switching_coach_does_not_rewrite_old_message_pictures(self):
+        # Historical bubbles keep the persona that posted them.
+        self.assertEqual(self.root.persona_id, self.persona.id)
+        replacement = DrillInstructorPersona.objects.create(
+            name="New Drill", system_prompt="You are the new coach.",
+            avatar="whistle",
+        )
+        self.config.persona = replacement
+        self.config.save()
+        self.client.force_authenticate(self.athlete)
+        response = self.client.get("/api/drill-instructor/message/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()[0]
+        self.assertEqual(payload["persona_name"], "Thread Sergeant")
+        self.assertNotEqual(payload["persona_name"], "New Drill")
+
     # ---- the coach's reaction task -------------------------------------
 
     def _make_reply(self):
@@ -919,10 +935,27 @@ class PhotoPostTests(TestCase):
         )
         self.client = APIClient()
 
-    def _post(self, user, caption="Proof of the hill repeats!"):
+        reply_patcher = mock.patch("drill_instructor.tasks.post_reply_reaction.delay")
+        self.addCleanup(reply_patcher.stop)
+        self.reply_delay = reply_patcher.start()
+
+    def _activity_root(self, user=None):
+        user = user or self.athlete
+        workout = Workout(
+            user=user, sport_type="Run",
+            start_datetime=timezone.now(), duration=datetime.timedelta(minutes=30),
+            distance=5, kcal=300, intensity_category=2,
+        )
+        workout.save(score=False)
+        return DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
+            workout=workout, body="Nice work!",
+        )
+
+    def _post(self, user, caption="Proof of the hill repeats!", parent=None):
         self.client.force_authenticate(user)
         image = SimpleUploadedFile("photo.png", PNG_1PX, content_type="image/png")
-        data = {"competition": self.competition.id, "image": image}
+        data = {"image": image, "parent": (parent or self._activity_root(user)).id}
         if caption is not None:
             data["caption"] = caption
         return self.client.post("/api/drill-instructor/message/photo/", data, format="multipart")
@@ -933,25 +966,59 @@ class PhotoPostTests(TestCase):
         image = SimpleUploadedFile("photo.png", PNG_1PX, content_type="image/png")
         response = self.client.post(
             "/api/drill-instructor/message/photo/",
-            {"competition": self.competition.id, "image": image},
+            {"parent": 1, "image": image},
             format="multipart",
         )
         self.assertEqual(response.status_code, 401)
 
     def test_outsider_gets_404(self):
-        response = self._post(self.outsider)
+        root = self._activity_root(self.athlete)
+        self.client.force_authenticate(self.outsider)
+        image = SimpleUploadedFile("photo.png", PNG_1PX, content_type="image/png")
+        response = self.client.post(
+            "/api/drill-instructor/message/photo/",
+            {"parent": root.id, "image": image},
+            format="multipart",
+        )
         self.assertEqual(response.status_code, 404)
 
+    def test_standalone_feed_photo_is_rejected(self):
+        self.client.force_authenticate(self.athlete)
+        image = SimpleUploadedFile("photo.png", PNG_1PX, content_type="image/png")
+        response = self.client.post(
+            "/api/drill-instructor/message/photo/",
+            {"competition": self.competition.id, "image": image},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("own workouts", response.json()["parent"])
+
+    def test_photo_on_nudge_or_push_is_rejected(self):
+        push = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PUSH, body="Show me the effort!",
+        )
+        response = self._post(self.athlete, parent=push)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("own workouts", response.json()["parent"])
+
+    def test_photo_on_someone_elses_workout_is_rejected(self):
+        their_root = self._activity_root(self.owner)
+        response = self._post(self.athlete, parent=their_root)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("own workouts", response.json()["parent"])
+
     def test_participant_can_post_and_reaction_is_queued(self):
-        response = self._post(self.athlete)
+        root = self._activity_root(self.athlete)
+        response = self._post(self.athlete, parent=root)
         self.assertEqual(response.status_code, 201, response.content)
         message = DrillInstructorMessage.objects.get(pk=response.json()["id"])
         self.assertEqual(message.kind, DrillInstructorMessage.KIND_PHOTO)
-        self.assertIsNone(message.parent)
+        self.assertEqual(message.parent, root)
         self.assertEqual(message.user, self.athlete)
         self.assertEqual(message.body, "Proof of the hill repeats!")
         self.assertTrue(message.image.name.startswith("message_pics/"))
-        self.reaction_delay.assert_called_once_with(message.id)
+        self.reply_delay.assert_called_once_with(message.id)
+        self.reaction_delay.assert_not_called()
 
     def test_payload_exposes_image_via_authenticated_url(self):
         response = self._post(self.athlete)
@@ -970,20 +1037,22 @@ class PhotoPostTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_image_required(self):
+        root = self._activity_root(self.athlete)
         self.client.force_authenticate(self.athlete)
         response = self.client.post(
             "/api/drill-instructor/message/photo/",
-            {"competition": self.competition.id},
+            {"parent": root.id},
             format="multipart",
         )
         self.assertEqual(response.status_code, 400)
 
     def test_non_image_rejected(self):
+        root = self._activity_root(self.athlete)
         self.client.force_authenticate(self.athlete)
         fake = SimpleUploadedFile("evil.png", b"not an image", content_type="text/plain")
         response = self.client.post(
             "/api/drill-instructor/message/photo/",
-            {"competition": self.competition.id, "image": fake},
+            {"parent": root.id, "image": fake},
             format="multipart",
         )
         self.assertEqual(response.status_code, 400)
@@ -999,7 +1068,7 @@ class PhotoPostTests(TestCase):
             response = self._post(self.athlete)
         self.assertEqual(response.status_code, 400)
         self.assertIn("can't see pictures", response.json()["image"])
-        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
+        self.assertFalse(DrillInstructorMessage.objects.filter(kind=DrillInstructorMessage.KIND_PHOTO).exists())
 
     def test_post_throttled(self):
         # The configured daily cap (default 2) is enforced - one more
@@ -1026,20 +1095,25 @@ class PhotoPostTests(TestCase):
 
     # ---- feed integration ----------------------------------------------
 
-    def test_photo_post_is_a_thread_root_in_the_feed(self):
-        self._post(self.athlete)
+    def test_photo_post_hangs_under_the_workout_in_the_feed(self):
+        root = self._activity_root(self.athlete)
+        self._post(self.athlete, parent=root)
         self.client.force_authenticate(self.athlete)
         response = self.client.get("/api/drill-instructor/message/")
         results = response.json()
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["kind"], DrillInstructorMessage.KIND_PHOTO)
-        self.assertEqual(results[0]["author_name"], "Alex")
+        self.assertEqual(results[0]["id"], root.id)
+        self.assertEqual(results[0]["kind"], DrillInstructorMessage.KIND_ACTIVITY)
+        self.assertEqual(results[0]["workout_user_id"], self.athlete.id)
+        photo_replies = [r for r in results[0]["replies"] if r["kind"] == DrillInstructorMessage.KIND_PHOTO]
+        self.assertEqual(len(photo_replies), 1)
+        self.assertEqual(photo_replies[0]["author_name"], "Alex")
 
     def test_replies_under_photos_use_the_regular_thread(self):
-        post = self._post(self.athlete)
-        root_id = post.json()["id"]
+        root = self._activity_root(self.athlete)
+        self._post(self.athlete, parent=root)
         self.client.force_authenticate(self.owner)
-        response = self.client.post(f"/api/drill-instructor/message/{root_id}/reply/", {"body": "Nice form!"}, format="json")
+        response = self.client.post(f"/api/drill-instructor/message/{root.id}/reply/", {"body": "Nice form!"}, format="json")
         self.assertEqual(response.status_code, 201, response.content)
 
     # ---- photo as a thread reply (Coach page button) -------------------
@@ -1049,22 +1123,21 @@ class PhotoPostTests(TestCase):
             config=self.config, kind=DrillInstructorMessage.KIND_PUSH, body="Show me the effort!",
         )
 
-    def test_photo_reply_to_coach_message(self):
-        root = self._coach_root()
+    def test_photo_reply_to_own_workout_comment(self):
+        root = self._activity_root(self.athlete)
         self.client.force_authenticate(self.athlete)
         image = SimpleUploadedFile("photo.png", PNG_1PX, content_type="image/png")
-        with mock.patch("drill_instructor.tasks.post_reply_reaction.delay") as reply_task:
-            response = self.client.post(
-                "/api/drill-instructor/message/photo/",
-                {"parent": root.id, "image": image, "caption": "Like this?"},
-                format="multipart",
-            )
+        response = self.client.post(
+            "/api/drill-instructor/message/photo/",
+            {"parent": root.id, "image": image, "caption": "Like this?"},
+            format="multipart",
+        )
         self.assertEqual(response.status_code, 201, response.content)
         message = DrillInstructorMessage.objects.get(pk=response.json()["id"])
         self.assertEqual(message.kind, DrillInstructorMessage.KIND_PHOTO)
         self.assertEqual(message.parent, root)  # thread reply, not a root
         self.assertEqual(message.config, self.config)  # competition comes from the parent
-        reply_task.assert_called_once_with(message.id)  # reply pipeline, not the root pipeline
+        self.reply_delay.assert_called_once_with(message.id)
         self.reaction_delay.assert_not_called()
 
     def test_photo_reply_to_child_message_rejected(self):
@@ -1132,6 +1205,35 @@ class PhotoPostTests(TestCase):
         self.assertEqual(roast_args[0], photo_reply.image.path)
         self.assertEqual(roast_args[2], "grok-imagine-image")
 
+    def test_photo_reply_roast_includes_workout_stats_and_setting(self):
+        from .tasks import post_reply_reaction
+        workout = Workout(
+            user=self.athlete, sport_type="Run",
+            start_datetime=timezone.now(), duration=datetime.timedelta(minutes=45),
+            distance=5, kcal=420, intensity_category=2,
+        )
+        workout.save(score=False)
+        self.persona.description = "A smoky boxing gym at midnight."
+        self.persona.save()
+        root = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
+            body="Nice work!", workout=workout,
+        )
+        photo_reply = self._photo_message()
+        photo_reply.parent = root
+        photo_reply.save()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image"), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - framed it!", None)), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(PNG_1PX, None)) as roast:
+            post_reply_reaction(photo_reply.id)
+        prompt = roast.call_args[0][1]
+        self.assertIn("A smoky boxing gym at midnight.", prompt)
+        self.assertIn("45 min Run", prompt)
+        self.assertIn("5.00 km", prompt)
+        self.assertIn("420 kcal", prompt)
+        self.assertIn("STATS OVERLAY", prompt)
+
     def test_photo_reply_no_roast_without_vision(self):
         from .tasks import post_reply_reaction
         photo_reply = self._photo_message()
@@ -1162,6 +1264,9 @@ class PhotoPostTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["X-Accel-Redirect"], f"/protected-media/{message.image.name}")
         self.assertIn("private", response["Cache-Control"])
+        self.assertIn("no-store", response["Cache-Control"])
+        self.assertIn("noindex", response["X-Robots-Tag"])
+        self.assertEqual(response["Cross-Origin-Resource-Policy"], "same-origin")
 
     def test_picture_outsider_gets_404(self):
         message = self._photo_message()
@@ -1531,6 +1636,22 @@ class ImageEditCapabilityProbeTests(TestCase):
         self.assertIsNone(error)
         self.assertEqual(payload, PNG_1PX)
 
+    def test_xai_edit_sends_portrait_as_second_image(self):
+        from . import llm_client
+        client = llm_client._XaiImageClient("https://api.x.ai/v1", "xai-key", 30)
+        resp = mock.Mock(status_code=200)
+        resp.json.return_value = {"data": [{"b64_json": base64.b64encode(PNG_1PX).decode()}]}
+        with mock.patch("requests.post", return_value=resp) as post:
+            llm_client._images_edit(
+                client, "xai", "grok-imagine-image", PNG_1PX, "face lock", 30,
+                extra_images=[PNG_1PX],
+            )
+        image = post.call_args[1]["json"]["image"]
+        self.assertIsInstance(image, list)
+        self.assertEqual(len(image), 2)
+        self.assertTrue(image[0]["url"].startswith("data:image/png;base64,"))
+        self.assertTrue(image[1]["url"].startswith("data:image/png;base64,"))
+
     def test_xai_edit_400_carries_status_code(self):
         from . import llm_client
         client = llm_client._XaiImageClient("https://api.x.ai/v1", "xai-key", 30)
@@ -1542,65 +1663,47 @@ class ImageEditCapabilityProbeTests(TestCase):
 
 
 class RoastImagePromptTests(TestCase):
-    """build_roast_image_prompt: the Site Settings template overrides the
-    built-in default; placeholders are substituted, stray braces are
-    harmless, blank/lookup-failure falls back to the default."""
+    """build_roast_image_prompt: hardcoded coach-in-scene remix with
+    optional face lock and workout-stat overlay."""
 
     def _build(self, **kwargs):
         from .llm_client import build_roast_image_prompt
-        defaults = {"persona_name": "Roast Master", "persona_system_prompt": "You roast hard.", "caption": ""}
+        defaults = {"persona_name": "Roast Master", "persona_description": "A smoky boxing gym at midnight."}
         defaults.update(kwargs)
         return build_roast_image_prompt(**defaults)
 
-    def _set_template(self, template):
-        from site_settings.models import SiteSettings
-        solo = SiteSettings.get_solo()
-        solo.roast_image_prompt = template
-        solo.save()
-
-    def test_default_prompt_when_unset(self):
-        prompt = self._build(caption="leg day!")
-        self.assertIn('"Roast Master"', prompt)
-        self.assertIn('"You roast hard."', prompt)
-        self.assertIn("good-natured", prompt)
-        self.assertIn('Work the caption "leg day!" into the joke.', prompt)
-
-    def test_default_prompt_without_caption_bans_text(self):
+    def test_setting_comes_from_persona_description(self):
         prompt = self._build()
-        self.assertIn("Do not render any text", prompt)
+        self.assertIn("Roast Master", prompt)
+        self.assertIn("A smoky boxing gym at midnight.", prompt)
+        self.assertIn("SETTING:", prompt)
+        self.assertIn("together with their coach", prompt)
 
-    def test_custom_template_replaces_the_default(self):
-        self._set_template("Turn this photo into a medieval quest poster for {persona_name}.")
-        prompt = self._build(caption="leg day!")
-        self.assertEqual(prompt, "Turn this photo into a medieval quest poster for Roast Master.")
-        self.assertNotIn("bootcamp propaganda poster", prompt)
+    def test_face_lock_when_portrait_is_present(self):
+        prompt = self._build(has_coach_portrait=True)
+        self.assertIn("FACE LOCK", prompt)
+        self.assertIn("IMAGE 2", prompt)
+        self.assertNotIn("no portrait reference", prompt)
 
-    def test_custom_template_substitutes_all_placeholders(self):
-        self._set_template("{persona_name}|{persona_style}|{caption}|{caption_instruction}")
-        prompt = self._build(caption="so tired")
-        self.assertEqual(
-            prompt,
-            "Roast Master|You roast hard.|so tired|"
-            'Work the caption "so tired" into the joke. If you render it as poster text, spell it EXACTLY as written.',
-        )
+    def test_invents_look_when_no_portrait(self):
+        prompt = self._build(has_coach_portrait=False)
+        self.assertIn("no portrait reference", prompt)
+        self.assertNotIn("FACE LOCK", prompt)
 
-    def test_custom_template_substitutes_the_no_caption_instruction(self):
-        self._set_template("{caption_instruction}")
-        self.assertEqual(self._build(), "Do not render any text - let the imagery do the roasting.")
+    def test_workout_stats_are_painted_on_the_picture(self):
+        prompt = self._build(workout_summary="45 min Run · 5.00 km · 420 kcal")
+        self.assertIn("STATS OVERLAY", prompt)
+        self.assertIn("45 min Run · 5.00 km · 420 kcal", prompt)
 
-    def test_custom_template_tolerates_stray_braces(self):
-        self._set_template('JSON-ish: {"a": 1}, unknown {placeholder}, persona {persona_name}')
+    def test_no_stats_omits_overlay(self):
         prompt = self._build()
-        self.assertEqual(prompt, 'JSON-ish: {"a": 1}, unknown {placeholder}, persona Roast Master')
+        self.assertNotIn("STATS OVERLAY", prompt)
 
-    def test_blank_template_falls_back_to_default(self):
-        self._set_template("   ")
-        self.assertIn("bootcamp propaganda poster", self._build())
-
-    def test_settings_lookup_failure_falls_back_to_default(self):
-        from . import llm_client
-        with mock.patch("site_settings.models.SiteSettings.get_solo", side_effect=RuntimeError("db down")):
-            self.assertIn("bootcamp propaganda poster", self._build())
+    def test_caption_is_optional_exact_text(self):
+        with_caption = self._build(caption="leg day!")
+        self.assertIn('caption spelled EXACTLY: "leg day!"', with_caption)
+        without = self._build()
+        self.assertIn("Do not invent extra slogans", without)
 
 
 class RoastImageGenerationTests(TestCase):
