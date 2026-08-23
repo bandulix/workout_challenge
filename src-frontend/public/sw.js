@@ -30,37 +30,33 @@ const KNOWN_CACHES = [SHELL_CACHE, ASSET_CACHE, API_CACHE];
 const ASSET_CACHE_LIMIT = 200;
 const API_CACHE_LIMIT = 100;
 
+// Install precache: ONLY the offline shell. Do not add icons / personas /
+// fonts / login-bg here. cache.addAll() fires every URL in parallel, and
+// a reverse-proxy limit_req (commonly ~5 r/s, burst 20) then logs
+// "limiting requests". CrowdSec's nginx-req-limit-exceeded bans the IP
+// for 24h after 5 of those in a minute — which is exactly what a new
+// service-worker install plus the page's own first paint looks like.
+// Runtime caching (assetHandler) still stores those files as they are
+// used, so offline fallback keeps working after a normal session.
 const SHELL_URLS = [
     "/",
-    "/index.html",
     "/offline.html",
-    "/manifest.json",
-    "/icon-192.png",
-    "/icon-192.svg",
-    "/icon-512.png",
-    "/icon-maskable-512.png",
-    "/icon-badge.png",
-    "/favicon.ico",
-    "/apple-touch-icon.png",
-    "/fonts/fonts.css",
-    "/fonts/Inter-var.woff2",
-    "/fonts/ArchivoBlack-400.woff2",
-    "/personas/megaphone.svg",
-    "/personas/sergeant.svg",
-    "/personas/roast.svg",
-    "/personas/cheerleader.svg",
-    "/personas/butler.svg",
-    "/personas/zen.svg",
-    "/personas/rocket.svg",
-    "/personas/ninja.svg",
-    "/personas/robot.svg",
-    "/personas/captain.svg",
-    "/login-bg.webp",
 ];
 
 self.addEventListener("install", (event) => {
     event.waitUntil(
-        caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_URLS)).then(() => self.skipWaiting())
+        caches.open(SHELL_CACHE).then(async (cache) => {
+            // add() one-by-one: addAll is all-or-nothing, so a single
+            // 503 from the proxy used to fail the whole install (and
+            // skipWaiting never ran, so the next visit retried the burst).
+            for (const url of SHELL_URLS) {
+                try {
+                    await cache.add(url);
+                } catch {
+                    /* offline during install is fine; runtime path fills in */
+                }
+            }
+        }).then(() => self.skipWaiting())
     );
 });
 

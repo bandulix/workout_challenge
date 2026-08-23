@@ -32,6 +32,10 @@ services:
       # should ever be reachable from outside. Behind a reverse proxy on
       # the same host: APP_BIND=127.0.0.1 and APP_PORT=<proxy target port>,
       # then point the proxy at 127.0.0.1:<APP_PORT>.
+      # If that proxy has nginx limit_req, allow ~25 r/s burst 80: a
+      # page load is many parallel GETs, and CrowdSec treats each
+      # "limiting requests" log as nginx-req-limit-exceeded (5 in 60s
+      # = 24h ban). 5 r/s burst 20 is too tight for this SPA.
       - "${APP_BIND:-0.0.0.0}:${APP_PORT:-80}:80"
       # Celery Flower task monitoring (basic-auth protected, see below).
       # Localhost-only by default - reach it from the server itself or

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Hall of Roasts** — tap a picture to open it large; the caption is just the hot-vote count.
 
 ### Fixed
+- **CrowdSec `nginx-req-limit-exceeded` 24h-bans on a normal visit** — the service worker `cache.addAll()`'d 25 shell URLs (icons, every persona SVG, login background, fonts) in parallel on every install/update, stacked on the page's own first-paint requests. Behind nginx `limit_req` (often 5 r/s, burst 20) each overflow logs `limiting requests`, and CrowdSec bans the IP after 5 of those in a minute. Install now only precaches `/` + `/offline.html` (runtime caching still fills in the rest); if you rate-limit a reverse proxy in front, allow about 25 r/s with burst 80.
 - **Coach photo remix never landing** — pictures now hang under workout comments, so the roast ran on the 120s reply task while image-edit itself is allowed 180s; Celery killed the job before the poster was saved. The reply task now has 5 minutes, the remix no longer depends on the chat model passing a vision probe, and a failed face-lock retry runs the edit on the photo alone.
 - **Bottom bar floated off the screen edge** — safe-area padding is inside the ink dock so the bar is flush with the bottom.
 - **Echo challenge API no longer echoes exception text** (CodeQL `py/stack-trace-exposure`) — refusals are mapped to fixed strings.

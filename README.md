@@ -110,6 +110,12 @@ server {
 
     # The app itself (web UI + API)
     location / {
+        # If you enable limit_req, give the SPA room: a first load is
+        # HTML + JS/CSS + fonts + several /api calls in parallel. 5 r/s
+        # burst 20 is enough for CrowdSec nginx-req-limit-exceeded to
+        # 24h-ban real users. ~25 r/s burst 80 is plenty for people and
+        # still stops a flood.
+        # limit_req zone=workout burst=80 nodelay;
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
