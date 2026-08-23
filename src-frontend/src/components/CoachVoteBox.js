@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from "react";
 import {Timer, Vote} from "lucide-react";
 import PersonaAvatar from "./PersonaAvatar";
+import {BoxSection} from "../utils/miscellaneous";
 import {useGetCoachBallotQuery, useVoteCoachPersonaMutation} from "../utils/reducers/drillInstructorSlice";
 import usePollingInterval from "../utils/usePollingInterval";
 
@@ -28,6 +29,47 @@ function useNowTick(active) {
     return now;
 }
 
+export function CoachHandover({configId, enabled}) {
+    const poll = usePollingInterval(60000);
+    const {data: ballot} = useGetCoachBallotQuery(configId, {
+        pollingInterval: poll,
+        skip: !configId,
+    });
+    const now = useNowTick(Boolean(ballot?.next_switch_at));
+    if (!enabled || !ballot?.changed_this_term) return null;
+    const current = (ballot.candidates || []).find((c) => c.persona.id === ballot.current_persona)?.persona;
+    if (!current) return null;
+    const previous = ballot.previous_persona;
+    const countdown = formatCountdown(ballot.next_switch_at, now);
+    return (
+        <div className="px-4 sm:px-5 py-3 border-b border-gray-100 dark:border-ink-700/60">
+            <div className="rounded-2xl bg-ink-900 text-white px-3.5 py-3 border border-volt-400/40 shadow-glow-volt">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-400 flex items-center gap-1.5">
+                    <Timer className="h-3.5 w-3.5"/> New coach
+                </p>
+                <div className="mt-2 flex items-center gap-3">
+                    {previous && (
+                        <>
+                            <PersonaAvatar persona={previous} size={36}/>
+                            <span className="text-gray-500 text-sm">→</span>
+                        </>
+                    )}
+                    <PersonaAvatar persona={current} size={44} glow/>
+                    <div className="min-w-0">
+                        <p className="font-display text-sm uppercase tracking-wide truncate">{current.name}</p>
+                        <p className="text-[11px] text-gray-400">
+                            {previous ? `took over from ${previous.name}` : "took the megaphone"}
+                        </p>
+                    </div>
+                </div>
+                <p className="mt-2 text-xs text-volt-300 font-bold uppercase tracking-wider tabular-nums">
+                    On the clock · {countdown}
+                </p>
+            </div>
+        </div>
+    );
+}
+
 export default function CoachVoteBox({configId, enabled}) {
     const poll = usePollingInterval(60000);
     const {data: ballot} = useGetCoachBallotQuery(configId, {
@@ -37,11 +79,9 @@ export default function CoachVoteBox({configId, enabled}) {
     const [vote, {isLoading}] = useVoteCoachPersonaMutation();
     const now = useNowTick(Boolean(ballot?.next_switch_at));
 
-    if (!enabled || !ballot) return null;
+    if (!enabled || !ballot || ballot.my_vote) return null;
 
     const countdown = formatCountdown(ballot.next_switch_at, now);
-    const current = (ballot.candidates || []).find((c) => c.persona.id === ballot.current_persona)?.persona;
-    const previous = ballot.previous_persona;
 
     async function pick(personaId) {
         if (isLoading || personaId === ballot.my_vote) return;
@@ -53,33 +93,7 @@ export default function CoachVoteBox({configId, enabled}) {
     }
 
     return (
-        <div className="px-4 sm:px-5 py-3 border-b border-gray-100 dark:border-ink-700/60 space-y-3">
-            {ballot.changed_this_term && current && (
-                <div className="rounded-2xl bg-ink-900 text-white px-3.5 py-3 border border-volt-400/40 shadow-glow-volt">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-400 flex items-center gap-1.5">
-                        <Timer className="h-3.5 w-3.5"/> New coach
-                    </p>
-                    <div className="mt-2 flex items-center gap-3">
-                        {previous && (
-                            <>
-                                <PersonaAvatar persona={previous} size={36}/>
-                                <span className="text-gray-500 text-sm">→</span>
-                            </>
-                        )}
-                        <PersonaAvatar persona={current} size={44} glow/>
-                        <div className="min-w-0">
-                            <p className="font-display text-sm uppercase tracking-wide truncate">{current.name}</p>
-                            <p className="text-[11px] text-gray-400">
-                                {previous ? `took over from ${previous.name}` : "took the megaphone"}
-                            </p>
-                        </div>
-                    </div>
-                    <p className="mt-2 text-xs text-volt-300 font-bold uppercase tracking-wider tabular-nums">
-                        On the clock · {countdown}
-                    </p>
-                </div>
-            )}
-
+        <BoxSection additionalClasses="mb-4">
             <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
                     <Vote className="h-3.5 w-3.5 text-volt-500"/> Vote next week's coach
@@ -88,13 +102,13 @@ export default function CoachVoteBox({configId, enabled}) {
                     {countdown}
                 </p>
             </div>
-            <p className="text-[11px] text-gray-400 -mt-1">
+            <p className="text-[11px] text-gray-400 mt-1">
                 {ballot.vote_count === 0
                     ? "No votes yet. Winner takes over Monday morning."
                     : `${ballot.vote_count} ${ballot.vote_count === 1 ? "vote" : "votes"} in · switches ${countdown === "any moment" ? "now" : "in " + countdown}.`}
             </p>
 
-            <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 py-0.5">
+            <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 py-0.5">
                 {(ballot.candidates || []).map((c) => {
                     const selected = ballot.my_vote === c.persona.id;
                     const onDuty = ballot.current_persona === c.persona.id;
@@ -118,6 +132,6 @@ export default function CoachVoteBox({configId, enabled}) {
                     );
                 })}
             </div>
-        </div>
+        </BoxSection>
     );
 }

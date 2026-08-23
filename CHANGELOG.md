@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Weekly coach vote sits under the leaderboard** and disappears once you have voted for the week (a new-coach handover still shows in Coach's Corner).
+- **Hall of Roasts** — tap a picture to open it large; the caption is just the hot-vote count.
+
+### Fixed
+- **Coach photo remix never landing** — pictures now hang under workout comments, so the roast ran on the 120s reply task while image-edit itself is allowed 180s; Celery killed the job before the poster was saved. The reply task now has 5 minutes, the remix no longer depends on the chat model passing a vision probe, and a failed face-lock retry runs the edit on the photo alone.
+- **Bottom bar floated off the screen edge** — safe-area padding is inside the ink dock so the bar is flush with the bottom.
+- **Echo challenge API no longer echoes exception text** (CodeQL `py/stack-trace-exposure`) — refusals are mapped to fixed strings.
+
+## [0.40.0] - 2026-08-22
+
 ### Added
 - **Legend Echoes** — standout workouts (relative PB, clutch overtake, mythic size, or the first flag of a challenge) are minted as living, claimable trophies in the Echo Chamber: remixed photo (when a Hall of Roasts poster exists), coach-voiced narrative, and a power rating. Undefeated Echoes sit on the challenge page and the coach keeps referencing them. Anyone in the group can declare war (7-day window, one active challenge per Echo); beating the metric claims the Echo, raises the bar to the new feat, grows the lineage, and the originator keeps Legacy status. Three failed claims — or the end of the competition — makes it Immortal and awards the Echo Immortal dog tag (claimants earn Echo Slayer). Season chronicle: Book of Echoes.
 

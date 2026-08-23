@@ -72,35 +72,49 @@ export function OrderCard({order}) {
     );
 }
 
-function HallFrame({card, place}) {
+function HallFrame({card, place, onOpen}) {
     const {src} = useProtectedImage(card.image);
     return (
         <div className="min-w-0 flex-1">
-            <div className="relative rounded-xl p-1 bg-gradient-to-br from-yellow-500 via-amber-200 to-yellow-700 shadow-card">
-                {src ? (
-                    <img src={src} alt="" className="h-36 w-full object-cover rounded-lg"/>
-                ) : (
-                    <div className="h-36 rounded-lg bg-ink-900"/>
-                )}
-                <span className="absolute top-2 left-2 rounded-full bg-ink-950/80 text-volt-400 text-[10px] font-extrabold px-2 py-0.5">
-                    #{place}
-                </span>
-            </div>
-            <p className="mt-1.5 text-xs text-gray-500 truncate">
-                {card.athlete_name || "Athlete"} · {card.hot_votes || 0} hot
+            <button type="button" onClick={() => src && onOpen(src)}
+                    className="block w-full text-left">
+                <div className="relative rounded-xl p-1 bg-gradient-to-br from-yellow-500 via-amber-200 to-yellow-700 shadow-card">
+                    {src ? (
+                        <img src={src} alt="" className="h-36 w-full object-cover rounded-lg"/>
+                    ) : (
+                        <div className="h-36 rounded-lg bg-ink-900"/>
+                    )}
+                    <span className="absolute top-2 left-2 rounded-full bg-ink-950/80 text-volt-400 text-[10px] font-extrabold px-2 py-0.5">
+                        #{place}
+                    </span>
+                </div>
+            </button>
+            <p className="mt-1.5 text-xs text-gray-500">
+                {card.hot_votes || 0} hot
             </p>
         </div>
     );
 }
 
 export function HallOfRoasts({cards}) {
+    const [fullSrc, setFullSrc] = React.useState(null);
     if (!cards || cards.length === 0) return null;
     return (
         <BoxSection>
             <SectionHead title="Hall of roasts" hint="Top remixed photos this challenge"/>
             <div className="mt-3 flex gap-3">
-                {cards.map((c, i) => <HallFrame key={c.id} card={c} place={i + 1}/>)}
+                {cards.map((c, i) => (
+                    <HallFrame key={c.id} card={c} place={i + 1} onOpen={setFullSrc}/>
+                ))}
             </div>
+            {fullSrc && (
+                <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+                     onClick={() => setFullSrc(null)} role="dialog" aria-modal="true">
+                    <img src={fullSrc} alt=""
+                         className="max-h-[90vh] max-w-full rounded-2xl shadow-2xl object-contain"
+                         onClick={(e) => e.stopPropagation()}/>
+                </div>
+            )}
         </BoxSection>
     );
 }

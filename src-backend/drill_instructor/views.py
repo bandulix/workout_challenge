@@ -636,7 +636,23 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             start_challenge(echo, request.user)
         except ValueError as exc:
-            raise ValidationError({"detail": str(exc)})
+            # Map to literals - never str(exc) (CodeQL py/stack-trace-exposure).
+            reason = exc.args[0] if exc.args else ""
+            if reason == "This Echo can no longer be challenged.":
+                detail = "This Echo can no longer be challenged."
+            elif reason == "This challenge is over.":
+                detail = "This challenge is over."
+            elif reason == "You already hold this Echo.":
+                detail = "You already hold this Echo."
+            elif reason == "Only challenge members can contest an Echo.":
+                detail = "Only challenge members can contest an Echo."
+            elif reason == "Someone is already coming for this Echo.":
+                detail = "Someone is already coming for this Echo."
+            elif reason == "Finish your current challenge first.":
+                detail = "Finish your current challenge first."
+            else:
+                detail = "Could not start that challenge."
+            raise ValidationError({"detail": detail})
         except IntegrityError:
             raise ValidationError({"detail": "Someone is already coming for this Echo."})
         echo = self.get_object()

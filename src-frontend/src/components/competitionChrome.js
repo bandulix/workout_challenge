@@ -21,7 +21,7 @@ import PointsInfoModal from "./PointsInfo";
 import {BoxSection} from "../utils/miscellaneous";
 import {sportLabelShort} from "../forms/workoutForm";
 import CoachThread from "./CoachThread";
-import CoachVoteBox from "./CoachVoteBox";
+import {CoachHandover} from "./CoachVoteBox";
 import PersonaAvatar from "./PersonaAvatar";
 import ProfileAvatar from "./ProfileAvatar";
 import {timeAgo} from "../utils/time";
@@ -226,7 +226,7 @@ export function CoachCorner({competition, isOwner}) {
                     </button>
                 )}
             </div>
-            <CoachVoteBox configId={config.id} enabled={config.enabled}/>
+            <CoachHandover configId={config.id} enabled={config.enabled}/>
             {latest.length > 0 ? (
                 <ul className="px-3 sm:px-4 py-3 space-y-3">
                     {latest.map((m) => {

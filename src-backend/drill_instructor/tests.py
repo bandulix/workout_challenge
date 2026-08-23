@@ -1375,6 +1375,18 @@ class PhotoPostTests(TestCase):
         self.assertEqual(roast_args[0], photo_reply.image.path)
         self.assertEqual(roast_args[2], "grok-imagine-image")
 
+    def test_photo_reply_roasts_without_chat_vision(self):
+        from .tasks import post_reply_reaction
+        photo_reply = self._photo_message()
+        photo_reply.parent = self._coach_root()
+        photo_reply.save()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=False), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image"), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - framed it!", None)), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(PNG_1PX, None)):
+            result = post_reply_reaction(photo_reply.id)
+        self.assertIsNotNone(result["roast_id"])
+
     def test_photo_reply_roast_includes_workout_stats_and_setting(self):
         from .tasks import post_reply_reaction
         workout = Workout(
@@ -1404,17 +1416,16 @@ class PhotoPostTests(TestCase):
         self.assertIn("420 kcal", prompt)
         self.assertIn("STATS OVERLAY", prompt)
 
-    def test_photo_reply_no_roast_without_vision(self):
+    def test_photo_reply_no_roast_without_edit_model(self):
         from .tasks import post_reply_reaction
         photo_reply = self._photo_message()
         photo_reply.parent = self._coach_root()
         photo_reply.save()
-        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=False), \
-                mock.patch("drill_instructor.tasks.check_image_edit_capability") as edit_probe, \
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value=None), \
                 mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - noted!", None)):
             result = post_reply_reaction(photo_reply.id)
         self.assertIsNone(result["roast_id"])
-        edit_probe.assert_not_called()  # roasting without seeing = blind edits
 
     # ---- the picture endpoint ------------------------------------------
 
@@ -1504,15 +1515,17 @@ class PhotoPostTests(TestCase):
         self.config.refresh_from_db()
         self.assertIn("quota exhausted", self.config.last_error)
 
-    def test_no_roast_without_vision(self):
+    def test_roast_still_runs_when_chat_model_cannot_see(self):
+        # The editor gets the pixels itself; a cold vision probe must not
+        # skip the remix (photos hang under workout comments now).
         from .tasks import post_photo_reaction
         photo = self._photo_message()
         with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=False), \
-                mock.patch("drill_instructor.tasks.check_image_edit_capability") as edit_probe, \
-                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - noted!", None)):
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image"), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - noted!", None)), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(PNG_1PX, None)):
             result = post_photo_reaction(photo.id)
-        self.assertIsNone(result["roast_id"])
-        edit_probe.assert_not_called()  # roasting without seeing = blind edits
+        self.assertIsNotNone(result["roast_id"])
 
     def test_reaction_image_served_through_the_picture_endpoint(self):
         photo = self._photo_message()

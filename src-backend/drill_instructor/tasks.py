@@ -321,7 +321,7 @@ def post_test_message(self, config_id, message):
         return {"error": str(exc), "config_id": config_id}
 
 
-@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=120)
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
 def post_reply_reaction(self, reply_id):
     """Generate the coach's reaction to a participant's thread reply.
 
@@ -452,17 +452,18 @@ def post_reply_reaction(self, reply_id):
         except Exception as exc:  # noqa: BLE001 - never block the reaction
             logger.warning("Drill Instructor: reaction push failed for user %s: %s", reply.user_id, exc)
 
-    # A photo reply (the Coach page's photo button always replies to the
-    # coach's latest message) earns the same roast remix as a thread-root
-    # photo post - without this, Coach-page photos never got an edited
-    # picture and never reached the hot-or-not box. reply_image_path is
-    # only set when the model can see, so the "no blind edits" gate from
-    # the root pipeline holds here too.
+    # Photos now hang under the caller's workout comment, so they always
+    # arrive here (not post_photo_reaction). Image-edit can take ~3 min;
+    # this task's time_limit must outlast that. The chat model seeing the
+    # picture is nice for the text reaction, but the editor gets the
+    # pixels itself - roast even when the vision probe is cold.
     roast_id = None
-    if reply.kind == DrillInstructorMessage.KIND_PHOTO and reply_image_path:
+    if reply.kind == DrillInstructorMessage.KIND_PHOTO and reply.image:
         roast_model = check_image_edit_capability()
         if roast_model:
-            roast_id = _post_photo_roast(config, reply, roast_model, reply_image_path, parent=root)
+            roast_id = _post_photo_roast(
+                config, reply, roast_model, reply.image.path, parent=root,
+            )
 
     return {"reply_id": reply_id, "reaction_id": message.id, "roast_id": roast_id}
 
@@ -500,9 +501,7 @@ def post_photo_reaction(self, photo_id):
     # model could have been switched between post and task - re-check.
     can_see = check_vision_capability()
     image_path = photo.image.path if (can_see and photo.image) else None
-    # The roast remix needs both: a model that can SEE the photo and an
-    # endpoint that can EDIT images (probe returns the working model).
-    roast_model = check_image_edit_capability() if can_see else None
+    roast_model = check_image_edit_capability() if photo.image else None
 
     user_prompt = build_photo_prompt(
         competition_name=config.competition.name,
@@ -573,8 +572,8 @@ def post_photo_reaction(self, photo_id):
             logger.warning("Drill Instructor: photo reaction push failed for user %s: %s", photo.user_id, exc)
 
     roast_id = None
-    if roast_model and image_path:
-        roast_id = _post_photo_roast(config, photo, roast_model, image_path)
+    if roast_model and photo.image:
+        roast_id = _post_photo_roast(config, photo, roast_model, photo.image.path)
 
     return {"photo_id": photo_id, "reaction_id": message.id, "roast_id": roast_id}
 
@@ -639,6 +638,11 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
         image_path, roast_prompt, roast_model,
         extra_image_paths=[portrait_path] if portrait_path else None,
     )
+    if not png_bytes and portrait_path:
+        # Face-lock extras make some providers 400; retry on the photo alone.
+        png_bytes, roast_error = generate_roast_image(
+            image_path, roast_prompt, roast_model, extra_image_paths=None,
+        )
     if not png_bytes:
         config.last_error = f"photo roast skipped: {roast_error}"
         config.save(update_fields=["last_error", "updated_at"])

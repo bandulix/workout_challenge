@@ -29,12 +29,12 @@ This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/w
 - **Quiet-day nudges:** if a running competition sees zero workouts in a day, the instructor posts one motivational, group-addressed message on its own (daily sweep, per-competition toggle).
 - **Arcade:** Order of the Day (sealed morning mission, ribbon on the feed), Dunce megaphone on last place until they log, Hall of Roasts on the challenge page, coach mood from the last 48h, and permanent dog tags (First Blood, Ghost Killer, Photogenic, Never Missed Monday, Survived the Dunce, Echo Immortal, Echo Slayer).
 - **Legend Echoes:** standout workouts become living, claimable trophies in the Echo Chamber — stylized photo, coach narrative, power rating. Anyone can declare war (7-day window); a successful beat claims the Echo and grows the lineage. Survive three failed claims or the season and it goes Immortal. End of season: the Book of Echoes.
-- **Weekly coach vote:** everyone in a challenge votes for next week's instructor; the winner takes over Monday morning, with a live countdown in Coach's Corner.
+- **Weekly coach vote:** everyone in a challenge votes for next week's instructor (box under the leaderboard; it disappears once you have voted). The winner takes over Monday morning; a handover still shows in Coach's Corner.
 
 **📱 Coach-centred PWA redesign (mobile-first)**
 - Dark athletic **volt/ink** theme (`#d7ff3e` on `#0a0d06`), self-hosted Archivo Black + Inter fonts, class-based dark mode with manual toggle. The **volt lightning** mark is the favicon, PWA icons, Apple touch icon, Android launcher and splash.
 - **Coach page** (`/coach`): persona hero, live chat-style coach feed, the roaster (create yours / manage, above coach pings), platform-aware push opt-in.
-- Bottom-bar navigation (ink dock, volt pill for the active tab, breathing lime halo on the coach) with the persona at centre stage; installable PWA with offline shell and push on iOS & Android.
+- Bottom-bar navigation (ink dock flush with the screen edge, volt pill for the active tab, breathing lime halo on the coach) with the persona at centre stage; installable PWA with offline shell and push on iOS & Android.
 - Login/welcome uses a gym / volt-neon still that stays on screen.
 
 **🏠 Home / profile**
@@ -150,9 +150,9 @@ Each competition can optionally activate an AI coach that generates a short, per
 - Comments on every workout in the competition, in the persona's voice.
 - **Order of the Day:** a sealed morning mission (07:05) with a ribbon on the feed; slackers hear about it at 22:05.
 - **Dunce:** last place on the board gets the megaphone until they log (assigned at 00:10).
-- **Hall of Roasts** on the challenge page (top remixed photos of that competition), coach mood (Proud / Watching / Disappointed / Unleashed from the last 48h), and **dog tags** earned for the season.
+- **Hall of Roasts** on the challenge page (top remixed photos of that competition; tap to enlarge), coach mood (Proud / Watching / Disappointed / Unleashed from the last 48h), and **dog tags** earned for the season.
 - **Legend Echoes:** the coach can immortalize a standout workout as a living trophy in the Echo Chamber (remix art + narrative + power). Anyone in the challenge can contest it; beat the metric in 7 days and you claim it. Three successful defenses — or the end of the competition — makes it Immortal (Echo Immortal / Echo Slayer dog tags). The Book of Echoes is the season chronicle.
-- **Weekly coach vote:** participants pick next week's instructor in Coach's Corner. Votes tally Monday 07:15; the winner takes the megaphone and a countdown shows how long they are on the clock.
+- **Weekly coach vote:** participants pick next week's instructor under the leaderboard (the box hides after you vote). Votes tally Monday 07:15; the winner takes the megaphone and a handover shows in Coach's Corner.
 - **Random daily push:** 1-2 times per day at random times (07:00–22:00) the instructor posts a pep talk pushing the whole group (toggleable per competition).
 - **Quiet-day nudge:** if a whole day passes without any workout in a running competition, the instructor posts one motivational nudge to the group (toggleable per competition).
 - With browser push enabled, messages are also dispatched to subscribed devices (nudges go to every participant).

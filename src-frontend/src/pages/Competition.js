@@ -43,6 +43,7 @@ import usePollingInterval from "../utils/usePollingInterval";
 import {CompetitionHead, CoachCorner} from "../components/competitionChrome";
 import {HallOfRoasts, OrderRibbon} from "../components/gameBits";
 import EchoChamber from "../components/EchoChamber";
+import CoachVoteBox from "../components/CoachVoteBox";
 
 ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Filler, Tooltip, Legend, BarElement, ChartDataLabels);
 
@@ -840,6 +841,13 @@ export default function Competition() {
                     </div>
                     )}
                 </div>
+
+                {competition && (
+                    <CoachVoteBox
+                        configId={(drillConfigs || []).find((c) => c.competition === competition.id)?.id}
+                        enabled={(drillConfigs || []).find((c) => c.competition === competition.id)?.enabled}
+                    />
+                )}
 
                 {/* The Drill Instructor's corner */}
                 {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
