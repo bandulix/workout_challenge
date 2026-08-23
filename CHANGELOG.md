@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Coach photo remix never landing** — pictures now hang under workout comments, so the roast ran on the 120s reply task while image-edit itself is allowed 180s; Celery killed the job before the poster was saved. The reply task now has 5 minutes, the remix no longer depends on the chat model passing a vision probe, and a failed face-lock retry runs the edit on the photo alone.
 - **Bottom bar floated off the screen edge** — safe-area padding is inside the ink dock so the bar is flush with the bottom.
 - **Echo challenge API no longer echoes exception text** (CodeQL `py/stack-trace-exposure`) — refusals are mapped to fixed strings.
+- **Goal-rescore timezone test no longer collides with setUp's yesterday workout**, which had started sharing the daily cap and failing CI around midnight.
 
 ## [0.40.0] - 2026-08-22
 

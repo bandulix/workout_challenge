@@ -537,7 +537,10 @@ class GoalEditRescoresChallengeTests(TestCase):
         timezone.activate("Europe/Berlin")
         self.addCleanup(timezone.deactivate)
         utc = datetime.timezone.utc
-        day = timezone.localdate() - datetime.timedelta(days=1)
+        # Three days back so this pair does not share a local calendar
+        # day with setUp's now-1-day workout (that 20-point row would
+        # eat the 40-point daily cap and clip 30 → 20).
+        day = timezone.localdate() - datetime.timedelta(days=3)
         morning = Workout.objects.create(
             user=self.athlete,
             sport_type="Run",
