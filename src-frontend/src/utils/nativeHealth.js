@@ -77,7 +77,7 @@ export async function nativeHealthSetSource(source, publicUrl) {
                 catchup = true;
             }
             if (catchup || !status.syncActive) {
-                await OWHealth.startSync(catchup ? {daysBack: 3} : {});
+                await OWHealth.startSync(catchup ? {daysBack: 43} : {});
             }
         } else if (status.syncActive) {
             await OWHealth.stopSync();

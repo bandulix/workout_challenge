@@ -17,14 +17,15 @@ module.exports = {
           600: '#93b819',
           700: '#6f8f0f',
         },
-        // Deep green-black "ink" surfaces for the dark athletic look.
+        // Night charcoal for dark mode (neutral, not olive). Volt stays
+        // the only green in the night UI so it actually pops.
         ink: {
-          950: '#0a0d06',
-          900: '#10150a',
-          850: '#161c0e',
-          800: '#1c2412',
-          700: '#27331a',
-          600: '#3a4a26',
+          950: '#0b0b0c',
+          900: '#101012',
+          850: '#141416',
+          800: '#1c1c20',
+          700: '#2a2a32',
+          600: '#3c3c46',
         },
       },
       fontFamily: {
@@ -38,7 +39,7 @@ module.exports = {
         'glow-volt': '0 0 24px rgba(215, 255, 62, 0.35)',
         'glow-volt-lg': '0 0 48px rgba(215, 255, 62, 0.45)',
         'card-dark': '0 8px 32px rgba(0, 0, 0, 0.45)',
-        'card': '0 4px 24px rgba(16, 21, 10, 0.08)',
+        'card': '0 4px 24px rgba(11, 11, 12, 0.08)',
       },
       keyframes: {
         'slide-up': {

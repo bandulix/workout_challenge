@@ -1,4 +1,4 @@
-import {useNavigationType, useParams} from 'react-router-dom';
+import {useNavigationType, useParams, useSearchParams} from 'react-router-dom';
 import React, {useEffect, useState} from "react";
 import {useGetCompetitionByIdQuery} from "../utils/reducers/competitionsSlice";
 import {
@@ -65,7 +65,7 @@ function ChartThisWeek({history}) {
             {
                 label: 'My Team',
                 data: history['My Team'],
-                backgroundColor: '#3a4a26',
+                backgroundColor: '#3c3c46',
                 borderRadius: 6,
                 clip: false,
                 hidden: true,
@@ -73,7 +73,7 @@ function ChartThisWeek({history}) {
             {
                 label: 'Average',
                 data: history['Average'],
-                backgroundColor: isDarkMode ? '#27331a' : '#d1d5db',
+                backgroundColor: isDarkMode ? '#2a2a32' : '#d1d5db',
                 borderRadius: 6,
                 clip: false,
                 hidden: true,
@@ -102,7 +102,7 @@ function ChartThisWeek({history}) {
                 labels: {
                     boxWidth: 12,
                     padding: 20,
-                    color: isDarkMode ? '#c5d0b0' : '#4b5563',
+                    color: isDarkMode ? '#c8c8d0' : '#4b5563',
                 },
             },
             tooltip: false,
@@ -148,7 +148,7 @@ function ChartHistory({history}) {
             {
                 label: 'My Team',
                 data: history['My Team'],
-                borderColor: '#3a4a26',
+                borderColor: '#3c3c46',
                 tension: 0.3,
                 fill: false,
                 spanGaps: true,
@@ -156,7 +156,7 @@ function ChartHistory({history}) {
             {
                 label: 'Average',
                 data: history['Average'],
-                borderColor: isDarkMode ? '#6b7a52' : '#9ca3af',
+                borderColor: isDarkMode ? '#6a6a76' : '#9ca3af',
                 tension: 0.3,
                 fill: false,
                 spanGaps: true,
@@ -191,7 +191,7 @@ function ChartHistory({history}) {
                 labels: {
                     boxWidth: 12,
                     padding: 20,
-                    color: isDarkMode ? '#c5d0b0' : '#4b5563',
+                    color: isDarkMode ? '#c8c8d0' : '#4b5563',
                 },
             },
             datalabels: {display: false},
@@ -286,9 +286,11 @@ function IndividualLeaderboardBox({stats, userId, dunceUserId}) {
                 <EmptyState title="Waiting for the field" body="The first logged workout puts someone on the board."/>
             ) : (
                 <ul className="my-1">
-                    {stats.leaderboard.individual.map((person, index) => (
-                        <li key={person.workout__user__id}
-                            className={"flex items-center gap-3 px-3 py-2.5 rounded-2xl " + ((userId === person.workout__user__id) ? "bg-volt-400/10 dark:bg-volt-400/5 " : "")}>
+                    {stats.leaderboard.individual.map((person, index) => {
+                        const personId = person.id ?? person.workout__user__id;
+                        return (
+                        <li key={personId ?? `lb-${index}`}
+                            className={"flex items-center gap-3 px-3 py-2.5 rounded-2xl " + ((userId === personId) ? "bg-volt-400/10 dark:bg-volt-400/5 " : "")}>
                             {/* Rank - medal colours for the podium */}
                             <span className={"w-8 shrink-0 text-center font-display text-lg " + (RANK_STYLES[person.rank] || "text-gray-400")}>
                                 {person.rank !== null ? `#${person.rank}` : "–"}
@@ -297,7 +299,7 @@ function IndividualLeaderboardBox({stats, userId, dunceUserId}) {
                             {/* Profile picture with the points badge hovering
                                 partly over its bottom-right corner */}
                             <div className="relative shrink-0 mr-1.5">
-                                <ProfileAvatar user={person} size={46} dunce={dunceUserId === person.workout__user__id}/>
+                                <ProfileAvatar user={person} size={46} dunce={dunceUserId === personId}/>
                                 <span className="absolute -bottom-1 -right-2 rounded-full bg-volt-400 text-ink-950 text-[10px] font-extrabold px-1.5 py-0.5 shadow-glow-volt whitespace-nowrap">
                                     {Math.round(person.total_capped ?? 0).toLocaleString()}P
                                 </span>
@@ -312,7 +314,8 @@ function IndividualLeaderboardBox({stats, userId, dunceUserId}) {
                                 )}
                             </div>
                         </li>
-                    ))}
+                        );
+                    })}
                 </ul>
             )}
         </BoxSection>
@@ -712,8 +715,19 @@ export default function Competition() {
 
     const dispatch = useDispatch();
     const {id} = useParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const pollSlow = usePollingInterval(90000);
     const pollFast = usePollingInterval(60000);
+    const tabParam = searchParams.get("tab");
+    const tab = (tabParam === "feed" || tabParam === "trophies" || tabParam === "board")
+        ? tabParam
+        : (searchParams.get("reply") ? "feed" : "board");
+    function setTab(next) {
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.set("tab", next);
+        if (next !== "feed") nextParams.delete("reply");
+        setSearchParams(nextParams, {replace: true});
+    }
 
     const {
         data: user,
@@ -812,7 +826,22 @@ export default function Competition() {
                     )
                 }
 
-                {/* Leaderboards - the first box after the header */}
+                <div className="mb-4 grid grid-cols-3 gap-1 p-1 rounded-2xl bg-white/70 dark:bg-ink-850 border border-gray-200/70 dark:border-ink-700/60">
+                    {[
+                        ["board", "Board"],
+                        ["feed", "Feed"],
+                        ["trophies", "Trophies"],
+                    ].map(([id, label]) => (
+                        <button key={id} type="button" onClick={() => setTab(id)}
+                                className={"rounded-xl py-2.5 text-xs font-bold uppercase tracking-wide min-h-[44px] transition " +
+                                    (tab === id ? "bg-volt-400 text-ink-950 shadow-glow-volt" : "text-gray-500 dark:text-gray-400")}>
+                            {label}
+                        </button>
+                    ))}
+                </div>
+
+                {tab === "board" && <>
+                {/* Leaderboards */}
                 <div className="flex flex-col md:flex-row mb-4">
                     <div className={"w-full mb-4 md:mb-0 " + (competition?.has_teams === false ? "" : "md:w-1/2 md:pr-2")}>
                         {
@@ -850,16 +879,31 @@ export default function Competition() {
                 )}
 
                 {/* The Drill Instructor's corner */}
+                </>}
+
+                {tab === "feed" && <>
                 {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
 
+                <div className="mt-4">
+                    {
+                        (feedLoading) ? <SectionLoader height={"h-80"}/> : (feedError) ? (
+                            <ErrorBoxSection
+                                errorMsg={feedError?.status + ' / ' + (feedError?.error || feedError?.message || feedError?.data?.detail)}/>
+                        ) : (
+                            <FeedBox feed={feed}/>
+                        )
+                    }
+                </div>
+                </>}
+
+                {tab === "trophies" && <>
                 {competition && <EchoChamber competitionId={competition.id} userId={user?.id}/>}
+                <div className="mt-4">
+                    <HallOfRoasts cards={hall}/>
+                </div>
+                </>}
 
-                {(hall || []).length > 0 && (
-                    <div className="mt-4">
-                        <HallOfRoasts cards={hall}/>
-                    </div>
-                )}
-
+                {tab === "board" && <>
                 {/* KPI bar */}
                 <div className="flex flex-col xl:flex-row">
                     <div className="w-full xl:w-1/3">
@@ -900,17 +944,7 @@ export default function Competition() {
                     </div>
                 </div>
 
-                {/* Activity Feed - full width below everything else */}
-                <div className="mt-4">
-                    {
-                        (feedLoading) ? <SectionLoader height={"h-80"}/> : (feedError) ? (
-                            <ErrorBoxSection
-                                errorMsg={feedError?.status + ' / ' + (feedError?.error || feedError?.message || feedError?.data?.detail)}/>
-                        ) : (
-                            <FeedBox feed={feed}/>
-                        )
-                    }
-                </div>
+                </>}
             </div>
 
         </PageWrapper>

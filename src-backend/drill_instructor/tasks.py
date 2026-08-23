@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from workout_challenge.celery import app, is_task_already_executing
 
-from .llm_client import build_group_push_prompt, build_inactivity_prompt, build_photo_prompt, build_reply_prompt, build_roast_caption_prompt, build_roast_image_prompt, build_workout_prompt, check_image_edit_capability, check_vision_capability, generate_message, generate_roast_image
+from .llm_client import build_echo_art_prompt, build_group_push_prompt, build_inactivity_prompt, build_photo_prompt, build_reply_prompt, build_roast_caption_prompt, build_roast_image_prompt, build_workout_prompt, check_image_edit_capability, check_vision_capability, generate_message, generate_roast_image
 
 try:
     from push_notifications.sender import send_push_to_user
@@ -687,6 +687,52 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
         config.save(update_fields=["last_error", "updated_at"])
         logger.warning("Drill Instructor: roast save failed for photo %s: %s", photo.id, exc)
         return None
+
+
+@app.task(bind=True, max_retries=0, time_limit=240)
+def remix_echo_art(self, echo_id):
+    """Paint the holder's uploaded photo into Echo-specific trophy art.
+
+    Best-effort: if the image-edit model is missing or refuses the edit,
+    the original upload stays. Never raises into the worker loop.
+    """
+    from django.core.files.base import ContentFile
+
+    LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
+    try:
+        echo = LegendEcho.objects.select_related("config", "config__persona").get(pk=echo_id)
+    except LegendEcho.DoesNotExist:
+        return {"echo": echo_id, "skipped": "missing"}
+    if not echo.image:
+        return {"echo": echo_id, "skipped": "no image"}
+    try:
+        image_path = echo.image.path
+    except (ValueError, NotImplementedError):
+        return {"echo": echo_id, "skipped": "no path"}
+    if not image_path or not os.path.isfile(image_path):
+        return {"echo": echo_id, "skipped": "missing file"}
+
+    roast_model = check_image_edit_capability()
+    if not roast_model:
+        logger.info("Echo art remix skipped for %s: no image-edit model", echo_id)
+        return {"echo": echo_id, "skipped": "no image-edit model"}
+
+    unit = "km" if echo.metric == "distance" else "min"
+    metric_label = f"{echo.metric_value:g} {unit} {echo.sport_type}"
+    prompt = build_echo_art_prompt(
+        title=echo.title,
+        narrative=echo.narrative or "",
+        sport_type=echo.sport_type or "",
+        metric_label=metric_label,
+        power=echo.power,
+    )
+    png_bytes, error = generate_roast_image(image_path, prompt, roast_model)
+    if not png_bytes:
+        logger.info("Echo art remix skipped for %s: %s", echo_id, error)
+        return {"echo": echo_id, "skipped": error or "edit failed"}
+    echo.image.save(f"echo-{echo.pk}.png", ContentFile(png_bytes), save=True)
+    logger.info("Echo art remixed for %s", echo_id)
+    return {"echo": echo_id, "ok": True}
 
 
 def _competition_leader(competition):

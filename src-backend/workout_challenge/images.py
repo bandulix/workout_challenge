@@ -14,14 +14,33 @@ from rest_framework.renderers import BaseRenderer
 # a 8k x 5k photo, well above any avatar/photo-post we accept).
 _MAX_PIXELS = 40_000_000
 _MAX_BYTES = 5 * 1024 * 1024
+# After pixels decode, only these containers are accepted. SVG/HTML/PDF
+# must never land in MEDIA_ROOT even if a Pillow plugin can open them.
+_ALLOWED_FORMATS = frozenset({"JPEG", "PNG", "GIF", "WEBP", "BMP", "TIFF", "ICO", "HEIF", "HEIC"})
+
+_heif_registered = False
+
+
+def _ensure_heif_opener():
+    """Register HEIC/HEIF so iPhone and Galaxy camera rolls open in Pillow."""
+    global _heif_registered
+    if _heif_registered:
+        return
+    try:
+        from pillow_heif import register_heif_opener
+        register_heif_opener()
+    except ImportError:
+        pass
+    _heif_registered = True
 
 
 def validate_and_reencode_image(uploaded, *, max_bytes=_MAX_BYTES, max_side=1920, field="image"):
     """Verify the bytes are an image and re-encode to strip metadata.
 
     Returns a new InMemoryUploadedFile (JPEG, or PNG when the source
-    has alpha). Raises serializers.ValidationError on anything else.
-    ``uploaded is None`` is passed through.
+    has alpha). Accepts HEIC/HEIF from iPhone and Galaxy. Raises
+    serializers.ValidationError on anything else. ``uploaded is None``
+    is passed through.
     """
     if uploaded is None:
         return None
@@ -30,10 +49,11 @@ def validate_and_reencode_image(uploaded, *, max_bytes=_MAX_BYTES, max_side=1920
         raise serializers.ValidationError("Image too large (max 5 MB).")
 
     try:
-        from PIL import Image
+        from PIL import Image, ImageOps
     except ImportError as exc:  # pragma: no cover
         raise serializers.ValidationError("Image processing is unavailable.") from exc
 
+    _ensure_heif_opener()
     Image.MAX_IMAGE_PIXELS = _MAX_PIXELS
     try:
         uploaded.seek(0)
@@ -42,6 +62,13 @@ def validate_and_reencode_image(uploaded, *, max_bytes=_MAX_BYTES, max_side=1920
         uploaded.seek(0)
         image = Image.open(uploaded)
         image.load()
+        fmt = (image.format or "").upper()
+        if fmt not in _ALLOWED_FORMATS:
+            raise serializers.ValidationError("File must be a valid image.")
+        # iPhone/Galaxy HEIC (and JPEG) often store orientation in EXIF.
+        image = ImageOps.exif_transpose(image) or image
+    except serializers.ValidationError:
+        raise
     except Exception as exc:
         raise serializers.ValidationError("File must be a valid image.") from exc
 

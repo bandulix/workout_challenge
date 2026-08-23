@@ -98,7 +98,16 @@ function HallFrame({card, place, onOpen}) {
 
 export function HallOfRoasts({cards}) {
     const [fullSrc, setFullSrc] = React.useState(null);
-    if (!cards || cards.length === 0) return null;
+    if (!cards || cards.length === 0) {
+        return (
+            <BoxSection>
+                <SectionHead title="Hall of roasts" hint="Top remixed photos this challenge"/>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                    Empty for now. Post a photo under a workout — the coach remixes it, and the hottest shots land here.
+                </p>
+            </BoxSection>
+        );
+    }
     return (
         <BoxSection>
             <SectionHead title="Hall of roasts" hint="Top remixed photos this challenge"/>

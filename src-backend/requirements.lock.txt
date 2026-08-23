@@ -139,7 +139,10 @@ packaging==26.3
 pillow==12.3.0
     # via
     #   -r requirements.txt
+    #   pillow-heif
     #   qrcode
+pillow-heif==1.5.0
+    # via -r requirements.txt
 prometheus-client==0.26.0
     # via flower
 prompt-toolkit==3.0.53

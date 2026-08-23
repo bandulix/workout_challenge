@@ -304,3 +304,84 @@ class ApiNoStoreMiddlewareTests(TestCase):
     def test_non_api_paths_untouched(self):
         response = self.client.get("/")
         self.assertNotIn("no-store", response.get("Cache-Control", ""))
+
+
+class HeicUploadTests(TestCase):
+    """iPhone and Galaxy camera rolls default to HEIC. Pillow alone cannot
+    open that container; pillow-heif must be registered and the upload
+    re-encoded to JPEG like every other bitmap."""
+
+    def _heic_bytes(self):
+        from io import BytesIO
+        from PIL import Image
+        from pillow_heif import register_heif_opener
+
+        register_heif_opener()
+        buf = BytesIO()
+        Image.new("RGB", (8, 6), (220, 40, 40)).save(buf, format="HEIF")
+        return buf.getvalue()
+
+    def test_heic_reencodes_to_jpeg(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from workout_challenge.images import validate_and_reencode_image
+
+        uploaded = SimpleUploadedFile("IMG_0001.heic", self._heic_bytes(), content_type="image/heic")
+        out = validate_and_reencode_image(uploaded)
+        self.assertTrue(out.name.lower().endswith(".jpg"))
+        self.assertEqual(out.content_type, "image/jpeg")
+        self.assertGreater(out.size, 0)
+        out.seek(0)
+        from PIL import Image
+        with Image.open(out) as img:
+            self.assertEqual(img.format, "JPEG")
+            self.assertEqual(img.size, (8, 6))
+
+    def test_heif_content_type_is_also_accepted(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from workout_challenge.images import validate_and_reencode_image
+
+        uploaded = SimpleUploadedFile("shot.heif", self._heic_bytes(), content_type="image/heif")
+        out = validate_and_reencode_image(uploaded)
+        self.assertEqual(out.content_type, "image/jpeg")
+
+    def test_profile_api_accepts_heic(self):
+        from rest_framework.test import APIClient
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from custom_user.models import CustomUser
+
+        user = CustomUser.objects.create_user(
+            email="heic@example.com", password="Sup3r-Secret!Pass", first_name="H", last_name="E",
+        )
+        client = APIClient()
+        client.force_authenticate(user)
+        upload = SimpleUploadedFile("IMG_0001.heic", self._heic_bytes(), content_type="image/heic")
+        response = client.patch("/api/user/me/", {"profile_picture_upload": upload}, format="multipart")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()["profile_picture"])
+        user.refresh_from_db()
+        self.assertTrue(user.profile_picture.name.endswith(".jpg"))
+
+    def test_html_and_svg_are_rejected(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from rest_framework.exceptions import ValidationError
+        from workout_challenge.images import validate_and_reencode_image
+
+        html = SimpleUploadedFile("x.html", b"<html><script>alert(1)</script></html>", content_type="text/html")
+        with self.assertRaises(ValidationError):
+            validate_and_reencode_image(html)
+        svg = SimpleUploadedFile(
+            "x.svg",
+            b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+            content_type="image/svg+xml",
+        )
+        with self.assertRaises(ValidationError):
+            validate_and_reencode_image(svg)
+
+
+class OriginHostnamesTests(TestCase):
+    def test_ports_are_stripped_for_allowed_hosts(self):
+        from workout_challenge.settings import origin_hostnames
+        self.assertEqual(
+            origin_hostnames(["http://localhost:3000", "https://example.com:443", "http://127.0.0.1"]),
+            ["localhost", "example.com", "127.0.0.1"],
+        )

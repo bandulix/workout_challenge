@@ -21,7 +21,7 @@ import {confirmAction, notice} from "../utils/dialogs";
 // Anyone can create a roaster of their own; staff still manage the
 // built-in library. The API rejects edits of someone else's persona.
 
-const PICTURE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+const PICTURE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif";
 const MAX_PICTURE_BYTES = 5 * 1024 * 1024; // 5 MB - mirrors the API validation
 
 // Artwork shipped in /public/personas - custom personas pick one of these

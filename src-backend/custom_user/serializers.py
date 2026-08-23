@@ -56,11 +56,16 @@ class CustomUserSerializer(serializers.ModelSerializer):
     # Write path: uploads arrive as ``profile_picture_upload``
     # (multipart) and map onto the model's profile_picture field.
     profile_picture = serializers.SerializerMethodField()
-    profile_picture_upload = serializers.ImageField(
+    # FileField not ImageField: Django's ImageField uses Pillow without
+    # HEIC support and rejects iPhone/Galaxy camera-roll shots before our
+    # validator can re-encode them.
+    profile_picture_upload = serializers.FileField(
         write_only=True, required=False, allow_null=True, source='profile_picture'
     )
 
     dog_tags = serializers.SerializerMethodField()
+    # Living + immortal Echoes this athlete currently holds (profile crown).
+    echoes_held = serializers.SerializerMethodField()
 
     def get_profile_picture(self, obj):
         return user_picture_url(obj)
@@ -72,6 +77,17 @@ class CustomUserSerializer(serializers.ModelSerializer):
         except Exception:
             return []
 
+    def get_echoes_held(self, obj):
+        n = getattr(obj, "echo_hold_count", None)
+        if n is not None:
+            return int(n)
+        from drill_instructor.echoes import LIVE_HOLDER_STATUSES
+        from drill_instructor.models import LegendEcho
+        try:
+            return LegendEcho.objects.filter(holder=obj, status__in=LIVE_HOLDER_STATUSES).count()
+        except Exception:
+            return 0
+
     def validate_profile_picture_upload(self, value):
         if value is None:
             return value
@@ -80,7 +96,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'invite_token', 'join_code', 'profile_picture', 'profile_picture_upload', 'dog_tags', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'health_user_id', 'health_last_synced_at', 'health_configured', 'health_public_url', 'activity_source', 'activity_source_effective', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
+        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'invite_token', 'join_code', 'profile_picture', 'profile_picture_upload', 'dog_tags', 'echoes_held', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'health_user_id', 'health_last_synced_at', 'health_configured', 'health_public_url', 'activity_source', 'activity_source_effective', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
         # my_competitions / my_teams are read-only: joining happens
         # exclusively through the dedicated join views (join code +
         # participant checks). Writable M2M fields would be a

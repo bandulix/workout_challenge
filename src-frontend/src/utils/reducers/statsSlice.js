@@ -4,6 +4,7 @@ import {baseQueryWithReauth} from './baseQueryWithReauth';
 export const statsApi = createApi({
     reducerPath: 'statsApi',
     baseQuery: baseQueryWithReauth,
+    tagTypes: ['Stats'],
     keepUnusedDataFor: 60 * 60 * 3, // 3 hours cache (default is 60)
     refetchOnMountOrArgChange: 60 * 15, // Refetch if older than 15 minutes
     endpoints: (builder) => ({

@@ -1,12 +1,18 @@
-import React, {useEffect, useState} from "react";
-import {Crown, ScrollText, Share2, Swords} from "lucide-react";
+import React, {useEffect, useRef, useState} from "react";
+import {Camera, Crown, Image as ImageIcon, ScrollText, Share2, Swords} from "lucide-react";
+import {BeatLoader} from "react-spinners";
+import {useDispatch} from "react-redux";
 import {BoxSection} from "../utils/miscellaneous";
 import {SectionHead} from "./uiBits";
 import {useProtectedImage} from "../utils/protectedMedia";
+import {compressImage} from "../utils/imageCompress";
+import {isAcceptablePhoto, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
 import {
+    drillInstructorApi,
     useChallengeEchoMutation,
     useGetEchoBookQuery,
     useGetEchoesQuery,
+    useUploadEchoArtMutation,
 } from "../utils/reducers/drillInstructorSlice";
 import usePollingInterval from "../utils/usePollingInterval";
 import {confirmAction, notice} from "../utils/dialogs";
@@ -41,16 +47,87 @@ const STATUS_TONE = {
     retired: "bg-white/10 text-gray-300",
 };
 
-function EchoArt({url, title}) {
+function EchoArt({url, title, canUpload, echoId}) {
     const {src} = useProtectedImage(url);
-    if (!src) {
-        return (
-            <div className="h-40 w-full rounded-xl bg-gradient-to-br from-ink-800 via-ink-900 to-black flex items-center justify-center">
-                <Crown className="h-8 w-8 text-volt-400/70"/>
-            </div>
-        );
+    const [uploadArt] = useUploadEchoArtMutation();
+    const dispatch = useDispatch();
+    const cameraInput = useRef(null);
+    const galleryInput = useRef(null);
+    const [chooser, setChooser] = useState(false);
+    const [busy, setBusy] = useState(false);
+
+    const frame = src ? (
+        <img src={src} alt={title || ""} className="h-40 w-full object-cover rounded-xl"/>
+    ) : (
+        <div className="h-40 w-full rounded-xl bg-gradient-to-br from-ink-800 via-ink-900 to-black flex items-center justify-center">
+            <Crown className="h-8 w-8 text-volt-400/70"/>
+        </div>
+    );
+
+    async function send(file) {
+        if (!file) return;
+        if (!isAcceptablePhoto(file)) {
+            notice("Please pick a photo (JPEG, PNG, WebP, GIF or HEIC).");
+            return;
+        }
+        setBusy(true);
+        try {
+            const compressed = await compressImage(file);
+            await uploadArt({id: echoId, image: compressed}).unwrap();
+            notice("The coach is painting this into Echo art — give it a few seconds.");
+            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(["DrillEcho"])), 8000);
+            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(["DrillEcho"])), 20000);
+        } catch (err) {
+            notice(err?.data?.image || err?.data?.detail || "Could not upload that picture.");
+        } finally {
+            setBusy(false);
+            setChooser(false);
+        }
     }
-    return <img src={src} alt={title || ""} className="h-40 w-full object-cover rounded-xl"/>;
+
+    async function pick(kind) {
+        try {
+            const native = await pickNativePhoto(kind);
+            if (native) {
+                await send(native);
+                return;
+            }
+        } catch (err) {
+            if (isPhotoPickCancel(err)) return;
+        }
+        if (kind === "camera") cameraInput.current?.click();
+        else galleryInput.current?.click();
+    }
+
+    if (!canUpload) return frame;
+
+    return (
+        <div className="relative">
+            {frame}
+            <input ref={cameraInput} type="file" accept="image/*,image/heic,image/heif" capture="user" className="hidden"
+                   onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; send(f); }}/>
+            <input ref={galleryInput} type="file" accept="image/*,image/heic,image/heif" className="hidden"
+                   onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; send(f); }}/>
+            <button type="button" onClick={() => setChooser((v) => !v)} disabled={busy}
+                    aria-label={src ? "Change Echo art" : "Add Echo art"}
+                    className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 rounded-full bg-volt-400 text-ink-950 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wide shadow-glow-volt min-h-[36px] disabled:opacity-60">
+                {busy ? <BeatLoader size={5} color="#0b0b0c"/> : <Camera className="h-3.5 w-3.5"/>}
+                {src ? "Change art" : "Add art"}
+            </button>
+            {chooser && !busy && (
+                <div className="absolute bottom-12 right-2 z-10 rounded-2xl bg-ink-900/95 border border-volt-400/30 p-1 shadow-card-dark">
+                    <button type="button" onClick={() => pick("camera")}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wide text-gray-200 hover:text-volt-300 min-h-[40px]">
+                        <Camera className="h-3.5 w-3.5"/> Camera
+                    </button>
+                    <button type="button" onClick={() => pick("gallery")}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wide text-gray-200 hover:text-volt-300 min-h-[40px]">
+                        <ImageIcon className="h-3.5 w-3.5"/> Gallery
+                    </button>
+                </div>
+            )}
+        </div>
+    );
 }
 
 async function shareEcho(echo) {
@@ -78,7 +155,8 @@ function EchoCard({echo, userId, onChallenge, busy, now}) {
 
     return (
         <article className="rounded-2xl border border-volt-400/35 bg-ink-900 text-white p-3.5 shadow-glow-volt">
-            <EchoArt url={echo.image} title={echo.title}/>
+            <EchoArt url={echo.image} title={echo.title}
+                     canUpload={Boolean(echo.can_upload_art)} echoId={echo.id}/>
             <div className="mt-3 flex flex-wrap items-center gap-2">
                 <span className={"rounded-full text-[10px] font-extrabold uppercase tracking-wide px-2 py-0.5 " + (STATUS_TONE[echo.status] || STATUS_TONE.retired)}>
                     {echo.status === "immortal" ? "Immortal" : echo.status === "contested" ? "Under fire" : echo.status}
@@ -171,7 +249,18 @@ export default function EchoChamber({competitionId, userId}) {
     const immortal = rows.filter((e) => e.status === "immortal");
     const ticking = live.some((e) => e.active_challenge?.window_end);
     const now = useNowTick(ticking);
-    if (rows.length === 0) return null;
+    if (rows.length === 0) {
+        return (
+            <BoxSection additionalClasses="mt-4">
+                <SectionHead title="Echo Chamber" hint="Living trophies"/>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                    No Echoes yet. They are planted for a personal best in this challenge,
+                    a 15 km or 90 min session, taking 1st place, or the first 40+ minute
+                    workout of the challenge.
+                </p>
+            </BoxSection>
+        );
+    }
 
     async function onChallenge(echo) {
         const ok = await confirmAction(

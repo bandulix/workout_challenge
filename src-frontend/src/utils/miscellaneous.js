@@ -140,12 +140,11 @@ class ErrorBoundary extends React.Component {
 
 
 function PageWrapper({additionClasses = '', children}) {
-    // pb-24 reserves space at the bottom so content isn't covered by the
-    // fixed bottom navigation (bar on mobile, floating dock on desktop).
-    // The safe-area-inset accounts for the iPhone home indicator.
+    // pb-28 reserves space under the floating glass dock (mobile inset
+    // + coach bump; desktop pill). Safe-area is on the nav itself.
     return (
-        <div className={"relative min-h-screen bg-[#dfe8c4] dark:bg-ink-950 dark:text-white p-2 sm:p-6 pb-24 " + additionClasses}>
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-volt-400/25 to-transparent dark:from-volt-400/10" aria-hidden="true"/>
+        <div className={"relative min-h-screen bg-[#dfe8c4] dark:bg-ink-950 dark:text-white p-2 sm:p-6 pb-28 " + additionClasses}>
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-volt-400/25 to-transparent dark:from-volt-400/5" aria-hidden="true"/>
             {children}
         </div>
     )

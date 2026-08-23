@@ -40,7 +40,9 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
         [configs, competition.id],
     );
 
-    const [enabled, setEnabled] = useState(false);
+    // Activate already meant "turn it on" - default checked for a new
+    // config so the owner is not asked twice, then left with a benched coach.
+    const [enabled, setEnabled] = useState(true);
     const [persona, setPersona] = useState("");
     const [commentOnActivity, setCommentOnActivity] = useState(true);
     const [nudgeOnInactivity, setNudgeOnInactivity] = useState(true);
@@ -158,6 +160,8 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                         const selected = String(persona) === String(p.id);
                         return (
                             <button key={p.id} type="button" onClick={() => setPersona(p.id)}
+                                    aria-label={p.name}
+                                    aria-pressed={selected}
                                     className={"flex flex-col items-center gap-2 rounded-2xl border p-3 text-center transition active:scale-[0.97] " +
                                         (selected
                                             ? "border-volt-500 bg-volt-400/15 dark:bg-volt-400/10 shadow-glow-volt"

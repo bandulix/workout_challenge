@@ -28,21 +28,22 @@ This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/w
 - Messages live in an in-app audit log (REST: `/api/drill-instructor/*`) and can be pushed to athletes' devices via web push.
 - **Quiet-day nudges:** if a running competition sees zero workouts in a day, the instructor posts one motivational, group-addressed message on its own (daily sweep, per-competition toggle).
 - **Arcade:** Order of the Day (sealed morning mission, ribbon on the feed), Dunce megaphone on last place until they log, Hall of Roasts on the challenge page, coach mood from the last 48h, and permanent dog tags (First Blood, Ghost Killer, Photogenic, Never Missed Monday, Survived the Dunce, Echo Immortal, Echo Slayer).
-- **Legend Echoes:** standout workouts become living, claimable trophies in the Echo Chamber — stylized photo, coach narrative, power rating. Anyone can declare war (7-day window); a successful beat claims the Echo and grows the lineage. Survive three failed claims or the season and it goes Immortal. End of season: the Book of Echoes.
+- **Legend Echoes:** standout workouts become living, claimable trophies in the Echo Chamber — stylized photo, coach narrative, power rating. The **holder can upload a photo**; the coach remixes it to match the Echo and sport. Holders get a **volt crown** on their avatar. Anyone can declare war (7-day window); a successful beat claims the Echo and grows the lineage. Survive three failed claims or the season and it goes Immortal. End of season: the Book of Echoes.
 - **Weekly coach vote:** everyone in a challenge votes for next week's instructor (box under the leaderboard; it disappears once you have voted). The winner takes over Monday morning; a handover still shows in Coach's Corner.
 
 **📱 Coach-centred PWA redesign (mobile-first)**
-- Dark athletic **volt/ink** theme (`#d7ff3e` on `#0a0d06`), self-hosted Archivo Black + Inter fonts, class-based dark mode with manual toggle. The **volt lightning** mark is the favicon, PWA icons, Apple touch icon, Android launcher and splash.
+- **Volt** accent (`#d7ff3e`) on a moss canvas in light mode and night charcoal in dark (`#0b0b0c` — not olive). Self-hosted Archivo Black + Inter, class-based dark mode with a manual toggle. The **volt lightning** mark is the favicon, PWA icons, Apple touch icon, Android launcher and splash.
 - **Coach page** (`/coach`): persona hero, live chat-style coach feed, the roaster (create yours / manage, above coach pings), platform-aware push opt-in.
-- Bottom-bar navigation (ink dock flush with the screen edge, volt pill for the active tab, breathing lime halo on the coach) with the persona at centre stage; installable PWA with offline shell and push on iOS & Android.
+- Bottom-bar navigation (Apple-glass floating dock, glass chip for the active tab, breathing lime halo on the coach) with the persona at centre stage; installable PWA with offline shell and push on iOS & Android.
 - Login/welcome uses a gym / volt-neon still that stays on screen.
 
 **🏠 Home / profile**
 - Redesigned dashboard with compact **Streak Card**; 30-day stats and personal-goal blocks.
-- **Profile picture upload** (editable avatar, old files auto-deleted).
+- **Profile picture upload** (editable avatar, HEIC/HEIF from iPhone and Galaxy, old files auto-deleted). Echo holders wear a small crown on the avatar.
+- **Get started checklist** on a new Home (join/create a challenge, connect a device or log by hand, turn the coach on).
 
 **⌚ Garmin Connect import (new connector, parallel to Strava)**
-- Link Garmin in Settings; the password is used once and never stored — only the encrypted OAuth token blob (Fernet) is kept. Daily sync plus manual re-sync; ~60 activity types mapped; de-duplication by activity id.
+- Link Garmin in Settings; the password is used once and never stored — only the encrypted OAuth token blob (Fernet) is kept. Hourly and manual re-sync look back **14 days** (initial link ~6 weeks); ~60 activity types mapped; de-duplication by activity id.
 
 **🍎🤖 Apple Health / Health Connect import (new connector, Strava-optional)**
 - Import workouts **straight from Apple Health or Google Health Connect** — no Strava account (or subscription) needed. Since Apple/Google expose no cloud API, a self-hosted [Open Wearables](https://github.com/the-momentum/open-wearables) instance (MIT) receives the on-device data from a health app on the athlete's phone; this connector polls it hourly, like the other providers. Same one-source-per-user selector, same cross-provider duplicate guard. See [Apple / Google Health](#apple--google-health-open-wearables).
@@ -60,7 +61,8 @@ Create a competition or join one via a friend's invite link, log workouts manual
 **Features:**
 - Competitions with custom goals, teams, leaderboards and weekly email recaps — editing a goal rescores every activity in the challenge (caps reapplied in the site timezone)
 - **AI Drill Instructor** with persona avatars — comments on every workout, nudges quiet groups, optionally pings phones via push
-- **Coach arcade** — daily mission, dunce, hall of roasts, mood, dog tags, weekly coach vote, Legend Echoes
+- **Coach arcade** — daily mission, dunce, hall of roasts, mood, dog tags, weekly coach vote, Legend Echoes (holder art + avatar crown)
+- **Challenge page** — Board / Feed / Trophies tabs; glass dock; HEIC camera-roll photos on Android and iPhone
 - **Your own roaster** — anyone can add a coach voice; staff can edit or delete every persona
 - **Coach page** — a live, chat-style feed of everything the coach has said
 - Workout entry manually or via Strava / Garmin Connect auto-import

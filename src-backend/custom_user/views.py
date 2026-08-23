@@ -121,12 +121,21 @@ class RegisterRateThrottle(BaseThrottle):
     RATE_LIMIT = 20
     RATE_WINDOW_SECONDS = 60 * 60
 
+    _TRUSTED_PROXIES = frozenset({"127.0.0.1", "::1", "localhost"})
+
     def get_cache_key(self, request, view):
-        # X-Forwarded-For is set by nginx in front of the API. Take the
-        # LAST entry: $proxy_add_x_forwarded_for appends the real client
-        # IP, while leading entries can be attacker-supplied spoofs.
-        # Fall back to REMOTE_ADDR if there's no proxy.
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[-1].strip() or request.META.get('REMOTE_ADDR', 'unknown')
+        # Honour X-Forwarded-For only when the TCP peer is the loopback
+        # nginx in this container. Otherwise a client talking to gunicorn
+        # directly can rotate XFF and reset the register bucket.
+        # LAST XFF hop: $proxy_add_x_forwarded_for appends $remote_addr,
+        # so the trailing entry is the real client; leading ones can be
+        # attacker-supplied.
+        remote = (request.META.get("REMOTE_ADDR") or "").strip() or "unknown"
+        if remote in self._TRUSTED_PROXIES:
+            xff = request.META.get("HTTP_X_FORWARDED_FOR", "")
+            ip = xff.split(",")[-1].strip() or remote
+        else:
+            ip = remote
         return f"register-throttle:{ip}"
 
     def allow_request(self, request, view):
@@ -162,7 +171,23 @@ class CustomUserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # return all competitions the user is owner of or a participant of
         #time.sleep(3)  # throttle for testing
-        return CustomUser.objects.filter(Q(pk=self.request.user.pk) | Q(my_competitions__in=self.request.user.my_competitions.all())).distinct().prefetch_related("dog_tags").order_by('username', 'id')
+        from django.db.models import Count
+        from drill_instructor.echoes import LIVE_HOLDER_STATUSES
+        return (
+            CustomUser.objects.filter(
+                Q(pk=self.request.user.pk) | Q(my_competitions__in=self.request.user.my_competitions.all())
+            )
+            .distinct()
+            .prefetch_related("dog_tags")
+            .annotate(
+                echo_hold_count=Count(
+                    "echoes_held",
+                    filter=Q(echoes_held__status__in=LIVE_HOLDER_STATUSES),
+                    distinct=True,
+                )
+            )
+            .order_by("username", "id")
+        )
 
     def get_object(self):
         lookup_value = self.kwargs.get(self.lookup_field)
@@ -514,7 +539,7 @@ class SyncGarminView(APIView):
                             status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         try:
-            result = sync_garmin(user__id=user.id, days_back=3)
+            result = sync_garmin(user__id=user.id, days_back=14)
         except GarminAuthError:
             logger.info("Garmin auth error during sync for user %s", user.pk, exc_info=True)
             return Response({"message": "Garmin rejected the stored login - please re-link Garmin Connect."},
@@ -615,7 +640,7 @@ class SyncHealthView(APIView):
                             status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         try:
-            result = sync_health(user__id=user.id)
+            result = sync_health(user__id=user.id, start_datetime=timezone.now() - datetime.timedelta(days=14))
         except HealthConfigError:
             return Response({"message": "The Health connector is not configured on this server."},
                             status=status.HTTP_503_SERVICE_UNAVAILABLE)

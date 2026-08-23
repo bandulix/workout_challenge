@@ -73,7 +73,18 @@ DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 logging.getLogger(__name__).info('Debug mode is %s', 'on' if DEBUG else 'off')
 
 MAIN_HOST = os.environ.get("MAIN_HOST", "http://localhost")
-HOSTS = os.environ.get("HOSTS", "http://localhost,http://127.0.0.1").split(",")
+HOSTS = [h.strip() for h in os.environ.get("HOSTS", "http://localhost,http://127.0.0.1").split(",") if h.strip()]
+
+
+def origin_hostnames(origins):
+    """Django ALLOWED_HOSTS entries: hostname only, never host:port."""
+    names = []
+    for url in origins:
+        host = urlparse(url).hostname
+        if host:
+            names.append(host)
+    return names
+
 
 # CORS / hosts hardening.
 # CORS_ALLOW_ALL_ORIGINS *  CORS_ALLOW_CREDENTIALS is forbidden by the
@@ -82,7 +93,10 @@ HOSTS = os.environ.get("HOSTS", "http://localhost,http://127.0.0.1").split(",")
 # browser ever accepts it. Never combine them in production. We default
 # to a strict, allow-listed CORS configuration regardless of DEBUG.
 CSRF_TRUSTED_ORIGINS = HOSTS
-ALLOWED_HOSTS = [urlparse(url).netloc for url in HOSTS]
+# Django matches ALLOWED_HOSTS against the hostname only (port stripped).
+# urlparse().netloc includes ":3000", which never matches Host: localhost
+# and is not how Django documents the setting.
+ALLOWED_HOSTS = origin_hostnames(HOSTS)
 CORS_ALLOWED_ORIGINS = HOSTS
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True

@@ -24,7 +24,7 @@ export default function CompetitionInviteModal({competition, setModalState}) {
                     Copy
                 </button>
                 <pre id="code-block" className="overflow-x-auto whitespace-pre-wrap text-sm">
-                    <code>Hi, I am taking part in the "{competition.name}" competition.<br/>It would be even more fun if you'd join, too.<br/>Here is the link to join: {url}</code>
+                    <code>Hi, I am taking part in the "{competition.name}" challenge.<br/>It would be even more fun if you'd join, too.<br/>Here is the link to join: {url}</code>
                 </pre>
             </div>
         </Modal>

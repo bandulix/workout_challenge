@@ -26,6 +26,29 @@ _VALID_SPORT_TYPES = {key for key, _label in SPORT_TYPES}
 def _map_sport_type(strava_sport_type):
     return strava_sport_type if strava_sport_type in _VALID_SPORT_TYPES else 'Workout'
 
+
+def _activity_start(activity):
+    raw = activity.get('start_date') or activity.get('start_date_local')
+    if not raw:
+        return None
+    try:
+        text = str(raw).replace('Z', '+00:00')
+        return datetime.datetime.fromisoformat(text)
+    except (ValueError, TypeError):
+        return None
+
+
+def _activity_duration(activity):
+    # moving_time is the workout; elapsed_time is the fallback when
+    # Strava omitted moving_time (some indoor / manually-started sessions).
+    seconds = activity.get('moving_time') or activity.get('elapsed_time')
+    if not seconds:
+        return None
+    try:
+        return datetime.timedelta(seconds=int(seconds))
+    except (TypeError, ValueError):
+        return None
+
 # Every outbound Strava request gets a hard timeout so a hung Strava
 # API can't park a Celery worker (or the gunicorn worker serving the
 # interactive link/sync endpoints) forever.
@@ -184,38 +207,44 @@ def sync_strava(self, user__id, start_datetime=None):
         ).in_bulk(field_name='strava_id')
 
         for activity in activities:
-            activity_id = activity.get('id')
+            try:
+                activity_id = activity.get('id')
+                start_dt = _activity_start(activity)
+                duration = _activity_duration(activity)
+                if activity_id is None or start_dt is None or duration is None:
+                    logger.warning('User %s - skipping Strava activity %s (missing id/start/duration)', user__id, activity_id)
+                    continue
 
-            props = {
-                'user': user,
-                'strava_id': activity_id,
-                'sport_type': _map_sport_type(activity.get('sport_type')),
-                'start_datetime': datetime.datetime.fromisoformat(activity.get('start_date')),
-                'duration': datetime.timedelta(seconds=activity.get('moving_time')),
-                'distance': None if activity.get('distance') == 0 else activity.get('distance') / 1_000,
-            }
+                distance = activity.get('distance')
+                props = {
+                    'user': user,
+                    'strava_id': activity_id,
+                    'sport_type': _map_sport_type(activity.get('sport_type') or activity.get('type')),
+                    'start_datetime': start_dt,
+                    'duration': duration,
+                    'distance': None if not distance else distance / 1_000,
+                }
 
-            # if existing workout - update activity details
-            # (existing_map is deliberately NOT scoped to the syncing
-            # user: the cross-account takeover guard relies on seeing
-            # other users' rows; it covers every id on this page, so no
-            # separate whole-table id set is needed)
-            workout = existing_map.get(activity_id)
-            if workout is not None:
-                # Never touch another user's workout: `strava_id` is
-                # unique across the whole table, so without this guard a
-                # sync would reassign (`props` contains `'user': user`)
-                # a workout owned by a different account to the
-                # currently syncing user - a cross-account workout
-                # takeover for any duplicated/legacy Strava linkage.
-                if workout.user_id == user.id:
-                    for key, value in props.items():
-                        setattr(workout, key, value)
-                    workout.save()
-                    cnt_updated_strava_activities += 1
+                # if existing workout - update activity details
+                # (existing_map is deliberately NOT scoped to the syncing
+                # user: the cross-account takeover guard relies on seeing
+                # other users' rows; it covers every id on this page, so no
+                # separate whole-table id set is needed)
+                workout = existing_map.get(activity_id)
+                if workout is not None:
+                    # Never touch another user's workout: `strava_id` is
+                    # unique across the whole table, so without this guard a
+                    # sync would reassign (`props` contains `'user': user`)
+                    # a workout owned by a different account to the
+                    # currently syncing user - a cross-account workout
+                    # takeover for any duplicated/legacy Strava linkage.
+                    if workout.user_id == user.id:
+                        for key, value in props.items():
+                            setattr(workout, key, value)
+                        workout.save()
+                        cnt_updated_strava_activities += 1
+                    continue
 
-            # if a new workout - get activity details
-            else:
                 # Cross-provider duplicate guard: the same activity may
                 # already exist from Garmin or as a manual entry. Checked
                 # before the details request so a duplicate also costs no
@@ -244,7 +273,8 @@ def sync_strava(self, user__id, start_datetime=None):
 
                 # estimate intensity
                 max_heart_rate = 180
-                kcal_per_ten_minute = kcal / (max(activity.get('moving_time', 60 * 30), 60) / (60 * 10))
+                moving = activity.get('moving_time') or activity.get('elapsed_time') or 60 * 30
+                kcal_per_ten_minute = kcal / (max(moving, 60) / (60 * 10))
                 if avg_heart_rate > max_heart_rate * 0.85 or kcal_per_ten_minute > 120 or avg_watt > 300:
                     props['intensity_category'] = 4
                 elif avg_heart_rate > max_heart_rate * 0.70 or kcal_per_ten_minute > 90 or avg_watt > 275:
@@ -256,6 +286,13 @@ def sync_strava(self, user__id, start_datetime=None):
 
                 Workout.objects.create(**props)
                 cnt_new_strava_activities += 1
+            except RateLimitExceeded:
+                raise
+            except Exception:
+                # One malformed Strava row must not abort the rest of this
+                # user's page (that used to skip every later activity until
+                # the bad one disappeared from Strava).
+                logger.exception('User %s - Strava activity %s failed', user__id, activity.get('id'))
 
         if len(activities) < per_page:
             break

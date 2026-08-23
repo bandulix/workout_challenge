@@ -63,4 +63,11 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Coach photo posts: native camera vs gallery (Capacitor Camera).
+         WebView <input capture> is ignored on Android and both buttons
+         opened the file picker; HEIC gallery shots were then rejected. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>

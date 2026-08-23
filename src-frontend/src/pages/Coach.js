@@ -1,7 +1,6 @@
 import React, {useMemo, useState} from "react";
 import {Link} from "react-router-dom";
-import {Megaphone, Bot, ChevronRight, Radio, Sparkles, PencilLine, Flag, MessageCircle, Plus} from "lucide-react";
-import PhotoPost from "../components/PhotoPost";
+import {Megaphone, Bot, ChevronRight, Radio, Sparkles, PencilLine, Plus} from "lucide-react";
 import {PageWrapper, BoxSection} from "../utils/miscellaneous";
 import {SectionHead} from "../components/uiBits";
 import {SectionLoader} from "../utils/loaders";
@@ -26,7 +25,7 @@ import usePollingInterval from "../utils/usePollingInterval";
 const FALLBACK_PERSONA = {name: "Your Coach", tagline: "Waiting for orders.", avatar: "megaphone", theme_color: "#d7ff3e"};
 
 
-function CoachHero({persona, config, latestMessage, ownedCompetitions, lastOwnActivityId, mood}) {
+function CoachHero({persona, config, latestMessage, ownedCompetitions, mood}) {
     return (
         <div className="relative overflow-hidden rounded-3xl bg-ink-900 text-white shadow-card-dark border border-ink-700/60">
             {/* volt aura */}
@@ -69,90 +68,35 @@ function CoachHero({persona, config, latestMessage, ownedCompetitions, lastOwnAc
                         </>
                     ) : config ? (
                         <p className="text-[15px] leading-relaxed text-gray-300">
-                            Standing by. Log a workout in <b>{config.competition_name || "your competition"}</b> and the coach will have words.
+                            Standing by. Log a workout in <b>{config.competition_name || "your challenge"}</b> and the coach will have words.
                         </p>
                     ) : (
                         <p className="text-[15px] leading-relaxed text-gray-300">
                             No coach assigned yet. {ownedCompetitions.length > 0
-                                ? "Pick a persona and unleash them on your competition."
-                                : "Once your competition's organizer enables the Drill Instructor, the banter lands here."}
+                                ? "Pick a persona and unleash them on your challenge."
+                                : "Once your challenge's organizer enables the Drill Instructor, the banter lands here."}
                         </p>
                     )}
                 </div>
 
                 {mood && <MoodMeter mood={mood} personaName={persona.name}/>}
 
-                {/* Respond deep-links into Coach's Corner. The camera is
-                    always on while the coach is on duty; the picture
-                    hangs under the caller's latest own workout. */}
                 {config && (
-                    <div className="mt-5 flex flex-wrap items-center gap-3 min-w-0">
-                        {latestMessage && (
-                            <Link to={`/competition/${latestMessage.competition_id}?reply=${latestMessage.id}`}
-                                  className="inline-flex items-center gap-2 rounded-full bg-volt-400 text-ink-950 px-4 sm:px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt max-w-full">
-                                <MessageCircle className="h-4 w-4 shrink-0"/>
-                                <span>Respond</span>
-                                <ChevronRight className="h-4 w-4 shrink-0"/>
-                            </Link>
-                        )}
-                        <PhotoPost competitionId={config.competition} parentId={lastOwnActivityId}
-                                   visionCapable={Boolean(config.vision_capable)}/>
-                    </div>
+                    <Link to={`/competition/${config.competition}?tab=feed`}
+                          className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-volt-400 text-ink-950 px-4 sm:px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt min-h-[44px]">
+                        <span>Open the feed</span>
+                        <ChevronRight className="h-4 w-4 shrink-0"/>
+                    </Link>
                 )}
 
                 {!config && ownedCompetitions.length > 0 && (
-                    <Link to={`/competition/${ownedCompetitions[0].id}`}
+                    <Link to={`/competition/${ownedCompetitions[0].id}?tab=feed`}
                           className="mt-5 inline-flex items-center gap-2 rounded-full bg-volt-400 text-ink-950 px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
                         <Megaphone className="h-4 w-4"/> Set up your coach <ChevronRight className="h-4 w-4"/>
                     </Link>
                 )}
             </div>
         </div>
-    );
-}
-
-
-function challengeStatus(c) {
-    const now = Date.now() / 1000;
-    if (c.start_date_epoch && now < c.start_date_epoch) return {label: "Upcoming", classes: "bg-sky-400/15 text-sky-600 dark:text-sky-300"};
-    if (c.end_date_epoch && now > c.end_date_epoch + 86400) return {label: "Finished", classes: "bg-gray-400/15 text-gray-500 dark:text-gray-400"};
-    return {label: "Running", classes: "bg-volt-400/20 text-volt-700 dark:text-volt-300"};
-}
-
-
-function MyChallenges({competitions}) {
-    return (
-        <BoxSection>
-            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2 mb-2">
-                <Flag className="h-4 w-4 text-volt-500"/> My challenges
-            </h2>
-            {competitions.length === 0 ? (
-                <p className="text-sm text-gray-400 px-2 py-3">
-                    No challenges yet. Create or join one from the <Link to="/dashboard" className="font-semibold text-volt-700 dark:text-volt-300 hover:underline">Home page</Link>.
-                </p>
-            ) : (
-                <ul className="divide-y divide-gray-100 dark:divide-ink-700/60">
-                    {competitions.map((c) => {
-                        const status = challengeStatus(c);
-                        return (
-                            <li key={c.id}>
-                                <Link to={`/competition/${c.id}`}
-                                      className="flex items-center gap-3 py-3 px-2 -mx-2 rounded-2xl hover:bg-gray-50 dark:hover:bg-ink-800 transition min-h-[44px]">
-                                    <div className="min-w-0 flex-1">
-                                        <p className="font-bold truncate">{c.name}</p>
-                                        <p className="text-xs text-gray-400">{c.start_date_fmt} – {c.end_date_fmt}</p>
-                                    </div>
-                                    <span className={"shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide " + status.classes}>
-                                        {status.label}
-                                    </span>
-                                    <ChevronRight className="h-4 w-4 text-gray-400 shrink-0"/>
-                                </Link>
-                            </li>
-                        );
-                    })}
-                </ul>
-            )}
-        </BoxSection>
     );
 }
 
@@ -243,16 +187,6 @@ function CoachPage() {
         return {heroPersona: persona, heroConfig: cfg, latestMessage: latest || null};
     }, [configs, personas, messages]);
 
-    const lastOwnActivityId = useMemo(() => {
-        if (!user || !heroConfig) return null;
-        const hit = (messages || []).find(
-            (m) => m.config === heroConfig.id && m.kind === "activity" && m.workout_user_id === user.id
-        );
-        return hit?.id ?? null;
-    }, [messages, heroConfig, user]);
-
-    const myCompetitions = useMemo(() => Object.values(competitions || {}), [competitions]);
-
     const ownedCompetitions = useMemo(() => {
         if (!competitions || !user) return [];
         return Object.values(competitions).filter((c) => c.owner === user.id);
@@ -290,7 +224,7 @@ function CoachPage() {
                 ) : (
                     <div className="flex flex-col gap-4">
                         <CoachHero persona={heroPersona} config={heroConfig} latestMessage={latestMessage}
-                                   ownedCompetitions={ownedCompetitions} lastOwnActivityId={lastOwnActivityId}
+                                   ownedCompetitions={ownedCompetitions}
                                    mood={heroConfig?.mood}/>
 
                         {heroConfig?.daily_order && <OrderCard order={heroConfig.daily_order}/>}
@@ -307,8 +241,6 @@ function CoachPage() {
                                 <DogTagRow tags={heroConfig?.my_tags || user?.dog_tags}/>
                             </BoxSection>
                         )}
-
-                        <MyChallenges competitions={myCompetitions}/>
 
                         <BoxSection>
                             <div className="flex items-center justify-between mb-4">
@@ -334,7 +266,7 @@ function CoachPage() {
                                 </button>
                             </div>
                             <div className="mt-3 rounded-xl bg-gray-100 dark:bg-ink-900 dark:border dark:border-ink-700/60 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-                                <span className="font-bold text-gray-600 dark:text-gray-300">Anyone can add a roaster</span> — built-ins plus the ones you create. Challenge owners pick a coach from this list in the AI Drill Instructor settings on their competition page.
+                                <span className="font-bold text-gray-600 dark:text-gray-300">Anyone can add a roaster</span> — built-ins plus the ones you create. Challenge owners pick a coach from this list in the AI Drill Instructor settings on their challenge page.
                             </div>
                         </BoxSection>
 

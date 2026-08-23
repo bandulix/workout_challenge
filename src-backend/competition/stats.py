@@ -177,6 +177,23 @@ def get_competition_stats(competition, last_seven_days=False):
 
     # Get user data
     user_dict = {i['id']: i for i in CustomUser.objects.filter(my_competitions=competition).values('id', 'username', 'strava_allow_follow', 'strava_athlete_id', 'profile_picture').order_by('username', 'id')}
+    echo_holds = {}
+    if user_dict:
+        from django.db.models import Count
+        from drill_instructor.echoes import LIVE_HOLDER_STATUSES
+        from drill_instructor.models import LegendEcho
+        echo_holds = {
+            row["holder_id"]: row["n"]
+            for row in (
+                LegendEcho.objects.filter(
+                    config__competition=competition,
+                    holder_id__in=user_dict.keys(),
+                    status__in=LIVE_HOLDER_STATUSES,
+                )
+                .values("holder_id")
+                .annotate(n=Count("id"))
+            )
+        }
     for key, value in user_dict.items():
         if value['strava_allow_follow'] is False:
             value['strava_athlete_id'] = None
@@ -184,6 +201,7 @@ def get_competition_stats(competition, last_seven_days=False):
         # endpoint URL (same-origin relative path is enough - the
         # frontend fetches it with the JWT), never the raw /media/ path.
         value['profile_picture'] = f"/api/user/{value['id']}/picture/" if value['profile_picture'] else None
+        value['echoes_held'] = int(echo_holds.get(key, 0))
 
     # Get user rankings
     leaderboard_user = (

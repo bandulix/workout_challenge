@@ -30,7 +30,7 @@ function BaseHome({children, tagline}) {
                  alt=""
                  width={1080}
                  height={1920}
-                 fetchPriority="high"
+                 fetchpriority="high"
                  decoding="async"
                  className="absolute inset-0 h-full w-full object-cover object-center animate-kenburns"/>
             <div className="absolute inset-0 bg-gradient-to-b from-ink-950/25 via-ink-950/40 to-ink-950/88 z-0"/>

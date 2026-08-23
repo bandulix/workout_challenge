@@ -111,6 +111,30 @@ class RegistrationInviteGateTests(TestCase):
         self.assertEqual(response.status_code, 201, response.content)
 
 
+class RegisterThrottleForwardedForTests(TestCase):
+    """X-Forwarded-For is only trusted from the loopback nginx."""
+
+    def test_direct_client_cannot_rotate_xff(self):
+        from custom_user.views import RegisterRateThrottle
+        throttle = RegisterRateThrottle()
+        req = mock.Mock()
+        req.META = {
+            "REMOTE_ADDR": "203.0.113.9",
+            "HTTP_X_FORWARDED_FOR": "198.51.100.1, 10.0.0.1",
+        }
+        self.assertEqual(throttle.get_cache_key(req, None), "register-throttle:203.0.113.9")
+
+    def test_loopback_proxy_uses_last_xff_hop(self):
+        from custom_user.views import RegisterRateThrottle
+        throttle = RegisterRateThrottle()
+        req = mock.Mock()
+        req.META = {
+            "REMOTE_ADDR": "127.0.0.1",
+            "HTTP_X_FORWARDED_FOR": "198.51.100.1, 203.0.113.9",
+        }
+        self.assertEqual(throttle.get_cache_key(req, None), "register-throttle:203.0.113.9")
+
+
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
 )
@@ -625,6 +649,47 @@ class CrossProviderDuplicateGuardTests(TestCase):
         self.assertEqual(mock_get.call_count, 1)
         self.assertFalse(WorkoutModel.objects.filter(strava_id=246810).exists())
         self.assertTrue(WorkoutModel.objects.filter(pk=manual.pk).exists())
+
+    def test_strava_sync_continues_after_a_malformed_activity(self):
+        """A missing start/duration on one Strava row used to abort the
+        rest of that user's import (the exception escaped the page loop)."""
+        from . import strava as strava_module
+        from workouts.models import Workout as WorkoutModel
+
+        self.user.strava_refresh_token = "gAAAAAencrypted"
+        self.user.save()
+        cache.set(f"strava_access_token_{self.user.id}", "cached-token", 3600)
+
+        broken = {"id": 1, "sport_type": "Run", "distance": 1000}
+        good = {
+            "id": 2,
+            "sport_type": "Run",
+            "start_date": self.start.isoformat(),
+            "elapsed_time": 1800,
+            "distance": 5000,
+        }
+        list_response = mock.Mock()
+        list_response.status_code = 200
+        list_response.json.return_value = [broken, good]
+        detail_response = mock.Mock()
+        detail_response.status_code = 200
+        detail_response.json.return_value = {"calories": 400, "average_heartrate": 140, "average_watts": 0}
+
+        monitor = mock.Mock()
+        monitor.ok_workout_requests.return_value = True
+
+        def fake_get(url, **kwargs):
+            if "athlete/activities" in url:
+                return list_response
+            return detail_response
+
+        with mock.patch.object(strava_module, "strava_api_monitor", monitor), \
+                mock.patch.object(strava_module.requests, "get", side_effect=fake_get):
+            result = strava_module.sync_strava(user__id=self.user.id)
+
+        self.assertEqual(result["new_activities"], 1)
+        self.assertTrue(WorkoutModel.objects.filter(strava_id=2).exists())
+        self.assertFalse(WorkoutModel.objects.filter(strava_id=1).exists())
 
 
 class MapHealthSportTypeTests(TestCase):

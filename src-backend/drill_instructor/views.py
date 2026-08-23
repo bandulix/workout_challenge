@@ -666,3 +666,57 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
         from workout_challenge.images import protected_media_response
         return protected_media_response(echo.image)
 
+    MAX_ECHO_ART_BYTES = 5 * 1024 * 1024
+    MAX_ECHO_ART_PER_DAY = 8
+
+    @action(detail=True, methods=["post"])
+    def art(self, request, pk=None):
+        """Holder uploads a photo; we store it and remix it into Echo art.
+
+        The current holder (or staff) may set the picture. The raw upload
+        is saved immediately so the crown placeholder disappears; a
+        background edit then paints it to match the Echo title and sport.
+        If no image-edit model is configured the original photo stays.
+        """
+        echo = self.get_object()
+        user = request.user
+        if echo.holder_id != user.id and not user.is_staff:
+            return Response(
+                {"detail": "Only the athlete who holds this Echo can set its picture."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        image = request.FILES.get("image")
+        if image is None:
+            return Response({"image": "A picture file is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.core.cache import cache
+        from rest_framework.exceptions import ValidationError as DrfValidationError
+        from workout_challenge.images import validate_and_reencode_image
+
+        day_key = f"echo-art-uploads:{user.id}:{timezone.now().date().isoformat()}"
+        used = cache.get(day_key, 0)
+        if used >= self.MAX_ECHO_ART_PER_DAY:
+            return Response(
+                {"image": f"That's enough Echo art for today - max {self.MAX_ECHO_ART_PER_DAY} per day."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        try:
+            image = validate_and_reencode_image(image, max_bytes=self.MAX_ECHO_ART_BYTES, max_side=1600)
+        except DrfValidationError as exc:
+            detail = exc.detail
+            message = detail[0] if isinstance(detail, list) else detail
+            return Response({"image": str(message)}, status=status.HTTP_400_BAD_REQUEST)
+
+        echo.image.save(f"echo-{echo.pk}.jpg", image, save=True)
+        try:
+            cache.set(day_key, used + 1, 86400)
+        except Exception:  # noqa: BLE001
+            pass
+        from .tasks import remix_echo_art
+        remix_echo_art.delay(echo.id)
+        echo.refresh_from_db()
+        return Response(
+            LegendEchoSerializer(echo, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
+

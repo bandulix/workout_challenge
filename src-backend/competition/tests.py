@@ -326,6 +326,22 @@ class CeleryAllowlistTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(set(response.json()), set(CeleryQueryView.ALLOWED_TASKS))
 
+    def test_failed_task_status_does_not_echo_exception(self):
+        self.client.force_authenticate(self.admin)
+        failed = mock.Mock()
+        failed.id = "abc"
+        failed.status = "FAILURE"
+        failed.successful.return_value = False
+        failed.failed.return_value = True
+        failed.result = RuntimeError("/opt/secret/broker redis://:hunter2@localhost")
+        with mock.patch("competition.views.current_app.AsyncResult", return_value=failed):
+            response = self.client.get("/api/celery/tasks/abc/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["error"], "Task failed.")
+        self.assertNotIn("hunter2", str(body))
+        self.assertNotIn("/opt/secret", str(body))
+
 
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},

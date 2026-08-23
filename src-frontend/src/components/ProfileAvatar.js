@@ -1,8 +1,9 @@
 import React, {useEffect, useRef, useState} from "react";
-import {Camera, Megaphone} from "lucide-react";
+import {Camera, Crown, Megaphone} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {useUploadProfilePictureMutation} from "../utils/reducers/usersSlice";
 import {invalidateProtectedImage, useProtectedImage} from "../utils/protectedMedia";
+import {isAcceptablePhoto, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
 
 // The user's profile picture with an optional camera-badge edit affordance.
 // Uploads go straight to PATCH /api/user/me/ as multipart form data.
@@ -11,8 +12,28 @@ import {invalidateProtectedImage, useProtectedImage} from "../utils/protectedMed
 // endpoint URL, which <img> can't load directly (no JWT header) - it is
 // fetched with credentials and rendered from an object URL.
 
-const ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+const ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif";
 const FALLBACK = "/profile.png";
+
+function echoHoldCount(user) {
+    const n = Number(user?.echoes_held);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function EchoCrown({count, size}) {
+    if (!count) return null;
+    const badge = Math.max(16, Math.round(size * 0.38));
+    const icon = Math.max(9, Math.round(badge * 0.55));
+    const label = count === 1 ? "Holds a Legend Echo" : `Holds ${count} Legend Echoes`;
+    return (
+        <span title={label}
+              className="absolute -top-1 -right-1 z-10 rounded-full bg-volt-400 text-ink-950 border border-ink-950 flex items-center justify-center shadow-glow-volt"
+              style={{width: badge, height: badge}}>
+            <Crown style={{width: icon, height: icon}} strokeWidth={2.5}/>
+            <span className="sr-only">{label}</span>
+        </span>
+    );
+}
 
 function ProfileAvatar({user, size = 96, editable = false, className = "", dunce = false}) {
     const fileInput = useRef(null);
@@ -25,13 +46,15 @@ function ProfileAvatar({user, size = 96, editable = false, className = "", dunce
     useEffect(() => { setImgFailed(false); }, [pictureUrl, fetchedSrc]);
     const src = (!fetchFailed && !imgFailed && fetchedSrc) || FALLBACK;
 
-    async function handleFile(e) {
-        const file = e.target.files?.[0];
-        e.target.value = ""; // allow re-picking the same file
+    async function handlePicked(file) {
         if (!file) return;
         setError(null);
         if (file.size > 5 * 1024 * 1024) {
             setError("Image too large (max 5 MB).");
+            return;
+        }
+        if (!isAcceptablePhoto(file)) {
+            setError("Please pick a photo (JPEG, PNG, WebP, GIF or HEIC).");
             return;
         }
         try {
@@ -45,6 +68,25 @@ function ProfileAvatar({user, size = 96, editable = false, className = "", dunce
         }
     }
 
+    function handleFile(e) {
+        const file = e.target.files?.[0];
+        e.target.value = ""; // allow re-picking the same file
+        handlePicked(file);
+    }
+
+    async function openPicker() {
+        try {
+            const native = await pickNativePhoto("prompt");
+            if (native) {
+                await handlePicked(native);
+                return;
+            }
+        } catch (err) {
+            if (isPhotoPickCancel(err)) return;
+        }
+        fileInput.current?.click();
+    }
+
     const img = (
         <img
             src={src}
@@ -54,6 +96,8 @@ function ProfileAvatar({user, size = 96, editable = false, className = "", dunce
             onError={() => { if (src !== FALLBACK) setImgFailed(true); }}
         />
     );
+
+    const holds = echoHoldCount(user);
 
     if (!editable) {
         return (
@@ -65,6 +109,7 @@ function ProfileAvatar({user, size = 96, editable = false, className = "", dunce
                         <Megaphone className="h-3 w-3"/>
                     </span>
                 )}
+                <EchoCrown count={holds} size={size}/>
             </div>
         );
     }
@@ -73,7 +118,7 @@ function ProfileAvatar({user, size = 96, editable = false, className = "", dunce
         <div className={"relative shrink-0 " + className} style={{width: size, height: size}}>
             <button
                 type="button"
-                onClick={() => fileInput.current?.click()}
+                onClick={openPicker}
                 className="group relative block w-full h-full rounded-full overflow-hidden ring-2 ring-volt-400/60 focus:outline-none focus:ring-volt-400"
                 aria-label="Change profile picture"
             >
@@ -84,6 +129,7 @@ function ProfileAvatar({user, size = 96, editable = false, className = "", dunce
                         : <Camera className="h-6 w-6 text-volt-400"/>}
                 </span>
             </button>
+            <EchoCrown count={holds} size={size}/>
             <span className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-volt-400 text-ink-950 flex items-center justify-center shadow-glow-volt pointer-events-none">
                 <Camera className="h-4 w-4"/>
             </span>

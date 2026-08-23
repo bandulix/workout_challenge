@@ -431,7 +431,9 @@ def _fetch_workouts(health_user_id: str, since: datetime.datetime) -> list:
 
 
 def _sync_user_workouts(user, start_datetime=None) -> dict:
-    since = start_datetime or (timezone.now() - datetime.timedelta(days=3))
+    # Same window as Garmin hourly/manual: watches and Health Connect
+    # often land late. Initial link still requests ~43 days separately.
+    since = start_datetime or (timezone.now() - datetime.timedelta(days=14))
     ow_workouts = _fetch_workouts(user.health_user_id, since)
 
     # Only the fetched ids - not the whole table's health rows (which

@@ -5,6 +5,7 @@ import {convertToLocalTimezone, dateFormatter} from "./workoutsSlice";
 export const feedApi = createApi({
     reducerPath: 'feedApi',
     baseQuery: baseQueryWithReauth,
+    tagTypes: ['Feed'],
     keepUnusedDataFor: 60 * 60 * 3, // 3 hours cache (default is 60s)
     refetchOnMountOrArgChange: 60 * 15, // Refetch if older than 15 minutes
     endpoints: (builder) => ({

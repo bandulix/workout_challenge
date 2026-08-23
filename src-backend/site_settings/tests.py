@@ -66,6 +66,16 @@ class SiteSettingsApiTests(TestCase):
         self.assertEqual(solo.llm_model, "new-model")
         self.assertEqual(solo.llm_api_key, "keep-me")
 
+    def test_llm_base_url_rejects_private_http(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.put(
+            "/api/site-settings/",
+            {"llm_base_url": "http://169.254.169.254/latest/meta-data/"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("llm_base_url", response.json())
+
     def test_resolve_llm_prefers_db_over_env(self):
         solo = SiteSettings.get_solo()
         solo.llm_api_key = "db-key"

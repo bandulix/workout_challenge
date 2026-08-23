@@ -4,7 +4,7 @@
 
 :root {
   --volt: #d7ff3e;
-  --ink: #0a0d06;
+  --ink: #0b0b0c;
   --canvas: #dfe8c4;
 }
 
@@ -15,9 +15,81 @@
   .animate-pulse-ring,
   .animate-float-slow,
   .animate-pop-in,
-  .animate-slide-up {
+  .animate-slide-up,
+  .glass-sheen {
     animation: none !important;
   }
+}
+
+/* Apple-style frosted glass (liquid glass): blur + saturate, specular
+   rim, soft drop shadow. Used by the bottom dock and action sheets.
+   -webkit- prefix is required for iOS Safari / Capacitor WebView. */
+.glass-dock,
+.glass-sheet {
+  position: relative;
+  isolation: isolate;
+  background: rgba(255, 255, 255, 0.58);
+  -webkit-backdrop-filter: blur(28px) saturate(1.85);
+  backdrop-filter: blur(28px) saturate(1.85);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 10px 40px rgba(11, 11, 12, 0.16),
+    0 1px 0 rgba(255, 255, 255, 0.75) inset,
+    0 -1px 0 rgba(11, 11, 12, 0.06) inset;
+}
+.dark .glass-dock,
+.dark .glass-sheet {
+  background: rgba(12, 12, 14, 0.55);
+  border-color: rgba(215, 255, 62, 0.18);
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.5),
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 0 28px rgba(215, 255, 62, 0.08);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-dock,
+  .glass-sheet { background: rgba(223, 232, 196, 0.94); }
+  .dark .glass-dock,
+  .dark .glass-sheet { background: rgba(12, 12, 14, 0.94); }
+}
+
+/* Slow specular sweep across the dock — “glass catching light”. */
+.glass-sheen {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    105deg,
+    transparent 36%,
+    rgba(255, 255, 255, 0.28) 50%,
+    transparent 64%
+  );
+  background-size: 220% 100%;
+  animation: glass-sheen 8s ease-in-out infinite;
+  opacity: 0.65;
+}
+.dark .glass-sheen {
+  background: linear-gradient(
+    105deg,
+    transparent 36%,
+    rgba(215, 255, 62, 0.12) 50%,
+    transparent 64%
+  );
+}
+@keyframes glass-sheen {
+  0%, 18% { background-position: 120% 0; }
+  50% { background-position: -20% 0; }
+  100% { background-position: -20% 0; }
+}
+
+.glass-chip {
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+}
+.dark .glass-chip {
+  background: rgba(215, 255, 62, 0.22);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 0 16px rgba(215, 255, 62, 0.18);
 }
 
 body {
@@ -32,7 +104,7 @@ body {
 
 ::selection {
   background: rgba(215, 255, 62, 0.85);
-  color: #0a0d06;
+  color: #0b0b0c;
 }
 
 /* Slim, theme-aware scrollbars (mainly desktop) */
@@ -40,8 +112,12 @@ body {
   scrollbar-width: thin;
   scrollbar-color: rgba(120, 130, 100, 0.5) transparent;
 }
+.dark * {
+  scrollbar-color: rgba(140, 140, 150, 0.4) transparent;
+}
 *::-webkit-scrollbar { width: 6px; height: 6px; }
 *::-webkit-scrollbar-thumb { background: rgba(120, 130, 100, 0.5); border-radius: 3px; }
+.dark *::-webkit-scrollbar-thumb { background: rgba(140, 140, 150, 0.4); }
 
 .body-no-scroll {
   overflow: hidden;

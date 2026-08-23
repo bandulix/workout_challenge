@@ -15,7 +15,7 @@ const fields = {
         "type": "text",
         "required": true,
         "read_only": false,
-        "label": "Competition Name",
+        "label": "Challenge name",
         "width": "max-sm:w-full w-1/2",
         "autoFocus": true,
     },
@@ -102,7 +102,7 @@ export default function CompetitionForm({competition, setModalState, setShowTran
         if (competition !== undefined) {
             // delete competition
             try {
-                const confirmation = await confirmAction('You are deleting this competition. This is irreversible. Are you sure?');
+                const confirmation = await confirmAction('You are deleting this challenge. This is irreversible. Are you sure?');
                 if (confirmation) {
                     await deleteEntry(values.id).unwrap();
                     setModalState(false);
@@ -128,7 +128,7 @@ export default function CompetitionForm({competition, setModalState, setShowTran
                 await updateEntry(values).unwrap();
                 setModalState(false);
                 document.body.classList.remove('body-no-scroll');
-                await notice('Saved. Changes might take up to 10 minutes to reflect on the competition page for all users.');
+                await notice('Saved. Changes might take up to 10 minutes to reflect on the challenge page for all users.');
             } catch (err) {
                 console.error('Update Competition failed', err);
                 setFieldErrors(err.data);
@@ -152,7 +152,7 @@ export default function CompetitionForm({competition, setModalState, setShowTran
     }
 
     return (
-        <Modal title="Competition" landscape={true} setShowModal={setModalState} isLoading={updateIsLoading || createIsLoading || deleteIsLoading}>
+        <Modal title="Challenge" landscape={true} setShowModal={setModalState} isLoading={updateIsLoading || createIsLoading || deleteIsLoading}>
             <SingleForm fields={finalFields} values={values} setValues={setValues} errors={fieldErrors}/>
             <div className="text-center text-red-500 text-xs italic">{formError}</div>
             <div className="relative flex justify-between items-center">

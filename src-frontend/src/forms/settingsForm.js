@@ -201,7 +201,7 @@ function HealthSection({user, onChanged}) {
                 <div className="flex gap-2">
                     <button onClick={handleLink} disabled={linkLoading}
                             className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
-                        {linkLoading ? <BeatLoader size={6} color="#0a0d06"/> : (linked ? (isNative ? "Reconnect Health" : "New connection code") : (isNative ? "Connect Health Connect" : "Connect Health App"))}
+                        {linkLoading ? <BeatLoader size={6} color="#0b0b0c"/> : (linked ? (isNative ? "Reconnect Health" : "New connection code") : (isNative ? "Connect Health Connect" : "Connect Health App"))}
                     </button>
                     {linked && (
                         <button onClick={handleUnlink} disabled={unlinkLoading}
@@ -289,7 +289,7 @@ function GarminSection({user, onChanged}) {
                                value={password} onChange={(e) => setPassword(e.target.value)}/>
                         <button onClick={handleLink} disabled={linkLoading || !email || !password}
                                 className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
-                            {linkLoading ? <BeatLoader size={6} color="#0a0d06"/> : "Connect Garmin"}
+                            {linkLoading ? <BeatLoader size={6} color="#0b0b0c"/> : "Connect Garmin"}
                         </button>
                     </>
                 )}

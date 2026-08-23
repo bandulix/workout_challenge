@@ -18,12 +18,6 @@ import TimeField from "./customTimefieldInput";
 
 
 export function Modal({setShowModal, title = null, landscape = false, isLoading = false, children}) {
-    const backgroundClick = (e) => {
-        if (e.target.classList.contains('modal-background')) {
-            closeModal();
-        }
-    }
-
     const closeModal = () => {
         document.body.classList.remove('body-no-scroll');
         setShowModal(false);
@@ -33,39 +27,39 @@ export function Modal({setShowModal, title = null, landscape = false, isLoading 
         document.body.classList.add('body-no-scroll');
     }, []);
 
+    // Overlay is a flex box, not a scrollport: centering a taller-than-
+    // viewport panel with items-center clips the top AND the save button
+    // (classic flex overflow) so phone users could not reach Create.
     return (
         <div
-            className="modal-background fixed inset-0 z-50 bg-black/50 backdrop-blur-sm overflow-y-auto sm:p-4"
-            onClick={(e) => backgroundClick(e)}
+            className="modal-background fixed inset-0 z-50 flex items-stretch sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:p-4"
+            onClick={closeModal}
         >
-            <div className="modal-background min-h-screen flex items-center justify-center">
-                <div
-                    className={"relative bg-white dark:bg-ink-850 dark:border dark:border-ink-700/60 rounded-3xl shadow-card-dark p-6 sm:p-8 animate-pop-in " + ((landscape) ? "max-w-4xl" : "max-w-2xl") +
-                        " w-full space-y-4 max-sm:w-full max-sm:min-h-screen max-sm:rounded-none max-sm:p-4 max-sm:m-0 max-sm:shadow-none max-sm:border-0 max-sm:pb-[max(2rem,env(safe-area-inset-bottom))]"}
-                >
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
-                        <button className="text-gray-400 hover:text-gray-600 dark:hover:text-volt-300 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                                onClick={() => closeModal()}
-                                aria-label="Close"
-                        >
-                            <X className="h-5 w-5"/>
-                        </button>
-                    </div>
+            <div
+                className={"relative flex max-h-[100dvh] w-full flex-col overflow-hidden bg-white dark:bg-ink-850 dark:border dark:border-ink-700/60 shadow-card-dark animate-pop-in " +
+                    ((landscape) ? "max-w-4xl " : "max-w-2xl ") +
+                    "sm:max-h-[90vh] sm:rounded-3xl max-sm:min-h-[100dvh] max-sm:rounded-none"}
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-2 sm:px-8 sm:pt-6">
+                    <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+                    <button className="text-gray-400 hover:text-gray-600 dark:hover:text-volt-300 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                            onClick={closeModal}
+                            aria-label="Close"
+                    >
+                        <X className="h-5 w-5"/>
+                    </button>
+                </div>
 
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 sm:pb-8 space-y-4">
                     {
                         (isLoading) ? (
                                 <div className="w-full h-64 flex items-center justify-center">
                                     <BeatLoader color="#d7ff3e"/>
                                 </div>
                             ) :
-                            (
-                                <>
-                                    {children}
-                                </>
-                            )
+                            children
                     }
-
                 </div>
             </div>
         </div>
@@ -114,6 +108,7 @@ export function FormInput({
                         <input
                             type="checkbox"
                             className="mr-2 leading-tight"
+                            id={name}
                             name={name}
                             tabIndex={tabIndex}
                             readOnly={readOnly}
@@ -127,8 +122,8 @@ export function FormInput({
 
                 {/* Input Label */}
                 {(label) ? <label
+                    htmlFor={name}
                     className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4"
-                    onClick={(type === "checkbox") ? (e) => setValue(!value): null}
                 >{label}{(required) ? "*" : null}{(errorMsg) ?
                     <span className="text-red-600 font-normal italic"> ({errorMsg})</span> : null}</label> : null}
 
@@ -169,6 +164,7 @@ export function FormInput({
                             {/* Dropdown Input Element */}
                             <select
                                 className={"w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-850 dark:text-gray-300 leading-tight focus:outline-none focus:shadow-outline" + (highlight ? " bg-volt-400/15 dark:bg-volt-400/10 border border-volt-500/50 ": "") + additionalClasses}
+                                id={name}
                                 name={name}
                                 tabIndex={tabIndex}
                                 required={required}
@@ -189,6 +185,7 @@ export function FormInput({
                             {/* All Other Input Elements */}
                             <input
                                 className={"w-full shadow border rounded py-2 px-3 text-gray-700 dark:text-gray-400 dark:placeholder-gray-600 leading-tight focus:outline-none focus:shadow-outline" + (highlight ? " bg-volt-400/15 dark:bg-volt-400/10 border border-volt-500/50 ": " dark:bg-ink-900 ") + additionalClasses}
+                                id={name}
                                 name={name}
                                 type={(type === "duration") ? "time" : type}
                                 placeholder={placeholder}
@@ -237,7 +234,7 @@ export function SingleForm({fields, values, setValues, errors = {}}) {
     return (
         <div className="flex flex-wrap">
             {Object.entries(fields).map(([fieldName, fieldKwargs]) => (
-                <FormInput key={fieldName} {...fieldKwargs} value={values[fieldName]} errorMsg={errors[fieldName]}
+                <FormInput key={fieldName} name={fieldName} {...fieldKwargs} value={values[fieldName]} errorMsg={errors[fieldName]}
                            setValue={(value) => setValues({...values, [fieldName]: value})}/>
             ))}
         </div>

@@ -6,7 +6,7 @@ import {useCallback, useEffect, useState} from "react";
 
 const STORAGE_KEY = "wc-theme";
 const LIGHT_COLOR = "#dfe8c4";
-const DARK_COLOR = "#0a0d06";
+const DARK_COLOR = "#0b0b0c";
 
 export function getStoredTheme() {
     const t = window.localStorage.getItem(STORAGE_KEY);

@@ -46,7 +46,9 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
     # Write path: uploads arrive as ``profile_picture_upload`` (multipart)
     # and map onto the model's profile_picture field.
     profile_picture = serializers.SerializerMethodField()
-    profile_picture_upload = serializers.ImageField(
+    # FileField not ImageField: Django's ImageField rejects HEIC before
+    # we can re-encode iPhone/Galaxy photos.
+    profile_picture_upload = serializers.FileField(
         write_only=True, required=False, allow_null=True, source="profile_picture"
     )
     mine = serializers.SerializerMethodField()
@@ -506,6 +508,7 @@ class LegendEchoSerializer(serializers.ModelSerializer):
     holder_name = serializers.SerializerMethodField()
     holder_id = serializers.IntegerField(read_only=True)
     image = serializers.SerializerMethodField()
+    can_upload_art = serializers.SerializerMethodField()
     my_challenge = serializers.SerializerMethodField()
     active_challenge = serializers.SerializerMethodField()
     metric_label = serializers.SerializerMethodField()
@@ -516,6 +519,7 @@ class LegendEchoSerializer(serializers.ModelSerializer):
             "id", "title", "narrative", "power", "status", "metric", "metric_value",
             "metric_label", "sport_type", "chain_length", "defenses",
             "origin_name", "origin_id", "holder_name", "holder_id", "image",
+            "can_upload_art",
             "created_at", "last_claimed_at", "immortalized_at",
             "my_challenge", "active_challenge",
         ]
@@ -533,6 +537,13 @@ class LegendEchoSerializer(serializers.ModelSerializer):
         if not obj.image:
             return None
         return reverse("drill-echo-picture", kwargs={"pk": obj.pk})
+
+    def get_can_upload_art(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return False
+        return obj.holder_id == user.id or bool(user.is_staff)
 
     def get_metric_label(self, obj):
         unit = "km" if obj.metric == "distance" else "min"

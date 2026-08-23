@@ -236,7 +236,13 @@ def activity_to_workout_props(user, activity: dict) -> dict | None:
 # Sync tasks
 # ---------------------------------------------------------------------------
 
-def _sync_user_activities(user, days_back=3) -> dict:
+# Hourly + manual re-sync window. Watches often sit unsynced for several
+# days; 3 days dropped those activities forever after the initial 43-day
+# import. 14 days still keeps the Garmin list call small.
+RECENT_SYNC_DAYS = 14
+
+
+def _sync_user_activities(user, days_back=RECENT_SYNC_DAYS) -> dict:
     """Fetch the last ``days_back`` days of activities for one user."""
     client = get_client_for_user(user)
 
@@ -298,7 +304,7 @@ def _sync_user_activities(user, days_back=3) -> dict:
 
 
 @app.task(bind=True, time_limit=60 * 30)
-def sync_garmin(self, user__id, days_back=3):
+def sync_garmin(self, user__id, days_back=RECENT_SYNC_DAYS):
     CustomUser = get_user_model()
     user = CustomUser.objects.get(id=user__id)
 
@@ -331,7 +337,7 @@ def daily_garmin_sync(self):
         if user.garmin_last_synced_at and user.garmin_last_synced_at > timezone.now() - datetime.timedelta(minutes=55):
             continue
         try:
-            sync_garmin(user__id=user.id, days_back=3)
+            sync_garmin(user__id=user.id, days_back=RECENT_SYNC_DAYS)
         except GarminAuthError as exc:
             # Tokens dead - clear the linkage so we stop hammering Garmin
             # and the user sees "not linked" in the UI.

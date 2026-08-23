@@ -61,3 +61,14 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
             "email_host_password": {"write_only": True, "required": False, "allow_blank": True},
             "health_developer_password": {"write_only": True, "required": False, "allow_blank": True},
         }
+
+    def validate_llm_base_url(self, value):
+        value = (value or "").strip()
+        if not value:
+            return value
+        from drill_instructor.llm_client import _safe_base_url
+        if not _safe_base_url(value):
+            raise serializers.ValidationError(
+                "LLM base URL must be https to a public host (http is only allowed for localhost)."
+            )
+        return value

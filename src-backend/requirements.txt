@@ -25,6 +25,8 @@ gevent>=24.2
 pywebpush>=2.0.0
 py-vapid>=1.9.0
 Pillow>=10.0.0
+# HEIC/HEIF from iPhone and Galaxy cameras. Wheels bundle libheif.
+pillow-heif>=0.16.0
 # 0.3.5+ requires Python 3.12 and changed login() to a tokenstore path.
 # GHSA-wjhr-76vg-2hvc is dump()-to-disk 0o644; we persist tokens via
 # dumps() into an encrypted DB column and never call dump().

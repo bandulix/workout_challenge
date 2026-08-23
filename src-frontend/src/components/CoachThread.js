@@ -118,7 +118,7 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
                                 <button onClick={handleSend} disabled={isLoading || !text.trim()}
                                         aria-label="Send reply"
                                         className="shrink-0 h-10 w-10 min-h-[40px] min-w-[40px] sm:h-11 sm:w-11 sm:min-h-[44px] sm:min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none flex items-center justify-center">
-                                    {isLoading ? <BeatLoader size={5} color="#0a0d06"/> : <Send className="h-4 w-4"/>}
+                                    {isLoading ? <BeatLoader size={5} color="#0b0b0c"/> : <Send className="h-4 w-4"/>}
                                 </button>
                             </div>
                             {error && <p className="text-xs text-red-500">{error}</p>}

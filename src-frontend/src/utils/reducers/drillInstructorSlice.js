@@ -205,6 +205,22 @@ export const drillInstructorApi = createApi({
                 "DrillMessage",
             ],
         }),
+        uploadEchoArt: builder.mutation({
+            query: ({id, image}) => {
+                const form = new FormData();
+                form.append("image", image);
+                return {
+                    url: `drill-instructor/echoes/${id}/art/`,
+                    method: "POST",
+                    body: form,
+                    headers: {"X-Skip-Content-Type": "1"},
+                };
+            },
+            invalidatesTags: (result, error, {id}) => [
+                {type: "DrillEcho", id},
+                "DrillEcho",
+            ],
+        }),
 
         // ---- Test message (Celery task runner) -------------------------
         runTestMessage: builder.mutation({
@@ -237,5 +253,6 @@ export const {
     useGetEchoesQuery,
     useGetEchoBookQuery,
     useChallengeEchoMutation,
+    useUploadEchoArtMutation,
     useRunTestMessageMutation,
 } = drillInstructorApi;

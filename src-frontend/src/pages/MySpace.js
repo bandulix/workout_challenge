@@ -23,6 +23,7 @@ import lodUniqby from 'lodash/uniqBy';
 import lodValues from 'lodash/values';
 import {useGetUserByIdQuery, usersApi} from "../utils/reducers/usersSlice";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
+import {useGetDrillConfigsQuery} from "../utils/reducers/drillInstructorSlice";
 import CompetitionForm from "../forms/competitionForm";
 import PersonalGoalsForm from "../forms/personalGoalsForm";
 import {useLocation, useNavigate, useNavigationType, useSearchParams} from "react-router-dom";
@@ -48,6 +49,79 @@ import {DogTagRow} from "../components/gameBits";
 import {Chip, EmptyState, SectionHead, SyncChip, rowClass, VOLT} from "../components/uiBits";
 import usePollingInterval from "../utils/usePollingInterval";
 import {notice} from "../utils/dialogs";
+
+
+const HAND_LOG_KEY = "wc_log_by_hand";
+
+function GettingStarted({user, competitions, workouts, configs, onJoin, onCreate, onSettings, onOpenChallenge}) {
+    const list = competitions || [];
+    const hasChallenge = list.length > 0;
+    const linked = Boolean(user?.strava_athlete_id || user?.garmin_email || user?.health_user_id);
+    const [hand, setHand] = useState(() => {
+        try { return localStorage.getItem(HAND_LOG_KEY) === "1"; } catch { return false; }
+    });
+    const hasWorkout = (workouts || []).some((w) => w.sport_type !== "Steps");
+    const sourceDone = linked || hand || hasWorkout;
+    const owns = list.some((c) => c.owner === user?.id);
+    const coachOn = (configs || []).some((c) => c.enabled);
+    const coachDone = coachOn || !owns;
+    if (hasChallenge && sourceDone && coachDone) return null;
+
+    const btn = "inline-flex items-center rounded-full bg-volt-400 text-ink-950 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide hover:bg-volt-300 transition min-h-[36px]";
+    const ghost = "inline-flex items-center rounded-full border border-volt-500/40 text-volt-700 dark:text-volt-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide hover:bg-volt-400/10 transition min-h-[36px]";
+
+    function Step({done, n, title, body, children}) {
+        return (
+            <li className="flex gap-3 py-2.5">
+                <span className={"shrink-0 mt-0.5 h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-bold " +
+                    (done ? "bg-volt-400 text-ink-950" : "bg-ink-900 text-volt-400")}>
+                    {done ? <Check className="h-3.5 w-3.5"/> : n}
+                </span>
+                <div className="min-w-0 flex-1">
+                    <p className={"text-sm font-bold " + (done ? "text-gray-400 line-through" : "")}>{title}</p>
+                    {!done && body && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{body}</p>}
+                    {!done && children}
+                </div>
+            </li>
+        );
+    }
+
+    return (
+        <BoxSection additionalClasses="mb-4">
+            <SectionHead title="Get started"/>
+            <ol className="mt-1 divide-y divide-gray-100 dark:divide-ink-700/60">
+                <Step done={hasChallenge} n="1" title="Join or create a challenge"
+                      body="That's the league you score in with friends.">
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        <button type="button" className={btn} onClick={onJoin}>Join</button>
+                        <button type="button" className={ghost} onClick={onCreate}>Create</button>
+                    </div>
+                </Step>
+                <Step done={sourceDone} n="2" title="Bring in workouts"
+                      body="Connect Strava, Garmin or Health — or log each session yourself.">
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        <button type="button" className={btn} onClick={onSettings}>Connect a device</button>
+                        <button type="button" className={ghost} onClick={() => {
+                            try { localStorage.setItem(HAND_LOG_KEY, "1"); } catch { /* private mode */ }
+                            setHand(true);
+                        }}>I'll log by hand</button>
+                    </div>
+                </Step>
+                {owns && (
+                    <Step done={coachOn} n="3" title="Turn the coach on"
+                          body="Open your challenge, go to Feed, and tap Activate.">
+                        <div className="mt-2">
+                            <button type="button" className={btn} onClick={() => {
+                                const owned = list.find((c) => c.owner === user?.id);
+                                if (owned) onOpenChallenge(owned.id);
+                            }}>Open challenge</button>
+                        </div>
+                    </Step>
+                )}
+            </ol>
+        </BoxSection>
+    );
+}
 
 
 function WelcomeBox({user, workouts}) {
@@ -165,7 +239,7 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
                     <SyncChip onClick={() => triggerGarminSync()} isLoading={garminSyncIsFetching} short="Sync" long="Sync Garmin"/>
                 )}
                 {showSourceButton(healthLinked, 'health') && (
-                    <SyncChip onClick={async () => { await nativeHealthKickSync({daysBack: 3}); triggerHealthSync(); }}
+                    <SyncChip onClick={async () => { await nativeHealthKickSync({daysBack: 14}); triggerHealthSync(); }}
                               isLoading={healthSyncIsFetching} short="Sync" long="Sync Health"/>
                 )}
             </SectionHead>
@@ -658,6 +732,10 @@ export default function MySpace() {
 
     const [linkStrava, setLinkStrava] = useState(false);
     const [joinCompetition, setJoinCompetition] = useState(false);
+    const [showCreateChallenge, setShowCreateChallenge] = useState(false);
+    const [showGettingStartedSettings, setShowGettingStartedSettings] = useState(false);
+    const navigate = useNavigate();
+    const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: !user});
 
     // ?action=log opens the workout form directly (PWA home-screen shortcut).
     const [quickLog, setQuickLog] = useState(query.get('action') === 'log');
@@ -682,6 +760,18 @@ export default function MySpace() {
 
             <div className="container mx-auto p-4">
                 <ApkUpdateBanner/>
+                {user && (
+                    <GettingStarted
+                        user={user}
+                        competitions={competitions}
+                        workouts={workouts}
+                        configs={drillConfigs}
+                        onJoin={() => setJoinCompetition(true)}
+                        onCreate={() => setShowCreateChallenge(true)}
+                        onSettings={() => setShowGettingStartedSettings(true)}
+                        onOpenChallenge={(id) => navigate(`/competition/${id}?tab=feed`)}
+                    />
+                )}
                 <div className="w-full">
 
                     {
@@ -750,6 +840,10 @@ export default function MySpace() {
 
             {linkStrava && <LinkStravaScreen setModal={setLinkStrava}/>}
             {joinCompetition && <JoinCompetitionForm setModalState={setJoinCompetition} join_code={searchTermJoin}/>}
+            {showCreateChallenge && <CompetitionForm setModalState={setShowCreateChallenge}/>}
+            {showGettingStartedSettings && user && (
+                <SettingsForm user={user} setModalState={setShowGettingStartedSettings} setLinkStrava={setLinkStrava}/>
+            )}
             {quickLog && user && (
                 <WorkoutForm setModalState={setQuickLog}
                              scaling_distance={parseFloat(user?.scaling_distance || "1.0")}/>

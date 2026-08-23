@@ -4,17 +4,24 @@ import {BeatLoader} from "react-spinners";
 import {useDispatch} from "react-redux";
 import {drillInstructorApi, usePostDrillPhotoMutation} from "../utils/reducers/drillInstructorSlice";
 import {compressImage} from "../utils/imageCompress";
+import {isAcceptablePhoto, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
 
 // Photo sharing for the coach feed. The camera button is ALWAYS visible
 // while the coach is on duty - a click without a latest-own-workout
 // parent, or when the server's AI model can't see pictures, explains
 // that instead of opening the picker. The picture always hangs under
 // the caller's latest activity comment (resolved server-side).
-export default function PhotoPost({competitionId, visionCapable, parentId, onPosted}) {
+const PILL =
+    "inline-flex w-full items-center justify-center gap-2 rounded-full bg-volt-400 text-ink-950 px-4 sm:px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt min-h-[44px]";
+const ICON =
+    "shrink-0 min-h-[44px] min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt flex items-center justify-center";
+
+export default function PhotoPost({competitionId, visionCapable, parentId, onPosted, variant = "icon"}) {
     const [open, setOpen] = useState(false);
     const [hint, setHint] = useState(null);
+    const pill = variant === "pill";
     return (
-        <>
+        <div className={pill ? "min-w-0 w-full flex flex-col" : undefined}>
             <button onClick={() => {
                         if (!visionCapable) {
                             setHint((v) => v === "vision" ? null : "vision");
@@ -31,11 +38,12 @@ export default function PhotoPost({competitionId, visionCapable, parentId, onPos
                     }}
                     title="Share a photo"
                     aria-label="Share a photo"
-                    className="shrink-0 min-h-[36px] min-w-[36px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt flex items-center justify-center">
-                <Camera className="h-4 w-4"/>
+                    className={pill ? PILL : ICON}>
+                <Camera className="h-4 w-4 shrink-0"/>
+                {pill && <span>Photo</span>}
             </button>
             {hint && (
-                <div className="basis-full w-full min-w-0 px-1 pb-1">
+                <div className="w-full min-w-0 px-1 pt-1 pb-1">
                     <p className="text-xs text-gray-400">
                         {hint === "workout"
                             ? "Photos hang under your latest workout. Log one and wait for the coach to comment first."
@@ -44,11 +52,11 @@ export default function PhotoPost({competitionId, visionCapable, parentId, onPos
                 </div>
             )}
             {open && visionCapable && parentId && (
-                <div className="basis-full w-full min-w-0">
+                <div className="w-full min-w-0">
                     <PhotoComposer competitionId={competitionId} parentId={parentId} onDone={() => setOpen(false)} onPosted={onPosted}/>
                 </div>
             )}
-        </>
+        </div>
     );
 }
 
@@ -65,17 +73,39 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
     const [postPhoto] = usePostDrillPhotoMutation();
     const dispatch = useDispatch();
 
-    function onPicked(e) {
-        const picked = e.target.files?.[0] || null;
-        e.target.value = "";
+    function applyPicked(picked) {
         setError(null);
-        // SVG/HTML as image/* can carry script; only bitmap types for preview + upload.
-        if (picked && picked.type && !/^image\/(jpeg|png|webp|gif)$/i.test(picked.type)) {
+        if (!picked) return;
+        // Reject SVG/HTML; allow empty type / HEIC / image/jpg (Android).
+        // Pixels are checked by the preview decode + server re-encode.
+        if (!isAcceptablePhoto(picked)) {
             setFile(null);
-            setError("Please pick a JPEG, PNG, WebP or GIF.");
+            setError("Please pick a photo (JPEG, PNG, WebP, GIF or HEIC).");
             return;
         }
         setFile(picked);
+    }
+
+    function onPicked(e) {
+        const picked = e.target.files?.[0] || null;
+        e.target.value = "";
+        applyPicked(picked);
+    }
+
+    async function pick(kind) {
+        setError(null);
+        try {
+            const native = await pickNativePhoto(kind);
+            if (native) {
+                applyPicked(native);
+                return;
+            }
+        } catch (err) {
+            if (isPhotoPickCancel(err)) return;
+            // Native picker failed - fall through to the HTML input.
+        }
+        if (kind === "camera") cameraInput.current?.click();
+        else galleryInput.current?.click();
     }
 
     // Decode to a canvas JPEG so the <img> src is pixels, not a blob: of
@@ -142,9 +172,9 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
             {/* Two inputs: `capture` forces the camera on phones and
                 hides the gallery. Leaving it off opens the library.
                 Desktop treats both as a normal file picker. */}
-            <input ref={cameraInput} type="file" accept="image/*" capture="user" className="hidden"
+            <input ref={cameraInput} type="file" accept="image/*,image/heic,image/heif" capture="user" className="hidden"
                    onChange={onPicked}/>
-            <input ref={galleryInput} type="file" accept="image/*" className="hidden"
+            <input ref={galleryInput} type="file" accept="image/*,image/heic,image/heif" className="hidden"
                    onChange={onPicked}/>
             {file && (
                 <div className="relative inline-block">
@@ -159,12 +189,12 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
             <div className="flex items-center gap-2">
                 {!file && (
                     <>
-                        <button type="button" onClick={() => cameraInput.current?.click()}
+                        <button type="button" onClick={() => pick("camera")}
                                 className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5">
                             <Camera className="h-3.5 w-3.5"/>
                             Camera
                         </button>
-                        <button type="button" onClick={() => galleryInput.current?.click()}
+                        <button type="button" onClick={() => pick("gallery")}
                                 className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5">
                             <ImageIcon className="h-3.5 w-3.5"/>
                             Gallery
@@ -175,7 +205,7 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
                 <button onClick={handleSend} disabled={posting || !file}
                         aria-label="Post photo"
                         className="shrink-0 min-h-[44px] min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none flex items-center justify-center">
-                    {posting ? <BeatLoader size={5} color="#0a0d06"/> : <Send className="h-4 w-4"/>}
+                    {posting ? <BeatLoader size={5} color="#0b0b0c"/> : <Send className="h-4 w-4"/>}
                 </button>
             </div>
             {error && <p className="text-xs text-red-500">{error}</p>}

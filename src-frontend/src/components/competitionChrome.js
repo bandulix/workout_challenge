@@ -70,7 +70,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
     }] = useLeaveCompetitionMutation();
 
     async function triggerLeaveCompetition() {
-        const confirmation = await confirmAction('Are you sure you want to leave the competition? Your earned points for yourself and your team will be unrecoverably deleted and you lose your spot on the leaderboard.');
+        const confirmation = await confirmAction('Are you sure you want to leave this challenge? Your earned points for yourself and your team will be unrecoverably deleted and you lose your spot on the leaderboard.');
         if (confirmation) {
             try {
                 const data = await leaveCompetition(competition.id).unwrap();

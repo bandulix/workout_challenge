@@ -1930,13 +1930,22 @@ class RoastImageGenerationTests(TestCase):
         self.assertEqual(kwargs["model"], "m")
         self.assertEqual(kwargs["prompt"], "roast it")
 
-    def test_url_result_is_downloaded(self):
-        client = self._client(url="https://img.example.com/roast.png")
+    def _png_get_resp(self, body=PNG_1PX):
         resp = mock.Mock()
         resp.headers = {"Content-Type": "image/png"}
-        resp.content = PNG_1PX
+        resp.status_code = 200
+        resp.is_redirect = False
+        resp.iter_content = lambda chunk_size=None: [body]
         resp.raise_for_status = lambda: None
-        with mock.patch("requests.get", return_value=resp):
+        resp.close = lambda: None
+        return resp
+
+    def test_url_result_is_downloaded(self):
+        from . import llm_client
+        client = self._client(url="https://img.example.com/roast.png")
+        resp = self._png_get_resp()
+        with mock.patch.object(llm_client, "_safe_outbound_url", side_effect=lambda url, **kw: url), \
+                mock.patch("requests.get", return_value=resp):
             data, error = self._generate(client)
         self.assertIsNone(error)
         self.assertEqual(data, PNG_1PX)
@@ -1984,13 +1993,59 @@ class RoastImageGenerationTests(TestCase):
         post_resp.json.return_value = {"data": [{"url": "https://img.example.com/roast.png"}]}
         get_resp = mock.Mock()
         get_resp.headers = {"Content-Type": "image/png"}
-        get_resp.content = PNG_1PX
+        get_resp.status_code = 200
+        get_resp.is_redirect = False
+        get_resp.iter_content = lambda chunk_size=None: [PNG_1PX]
         get_resp.raise_for_status = lambda: None
-        with mock.patch("requests.post", return_value=post_resp), \
+        get_resp.close = lambda: None
+        with mock.patch.object(llm_client, "_safe_outbound_url", side_effect=lambda url, **kw: url), \
+                mock.patch("requests.post", return_value=post_resp), \
                 mock.patch("requests.get", return_value=get_resp):
             data, error = self._generate(client, model="grok-imagine-image", style="xai")
         self.assertIsNone(error)
         self.assertEqual(data, PNG_1PX)
+
+    def test_image_url_to_loopback_is_rejected(self):
+        from . import llm_client
+        data, error = llm_client._fetch_capped_bytes("http://127.0.0.1/secret", 1024)
+        self.assertIsNone(data)
+        self.assertEqual(error, "image URL rejected")
+
+    def test_image_url_to_link_local_is_rejected(self):
+        from . import llm_client
+        data, error = llm_client._fetch_capped_bytes("http://169.254.169.254/latest/meta-data/", 1024)
+        self.assertIsNone(data)
+        self.assertEqual(error, "image URL rejected")
+
+    def test_image_download_is_size_capped_without_buffering_all(self):
+        from . import llm_client
+        resp = mock.Mock()
+        resp.headers = {"Content-Type": "image/png"}
+        resp.status_code = 200
+        resp.is_redirect = False
+        resp.iter_content = lambda chunk_size=None: [b"x" * 100, b"y" * 100]
+        resp.raise_for_status = lambda: None
+        resp.close = lambda: None
+        with mock.patch.object(llm_client, "_safe_outbound_url", side_effect=lambda url, **kw: url), \
+                mock.patch("requests.get", return_value=resp):
+            data, error = llm_client._fetch_capped_bytes("https://cdn.example/a.png", 150)
+        self.assertIsNone(data)
+        self.assertEqual(error, "generated image too large")
+
+    def test_redirect_to_private_host_is_rejected(self):
+        from . import llm_client
+        redir = mock.Mock()
+        redir.status_code = 302
+        redir.is_redirect = True
+        redir.headers = {"Location": "http://127.0.0.1/ssrf"}
+        redir.close = lambda: None
+        with mock.patch.object(
+            llm_client, "_safe_outbound_url",
+            side_effect=lambda url, **kw: None if "127.0.0.1" in url else url,
+        ), mock.patch("requests.get", return_value=redir):
+            data, error = llm_client._fetch_capped_bytes("https://cdn.example/a.png", 1024)
+        self.assertIsNone(data)
+        self.assertEqual(error, "image URL rejected")
 
 
 @override_settings(
@@ -2743,6 +2798,14 @@ class LegendEchoTests(TestCase):
         self.assertTrue(DrillInstructorMessage.objects.filter(
             config=self.config, kind=DrillInstructorMessage.KIND_ECHO,
         ).exists())
+        self.client.force_authenticate(self.alex)
+        me = self.client.get("/api/user/me/")
+        self.assertEqual(me.status_code, 200, me.content)
+        self.assertGreaterEqual(me.json().get("echoes_held") or 0, 1)
+        self.client.force_authenticate(self.nina)
+        other = self.client.get(f"/api/user/{self.alex.id}/")
+        self.assertEqual(other.status_code, 200, other.content)
+        self.assertGreaterEqual(other.json().get("echoes_held") or 0, 1)
 
     def test_personal_best_needs_a_prior_same_sport(self):
         from .echoes import mint_echo
@@ -2910,4 +2973,114 @@ class LegendEchoTests(TestCase):
         self.assertEqual(task.task, "drill_instructor.tasks.resolve_echo_windows")
         self.assertTrue(task.enabled)
         self.assertEqual(task.crontab.minute, "*/15")
+
+    def test_holder_can_upload_echo_art_non_holder_cannot(self):
+        from .echoes import mint_echo
+        from .models import LegendEcho
+
+        media = tempfile.TemporaryDirectory()
+        self.addCleanup(media.cleanup)
+        media_override = override_settings(MEDIA_ROOT=media.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        self.assertIsNotNone(echo)
+        self.assertFalse(echo.image)
+
+        upload = SimpleUploadedFile("pose.png", PNG_1PX, content_type="image/png")
+        with mock.patch("drill_instructor.tasks.remix_echo_art.delay") as queued:
+            self.client.force_authenticate(self.alex)
+            ok = self.client.post(
+                f"/api/drill-instructor/echoes/{echo.id}/art/",
+                {"image": upload},
+                format="multipart",
+            )
+        self.assertEqual(ok.status_code, 200, ok.content)
+        body = ok.json()
+        self.assertTrue(body["can_upload_art"])
+        self.assertTrue(body["image"])
+        queued.assert_called_once_with(echo.id)
+        echo = LegendEcho.objects.get(pk=echo.id)
+        self.assertTrue(echo.image)
+
+        self.client.force_authenticate(self.nina)
+        listed = self.client.get("/api/drill-instructor/echoes/", {"competition": self.competition.id})
+        self.assertFalse(listed.json()[0]["can_upload_art"])
+        denied = self.client.post(
+            f"/api/drill-instructor/echoes/{echo.id}/art/",
+            {"image": SimpleUploadedFile("x.png", PNG_1PX, content_type="image/png")},
+            format="multipart",
+        )
+        self.assertEqual(denied.status_code, 403)
+
+        pic = self.client.get(f"/api/drill-instructor/echoes/{echo.id}/picture/")
+        self.assertEqual(pic.status_code, 200)
+        self.assertTrue(pic["Content-Type"].startswith("image/"))
+
+    def test_remix_echo_art_overwrites_with_edited_bytes(self):
+        from django.core.files.base import ContentFile
+        from .echoes import mint_echo
+        from .models import LegendEcho
+        from .tasks import remix_echo_art
+
+        media = tempfile.TemporaryDirectory()
+        self.addCleanup(media.cleanup)
+        media_override = override_settings(MEDIA_ROOT=media.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        echo.image.save("echo-orig.jpg", ContentFile(PNG_1PX), save=True)
+        edited = b"\x89PNG\r\n\x1a\n" + b"edited-bytes"
+        with mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image"), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(edited, None)):
+            result = remix_echo_art(echo.id)
+        self.assertTrue(result.get("ok"))
+        echo = LegendEcho.objects.get(pk=echo.id)
+        echo.image.open("rb")
+        try:
+            self.assertEqual(echo.image.read(), edited)
+        finally:
+            echo.image.close()
+
+    def test_remix_echo_art_keeps_original_when_edit_unavailable(self):
+        from django.core.files.base import ContentFile
+        from .echoes import mint_echo
+        from .tasks import remix_echo_art
+
+        media = tempfile.TemporaryDirectory()
+        self.addCleanup(media.cleanup)
+        media_override = override_settings(MEDIA_ROOT=media.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        echo.image.save("echo-orig.jpg", ContentFile(PNG_1PX), save=True)
+        with mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value=None):
+            result = remix_echo_art(echo.id)
+        self.assertEqual(result.get("skipped"), "no image-edit model")
+        echo.refresh_from_db()
+        echo.image.open("rb")
+        try:
+            self.assertEqual(echo.image.read(), PNG_1PX)
+        finally:
+            echo.image.close()
+
+
+class EchoArtPromptTests(TestCase):
+    def test_prompt_includes_title_sport_and_feat(self):
+        from .llm_client import build_echo_art_prompt, echo_sport_scene
+        prompt = build_echo_art_prompt(
+            title="The First Flag",
+            narrative="Alex planted a flag.",
+            sport_type="Run",
+            metric_label="45 min Run",
+            power=12,
+        )
+        self.assertIn("The First Flag", prompt)
+        self.assertIn("Run", prompt)
+        self.assertIn("45 min Run", prompt)
+        self.assertIn("trail", echo_sport_scene("TrailRun").lower())
+        self.assertIn("treadmill", echo_sport_scene("VirtualRun").lower())
 

@@ -24,6 +24,19 @@ MAX_LIVE_ECHOES = 6
 COOLDOWN = datetime.timedelta(hours=72)
 MIN_DURATION_MIN = 30
 SKIP_SPORTS = {"Steps"}
+# Profile-pic crown: anyone currently holding a living or immortal Echo.
+LIVE_HOLDER_STATUSES = ("undefeated", "contested", "immortal")
+
+
+def bump_echo_holder_stats(competition_id):
+    """Leaderboard avatars read echoes_held from the stats snapshot."""
+    if not competition_id:
+        return
+    try:
+        from custom_user.point_recalc import bump_stats_generation
+        bump_stats_generation([competition_id])
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _name(user):
@@ -227,6 +240,7 @@ def mint_echo(workout, config, judgment=None):
     except Exception as exc:  # noqa: BLE001
         logger.warning("Echo mint post failed for workout %s: %s", workout.pk, exc)
     logger.info("Minted Legend Echo %s for workout %s in config %s", echo.pk, workout.pk, config.pk)
+    bump_echo_holder_stats(config.competition_id)
     return echo
 
 
@@ -352,6 +366,7 @@ def claim_echo(echo, winner, workout):
         "holder", "holder_workout", "chain_length", "status", "last_claimed_at",
         "metric", "metric_value", "sport_type", "power", "title",
     ])
+    bump_echo_holder_stats(echo.config.competition_id)
     award_tag(winner, "echo_slayer")
     persona = echo.config.persona
     body = (

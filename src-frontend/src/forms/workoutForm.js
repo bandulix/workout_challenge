@@ -272,7 +272,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
                 } else {
                     tmpValues.steps = null;
                 }
-                if (tmpValues.duration.length === 5) {
+                if ((tmpValues.duration || "").length === 5) {
                     tmpValues.duration += ":00";
                 }
                 await createEntry(tmpValues).unwrap();
@@ -295,7 +295,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
         } else {
             tmpValues.steps = null;
         }
-        if (tmpValues.duration.length === 5) {
+        if ((tmpValues.duration || "").length === 5) {
             tmpValues.duration += ":00";
         }
         if (id !== true) {

@@ -17,6 +17,7 @@ import {useGetUserByIdQuery} from "./reducers/usersSlice";
 import {useGetCompetitionsQuery} from "./reducers/competitionsSlice";
 import {useGetDrillConfigsQuery} from "./reducers/drillInstructorSlice";
 import {ensureFreshAccessToken} from "./authTokens";
+import {primaryChallenge} from "./challenge";
 
 
 const COACH_FALLBACK = {name: "Coach", avatar: "megaphone", theme_color: "#d7ff3e"};
@@ -24,17 +25,17 @@ const COACH_FALLBACK = {name: "Coach", avatar: "megaphone", theme_color: "#d7ff3
 function NavLink({to, icon: Icon, label, isActive, onClick}) {
     const className =
         "relative flex flex-col items-center justify-center gap-1 py-2 px-2.5 min-w-[56px] min-h-[52px] transition-colors duration-200 " +
-        (isActive ? "text-ink-950" : "text-gray-400 hover:text-volt-200");
+        (isActive ? "text-ink-950 dark:text-volt-200" : "text-ink-700/55 dark:text-gray-400 hover:text-ink-900 dark:hover:text-volt-200");
     const inner = (
         <>
             <span aria-hidden="true"
                   className={"absolute inset-x-1.5 inset-y-1 rounded-2xl transition-all duration-300 " +
-                      (isActive ? "bg-volt-400 shadow-glow-volt scale-100" : "bg-transparent scale-90")}/>
+                      (isActive ? "glass-chip scale-100" : "bg-transparent scale-90")}/>
             <Icon className={"relative z-10 h-5 w-5 transition-transform duration-300 " + (isActive ? "scale-110" : "")}
                   strokeWidth={isActive ? 2.4 : 1.8}
                   fill={isActive ? "currentColor" : "none"}/>
             <span className={"relative z-10 text-[10px] font-bold uppercase tracking-wider leading-none " +
-                (isActive ? "text-ink-950" : "")}>{label}</span>
+                (isActive ? "text-ink-950 dark:text-volt-200" : "")}>{label}</span>
         </>
     );
     if (onClick) {
@@ -53,12 +54,15 @@ function NavLink({to, icon: Icon, label, isActive, onClick}) {
 
 function Sheet({onClose, title, children}) {
     return (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-            <div className="absolute bottom-0 left-0 right-0 md:left-1/2 md:-translate-x-1/2 md:max-w-md bg-ink-900 text-white border-t md:border border-ink-700/60 rounded-t-3xl md:rounded-3xl md:bottom-4 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl animate-slide-up"
+        <div className="fixed inset-0 z-50 bg-ink-950/35 dark:bg-black/50 backdrop-blur-[2px]" onClick={onClose}>
+            <div className="glass-sheet absolute bottom-0 left-0 right-0 md:left-1/2 md:-translate-x-1/2 md:max-w-md text-ink-950 dark:text-white rounded-t-3xl md:rounded-3xl md:bottom-4 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] animate-slide-up overflow-hidden"
                  onClick={(e) => e.stopPropagation()}>
-                <div className="w-12 h-1.5 bg-ink-600 rounded-full mx-auto mb-4 md:hidden"/>
-                <h3 className="font-display text-sm uppercase tracking-wider mb-3">{title}</h3>
-                {children}
+                <span className="glass-sheen" aria-hidden="true"/>
+                <div className="relative">
+                    <div className="w-12 h-1.5 bg-ink-950/20 dark:bg-white/25 rounded-full mx-auto mb-4 md:hidden"/>
+                    <h3 className="font-display text-sm uppercase tracking-wider mb-3">{title}</h3>
+                    {children}
+                </div>
             </div>
         </div>
     );
@@ -69,24 +73,24 @@ function CompetitionPickerSheet({setShowCompetitionPicker}) {
     const navigate = useNavigate();
 
     return (
-        <Sheet onClose={() => setShowCompetitionPicker(false)} title="Your competitions">
+        <Sheet onClose={() => setShowCompetitionPicker(false)} title="Your challenges">
             <div className="space-y-1 max-h-72 overflow-y-auto">
                 {(competitions || []).map((c) => (
                     <button key={c.id}
                             onClick={() => {setShowCompetitionPicker(false); navigate(`/competition/${c.id}`);}}
-                            className="w-full text-left px-3 py-3 rounded-2xl hover:bg-ink-800 min-h-[44px]">
+                            className="w-full text-left px-3 py-3 rounded-2xl hover:bg-ink-950/8 dark:hover:bg-white/10 min-h-[44px]">
                         <div className="font-semibold">{c.name}</div>
                         <div className="text-xs text-gray-400">{c.start_date_fmt} – {c.end_date_fmt}</div>
                     </button>
                 ))}
                 {isSuccess && competitions?.length === 0 && (
-                    <div className="text-sm text-gray-400 px-3 py-2">No competitions yet.</div>
+                    <div className="text-sm text-gray-400 px-3 py-2">No challenges yet.</div>
                 )}
             </div>
             <button
                 onClick={() => {setShowCompetitionPicker(false); navigate("/dashboard");}}
                 className="w-full mt-3 px-3 py-3 rounded-2xl bg-volt-400 text-ink-950 font-bold uppercase tracking-wide text-sm min-h-[44px]">
-                + Create a new competition
+                + Create a challenge
             </button>
         </Sheet>
     );
@@ -95,7 +99,7 @@ function CompetitionPickerSheet({setShowCompetitionPicker}) {
 function MeSheetRow({icon: Icon, label, onClick, danger = false, trailing = null}) {
     return (
         <button onClick={onClick}
-                className={"w-full flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-ink-800 min-h-[44px] text-left " + (danger ? "text-red-400" : "")}>
+                className={"w-full flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-ink-950/8 dark:hover:bg-white/10 min-h-[44px] text-left " + (danger ? "text-red-500 dark:text-red-400" : "")}>
             <Icon className="h-5 w-5 shrink-0"/>
             <span className="flex-1 font-semibold text-sm">{label}</span>
             {trailing || <ChevronRight className="h-4 w-4 text-gray-500"/>}
@@ -111,7 +115,7 @@ function MeSheet({setShowMeSheet, user, isStaff, onSettings, onEqualizer, onSupp
 
     return (
         <Sheet onClose={close} title="Me">
-            <div className="flex items-center gap-3 px-3 pb-3 mb-2 border-b border-ink-700/60">
+            <div className="flex items-center gap-3 px-3 pb-3 mb-2 border-b border-ink-950/10 dark:border-white/10">
                 <ProfileAvatar user={user} size={52} editable/>
                 <div className="min-w-0">
                     <p className="font-bold truncate">{user?.first_name} {user?.last_name}</p>
@@ -150,12 +154,14 @@ export default function BottomNav() {
     const [linkStrava, setLinkStrava] = useState(false);
 
     const location = useLocation();
+    const navigate = useNavigate();
     // Hide the bar (and skip its API hooks) on public pages. Without
     // skip, `me` fired unauthenticated on /login and logged a 401 on
     // every visit - CrowdSec http-auth-bf counts those.
     const publicPaths = ["/", "/login", "/signup", "/logout", "/password"];
     const onPublic = publicPaths.some((p) => location.pathname === p || location.pathname.startsWith("/password"));
     const {data: user, error: userError, refetch: refetchUser} = useGetUserByIdQuery('me', {skip: onPublic});
+    const {data: competitions} = useGetCompetitionsQuery(undefined, {skip: onPublic || !user});
     const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: onPublic || !user});
     const isStaff = !!user?.is_staff;
 
@@ -209,14 +215,12 @@ export default function BottomNav() {
 
     return (
         <>
-            <nav className="fixed bottom-0 inset-x-0 z-40 overflow-visible animate-nav-rise pointer-events-none md:bottom-5"
+            <nav className="fixed inset-x-0 bottom-0 z-40 overflow-visible animate-nav-rise pointer-events-none pb-[max(0.5rem,env(safe-area-inset-bottom))] md:bottom-5 md:pb-0"
                  aria-label="Primary navigation">
-                {/* Full-width wrapper + mx-auto pill: nav-rise uses transform,
-                    which would clobber md:-translate-x-1/2 and leave the dock
-                    sitting at left:50% (not centred) in the browser.
-                    Safe-area padding is INSIDE the ink bar so the bar is
-                    flush with the screen edge (no floating gap). */}
-                <div className="pointer-events-auto flex items-stretch justify-around bg-ink-950/90 backdrop-blur-xl border-t border-volt-400/30 shadow-[0_-16px_48px_rgba(215,255,62,0.12)] pb-[env(safe-area-inset-bottom)] md:w-max md:mx-auto md:gap-1 md:rounded-full md:border md:border-volt-400/40 md:px-4 md:pb-0 md:shadow-glow-volt">
+                {/* Floating glass capsule. mx-auto (not translateX) so
+                    animate-nav-rise's transform cannot un-centre the dock. */}
+                <div className="glass-dock pointer-events-auto mx-3 flex items-stretch justify-around overflow-visible rounded-[1.75rem] px-1 md:mx-auto md:w-max md:gap-1 md:rounded-full md:px-4">
+                    <span className="glass-sheen rounded-[inherit]" aria-hidden="true"/>
                     <NavLink to="/dashboard" icon={Home} label="Home" isActive={onDashboard}/>
 
                     <NavLink
@@ -224,24 +228,28 @@ export default function BottomNav() {
                         icon={Flag}
                         label="Compete"
                         isActive={onCompetition || showCompetitionPicker}
-                        onClick={() => setShowCompetitionPicker(true)}
+                        onClick={() => {
+                            const one = primaryChallenge(competitions);
+                            if (one) navigate(`/competition/${one.id}`);
+                            else setShowCompetitionPicker(true);
+                        }}
                     />
 
-                    {/* Centre stage: the Coach */}
+                    {/* Centre stage: the Coach sits in a glass lens above the bar. */}
                     <Link to="/coach"
-                          className="flex flex-col items-center justify-center -mt-9 md:-mt-10 min-h-[44px] px-2"
+                          className="relative z-10 flex flex-col items-center justify-center -mt-8 md:-mt-9 min-h-[44px] px-2"
                           aria-label="Coach"
                           aria-current={onCoach ? "page" : undefined}>
                         <span className="relative">
                             <span aria-hidden="true"
-                                  className="absolute -inset-2 rounded-full bg-volt-400/30 blur-md animate-volt-breathe"/>
-                            <span className={"relative block rounded-full ring-2 ring-volt-400 shadow-glow-volt transition active:scale-95 " +
+                                  className="absolute -inset-2.5 rounded-full bg-volt-400/25 blur-md animate-volt-breathe"/>
+                            <span className={"relative block rounded-full ring-2 ring-white/70 dark:ring-volt-400 shadow-glow-volt transition active:scale-95 " +
                                 (onCoach ? "animate-pulse-ring" : "")}>
                                 <PersonaAvatar persona={coachPersona} size={58} glow/>
                             </span>
                         </span>
                         <span className={"text-[10px] font-bold leading-none mt-1.5 tracking-widest uppercase md:hidden " +
-                            (onCoach ? "text-volt-400" : "text-gray-400")}>
+                            (onCoach ? "text-volt-700 dark:text-volt-400" : "text-ink-700/55 dark:text-gray-400")}>
                             Coach
                         </span>
                     </Link>

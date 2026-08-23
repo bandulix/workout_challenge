@@ -173,7 +173,9 @@ class CeleryQueryView(APIView):
                     'task_id': task.id,
                     'status': task.status,
                     'result': task.result if task.successful() else None,
-                    'error': str(task.result) if task.failed() else None
+                    # Failed Celery results are exception objects; str()
+                    # leaks paths / broker URLs (CodeQL stack-trace-exposure).
+                    'error': "Task failed." if task.failed() else None
                 })
             except Exception:
                 # Exception text can leak internals (paths, broker URLs) -

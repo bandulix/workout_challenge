@@ -7,16 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-08-23
+
+### Added
+- **Echo Chamber art upload** — the current holder can add a photo on the Echo card (camera or gallery). The coach remixes it to match the Echo title and sport; the original stays if no image-edit model is configured.
+- **Echo holder crown on avatars** — anyone holding a living or immortal Echo gets a small volt crown on their profile picture (Home, Me sheet, leaderboard).
+- **Get started checklist on Home** — join/create a challenge, connect a device or log by hand, turn the coach on (owners). Hides when it's done.
+- **HEIC/HEIF photos** from iPhone and Galaxy camera rolls (Pillow + `pillow-heif`, re-encoded to JPEG).
+
 ### Changed
-- **Weekly coach vote sits under the leaderboard** and disappears once you have voted for the week (a new-coach handover still shows in Coach's Corner).
-- **Hall of Roasts** — tap a picture to open it large; the caption is just the hot-vote count.
+- **Compete opens your running challenge** when you only have one; the picker appears when you have several.
+- **Challenge page is Board / Feed / Trophies** instead of one long scroll. Coach conversation lives on Feed; Echoes and Hall of Roasts on Trophies.
+- **Coach tab is the persona** (mood, roaster, pings). “Open the feed” goes to that challenge’s Feed.
+- **Home is you** — the extra “My challenges” list is gone from Coach; Home still lists your challenges with your rank.
+- **Wording is “challenge”** in the UI (join, create, invite, leave).
+- **Apple-glass menu bar** — floating frosted capsule dock; Me/Compete sheets use the same material. Honours `prefers-reduced-motion`.
+- **Dark mode is night charcoal, not olive** (`#0b0b0c` / `#141416`).
+- **Garmin/Health hourly and manual sync look back 14 days** (was 3). First Health Connect catch-up on the phone is 43 days, matching Garmin’s initial import.
 
 ### Fixed
-- **CrowdSec `nginx-req-limit-exceeded` 24h-bans on a normal visit** — the service worker `cache.addAll()`'d 25 shell URLs (icons, every persona SVG, login background, fonts) in parallel on every install/update, stacked on the page's own first-paint requests. Behind nginx `limit_req` (often 5 r/s, burst 20) each overflow logs `limiting requests`, and CrowdSec bans the IP after 5 of those in a minute. Install now only precaches `/` + `/offline.html` (runtime caching still fills in the rest); if you rate-limit a reverse proxy in front, allow about 25 r/s with burst 80.
-- **Coach photo remix never landing** — pictures now hang under workout comments, so the roast ran on the 120s reply task while image-edit itself is allowed 180s; Celery killed the job before the poster was saved. The reply task now has 5 minutes, the remix no longer depends on the chat model passing a vision probe, and a failed face-lock retry runs the edit on the photo alone.
-- **Bottom bar floated off the screen edge** — safe-area padding is inside the ink dock so the bar is flush with the bottom.
-- **Echo challenge API no longer echoes exception text** (CodeQL `py/stack-trace-exposure`) — refusals are mapped to fixed strings.
-- **Goal-rescore timezone test no longer collides with setUp's yesterday workout**, which had started sharing the daily cap and failing CI around midnight.
+- **A broken Strava activity no longer blocks the rest of that user's import**; `elapsed_time` is used when `moving_time` is absent.
+- **LLM roast-image URL fetch is SSRF-safe** (https, public DNS, redirect re-check, streamed size cap).
+- **ALLOWED_HOSTS** uses hostname only (no `:port` from `HOSTS`).
+- **Register throttle ignores spoofed `X-Forwarded-For`** unless the TCP peer is loopback nginx.
+- **Celery task-status no longer echoes exception text**.
+- **Logging a workout now refreshes the board and feed** (RTK `tagTypes` for Stats/Feed).
+- **Leaderboard highlights you before you have logged** (`id` vs `workout__user__id`).
+- **Activate the coach on a phone** no longer clips Create; Activate starts with Enabled on.
+- **Android camera vs gallery** actually open the camera vs the library; HEIC/empty MIME is accepted and re-encoded to JPEG.
+- **Profile picture on Android** uses the native camera/gallery prompt.
+
+## [0.41.1] - 2026-08-23
+
+### Fixed
+- **CrowdSec `nginx-req-limit-exceeded` 24h-bans on a normal visit** — the service worker `cache.addAll()`'d 25 shell URLs in parallel on every install/update. Install now only precaches `/` + `/offline.html`. If you rate-limit a reverse proxy in front, allow about 25 r/s with burst 80.
 
 ## [0.40.0] - 2026-08-22
 

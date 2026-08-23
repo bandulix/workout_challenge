@@ -24,20 +24,19 @@ import logging
 import re
 import socket
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
 
-def _safe_base_url(url: Optional[str]) -> Optional[str]:
-    """Sanity-check the admin-supplied LLM base URL before handing it to OpenAI.
+def _safe_outbound_url(url: Optional[str], *, allow_loopback: bool = False) -> Optional[str]:
+    """Return ``url`` if it is safe to fetch, else None.
 
-    SSRF guard: scheme must be https (or http for literal loopback
-    hostnames), and the host must not resolve into a private / loopback
-    address. Prevents the LLM provider URL from being pointed at an
-    internal service by a malicious admin setting override.
+    SSRF guard: https (http only for literal loopback when
+    ``allow_loopback``), and the host must not resolve to a private /
+    loopback / link-local / multicast / reserved address.
     """
     if not url:
         return None
@@ -48,14 +47,18 @@ def _safe_base_url(url: Optional[str]) -> Optional[str]:
     host = (parsed.hostname or "").lower()
     if not host:
         return None
-    # Plain HTTP is allowed only for literal loopback hostnames - skip
-    # DNS so a host header pointing at a private IP via DNS rebinding
-    # can't bypass the http-only-for-loopback rule.
+    # Literal loopback: skip DNS so a Host header cannot rebind onto a
+    # private IP. Image downloads never allow loopback; LLM base URLs
+    # may (local ollama / vLLM).
     is_loopback_host = host in {"localhost", "127.0.0.1", "::1"}
-    if scheme == "http" and not is_loopback_host:
-        return None
     if is_loopback_host:
-        return url.strip()
+        if not allow_loopback:
+            return None
+        if scheme == "http" or scheme == "https":
+            return url.strip()
+        return None
+    if scheme != "https":
+        return None
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror:
@@ -68,6 +71,54 @@ def _safe_base_url(url: Optional[str]) -> Optional[str]:
         if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
             return None
     return url.strip()
+
+
+def _safe_base_url(url: Optional[str]) -> Optional[str]:
+    """Sanity-check the admin-supplied LLM base URL before handing it to OpenAI."""
+    return _safe_outbound_url(url, allow_loopback=True)
+
+
+def _fetch_capped_bytes(url: str, max_bytes: int):
+    """GET ``url`` with SSRF checks, no automatic redirects, size cap.
+
+    Redirects are followed only after the Location is re-validated, so a
+    public CDN hop cannot bounce us onto a link-local metadata endpoint.
+    ``resp.content`` is never used: it would buffer an attacker-sized body
+    before the cap applies.
+    """
+    import requests as _requests
+
+    current = url
+    for _ in range(5):
+        safe = _safe_outbound_url(current, allow_loopback=False)
+        if not safe:
+            return None, "image URL rejected"
+        try:
+            resp = _requests.get(safe, timeout=30, stream=True, allow_redirects=False)
+        except Exception as exc:  # noqa: BLE001
+            return None, f"image download failed ({type(exc).__name__})"
+        try:
+            if getattr(resp, "is_redirect", False) or resp.status_code in (301, 302, 303, 307, 308):
+                nxt = resp.headers.get("Location")
+                if not nxt:
+                    return None, "image download failed (redirect)"
+                current = urljoin(safe, nxt)
+                continue
+            resp.raise_for_status()
+            content_type = (resp.headers.get("Content-Type") or "").split(";")[0].strip()
+            if not content_type.startswith("image/"):
+                return None, f"image URL answered {content_type or 'unknown content type'}"
+            buf = bytearray()
+            for chunk in resp.iter_content(64 * 1024):
+                if not chunk:
+                    continue
+                buf.extend(chunk)
+                if len(buf) > max_bytes:
+                    return None, "generated image too large"
+            return bytes(buf), None
+        finally:
+            resp.close()
+    return None, "image download failed (too many redirects)"
 
 
 def _resolved_client(timeout=None, max_retries=None):
@@ -509,20 +560,7 @@ def _extract_image_payload(result) -> "tuple[Optional[bytes], Optional[str]]":
         return base64.b64decode(b64), None
     if not url:
         return None, "image API returned neither b64_json nor url"
-    import requests as _requests
-
-    try:
-        resp = _requests.get(url, timeout=60, stream=True)
-        resp.raise_for_status()
-    except Exception as exc:  # noqa: BLE001
-        return None, f"image download failed ({type(exc).__name__})"
-    content_type = (resp.headers.get("Content-Type") or "").split(";")[0].strip()
-    if not content_type.startswith("image/"):
-        return None, f"image URL answered {content_type or 'unknown content type'}"
-    payload = resp.content[:MAX_ROAST_IMAGE_BYTES + 1]
-    if len(payload) > MAX_ROAST_IMAGE_BYTES:
-        return None, "generated image too large"
-    return payload, None
+    return _fetch_capped_bytes(url, MAX_ROAST_IMAGE_BYTES)
 
 
 def _image_cache_key() -> str:
@@ -704,6 +742,77 @@ def build_roast_image_prompt(*, persona_name: str, persona_description: str = ""
         )
     else:
         parts.append("Do not invent extra slogans or poster headlines.")
+    return "\n".join(parts)
+
+
+_ECHO_SPORT_SCENE = {
+    "Run": "a long-distance running world: open road, dawn trail, stadium track, finish-line tape",
+    "TrailRun": "a rugged mountain trail, roots and ridgelines, mist in the trees",
+    "VirtualRun": "an indoor treadmill arena turned mythical, neon HUD and city lights",
+    "Ride": "a cycling epic: tarmac, peloton shadows, alpine switchbacks",
+    "VirtualRide": "an indoor trainer transformed into a velodrome of light",
+    "MountainBikeRide": "a dirt jump and forest singletrack, dust and berms",
+    "EBikeRide": "an e-bike climb into big-sky country",
+    "Walk": "a determined walking pilgrimage, long road stretching to the horizon",
+    "Hike": "a summit ridge, backpack, weather rolling over peaks",
+    "Swim": "open water or a racing pool, lanes and sunlight through water",
+    "WeightTraining": "a heroic weight room, iron plates, chalk in the air",
+    "HighIntensityIntervalTraining": "an explosive HIIT arena, motion blur and volt sparks",
+    "Yoga": "a calm but powerful yoga hall, light shafts and mountain silhouettes",
+    "Rowing": "a river or indoor tank, oars cutting water like thunder",
+    "Kayaking": "wild water, kayak spray, canyon walls",
+    "Soccer": "a floodlit pitch at night, crowd as ghosts of volt",
+    "Ski": "alpine snow, steep pitch, ice crystals",
+    "AlpineSki": "a steep alpine descent, ice and sky",
+    "Snowboard": "a snow park in storm light",
+    "Workout": "a legendary training ground that fits a general athlete",
+}
+
+
+def echo_sport_scene(sport_type: str) -> str:
+    if not sport_type:
+        return _ECHO_SPORT_SCENE["Workout"]
+    if sport_type in _ECHO_SPORT_SCENE:
+        return _ECHO_SPORT_SCENE[sport_type]
+    # Compound keys like EMountainBikeRide fall back to a cycling world.
+    lowered = sport_type.lower()
+    if "run" in lowered:
+        return _ECHO_SPORT_SCENE["Run"]
+    if "ride" in lowered or "bike" in lowered or "cycle" in lowered:
+        return _ECHO_SPORT_SCENE["Ride"]
+    if "ski" in lowered:
+        return _ECHO_SPORT_SCENE["AlpineSki"]
+    if "swim" in lowered:
+        return _ECHO_SPORT_SCENE["Swim"]
+    return _ECHO_SPORT_SCENE["Workout"]
+
+
+def build_echo_art_prompt(*, title: str, narrative: str = "", sport_type: str = "",
+                          metric_label: str = "", power: Optional[int] = None) -> str:
+    """Edit the holder's photo into living trophy art for this Echo."""
+    scene = echo_sport_scene(sport_type)
+    parts = [
+        "Edit IMAGE 1, the athlete's photo, into legendary Echo Chamber trophy art.",
+        f"This Echo is titled \"{(title or 'Legend').strip()[:80]}\".",
+        f"SPORT SETTING: {scene}. The picture must clearly read as {sport_type or 'training'}, not a generic gym stock shot.",
+        "Keep the athlete's face from IMAGE 1 clearly recognizable. Do not "
+        "beautify, distort, swap, or replace the athlete. The edit is heroic "
+        "and good-natured - never mock body, appearance, or identity.",
+        "Style: cinematic living trophy, night-ink and volt-lime, dramatic light, "
+        "a sense of legend rather than a snapshot. Paint the Echo title as "
+        "readable lettering on a banner, stone, race bib, or HUD if it fits.",
+    ]
+    story = (narrative or "").strip()[:400]
+    if story:
+        parts.append(f"ECHO STORY (tone only, do not write a paragraph on the image): {story}")
+    if metric_label:
+        parts.append(
+            "STATS OVERLAY: paint this feat as clean readable on-image text "
+            f"(do not cover the face). Spell it exactly: {metric_label}"
+        )
+    if power:
+        parts.append(f"Power rating to hint in the art: {int(power)}.")
+    parts.append("Do not invent extra slogans besides the Echo title.")
     return "\n".join(parts)
 
 

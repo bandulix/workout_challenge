@@ -12,15 +12,26 @@ const JPEG_QUALITY = 0.82;
 const SKIP_BYTES = 400 * 1024; // already small enough - don't touch
 
 export async function compressImage(file) {
-    if (!file || !file.type?.startsWith("image/")) return file;
-    if (file.type === "image/gif") return file;
-    if (file.size <= SKIP_BYTES) return file;
+    if (!file) return file;
+    const type = (file.type || "").toLowerCase();
+    if (type === "image/gif") return file;
+    // Always try to decode. Android WebView often sends an empty type,
+    // image/jpg, image/heic, or application/octet-stream - skipping
+    // those would upload a file the server can't (or won't) accept.
+    if (type && !type.startsWith("image/") && type !== "application/octet-stream") {
+        return file;
+    }
+    if (file.size <= SKIP_BYTES && (type === "image/jpeg" || type === "image/jpg")) return file;
 
     let bitmap;
     try {
         bitmap = await createImageBitmap(file, {imageOrientation: "from-image"});
     } catch {
-        return file; // undecodable in this browser - server validation decides
+        try {
+            bitmap = await createImageBitmap(file);
+        } catch {
+            return file; // undecodable here - server validation decides
+        }
     }
     try {
         const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
@@ -36,7 +47,12 @@ export async function compressImage(file) {
         const blob = await new Promise((resolve) =>
             canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY)
         );
-        if (!blob || blob.size >= file.size) return file; // no win - keep original
+        if (!blob) return file;
+        // Keep the original only when it is already a type the server
+        // accepts AND the recompress did not shrink it. HEIC / empty
+        // MIME (Android gallery) must become JPEG even if bigger.
+        const alreadySafe = /^image\/(jpeg|jpg|png|webp)$/i.test(type);
+        if (alreadySafe && blob.size >= file.size) return file;
         const name = (file.name || "photo").replace(/\.[a-z0-9]+$/i, "") + ".jpg";
         return new File([blob], name, {type: "image/jpeg"});
     } finally {

@@ -13,7 +13,7 @@ const fields = {
         "type": "text",
         "required": true,
         "read_only": false,
-        "label": "Competition Join Code",
+        "label": "Challenge join code",
         "width": "max-sm:w-full w-2/3",
         "autoFocus": true,
     },
@@ -73,11 +73,11 @@ export default function JoinCompetitionForm({setModalState, join_code= null}) {
     }
 
     return (
-        <Modal title="Join Competition" landscape={false} setShowModal={setModalState} isLoading={updateIsLoading}>
+        <Modal title="Join challenge" landscape={false} setShowModal={setModalState} isLoading={updateIsLoading}>
             <SingleForm fields={fields} values={values} setValues={setValues} errors={fieldErrors}/>
             <div className="text-center text-red-500 text-xs italic">{formError}</div>
             <div className="relative flex justify-end items-end">
-              <JoinButton onClick={handleSubmit} label="Join Competition" highlighted={true} larger={true} />
+              <JoinButton onClick={handleSubmit} label="Join challenge" highlighted={true} larger={true} />
             </div>
         </Modal>
     )
