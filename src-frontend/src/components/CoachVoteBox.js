@@ -70,7 +70,13 @@ export function CoachHandover({configId, enabled}) {
     );
 }
 
-export default function CoachVoteBox({configId, enabled}) {
+export default function CoachVoteBox({configs, preferredConfigId}) {
+    const votable = (configs || []).filter((c) => c.enabled);
+    const [pickedId, setPickedId] = useState(null);
+    const configId = votable.some((c) => c.id === pickedId)
+        ? pickedId
+        : (votable.some((c) => c.id === preferredConfigId) ? preferredConfigId : votable[0]?.id);
+
     const poll = usePollingInterval(60000);
     const {data: ballot} = useGetCoachBallotQuery(configId, {
         pollingInterval: poll,
@@ -79,7 +85,7 @@ export default function CoachVoteBox({configId, enabled}) {
     const [vote, {isLoading}] = useVoteCoachPersonaMutation();
     const now = useNowTick(Boolean(ballot?.next_switch_at));
 
-    if (!enabled || !ballot) return null;
+    if (!configId || !ballot) return null;
 
     const countdown = formatCountdown(ballot.next_switch_at, now);
     const tiedLeaders = (ballot.candidates || []).filter((c) => c.leading && c.votes > 0).length > 1;
@@ -94,7 +100,7 @@ export default function CoachVoteBox({configId, enabled}) {
     }
 
     return (
-        <BoxSection additionalClasses="mb-4">
+        <BoxSection>
             <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
                     <Vote className="h-3.5 w-3.5 text-volt-500"/> Vote next week's coach
@@ -103,6 +109,20 @@ export default function CoachVoteBox({configId, enabled}) {
                     {countdown}
                 </p>
             </div>
+            {votable.length > 1 && (
+                <div className="mt-2 flex gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1">
+                    {votable.map((c) => {
+                        const on = c.id === configId;
+                        return (
+                            <button key={c.id} type="button" onClick={() => setPickedId(c.id)}
+                                    className={"shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide min-h-[36px] transition " +
+                                        (on ? "bg-volt-400 text-ink-950 shadow-glow-volt" : "btn-glass")}>
+                                {c.competition_name || "Challenge"}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
             <p className="text-[11px] text-gray-400 mt-1">
                 {ballot.vote_count === 0
                     ? "No votes yet. Winner takes over Monday morning."

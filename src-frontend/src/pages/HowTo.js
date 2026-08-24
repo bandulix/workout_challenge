@@ -25,7 +25,7 @@ export function LinkStravaScreen({setModal}) {
 
     return (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center overflow-auto p-4">
-            <div className="bg-white dark:bg-ink-850 dark:border dark:border-ink-700/60 rounded-3xl shadow-card-dark p-8 max-w-2xl w-full text-center space-y-4 max-h-[100vh] overflow-y-auto">
+            <div className="glass-card rounded-3xl p-8 max-w-2xl w-full text-center space-y-4 max-h-[100vh] overflow-y-auto">
                 {
                     current === 0 ? (
                         <>

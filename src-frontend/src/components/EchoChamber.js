@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from "react";
-import {Camera, Crown, Image as ImageIcon, ScrollText, Share2, Swords} from "lucide-react";
+import {Camera, Crown, ScrollText, Share2, Swords} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {useDispatch} from "react-redux";
 import {BoxSection} from "../utils/miscellaneous";
@@ -51,15 +51,13 @@ function EchoArt({url, title, canUpload, echoId}) {
     const {src} = useProtectedImage(url);
     const [uploadArt] = useUploadEchoArtMutation();
     const dispatch = useDispatch();
-    const cameraInput = useRef(null);
-    const galleryInput = useRef(null);
-    const [chooser, setChooser] = useState(false);
+    const fileInput = useRef(null);
     const [busy, setBusy] = useState(false);
 
     const frame = src ? (
-        <img src={src} alt={title || ""} className="h-40 w-full object-cover rounded-xl"/>
+        <img src={src} alt={title || ""} className="h-40 w-full object-cover"/>
     ) : (
-        <div className="h-40 w-full rounded-xl bg-gradient-to-br from-ink-800 via-ink-900 to-black flex items-center justify-center">
+        <div className="h-40 w-full bg-gradient-to-br from-ink-800 via-ink-900 to-black flex items-center justify-center">
             <Crown className="h-8 w-8 text-volt-400/70"/>
         </div>
     );
@@ -81,13 +79,12 @@ function EchoArt({url, title, canUpload, echoId}) {
             notice(err?.data?.image || err?.data?.detail || "Could not upload that picture.");
         } finally {
             setBusy(false);
-            setChooser(false);
         }
     }
 
-    async function pick(kind) {
+    async function openPicker() {
         try {
-            const native = await pickNativePhoto(kind);
+            const native = await pickNativePhoto("prompt");
             if (native) {
                 await send(native);
                 return;
@@ -95,37 +92,34 @@ function EchoArt({url, title, canUpload, echoId}) {
         } catch (err) {
             if (isPhotoPickCancel(err)) return;
         }
-        if (kind === "camera") cameraInput.current?.click();
-        else galleryInput.current?.click();
+        fileInput.current?.click();
     }
 
-    if (!canUpload) return frame;
+    if (!canUpload) {
+        return <div className="overflow-hidden rounded-xl">{frame}</div>;
+    }
 
     return (
         <div className="relative">
-            {frame}
-            <input ref={cameraInput} type="file" accept="image/*,image/heic,image/heif" capture="user" className="hidden"
-                   onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; send(f); }}/>
-            <input ref={galleryInput} type="file" accept="image/*,image/heic,image/heif" className="hidden"
-                   onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; send(f); }}/>
-            <button type="button" onClick={() => setChooser((v) => !v)} disabled={busy}
+            <button type="button" onClick={openPicker} disabled={busy}
                     aria-label={src ? "Change Echo art" : "Add Echo art"}
-                    className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 rounded-full bg-volt-400 text-ink-950 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wide shadow-glow-volt min-h-[36px] disabled:opacity-60">
-                {busy ? <BeatLoader size={5} color="#0b0b0c"/> : <Camera className="h-3.5 w-3.5"/>}
-                {src ? "Change art" : "Add art"}
+                    className="group relative block w-full overflow-hidden rounded-xl focus:outline-none focus:ring-2 focus:ring-volt-400 disabled:opacity-80">
+                {frame}
+                <span className="absolute inset-0 bg-ink-950/45 opacity-0 group-hover:opacity-100 group-active:opacity-100 transition flex flex-col items-center justify-center gap-1.5">
+                    {busy
+                        ? <BeatLoader size={6} color="#d7ff3e"/>
+                        : (
+                            <>
+                                <Camera className="h-7 w-7 text-volt-400"/>
+                                <span className="text-[11px] font-extrabold uppercase tracking-wide text-volt-400">
+                                    {src ? "Change art" : "Add art"}
+                                </span>
+                            </>
+                        )}
+                </span>
             </button>
-            {chooser && !busy && (
-                <div className="absolute bottom-12 right-2 z-10 rounded-2xl bg-ink-900/95 border border-volt-400/30 p-1 shadow-card-dark">
-                    <button type="button" onClick={() => pick("camera")}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wide text-gray-200 hover:text-volt-300 min-h-[40px]">
-                        <Camera className="h-3.5 w-3.5"/> Camera
-                    </button>
-                    <button type="button" onClick={() => pick("gallery")}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wide text-gray-200 hover:text-volt-300 min-h-[40px]">
-                        <ImageIcon className="h-3.5 w-3.5"/> Gallery
-                    </button>
-                </div>
-            )}
+            <input ref={fileInput} type="file" accept="image/*,image/heic,image/heif" className="hidden"
+                   onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; send(f); }}/>
         </div>
     );
 }
@@ -154,7 +148,7 @@ function EchoCard({echo, userId, onChallenge, busy, now}) {
     const canChallenge = live && !mine && !war && Boolean(userId);
 
     return (
-        <article className="rounded-2xl border border-gray-300 bg-white text-ink-950 shadow-card dark:border-volt-400/35 dark:bg-ink-900 dark:text-white dark:shadow-glow-volt p-3.5">
+        <article className="rounded-2xl glass-card text-ink-950 dark:text-white p-3.5">
             <EchoArt url={echo.image} title={echo.title}
                      canUpload={Boolean(echo.can_upload_art)} echoId={echo.id}/>
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -192,7 +186,7 @@ function EchoCard({echo, userId, onChallenge, busy, now}) {
                     </button>
                 )}
                 <button type="button" onClick={() => shareEcho(echo)}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-gray-200 text-ink-950 dark:bg-white/10 dark:text-gray-200 px-3 py-2 text-[11px] font-bold uppercase tracking-wide hover:bg-gray-300 dark:hover:bg-white/15 transition">
+                        className="inline-flex items-center gap-1.5 rounded-full btn-glass px-3 py-2 text-[11px] font-bold uppercase tracking-wide transition">
                     <Share2 className="h-3.5 w-3.5"/> Share
                 </button>
             </div>

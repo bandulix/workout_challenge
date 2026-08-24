@@ -101,7 +101,12 @@ class CustomUserSerializer(serializers.ModelSerializer):
         # exclusively through the dedicated join views (join code +
         # participant checks). Writable M2M fields would be a
         # mass-assignment hole letting anyone join any competition/team.
-        read_only_fields = ['is_verified', 'strava_athlete_id', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'is_staff', 'is_superuser', 'my_competitions', 'my_teams']
+        # health_user_id / health_last_synced_at are written only by the
+        # Health link/sync views. A writable health_user_id would let a
+        # user attach someone else's Open Wearables identity and import
+        # that athlete's workouts; a writable last_synced stamp would
+        # bypass the sync cooldown (or freeze sync entirely).
+        read_only_fields = ['is_verified', 'strava_athlete_id', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'health_user_id', 'health_last_synced_at', 'is_staff', 'is_superuser', 'my_competitions', 'my_teams']
         extra_kwargs = {
             'password': {'write_only': True},
         }

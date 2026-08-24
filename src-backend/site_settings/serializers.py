@@ -72,3 +72,28 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
                 "LLM base URL must be https to a public host (http is only allowed for localhost)."
             )
         return value
+
+    def validate_health_base_url(self, value):
+        return _validate_health_url(value)
+
+    def validate_health_public_url(self, value):
+        return _validate_health_url(value)
+
+
+def _validate_health_url(value):
+    """http(s) URL with a hostname; no embedded credentials.
+
+    Unlike the LLM SSRF guard this MUST allow private/docker hosts -
+    the backend talks to Open Wearables on the compose network
+    (``http://openwearables:8000``) and phones may use a LAN address.
+    """
+    value = (value or "").strip()
+    if not value:
+        return value
+    from urllib.parse import urlparse
+    parsed = urlparse(value)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise serializers.ValidationError("Must be an http(s) URL with a hostname.")
+    if parsed.username or parsed.password:
+        raise serializers.ValidationError("URL must not include credentials.")
+    return value.rstrip("/")

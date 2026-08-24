@@ -111,7 +111,7 @@ function PushOptInCard({compact = false}) {
     // iOS requires the PWA to be installed before push can be enabled.
     if (platform.isIOS && !platform.standalone) {
         return (
-            <div className="rounded-3xl border border-gray-300 bg-white text-ink-950 dark:border-ink-700/60 dark:bg-ink-850 dark:text-white p-5">
+            <div className="rounded-3xl glass-card text-ink-950 dark:text-white p-5">
                 <div className="flex items-center gap-3 mb-3">
                     <div className="h-10 w-10 rounded-2xl bg-volt-400/20 dark:bg-volt-400/15 flex items-center justify-center">
                         <Smartphone className="h-5 w-5 text-volt-700 dark:text-volt-400"/>
@@ -137,7 +137,7 @@ function PushOptInCard({compact = false}) {
     }
 
     return (
-        <div className="rounded-3xl border border-gray-300 bg-white text-ink-950 dark:border-ink-700/60 dark:bg-ink-850 dark:text-white p-5">
+        <div className="rounded-3xl glass-card text-ink-950 dark:text-white p-5">
             <div className="flex items-center gap-3 mb-2">
                 <div className="h-10 w-10 rounded-2xl bg-volt-400/20 dark:bg-volt-400/15 flex items-center justify-center">
                     {subscribed ? <BellRing className="h-5 w-5 text-volt-700 dark:text-volt-400"/> : <Bell className="h-5 w-5 text-volt-700 dark:text-volt-400"/>}

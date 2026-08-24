@@ -188,14 +188,29 @@ export default function GoalEqualizerForm({user, setModalState}) {
 
 
     return (
-        <Modal title="Equalize Goals" landscape={false} setShowModal={setModalState} isLoading={updateIsLoading}>
-            <p className="text-gray-700 dark:text-gray-300">Everyone has a unique <b>Basal Metabolic Rate (BMR)</b>, dependent on factors like age, gender, height, and weight. To ensure a fair competition, the calculator below estimates your personal equalizing factors, which will be used to scale the competition goals. Your inputs <u>stay on your device</u> — only the final two equalizing percent factors (highlighted fields) are saved to equalize your points.</p>
-            <p className="text-gray-500 text-sm italic">You still don't trust it? Check the <a className="text-volt-700 dark:text-volt-300 font-semibold hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick/workout_challenge/blob/main/src-frontend/src/forms/equalizerForm.js#L149">public source code yourself (here)</a>!</p>
+        <Modal title="Goal Equalizer" landscape={false} setShowModal={setModalState} isLoading={updateIsLoading}>
+            <div className="rounded-2xl glass-inset p-4 space-y-2">
+                <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                    Everyone has a unique <b>basal metabolic rate</b>. These factors scale your goals so a fair fight is possible.
+                    Age, height and weight <u>stay on this device</u> — only the two highlighted percent factors are saved.
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Currently applied: <b>{Math.round(user.scaling_kcal * 100)}%</b> effort
+                    {" · "}
+                    <b>{Math.round(user.scaling_distance * 100)}%</b> distance
+                </p>
+            </div>
             <SingleForm fields={fields} values={values} setValues={setValues} errors={fieldErrors}/>
-            <div className="text-center text-red-500 text-xs italic">{formError}</div>
-            <div className="text-center text-gray-700 dark:text-gray-300 text-xs italic"><b>Current Effort Factor:</b> {Math.round(user.scaling_kcal * 100)}% / <b>Current Distance Factor:</b> {Math.round(user.scaling_distance * 100)}%</div>
-            <div className="relative flex justify-between items-center">
-                <SaveButton onClick={handleSubmit} label="Update" highlighted={true} larger={true} />
+            {formError && <p className="text-center text-red-500 text-xs italic">{formError}</p>}
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+                Want to verify the math? The formula is in the{" "}
+                <a className="text-volt-700 dark:text-volt-300 font-semibold hover:underline" target="_blank" rel="noopener noreferrer"
+                   href="https://github.com/vanalmsick/workout_challenge/blob/main/src-frontend/src/forms/equalizerForm.js#L149">
+                    public source
+                </a>.
+            </p>
+            <div className="flex justify-end">
+                <SaveButton onClick={handleSubmit} label="Save" highlighted={true} larger={true} />
             </div>
         </Modal>
     )

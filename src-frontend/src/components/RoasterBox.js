@@ -9,7 +9,7 @@ import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 function PersonaCard({persona, usedIn, onOpen}) {
     return (
         <button onClick={() => onOpen(persona)}
-                className="group snap-start shrink-0 w-40 rounded-3xl bg-white dark:bg-ink-850 border border-gray-300 dark:border-ink-700/60 shadow-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-volt-500/80 dark:hover:border-volt-500/60 hover:shadow-card-dark">
+                className="group snap-start shrink-0 w-40 rounded-3xl glass-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-volt-500/80">
             <PersonaAvatar persona={persona} size={64} className="mx-auto transition group-hover:scale-105"/>
             <p className="mt-3 text-center text-sm font-bold truncate">{persona.name}</p>
             <p className="text-center text-[11px] text-gray-400 truncate">{persona.tagline || persona.description}</p>

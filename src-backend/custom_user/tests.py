@@ -276,6 +276,8 @@ class UserListPrivacyTests(TestCase):
             email="priv-mate@example.com", password="test-pw", first_name="Mel", last_name="Secret",
         )
         self.mate.garmin_email = "garmin-secret@example.com"
+        self.mate.health_user_id = "ow-secret-uuid"
+        self.mate.health_last_synced_at = timezone.now()
         self.mate.save()
         competition = Competition.objects.create(
             owner=self.owner, name="Privacy Cup",
@@ -296,7 +298,47 @@ class UserListPrivacyTests(TestCase):
         self.assertNotIn("is_staff", other)
         self.assertNotIn("garmin_email", other)
         self.assertNotIn("last_name", other)
+        self.assertNotIn("health_user_id", other)
+        self.assertNotIn("health_last_synced_at", other)
+        self.assertNotIn("health_public_url", other)
         self.assertEqual(other["first_name"], "Mel")
+
+    def test_cannot_patch_health_identity_or_sync_stamp(self):
+        self.client.force_authenticate(self.mate)
+        original_stamp = self.mate.health_last_synced_at
+        response = self.client.patch(
+            f"/api/user/{self.mate.id}/",
+            {
+                "health_user_id": "stolen-ow-uuid",
+                "health_last_synced_at": "2000-01-01T00:00:00Z",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.mate.refresh_from_db()
+        self.assertEqual(self.mate.health_user_id, "ow-secret-uuid")
+        self.assertEqual(self.mate.health_last_synced_at, original_stamp)
+
+    def test_retrieve_other_user_is_forbidden(self):
+        # Athlete cards must not use GET /api/user/:id (PII). Co-participants
+        # are listed, but object GET/PATCH/DELETE is owner-only.
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(f"/api/user/{self.mate.id}/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_cannot_patch_or_delete_another_participant(self):
+        self.client.force_authenticate(self.owner)
+        patch = self.client.patch(
+            f"/api/user/{self.mate.id}/",
+            {"first_name": "Hijacked", "email": "stolen@example.com"},
+            format="json",
+        )
+        self.assertEqual(patch.status_code, 403)
+        delete = self.client.delete(f"/api/user/{self.mate.id}/")
+        self.assertEqual(delete.status_code, 403)
+        self.mate.refresh_from_db()
+        self.assertEqual(self.mate.first_name, "Mel")
+        self.assertEqual(self.mate.email, "priv-mate@example.com")
 
 
 @override_settings(

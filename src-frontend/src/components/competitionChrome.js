@@ -3,10 +3,12 @@ import {useNavigate, useSearchParams} from "react-router-dom";
 import {useDispatch} from "react-redux";
 import {DoorOpen, Info, Megaphone, Settings, UserRoundPlus} from "lucide-react";
 import lodFilter from "lodash/filter";
+import lodFlatmap from "lodash/flatMap";
 import lodFrompairs from "lodash/fromPairs";
 import lodGroupby from "lodash/groupBy";
 import lodMapvalues from "lodash/mapValues";
 import lodOrderby from "lodash/orderBy";
+import lodSumby from "lodash/sumBy";
 import lodTopairs from "lodash/toPairs";
 import lodValues from "lodash/values";
 import {competitionsApi} from "../utils/reducers/competitionsSlice";
@@ -18,12 +20,14 @@ import CompetitionInviteModal from "../forms/shareModal";
 import TransferOwnershipForm from "../forms/transferOwnershipForm";
 import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
 import PointsInfoModal from "./PointsInfo";
+import ActivityGoalsForm from "../forms/activityGoalsForm";
 import {BoxSection} from "../utils/miscellaneous";
 import {sportLabelShort} from "../forms/workoutForm";
 import CoachThread from "./CoachThread";
 import {CoachHandover} from "./CoachVoteBox";
 import PersonaAvatar from "./PersonaAvatar";
 import ProfileAvatar from "./ProfileAvatar";
+import {OrderRibbon} from "./gameBits";
 import {elapsedSince, timeAgo} from "../utils/time";
 import {useProtectedImage} from "../utils/protectedMedia";
 import usePollingInterval from "../utils/usePollingInterval";
@@ -41,6 +45,44 @@ export function HeaderIconButton({onClick, title, icon: Icon, danger = false, is
 }
 
 
+function scoreGoals(goals, feed, userId, user) {
+    if (!goals?.length || !userId) return [];
+    const now = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const epochTimeToday = Math.floor(today.getTime() / 1000);
+    const day = now.getDay();
+    const lastMonday = new Date(now);
+    lastMonday.setDate(now.getDate() - ((day + 6) % 7));
+    lastMonday.setHours(0, 0, 0, 0);
+    const epochTimeMonday = Math.floor(lastMonday.getTime() / 1000);
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    firstOfMonth.setHours(0, 0, 0, 0);
+    const epochTimeMonth = Math.floor(firstOfMonth.getTime() / 1000);
+
+    const mine = lodFilter(feed || [], (item) => item.workout__user === userId);
+    const filteredDay = lodFilter(mine, (item) => (item.workout__start_datetime_fmt?.epoch || 0) >= epochTimeToday);
+    const filteredWeek = lodFilter(mine, (item) => (item.workout__start_datetime_fmt?.epoch || 0) >= epochTimeMonday);
+    const filteredMonth = lodFilter(mine, (item) => (item.workout__start_datetime_fmt?.epoch || 0) >= epochTimeMonth);
+
+    return goals.map((goal) => {
+        let filteredList = mine;
+        if (goal.period === "day") filteredList = filteredDay;
+        else if (goal.period === "week") filteredList = filteredWeek;
+        else if (goal.period === "month") filteredList = filteredMonth;
+        let scaling = 1;
+        if (["kcal", "kj"].includes(goal.metric)) scaling = user?.scaling_kcal ?? 1;
+        else if (goal.metric === "km") scaling = user?.scaling_distance ?? 1;
+        const details = lodFlatmap(filteredList, "details").filter((item) => item.goal === goal.id);
+        return {
+            ...goal,
+            goal: goal.goal * scaling,
+            points_capped: lodSumby(details, "points_capped"),
+        };
+    });
+}
+
+
 export function CompetitionHead({competition, feed, isOwner, goals, user}) {
 
     const [showEditCompetitionModal, setShowEditCompetitionModal] = useState(false);
@@ -48,8 +90,13 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
     const [showTransferCompetitionModal, setShowTransferCompetitionModal] = useState(false);
     const [showDrillInstructorModal, setShowDrillInstructorModal] = useState(false);
     const [showPointsInfoModal, setShowPointsInfoModal] = useState(false);
+    const [showModifyGoals, setShowModifyGoals] = useState(false);
     const [countTotal, setCountTotal] = useState(0);
     const [countGroups, setCountGroups] = useState({});
+    const scoredGoals = React.useMemo(
+        () => scoreGoals(goals, feed, user?.id, user),
+        [goals, feed, user],
+    );
 
     useEffect(() => {
         const filteredFeed = lodFilter(lodValues(feed), item => item.workout !== null && item.workout__sport_type !== 'Steps');
@@ -118,11 +165,59 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                 </div>
             </div>
 
+            {(scoredGoals.length > 0 || isOwner) && (
+                <div className="mt-4 pt-3 border-t border-gray-200/70 dark:border-white/10 px-1 sm:px-3">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Your goals</p>
+                        {isOwner && (
+                            <button type="button" onClick={() => setShowModifyGoals(true)}
+                                    className="text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[32px]">
+                                Edit
+                            </button>
+                        )}
+                    </div>
+                    {scoredGoals.length === 0 ? (
+                        <p className="text-xs text-gray-400">No goals yet. Add targets so the field knows what to chase.</p>
+                    ) : (
+                        <div className="space-y-2">
+                            {scoredGoals.map((goal) => {
+                                const pct = Math.min(Math.max(Number(goal.points_capped) || 0, 0), 100);
+                                const complete = pct >= 100;
+                                const empty = pct <= 0;
+                                return (
+                                    <div key={goal.id} className="rounded-2xl glass-inset px-3 py-2">
+                                        <div className="flex items-baseline justify-between gap-2">
+                                            <p className="text-sm font-semibold truncate">{goal.name}</p>
+                                            <p className="text-[11px] text-gray-400 shrink-0">
+                                                {Math.round(goal.goal).toLocaleString()} {goal.metric} / {goal.period}
+                                            </p>
+                                        </div>
+                                        <div className="mt-1.5 flex items-center gap-2">
+                                            <div className="flex-1 h-2 rounded-full bg-gray-200/80 dark:bg-white/10 overflow-hidden">
+                                                <div className={"h-full rounded-full transition-all " +
+                                                    (empty ? "bg-gray-300 dark:bg-white/15" : complete ? "bg-volt-400" : "bg-gradient-to-r from-volt-600 to-volt-400")}
+                                                     style={{width: pct + "%"}}/>
+                                            </div>
+                                            <span className="text-[11px] font-extrabold text-volt-700 dark:text-volt-300 w-10 text-right">
+                                                {Math.round(pct)}P
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {(showEditCompetitionModal) && <CompetitionForm setModalState={setShowEditCompetitionModal} setShowTransferCompetitionModal={setShowTransferCompetitionModal} competition={competition}/>}
             {(showInviteCompetitionModal) && <CompetitionInviteModal setModalState={setShowInviteCompetitionModal} competition={competition}/>}
             {(showTransferCompetitionModal) && <TransferOwnershipForm setModalState={setShowTransferCompetitionModal} competition={competition}/>}
             {(showDrillInstructorModal) && <DrillInstructorConfigForm competition={competition} setModalState={setShowDrillInstructorModal}/>}
             {(showPointsInfoModal) && <PointsInfoModal competition={competition} goals={goals} user={user} setModalState={setShowPointsInfoModal}/>}
+            {showModifyGoals && (
+                <ActivityGoalsForm setModalState={setShowModifyGoals} competitionId={competition.id}/>
+            )}
 
         </BoxSection>
     )
@@ -132,6 +227,45 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
 // One photo post in the feed: the author's picture + caption bubble,
 // then the thread (coach reaction + participant replies) underneath.
 const CORNER_PREVIEW = 3;
+
+function ActivityCoachPost({message, persona, canReply, defaultOpen, competitionId, visionCapable, lastOwnActivityId}) {
+    const capped = message.points_capped;
+    const raw = message.points_raw;
+    const starred = capped != null && raw != null && Number(capped) !== Number(raw);
+    return (
+        <div className="min-w-0 flex-1 rounded-2xl glass-inset p-3 space-y-2.5">
+            <div className="flex items-center gap-2.5">
+                <ProfileAvatar
+                    user={{profile_picture: message.athlete_profile_picture, first_name: message.athlete_name}}
+                    size={40}/>
+                <div className="min-w-0 flex-1">
+                    <p className="font-semibold truncate leading-tight">{message.athlete_name || "Athlete"}</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                        {message.workout_summary || "Workout"} · {timeAgo(message.posted_at)}
+                    </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                    <OrderRibbon show={!!message.order_ribbon}/>
+                    {capped != null && (
+                        <span className="rounded-full bg-volt-400 text-ink-950 text-[11px] font-extrabold px-2 py-0.5 shadow-glow-volt whitespace-nowrap">
+                            +{Math.round(capped).toLocaleString()}P{starred ? "*" : ""}
+                        </span>
+                    )}
+                </div>
+            </div>
+            <div className="flex items-start gap-2">
+                <PersonaAvatar persona={persona} size={28} glow/>
+                <div className="min-w-0 flex-1">
+                    <p className="text-sm leading-snug break-words dark:text-gray-100">{message.body}</p>
+                    <CoachThread message={message} persona={persona} canReply={canReply} defaultOpen={defaultOpen}
+                                 competitionId={competitionId} visionCapable={visionCapable}
+                                 lastOwnActivityId={lastOwnActivityId}/>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 
 function PhotoMessage({message, persona, canReply, defaultOpen, competitionId, visionCapable, lastOwnActivityId, now}) {
     const {src} = useProtectedImage(message.image);
@@ -203,7 +337,7 @@ export function CoachCorner({competition, isOwner}) {
     if (!config) {
         if (!isOwner) return null;
         return (
-            <div className="mb-4 relative overflow-hidden rounded-3xl bg-white text-ink-950 border border-gray-300 shadow-card dark:bg-ink-900 dark:text-white dark:border-ink-700/60 dark:shadow-card-dark">
+            <div className="mb-4 relative overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white">
                 <div className="pointer-events-none absolute -top-16 -right-10 h-40 w-40 rounded-full bg-volt-400/25 blur-3xl"/>
                 <div className="relative flex flex-wrap items-center gap-4 p-5">
                     <img src="/personas/megaphone.svg" alt="" className="h-14 w-14 rounded-full animate-float-slow shrink-0"/>
@@ -245,6 +379,17 @@ export function CoachCorner({competition, isOwner}) {
                 </li>
             );
         }
+        if (m.kind === "activity") {
+            return (
+                <li key={m.id} className="min-w-0">
+                    <ActivityCoachPost message={m} persona={threadPersona} canReply={config.enabled}
+                                       defaultOpen={m.id === replyTargetId}
+                                       competitionId={competition.id}
+                                       visionCapable={config.vision_capable}
+                                       lastOwnActivityId={lastOwnActivityId}/>
+                </li>
+            );
+        }
         return (
             <li key={m.id} className="flex items-start gap-2 min-w-0">
                 <PersonaAvatar persona={threadPersona} size={30}/>
@@ -273,7 +418,7 @@ export function CoachCorner({competition, isOwner}) {
     }
 
     return (
-        <div ref={cornerRef} className="mb-4 rounded-3xl bg-white border border-gray-300 dark:bg-ink-850 dark:border-ink-700/60 shadow-card dark:shadow-card-dark overflow-hidden">
+        <div ref={cornerRef} className="mb-4 rounded-3xl glass-card overflow-hidden">
             <div className="flex flex-wrap items-center gap-3 px-4 sm:px-5 pt-4 pb-3 border-b border-gray-200 dark:border-ink-700/60">
                 <PersonaAvatar persona={persona} size={44} glow={config.enabled}/>
                 <div className="flex-1 min-w-0">
@@ -285,12 +430,6 @@ export function CoachCorner({competition, isOwner}) {
                         {persona.name}{config.enabled ? " is on duty" : " is benched"} · {config.messages_posted || 0} messages
                     </p>
                 </div>
-                {isOwner && (
-                    <button onClick={() => setShowConfigModal(true)}
-                            className="text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition">
-                        Configure
-                    </button>
-                )}
             </div>
             <CoachHandover configId={config.id} enabled={config.enabled}/>
             {all.length > 0 ? (

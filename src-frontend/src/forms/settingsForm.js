@@ -1,6 +1,6 @@
 import {useDeleteUserMutation, usersApi, useUpdateUserMutation} from "../utils/reducers/usersSlice";
 import React, {useEffect, useState} from "react";
-import {DeleteButton, Modal, SaveButton, SingleForm, StravaButton} from "./basicComponents";
+import {FIELD_INPUT_CLASS, Modal, SaveButton, SingleForm, StravaButton} from "./basicComponents";
 import {useNavigate} from "react-router-dom";
 import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, useUnlinkGarminMutation, useLinkHealthMutation, useUnlinkHealthMutation} from "../utils/reducers/linkSlice";
 import {useDispatch} from "react-redux";
@@ -51,11 +51,10 @@ function SyncSourceSection({user, onChanged}) {
         "flex-1 px-4 py-2.5 rounded-full text-sm font-bold uppercase tracking-wide transition disabled:opacity-50 " +
         (source === active
             ? "bg-volt-400 text-ink-950 shadow-glow-volt"
-            : "bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-gray-600 dark:text-gray-300");
+            : "btn-glass text-gray-600 dark:text-gray-300");
 
     return (
-        <div className="px-4 w-full">
-            <div className="rounded-2xl border border-gray-200/70 dark:border-ink-700/60 p-4 space-y-3">
+        <div className="rounded-2xl glass-card p-4 space-y-3">
                 <div className="flex items-center gap-2">
                     <Watch className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
                     <span className="font-display text-xs uppercase tracking-wider">Activity import source</span>
@@ -72,7 +71,6 @@ function SyncSourceSection({user, onChanged}) {
                     ))}
                 </div>
                 {error && <p className="text-xs text-red-500">{error}</p>}
-            </div>
         </div>
     );
 }
@@ -144,14 +142,13 @@ function HealthSection({user, onChanged}) {
     }
 
     return (
-        <div className="px-4 w-full">
-            <div className="rounded-2xl border border-gray-200/70 dark:border-ink-700/60 p-4 space-y-3">
+        <div className="rounded-2xl glass-card p-4 space-y-3">
                 <div className="flex items-center gap-2">
                     <Smartphone className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
                     <span className="font-display text-xs uppercase tracking-wider">
                         {isNative ? "Google Health Connect" : "Apple / Google Health"}
                     </span>
-                    {linked && <span className="ml-auto text-[10px] font-bold uppercase tracking-wide rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2 py-0.5">linked</span>}
+                    {linked && <LinkedPill/>}
                 </div>
 
                 <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -205,7 +202,7 @@ function HealthSection({user, onChanged}) {
                     </button>
                     {linked && (
                         <button onClick={handleUnlink} disabled={unlinkLoading}
-                                className="px-4 py-2 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-sm font-semibold transition disabled:opacity-50">
+                                className="px-4 py-2 rounded-full btn-glass text-sm font-semibold transition disabled:opacity-50">
                             {unlinkLoading ? <BeatLoader size={6} color="#d7ff3e"/> : "Unlink Health"}
                         </button>
                     )}
@@ -213,7 +210,6 @@ function HealthSection({user, onChanged}) {
 
                 {message && !invitation?.code && <p className="text-xs text-volt-700 dark:text-volt-300">{message}</p>}
                 {error && <p className="text-xs text-red-500">{error}</p>}
-            </div>
         </div>
     );
 }
@@ -255,15 +251,12 @@ function GarminSection({user, onChanged}) {
         }
     }
 
-    const inputClass = "w-full shadow border border-gray-200 dark:border-ink-700/60 rounded-xl py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-300 leading-tight focus:outline-none focus:border-volt-500";
-
     return (
-        <div className="px-4 w-full">
-            <div className="rounded-2xl border border-gray-200/70 dark:border-ink-700/60 p-4 space-y-3">
+        <div className="rounded-2xl glass-card p-4 space-y-3">
                 <div className="flex items-center gap-2">
                     <Watch className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
                     <span className="font-display text-xs uppercase tracking-wider">Garmin Connect</span>
-                    {linked && <span className="ml-auto text-[10px] font-bold uppercase tracking-wide rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2 py-0.5">linked</span>}
+                    {linked && <LinkedPill/>}
                 </div>
 
                 {linked ? (
@@ -273,7 +266,7 @@ function GarminSection({user, onChanged}) {
                             {user.garmin_last_synced_at && <> · last sync {user.garmin_last_synced_at_fmt?.date_readable}, {user.garmin_last_synced_at_fmt?.time_24h}</>}
                         </p>
                         <button onClick={handleUnlink} disabled={unlinkLoading}
-                                className="px-4 py-2 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-sm font-semibold transition disabled:opacity-50">
+                                className="px-4 py-2 rounded-full btn-glass text-sm font-semibold transition disabled:opacity-50">
                             {unlinkLoading ? <BeatLoader size={6} color="#d7ff3e"/> : "Unlink Garmin"}
                         </button>
                     </>
@@ -283,9 +276,9 @@ function GarminSection({user, onChanged}) {
                             Your Garmin password is used once to obtain access tokens and is <b>never stored</b> -
                             only the encrypted tokens are kept. Accounts with two-factor authentication can't be linked yet.
                         </p>
-                        <input type="email" className={inputClass} placeholder="Garmin Connect email" autoComplete="off"
+                        <input type="email" className={FIELD_INPUT_CLASS} placeholder="Garmin Connect email" autoComplete="off"
                                value={email} onChange={(e) => setEmail(e.target.value)}/>
-                        <input type="password" className={inputClass} placeholder="Garmin Connect password" autoComplete="new-password"
+                        <input type="password" className={FIELD_INPUT_CLASS} placeholder="Garmin Connect password" autoComplete="new-password"
                                value={password} onChange={(e) => setPassword(e.target.value)}/>
                         <button onClick={handleLink} disabled={linkLoading || !email || !password}
                                 className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
@@ -296,105 +289,60 @@ function GarminSection({user, onChanged}) {
 
                 {message && <p className="text-xs text-volt-700 dark:text-volt-300">{message}</p>}
                 {error && <p className="text-xs text-red-500">{error}</p>}
-            </div>
         </div>
     );
 }
 
 
-const fields = {
-
-    "email": {
-        "type": "email",
-        "required": true,
-        "read_only": false,
-        "label": "Email",
-        "width": "max-sm:w-full w-1/2",
-    },
-
-    "username": {
-        "type": "text",
-        "required": true,
-        "read_only": false,
-        "label": "Public Username",
-        "width": "max-sm:w-full w-1/2",
-    },
-
-    "first_name": {
-        "type": "text",
-        "required": true,
-        "read_only": false,
-        "label": "First Name",
-        "width": "max-sm:w-full w-1/3",
-    },
-
-    "last_name": {
-        "type": "text",
-        "required": true,
-        "read_only": false,
-        "label": "Last Name",
-        "width": "max-sm:w-full w-1/3",
-    },
-
-    "gender": {
-        "type": "select",
-        "required": true,
-        "read_only": false,
-        "label": "Gender",
-        "width": "max-sm:w-full w-1/3",
-        "selectList": [
-            {
-                "value": "M",
-                "label": "Male"
-            },
-            {
-                "value": "F",
-                "label": "Female"
-            },
-            {
-                "value": "O",
-                "label": "Other"
-            },
-            {
-                "value": "",
-                "label": "Unknown"
-            }
-        ]
-    },
-
-    "strava_athlete_id": {
-        "type": "number",
-        "required": false,
-        "read_only": true,
-        "disabled": true,
-        "label": "Strava Athlete ID",
-        "width": "max-sm:w-full w-1/2",
-    },
-
-    "strava_last_synced_at": {
-        "type": "datetime-local",
-        "required": false,
-        "read_only": true,
-        "disabled": true,
-        "label": "Last Strava Sync",
-        "width": "max-sm:w-full w-1/2",
-    },
-
-    "strava_allow_follow": {
-        "type": "checkbox",
-        "required": false,
-        "read_only": false,
-        "label": "Allow others to follow me on Strava",
-    },
-
-    "email_mid_week": {
-        "type": "checkbox",
-        "required": false,
-        "read_only": false,
-        "label": "Send me mid-week streak email",
-    },
-
+function SettingsGroup({title, hint, children}) {
+    return (
+        <section className="rounded-2xl glass-inset p-4 space-y-3">
+            <div>
+                <h3 className="font-display text-xs uppercase tracking-[0.16em]">{title}</h3>
+                {hint && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</p>}
+            </div>
+            {children}
+        </section>
+    );
 }
+
+function LinkedPill() {
+    return (
+        <span className="ml-auto text-[10px] font-bold uppercase tracking-wide rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2 py-0.5">linked</span>
+    );
+}
+
+const profileFields = {
+    first_name: {
+        type: "text", required: true, label: "First name", width: "max-sm:w-full w-1/2",
+    },
+    last_name: {
+        type: "text", required: true, label: "Last name", width: "max-sm:w-full w-1/2",
+    },
+    username: {
+        type: "text", required: true, label: "Public username", width: "max-sm:w-full w-1/2",
+    },
+    email: {
+        type: "email", required: true, label: "Email", width: "max-sm:w-full w-1/2",
+    },
+    gender: {
+        type: "select", required: true, label: "Gender", width: "max-sm:w-full w-1/2",
+        selectList: [
+            {value: "M", label: "Male"},
+            {value: "F", label: "Female"},
+            {value: "O", label: "Other"},
+            {value: "", label: "Unknown"},
+        ],
+    },
+};
+
+const notifyFields = {
+    email_mid_week: {
+        type: "checkbox",
+        required: false,
+        label: "Send me the mid-week streak email",
+    },
+};
 
 
 export default function SettingsForm({user, setModalState, setLinkStrava}) {
@@ -519,42 +467,68 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
         }
     }
 
+    const stravaLinked = user.strava_athlete_id !== null && user.strava_athlete_id !== undefined && user.strava_athlete_id !== '';
+
     return (
-        <Modal title="Personal Setting" landscape={true} setShowModal={setModalState} isLoading={updateIsLoading || deleteIsLoading || unlinkIsLoading || resetIsLoading}>
-            <SingleForm fields={fields} values={values} setValues={setValues} errors={fieldErrors}/>
-            <div className="text-center text-red-500 text-xs italic">{formError}</div>
-            <div className="px-4">
-                <StravaButton
-                    label={(user.strava_athlete_id ? "Unlink" : "Link") + " Strava Account"}
-                    onClick={() => handleStravaLinkage({linked: user.strava_athlete_id !== null && user.strava_athlete_id !== undefined && user.strava_athlete_id !== ''})}
-                />
-                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    Heads up: since June 2026 Strava requires an <b>active paid Strava subscription</b> to
-                    connect third-party apps like this one. If the linking fails on Strava's side,
-                    that is the most likely cause - not a problem with this app.
-                </p>
-                {(user.strava_athlete_id !== null && user.strava_athlete_id !== undefined && user.strava_athlete_id !== '') && (
-                    <div className="mt-2">
+        <Modal title="Account" landscape={true} setShowModal={setModalState} isLoading={updateIsLoading || deleteIsLoading || unlinkIsLoading || resetIsLoading}>
+            <SettingsGroup title="Profile" hint="How you appear on the board and in the feed.">
+                <div className="-mx-2">
+                    <SingleForm fields={profileFields} values={values} setValues={setValues} errors={fieldErrors}/>
+                </div>
+            </SettingsGroup>
+
+            <SettingsGroup title="Emails">
+                <div className="-mx-2">
+                    <SingleForm fields={notifyFields} values={values} setValues={setValues} errors={fieldErrors}/>
+                </div>
+            </SettingsGroup>
+
+            <SettingsGroup title="Connected services" hint="Only one source imports activities, so the same workout never lands twice.">
+                <div className="rounded-2xl glass-card p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                        <Watch className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                        <span className="font-display text-xs uppercase tracking-wider">Strava</span>
+                        {stravaLinked && <LinkedPill/>}
+                    </div>
+                    <StravaButton
+                        label={(stravaLinked ? "Unlink" : "Link") + " Strava"}
+                        onClick={() => handleStravaLinkage({linked: stravaLinked})}
+                    />
+                    {stravaLinked && (
+                        <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <input type="checkbox" className="mt-1"
+                                   checked={!!values.strava_allow_follow}
+                                   onChange={() => setValues({...values, strava_allow_follow: !values.strava_allow_follow})}/>
+                            Allow others to follow me on Strava
+                        </label>
+                    )}
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Strava needs an active paid subscription to connect third-party apps (since June 2026).
+                    </p>
+                    {stravaLinked && (
                         <button type="button" onClick={handleStravaReset}
                                 className="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline">
-                            Strava connection problems? Reset the connection
+                            Connection problems? Reset Strava
                         </button>
-                    </div>
+                    )}
+                </div>
+                <GarminSection user={user} onChanged={() => dispatch(usersApi.util.invalidateTags(['User']))}/>
+                {(user?.health_configured || user?.health_user_id) && (
+                    <HealthSection user={user} onChanged={() => dispatch(usersApi.util.invalidateTags(['User']))}/>
                 )}
-            </div>
-            {(linkedProviders(user).length >= 2) && (
-                <SyncSourceSection user={user} onChanged={() => dispatch(usersApi.util.invalidateTags(['User']))}/>
-            )}
-            <GarminSection user={user} onChanged={() => dispatch(usersApi.util.invalidateTags(['User']))}/>
-            {/* Offered only when the server has an Open Wearables instance
-                configured - or when the user is already linked (so they can
-                still unlink after an admin disabled the connector). */}
-            {(user?.health_configured || user?.health_user_id) && (
-                <HealthSection user={user} onChanged={() => dispatch(usersApi.util.invalidateTags(['User']))}/>
-            )}
-            <div className="relative flex justify-between items-center">
-                <DeleteButton onClick={handleDelete} label="Delete Account" highlighted={false} larger={true} />
-                <SaveButton onClick={handleSubmit} label="Update" highlighted={true} larger={true} />
+                {linkedProviders(user).length >= 2 && (
+                    <SyncSourceSection user={user} onChanged={() => dispatch(usersApi.util.invalidateTags(['User']))}/>
+                )}
+            </SettingsGroup>
+
+            {formError && <p className="text-center text-red-500 text-xs italic">{formError}</p>}
+
+            <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
+                <button type="button" onClick={handleDelete}
+                        className="text-sm font-semibold text-red-500 dark:text-red-400 hover:underline px-1 min-h-[44px]">
+                    Delete account
+                </button>
+                <SaveButton onClick={handleSubmit} label="Save" highlighted={true} larger={true}/>
             </div>
             <AppVersionFooter/>
         </Modal>

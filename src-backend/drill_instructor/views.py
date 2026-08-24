@@ -16,6 +16,7 @@ from rest_framework.views import APIView
 
 from workout_challenge.images import ProtectedMediaRenderer
 from .llm_client import check_vision_capability
+from competition.models import Points
 from .models import (
     DrillInstructorConfig,
     DrillInstructorMessage,
@@ -219,10 +220,16 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             # Ordered prefetch the serializer actually iterates - a plain
             # prefetch_related was defeated by get_replies' own order_by,
             # costing one extra query per thread root.
-            .prefetch_related(Prefetch(
-                "replies",
-                queryset=DrillInstructorMessage.objects.select_related("user").order_by("posted_at"),
-            ))
+            .prefetch_related(
+                Prefetch(
+                    "replies",
+                    queryset=DrillInstructorMessage.objects.select_related("user").order_by("posted_at"),
+                ),
+                Prefetch(
+                    "workout__points_set",
+                    queryset=Points.objects.only("id", "workout_id", "points_capped", "points_raw"),
+                ),
+            )
         )
         competition = self.request.query_params.get("competition")
         if competition and competition.isdigit():

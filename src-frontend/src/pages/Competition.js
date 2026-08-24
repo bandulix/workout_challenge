@@ -5,204 +5,24 @@ import {
     UsersRound,
 } from "lucide-react";
 import {SwipePages} from "../components/swipeTabs";
-import {Bar, Line} from 'react-chartjs-2';
-import {
-    Chart as ChartJS,
-    BarElement,
-    CategoryScale,
-    LinearScale,
-    Tooltip,
-    Legend,
-    LineElement,
-    PointElement,
-    Filler,
-} from 'chart.js';
-import ChartDataLabels from 'chartjs-plugin-datalabels';
 import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
-import lodFilter from 'lodash/filter';
-import lodFlatmap from 'lodash/flatMap';
-import lodSumby from 'lodash/sumBy';
 import {SectionLoader} from "../utils/loaders";
 import {useGetFeedByIdQuery} from "../utils/reducers/feedSlice";
 import JoinTeamForm from "../forms/joinTeamForm";
-import ActivityGoalsForm from "../forms/activityGoalsForm";
 import {
     ChangeTeamButton,
-    Modal,
-    ModifyGoalsButton,
-    StravaButton,
 } from "../forms/basicComponents";
-import {BoxSection, ErrorBoxSection, PageWrapper, useDarkMode} from "../utils/miscellaneous";
-import {sportLabelShort} from "../forms/workoutForm";
-import {Chip, EmptyState, SectionHead, VOLT} from "../components/uiBits";
+import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
+import {EmptyState, SectionHead} from "../components/uiBits";
 import {useDispatch} from "react-redux";
 import {teamsApi} from "../utils/reducers/teamsSlice";
 import {drillInstructorApi, useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
 import ProfileAvatar from "../components/ProfileAvatar";
+import AthleteCard from "../components/AthleteCard";
 import usePollingInterval from "../utils/usePollingInterval";
 import {CompetitionHead, CoachCorner} from "../components/competitionChrome";
-import {OrderRibbon} from "../components/gameBits";
 import EchoChamber from "../components/EchoChamber";
-import CoachVoteBox from "../components/CoachVoteBox";
-
-ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Filler, Tooltip, Legend, BarElement, ChartDataLabels);
-
-
-function ChartThisWeek({history}) {
-    const isDarkMode = useDarkMode();
-    // Memoized: without it react-chartjs-2 re-processes data+options on
-    // every poll tick even though nothing changed.
-    const data = React.useMemo(() => ({
-        labels: history['Legend'],
-        datasets: [
-            {
-                label: 'Me',
-                data: history['Me'],
-                backgroundColor: VOLT,
-                borderRadius: 6,
-                clip: false,
-            },
-            {
-                label: 'My Team',
-                data: history['My Team'],
-                backgroundColor: '#3c3c46',
-                borderRadius: 6,
-                clip: false,
-                hidden: true,
-            },
-            {
-                label: 'Average',
-                data: history['Average'],
-                backgroundColor: isDarkMode ? '#2a2a32' : '#d1d5db',
-                borderRadius: 6,
-                clip: false,
-                hidden: true,
-            },
-        ],
-    }), [history, isDarkMode]);
-
-    const options = React.useMemo(() => ({
-        scales: {
-            x: {
-                display: true,
-                ticks: {display: true},
-                grid: {display: false},
-            },
-            y: {display: false},
-        },
-        layout: {
-            padding: {
-                top: 30, // Adjust as needed
-            },
-        },
-        plugins: {
-            legend: {
-                display: true,
-                position: 'bottom',
-                labels: {
-                    boxWidth: 12,
-                    padding: 20,
-                    color: isDarkMode ? '#c8c8d0' : '#4b5563',
-                },
-            },
-            tooltip: false,
-            datalabels: {
-                anchor: 'end',
-                align: 'end',
-                color: isDarkMode ? '#d7ff3e' : '#6f8f0f',
-                font: {weight: 'bold'},
-            },
-        },
-    }), [isDarkMode]);
-
-    const weekTotal = React.useMemo(
-        () => (history.Me || []).reduce((sum, n) => sum + (Number(n) || 0), 0),
-        [history],
-    );
-
-    return (
-        <div>
-            <div className="px-2 pb-3 flex items-baseline gap-2">
-                <span className="font-display text-3xl text-volt-500 dark:text-volt-400 leading-none">{Math.round(weekTotal)}</span>
-                <span className="text-xs uppercase tracking-wide text-gray-400">pts this week</span>
-            </div>
-            <Bar data={data} options={options} plugins={[ChartDataLabels]}/>
-        </div>
-    )
-}
-
-
-function ChartHistory({history}) {
-    const isDarkMode = useDarkMode();
-    const data = React.useMemo(() => ({
-        labels: history['Legend'],
-        datasets: [
-            {
-                label: 'Me',
-                data: history['Me'],
-                borderColor: VOLT,
-                tension: 0.3,
-                fill: false,
-                spanGaps: true,
-            },
-            {
-                label: 'My Team',
-                data: history['My Team'],
-                borderColor: '#3c3c46',
-                tension: 0.3,
-                fill: false,
-                spanGaps: true,
-            },
-            {
-                label: 'Average',
-                data: history['Average'],
-                borderColor: isDarkMode ? '#6a6a76' : '#9ca3af',
-                tension: 0.3,
-                fill: false,
-                spanGaps: true,
-            },
-        ],
-    }), [history, isDarkMode]);
-
-    const options = React.useMemo(() => ({
-        scales: {
-            x: {display: false},
-            y: {
-                display: true,
-                position: 'right',
-                grid: {display: false},
-                ticks: {
-                    padding: 10,
-                    color: isDarkMode ? '#d7ff3e' : '#6f8f0f',
-                },
-            },
-        },
-        layout: {
-            padding: {
-                left: 20,
-                right: 5,
-                top: 10,
-            },
-        },
-        plugins: {
-            legend: {
-                display: true,
-                position: 'bottom',
-                labels: {
-                    boxWidth: 12,
-                    padding: 20,
-                    color: isDarkMode ? '#c8c8d0' : '#4b5563',
-                },
-            },
-            datalabels: {display: false},
-        },
-    }), [isDarkMode]);
-    return (
-        <Line data={data} options={options}/>
-    )
-}
-
 
 
 function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
@@ -277,311 +97,174 @@ const RANK_STYLES = {
     3: "text-amber-600 dark:text-amber-500",     // bronze
 };
 
-function IndividualLeaderboardBox({stats, userId, dunceUserId}) {
+function dayTotal(series, id, offset) {
+    return Number(series?.[id]?.[offset]?.total) || Number(series?.[id]?.[String(offset)]?.total) || 0;
+}
+
+function WeekBars({values, labels, showLabels = false, tall = false}) {
+    const max = Math.max(1, ...values.map((n) => Number(n) || 0));
+    const h = tall ? 36 : 18;
+    return (
+        <div className="min-w-0">
+            <div className="flex items-end gap-[3px]" style={{height: h}} aria-hidden="true">
+                {values.map((v, i) => {
+                    const n = Number(v) || 0;
+                    const px = Math.max(n > 0 ? 4 : 2, Math.round((n / max) * h));
+                    return (
+                        <div key={i} className="flex-1 min-w-[5px] flex items-end justify-center h-full">
+                            <div className={"w-full max-w-[10px] rounded-[3px] " +
+                                (n > 0 ? "bg-volt-400 shadow-[0_0_8px_rgba(215,255,62,0.45)]" : "bg-gray-200/80 dark:bg-white/10")}
+                                 style={{height: px}}/>
+                        </div>
+                    );
+                })}
+            </div>
+            {showLabels && labels && (
+                <div className="flex gap-[3px] mt-1">
+                    {labels.map((label, i) => (
+                        <span key={i} className="flex-1 text-center text-[8px] font-bold uppercase tracking-wide text-gray-400">
+                            {label}
+                        </span>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function TrendSpark({series, compare}) {
+    const w = 160;
+    const h = 40;
+    const pad = 3;
+    const all = [...(series || []), ...(compare || [])].map((n) => Number(n) || 0);
+    const max = Math.max(1, ...all);
+    const toPts = (arr) => {
+        if (!arr || arr.length === 0) return "";
+        return arr.map((v, i) => {
+            const x = pad + (i / Math.max(1, arr.length - 1)) * (w - pad * 2);
+            const y = h - pad - ((Number(v) || 0) / max) * (h - pad * 2);
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(" ");
+    };
+    return (
+        <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-10" aria-hidden="true" preserveAspectRatio="none">
+            {compare && compare.length > 1 && (
+                <polyline fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"
+                          className="text-gray-300 dark:text-white/25" points={toPts(compare)}/>
+            )}
+            {series && series.length > 1 && (
+                <polyline fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round"
+                          className="text-volt-500 dark:text-volt-400" points={toPts(series)}/>
+            )}
+        </svg>
+    );
+}
+
+function IndividualLeaderboardBox({stats, userId, dunceUserId, feed}) {
+    const weekDays = React.useMemo(() => getWeekDates(), [stats]);
+    const weekLabels = weekDays.map((d) => d.dateObj.toLocaleDateString("en-US", {weekday: "narrow"}));
+    const range = React.useMemo(
+        () => getDateRange(stats?.competition?.start_date, stats?.competition?.end_date),
+        [stats?.competition?.start_date, stats?.competition?.end_date],
+    );
+    const fieldN = Math.max(1, stats.competition?.active_member_count || 1);
+
+    function weekValues(id) {
+        return weekDays.map((d) => dayTotal(stats?.timeseries?.user, id, d.offset));
+    }
+    function cumulative(id) {
+        let acc = 0;
+        return range.map((d) => {
+            acc += dayTotal(stats?.timeseries?.user, id, d.offset);
+            return acc;
+        });
+    }
+    const [card, setCard] = useState(null);
+
+    const fieldTrend = React.useMemo(() => {
+        let acc = 0;
+        return range.map((d) => {
+            acc += (Number(stats?.timeseries?.all?.[d.offset]?.total)
+                || Number(stats?.timeseries?.all?.[String(d.offset)]?.total) || 0) / fieldN;
+            return acc;
+        });
+    }, [range, stats?.timeseries?.all, fieldN]);
 
     return (
         <BoxSection>
-            <SectionHead title="Leaderboard"/>
+            <SectionHead title="Leaderboard" hint="Week bars · trend vs the field"/>
 
             {(stats.leaderboard.individual.length === 0) ? (
                 <EmptyState title="Waiting for the field" body="The first logged workout puts someone on the board."/>
             ) : (
-                <ul className="my-1">
+                <ul className="my-1 space-y-1">
                     {stats.leaderboard.individual.map((person, index) => {
                         const personId = person.id ?? person.workout__user__id;
+                        const mine = userId === personId;
+                        const week = weekValues(personId);
+                        const weekTotal = week.reduce((s, n) => s + n, 0);
                         return (
                         <li key={personId ?? `lb-${index}`}
-                            className={"flex items-center gap-3 px-3 py-2.5 rounded-2xl " + ((userId === personId) ? "bg-volt-400/10 dark:bg-volt-400/5 " : "")}>
-                            {/* Rank - medal colours for the podium */}
-                            <span className={"w-8 shrink-0 text-center font-display text-lg " + (RANK_STYLES[person.rank] || "text-gray-400")}>
-                                {person.rank !== null ? `#${person.rank}` : "–"}
-                            </span>
-
-                            {/* Profile picture with the points badge hovering
-                                partly over its bottom-right corner */}
-                            <div className="relative shrink-0 mr-1.5">
-                                <ProfileAvatar user={person} size={46} dunce={dunceUserId === personId}/>
-                                <span className="absolute -bottom-1 -right-2 rounded-full bg-volt-400 text-ink-950 text-[10px] font-extrabold px-1.5 py-0.5 shadow-glow-volt whitespace-nowrap">
-                                    {Math.round(person.total_capped ?? 0).toLocaleString()}P
+                            className={"rounded-2xl px-3 py-2.5 " + (mine ? "bg-volt-400/10 dark:bg-volt-400/5 ring-1 ring-volt-400/30" : "")}>
+                            <div className="flex items-center gap-3">
+                                <span className={"w-8 shrink-0 text-center font-display text-lg " + (RANK_STYLES[person.rank] || "text-gray-400")}>
+                                    {person.rank !== null ? `#${person.rank}` : "–"}
                                 </span>
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-                                <p className="font-semibold truncate">{person.username}</p>
-                                {(person.rank !== null && person.days_on_rank > 0) && (
-                                    <p className="text-[11px] text-gray-400">
-                                        on #{person.rank} for {person.days_on_rank} {person.days_on_rank === 1 ? "day" : "days"}
-                                    </p>
+                                <div className="relative shrink-0 mr-1.5">
+                                    <ProfileAvatar user={person} size={46} dunce={dunceUserId === personId}
+                                                   onClick={() => setCard(person)}/>
+                                    <span className="absolute -bottom-1 -right-2 rounded-full bg-volt-400 text-ink-950 text-[10px] font-extrabold px-1.5 py-0.5 shadow-glow-volt whitespace-nowrap">
+                                        {Math.round(person.total_capped ?? 0).toLocaleString()}P
+                                    </span>
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-semibold truncate">{person.username}</p>
+                                    {(person.rank !== null && person.days_on_rank > 0) && (
+                                        <p className="text-[11px] text-gray-400">
+                                            on #{person.rank} for {person.days_on_rank} {person.days_on_rank === 1 ? "day" : "days"}
+                                        </p>
+                                    )}
+                                </div>
+                                {!mine && (
+                                    <div className="w-[4.5rem] shrink-0" title={`${Math.round(weekTotal)} pts this week`}>
+                                        <WeekBars values={week}/>
+                                    </div>
                                 )}
                             </div>
+                            {mine && (
+                                <div className="mt-3 grid grid-cols-2 gap-3">
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 mb-1">
+                                            This week · {Math.round(weekTotal)}P
+                                        </p>
+                                        <WeekBars values={week} labels={weekLabels} showLabels tall/>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 mb-1">
+                                            Trend vs field
+                                        </p>
+                                        <TrendSpark series={cumulative(personId)} compare={fieldTrend}/>
+                                    </div>
+                                </div>
+                            )}
                         </li>
                         );
                     })}
                 </ul>
             )}
-        </BoxSection>
-    )
-}
-
-
-const FEED_PREVIEW = 5;
-
-function durationLabel(entry) {
-    if (entry.workout__sport_type === "Steps") return `${entry.workout__steps?.toLocaleString() || 0} steps`;
-    const mins = Math.round(parseFloat(entry.workout__duration) / 60) || 0;
-    return `${mins} min`;
-}
-
-function feedDayLabel(entry) {
-    const ago = entry.workout__start_datetime_fmt?.days_ago;
-    if (ago === 0) return "Today";
-    if (ago === 1) return "Yesterday";
-    return entry.workout__start_datetime_fmt?.date_readable || "";
-}
-
-function groupFeedByDay(items) {
-    const groups = [];
-    for (const entry of items) {
-        const key = entry.workout__start_datetime_fmt?.date_iso || "unknown";
-        const last = groups[groups.length - 1];
-        if (!last || last.key !== key) {
-            groups.push({key, label: feedDayLabel(entry), items: [entry]});
-        } else {
-            last.items.push(entry);
-        }
-    }
-    return groups;
-}
-
-function FeedEntry({entry, open, onToggle, showDate = true}) {
-    return (
-        <li>
-            <button type="button" onClick={onToggle}
-                    className="w-full flex items-center gap-3 py-3 px-1 min-h-[44px] text-left rounded-2xl hover:bg-gray-100 dark:hover:bg-ink-800 transition">
-                <ProfileAvatar user={{first_name: entry.workout__user__username, profile_picture: entry.workout__user__profile_picture}} size={36}/>
-                <div className="min-w-0 flex-1">
-                    <p className="font-semibold truncate">{entry.workout__user__username}</p>
-                    <p className="text-xs text-gray-400">
-                        {durationLabel(entry)} {sportLabelShort(entry.workout__sport_type)}
-                        {showDate ? ` · ${entry.workout__start_datetime_fmt?.date_readable}` : ` · ${entry.workout__start_datetime_fmt?.time_24h}`}
-                    </p>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                    <OrderRibbon show={!!entry.order_ribbon}/>
-                    <Chip>+{Math.round(entry.points_capped || 0).toLocaleString()}P{entry.points_capped !== entry.points_raw ? "*" : ""}</Chip>
-                </div>
-            </button>
-            {open && (
-                <div className="px-3 pb-3 flex flex-wrap items-start gap-3">
-                    <ul className="flex-1 text-sm text-gray-600 dark:text-gray-300 space-y-0.5">
-                        {(entry.details || []).map((detail, i) => (
-                            <li key={i}>
-                                {detail.goal__name} +{Math.round(detail.points_capped || 0).toLocaleString()}P
-                                {detail.points_raw !== detail.points_capped && (
-                                    <span className="text-gray-400 italic"> (raw {Math.round(detail.points_raw || 0)}P)</span>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                    {(entry.workout__user__strava_allow_follow && entry.workout__strava_id) ? (
-                        <StravaButton label={"Like Activity"}
-                                      onClick={() => {
-                                          const id = String(entry.workout__strava_id).replace(/[^0-9]/g, '');
-                                          if (id) window.open("https://www.strava.com/activities/" + id, "_blank", "noopener,noreferrer");
-                                      }}/>
-                    ) : null}
-                </div>
-            )}
-        </li>
-    );
-}
-
-function FeedHistory({items, openId, setOpenId}) {
-    return (
-        <div className="max-h-[70vh] overflow-y-auto -mx-1 px-1">
-            {groupFeedByDay(items).map((group) => (
-                <section key={group.key} className="mb-2">
-                    <h3 className="sticky top-0 z-10 bg-white/95 dark:bg-ink-850/95 backdrop-blur px-1 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                        {group.label}
-                    </h3>
-                    <ul className="divide-y divide-gray-100 dark:divide-ink-700/60">
-                        {group.items.map((entry) => (
-                            <FeedEntry key={entry.workout} entry={entry} showDate={false}
-                                       open={openId === entry.workout}
-                                       onToggle={() => setOpenId(openId === entry.workout ? null : entry.workout)}/>
-                        ))}
-                    </ul>
-                </section>
-            ))}
-        </div>
-    );
-}
-
-function FeedBox({feed}) {
-    const [openId, setOpenId] = useState(null);
-    const [showHistory, setShowHistory] = useState(false);
-    const items = feed || [];
-    const preview = items.slice(0, FEED_PREVIEW);
-    const older = Math.max(0, items.length - FEED_PREVIEW);
-
-    return (
-        <BoxSection>
-            <SectionHead title="Activity feed" hint={items.length > FEED_PREVIEW ? `Latest ${FEED_PREVIEW} of ${items.length}` : null}/>
-
-            {items.length === 0 ? (
-                <EmptyState title="The feed is quiet" body="The next logged workout lands here for everyone to see."/>
-            ) : (
-                <>
-                    <ul className="mt-1 divide-y divide-gray-100 dark:divide-ink-700/60">
-                        {preview.map((entry) => (
-                            <FeedEntry key={entry.workout} entry={entry}
-                                       open={openId === entry.workout}
-                                       onToggle={() => setOpenId(openId === entry.workout ? null : entry.workout)}/>
-                        ))}
-                    </ul>
-                    {older > 0 && (
-                        <button type="button" onClick={() => setShowHistory(true)}
-                                className="mt-3 w-full min-h-[44px] rounded-2xl border border-volt-400/40 text-sm font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition">
-                            {older} older {older === 1 ? "activity" : "activities"}
-                        </button>
-                    )}
-                </>
-            )}
-
-            {showHistory && (
-                <Modal title="Activity history" setShowModal={setShowHistory}>
-                    <FeedHistory items={items} openId={openId} setOpenId={setOpenId}/>
-                </Modal>
+            {card && (
+                <AthleteCard
+                    person={card}
+                    dunce={dunceUserId === (card.id ?? card.workout__user__id)}
+                    weekTotal={weekValues(card.id ?? card.workout__user__id).reduce((s, n) => s + n, 0)}
+                    weekBars={<WeekBars values={weekValues(card.id ?? card.workout__user__id)} labels={weekLabels} showLabels tall/>}
+                    trendSpark={<TrendSpark series={cumulative(card.id ?? card.workout__user__id)} compare={fieldTrend}/>}
+                    feed={feed}
+                    onClose={() => setCard(null)}
+                />
             )}
         </BoxSection>
     )
-}
-
-function ActivityGoalsBox({user, stats, feed, competitionId, userId, isOwner}) {
-
-    const [showModifyGoals, setShowModifyGoals] = useState(false);
-
-    const goals = stats.competition.goals;
-    const [finalGoals, setFinalGoals] = useState(goals);
-
-    useEffect(() => {
-
-        const now = new Date();
-
-        // daily goal - get today 00:00 o'clock
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const epochTimeToday = Math.floor(today.getTime() / 1000); // In seconds
-
-        // week goal - get Monday epoch time
-        const day = now.getDay(); // 0 (Sun) to 6 (Sat)
-        const diffMonday = (day + 6) % 7; // Days since last Monday
-        const lastMonday = new Date(now);
-        lastMonday.setDate(now.getDate() - diffMonday);
-        lastMonday.setHours(0, 0, 0, 0);
-        const epochTimeMonday = Math.floor(lastMonday.getTime() / 1000); // In seconds
-
-        // month goal - get first of month
-        const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        firstOfMonth.setHours(0, 0, 0, 0);
-        const epochTimeMonth = Math.floor(firstOfMonth.getTime() / 1000); // In seconds
-
-        const filteredCompetition = lodFilter(feed || [], item => item.workout__user === userId);
-        const filteredDay = lodFilter(filteredCompetition, item => item.workout__start_datetime_fmt.epoch >= epochTimeToday);
-        const filteredWeek = lodFilter(filteredCompetition, item => item.workout__start_datetime_fmt.epoch >= epochTimeMonday);
-        const filteredMonth = lodFilter(filteredCompetition, item => item.workout__start_datetime_fmt.epoch >= epochTimeMonth);
-
-        let tmpGoals = [];
-        for (const goal of goals) {
-
-            let filteredList = [];
-            if (goal.period === 'day') {
-                filteredList = filteredDay;
-            } else if (goal.period === 'week') {
-                filteredList = filteredWeek;
-            } else if (goal.period === 'month') {
-                filteredList = filteredMonth;
-            } else if (goal.period === 'competition') {
-                filteredList = filteredCompetition;
-            }
-
-            let scaling = 1;
-            if (['kcal', 'kj'].includes(goal.metric)) {
-                scaling = user?.scaling_kcal ?? 1;
-            } else if (['km'].includes(goal.metric)) {
-                scaling = user?.scaling_distance ?? 1;
-            }
-
-            tmpGoals.push({
-                ...goal,
-                goal: goal.goal * scaling,
-                min_per_workout: goal.min_per_workout !== null ? goal.min_per_workout * scaling : null,
-                max_per_workout: goal.max_per_workout !== null ? goal.max_per_workout * scaling : null,
-                min_per_day: goal.min_per_day !== null ? goal.min_per_day * scaling : null,
-                max_per_day: goal.max_per_day !== null ? goal.max_per_day * scaling : null,
-                min_per_week: goal.min_per_week !== null ? goal.min_per_week * scaling : null,
-                max_per_week: goal.max_per_week !== null ? goal.max_per_week * scaling : null,
-                points_capped: lodSumby(lodFlatmap(filteredList, 'details').filter(item => item.goal === goal.id), 'points_capped'),
-                points_raw: lodSumby(lodFlatmap(filteredList, 'details').filter(item => item.goal === goal.id), 'points_raw'),
-            })
-        }
-        setFinalGoals(tmpGoals);
-    }, [stats, feed, userId]);
-
-
-    return (
-        <BoxSection>
-            <SectionHead title="Activity goals">
-                {isOwner && <ModifyGoalsButton onClick={() => setShowModifyGoals(true)}/>}
-            </SectionHead>
-            {finalGoals.length === 0 ? (
-                <EmptyState title="No goals yet"
-                            body={isOwner ? "Set the first target so the field knows what to chase." : "The organizer hasn't set activity goals yet."}
-                            actionLabel={isOwner ? "Add goals" : null}
-                            onAction={isOwner ? () => setShowModifyGoals(true) : null}/>
-            ) : (
-            <div className="flex flex-col gap-3 mt-3">
-                {finalGoals.map((goal) => {
-                    const pct = Math.min(Math.max(Number(goal.points_capped) || 0, 0), 100);
-                    const complete = (Number(goal.points_capped) || 0) >= 100;
-                    const empty = (Number(goal.points_capped) || 0) <= 0;
-                    const limits = [];
-                    if (goal.min_per_workout) limits.push(`min ${Math.round(goal.min_per_workout)} / workout`);
-                    if (goal.max_per_workout) limits.push(`max ${Math.round(goal.max_per_workout)} / workout`);
-                    if (goal.min_per_day) limits.push(`min ${Math.round(goal.min_per_day)} / day`);
-                    if (goal.max_per_day) limits.push(`max ${Math.round(goal.max_per_day)} / day`);
-                    if (goal.min_per_week) limits.push(`min ${Math.round(goal.min_per_week)} / week`);
-                    if (goal.max_per_week) limits.push(`max ${Math.round(goal.max_per_week)} / week`);
-                    return (
-                        <div key={goal.id} className="rounded-2xl bg-gray-100 dark:bg-ink-900 border border-gray-300 dark:border-ink-700/60 p-4">
-                            <div className="flex justify-between items-baseline gap-2">
-                                <p className="font-semibold truncate">{goal.name}</p>
-                                <p className="text-xs text-gray-400 shrink-0">{Math.round(goal.goal).toLocaleString()} {goal.metric} / {goal.period}</p>
-                            </div>
-                            <div className="mt-2 flex items-center gap-3">
-                                <div className="flex-1 h-3 rounded-full bg-gray-300 dark:bg-ink-700 overflow-hidden">
-                                    <div className={"h-full rounded-full transition-all " + (empty ? "bg-gray-400 dark:bg-ink-600" : complete ? "bg-volt-400" : "bg-gradient-to-r from-volt-600 to-volt-400")}
-                                         style={{width: pct + "%"}}/>
-                                </div>
-                                <span className="text-sm font-bold text-volt-700 dark:text-volt-400 w-12 text-right">{Math.round(goal.points_capped || 0)}P</span>
-                            </div>
-                            <p className="mt-1.5 text-[11px] text-gray-400">
-                                {limits.length ? limits.join(" · ") : "No caps"}
-                                {['kcal', 'kj', 'km'].includes(goal.metric) && user && (Math.abs((user.scaling_distance || 1) - 1) >= 0.01 || Math.abs((user.scaling_kcal || 1) - 1) >= 0.01) && (
-                                    <> · equalizer {goal.metric === "km" ? Math.round(user.scaling_distance * 1000) / 10 : Math.round(user.scaling_kcal * 10000) / 100}%</>
-                                )}
-                            </p>
-                        </div>
-                    );
-                })}
-            </div>
-            )}
-            {
-                (showModifyGoals) ?
-                    <ActivityGoalsForm setModalState={setShowModifyGoals} competitionId={competitionId}/> : null
-            }
-        </BoxSection>
-    );
 }
 
 
@@ -606,40 +289,6 @@ function getWeekDates() {
     });
 }
 
-function Activity7DaysBox({stats, userId, teamId}) {
-
-    const [chartData, setChartData] = useState({'labels': [], 'Me': [], 'My Team': [], 'Average': []});
-
-    useEffect(() => {
-        let tmpLegend = [];
-        let tmpMe = [];
-        let tmpTeam = [];
-        let tmpAll = [];
-        const participantCount = Math.max(1, stats.competition?.active_member_count);
-        const teamMemberCount = Math.max(1, stats.teams[teamId]?.active_member_count);
-        for (const entry of getWeekDates()) {
-            tmpLegend.push(entry.dateObj.toLocaleDateString('en-US', {weekday: 'short'}));
-            tmpMe.push(Math.round(stats?.timeseries?.user?.[userId]?.[entry.offset]?.total * 10) / 10 || 0);
-            tmpTeam.push(Math.round(stats?.timeseries?.team?.[teamId]?.[entry.offset]?.total / teamMemberCount * 10) / 10 || 0);
-            tmpAll.push(Math.round(stats?.timeseries?.all?.[entry.offset]?.total / participantCount * 10) / 10 || 0);
-        }
-        setChartData({
-            'Legend': tmpLegend,
-            'Me': tmpMe,
-            'My Team': tmpTeam,
-            'Average': tmpAll
-        });
-    }, [stats, userId, teamId]);
-
-    return (
-        <BoxSection>
-            <SectionHead title="This week"/>
-            <div className="my-3">
-                <ChartThisWeek history={chartData}/>
-            </div>
-        </BoxSection>)
-}
-
 function getDateRange(start_date, end_date) {
     const start = new Date(start_date);
     const today = new Date();
@@ -661,48 +310,6 @@ function getDateRange(start_date, end_date) {
     }
 
     return dates;
-}
-
-
-function ActivityCompetitionBox({stats, userId, teamId}) {
-
-    const [chartData, setChartData] = useState({'labels': [], 'Me': [], 'My Team': [], 'Average': []});
-
-    useEffect(() => {
-        let tmpLegend = ['Start'];
-        let tmpMe = [0];
-        let prevMe = 0;
-        let tmpTeam = [0];
-        let prevTeam = 0;
-        let tmpAll = [0];
-        let prevAll = 0;
-        const participantCount = Math.max(1, stats.competition?.active_member_count);
-        const teamMemberCount = Math.max(1, stats.teams[teamId]?.active_member_count);
-        for (const entry of getDateRange(stats?.competition?.start_date, stats?.competition?.end_date)) {
-            tmpLegend.push(entry.dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })); // Mon, Jan 5
-            tmpMe.push((stats?.timeseries?.user?.[userId]?.[entry.offset]?.total + prevMe) || null);
-            prevMe += (stats?.timeseries?.user?.[userId]?.[entry.offset]?.total || 0);
-            tmpTeam.push((stats?.timeseries?.team?.[teamId]?.[entry.offset]?.total / teamMemberCount + prevTeam) || null);
-            prevTeam += (stats?.timeseries?.team?.[teamId]?.[entry.offset]?.total / teamMemberCount || 0);
-            tmpAll.push((stats?.timeseries?.all?.[entry.offset]?.total / participantCount + prevAll) || null);
-            prevAll += (stats?.timeseries?.all?.[entry.offset]?.total / participantCount || 0);
-        }
-        setChartData({
-            'Legend': tmpLegend,
-            'Me': tmpMe,
-            'My Team': tmpTeam,
-            'Average': tmpAll
-        });
-    }, [stats, userId, teamId]);
-
-    return (
-        <BoxSection>
-            <SectionHead title="The trend"/>
-            <div className="my-3">
-                <ChartHistory history={chartData}/>
-            </div>
-        </BoxSection>
-    )
 }
 
 
@@ -732,7 +339,6 @@ export default function Competition() {
 
     const {
         data: user,
-        isLoading: userLoading,
     } = useGetUserByIdQuery('me');
 
     const {
@@ -744,7 +350,6 @@ export default function Competition() {
 
     const {
         data: feed,
-        error: feedError,
         isLoading: feedLoading,
         refetch: refreshFeed,
     } = useGetFeedByIdQuery(id, {
@@ -829,17 +434,6 @@ export default function Competition() {
                 <SwipePages tab={tab} onChange={setTab}>
                 <div>
                 {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
-
-                <div className="mt-4">
-                    {
-                        (feedLoading) ? <SectionLoader height={"h-80"}/> : (feedError) ? (
-                            <ErrorBoxSection
-                                errorMsg={feedError?.status + ' / ' + (feedError?.error || feedError?.message || feedError?.data?.detail)}/>
-                        ) : (
-                            <FeedBox feed={feed}/>
-                        )
-                    }
-                </div>
                 </div>
 
                 <div>
@@ -852,7 +446,7 @@ export default function Competition() {
                                 <ErrorBoxSection
                                     errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
                             ) : (
-                                <IndividualLeaderboardBox stats={stats} userId={user?.id} dunceUserId={dunceUserId}/>
+                                <IndividualLeaderboardBox stats={stats} userId={user?.id} dunceUserId={dunceUserId} feed={feed}/>
                             )
                         }
                     </div>
@@ -870,52 +464,6 @@ export default function Competition() {
                         }
                     </div>
                     )}
-                </div>
-
-                {competition && (
-                    <CoachVoteBox
-                        configId={(drillConfigs || []).find((c) => c.competition === competition.id)?.id}
-                        enabled={(drillConfigs || []).find((c) => c.competition === competition.id)?.enabled}
-                    />
-                )}
-
-                <div className="flex flex-col xl:flex-row">
-                    <div className="w-full xl:w-1/3">
-                        {
-                            (statsLoading || feedLoading || userLoading) ? (
-                                <SectionLoader/>
-                            ) : (statsError) ? (
-                                <ErrorBoxSection additionalClasses="mb-4"
-                                    errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
-                            ) : (
-                                <ActivityGoalsBox user={user} stats={stats} feed={feed} competitionId={id} userId={user?.id} isOwner={isOwner} />
-                            )
-                        }
-                    </div>
-                    <div className="w-full xl:w-1/3 my-4 xl:my-0 xl:mx-4">
-                        {
-                            (statsLoading || userLoading) ? (
-                                <SectionLoader/>
-                            ) : (statsError) ? (
-                                <ErrorBoxSection
-                                    errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
-                            ) : (
-                                <Activity7DaysBox feed={feed} stats={stats} userId={user?.id} teamId={teamId}/>
-                            )
-                        }
-                    </div>
-                    <div className="w-full xl:w-1/3 ">
-                        {
-                            (statsLoading || userLoading) ? (
-                                <SectionLoader/>
-                            ) : (statsError) ? (
-                                <ErrorBoxSection
-                                    errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
-                            ) : (
-                                <ActivityCompetitionBox feed={feed} stats={stats} userId={user?.id} teamId={teamId}/>
-                            )
-                        }
-                    </div>
                 </div>
                 </div>
 

@@ -8,7 +8,7 @@ import {Chip} from "../components/uiBits";
 import {notice} from "../utils/dialogs";
 
 const pill =
-    "inline-flex items-center gap-2 px-4 py-2 min-h-[44px] rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-sm font-semibold transition";
+    "inline-flex items-center gap-2 px-4 py-2 min-h-[44px] rounded-full btn-glass text-sm font-semibold transition";
 
 
 export default function JoinTeamForm({competition, setModalState, user, isOwner}) {

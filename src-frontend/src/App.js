@@ -13,6 +13,7 @@ import {
     LogoutPage
 } from "./pages/Public";
 import BottomNav from "./utils/bottomNav";
+import AppBackdrop from "./components/AppBackdrop";
 import WhatsNew from "./components/WhatsNew";
 import EchoArtNudge from "./components/EchoArtNudge";
 import DialogHost from "./components/DialogHost";
@@ -28,6 +29,8 @@ const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 function App() {
     return (
         <Router>
+            <AppBackdrop/>
+            <div className="relative z-10">
             <Routes>
                 <Route path="/" element={<WelcomePage />} />
                 <Route path="signup" element={<RegisterPage />} />
@@ -62,6 +65,7 @@ function App() {
             {/* Release popup: one changelog + reload prompt per release. */}
             <WhatsNew/>
             <EchoArtNudge/>
+            </div>
         </Router>
     );
 }

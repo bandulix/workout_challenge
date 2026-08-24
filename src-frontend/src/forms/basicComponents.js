@@ -17,6 +17,10 @@ import { isMobile } from "react-device-detect";
 import TimeField from "./customTimefieldInput";
 
 
+export const FIELD_INPUT_CLASS =
+    "w-full rounded-xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-ink-900/80 py-2.5 px-3 text-gray-800 dark:text-gray-200 leading-tight focus:outline-none focus:border-volt-500";
+
+
 export function Modal({setShowModal, title = null, landscape = false, isLoading = false, children}) {
     const closeModal = () => {
         document.body.classList.remove('body-no-scroll');
@@ -36,13 +40,13 @@ export function Modal({setShowModal, title = null, landscape = false, isLoading 
             onClick={closeModal}
         >
             <div
-                className={"relative flex max-h-[100dvh] w-full flex-col overflow-hidden bg-white border border-gray-300 dark:bg-ink-850 dark:border-ink-700/60 shadow-card dark:shadow-card-dark animate-pop-in " +
+                className={"relative flex max-h-[100dvh] w-full flex-col overflow-hidden glass-card animate-pop-in " +
                     ((landscape) ? "max-w-4xl " : "max-w-2xl ") +
                     "sm:max-h-[90vh] sm:rounded-3xl max-sm:min-h-[100dvh] max-sm:rounded-none"}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-2 sm:px-8 sm:pt-6">
-                    <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+                    <h2 className="font-display text-sm uppercase tracking-wider">{title}</h2>
                     <button className="text-gray-400 hover:text-gray-600 dark:hover:text-volt-300 min-h-[44px] min-w-[44px] flex items-center justify-center"
                             onClick={closeModal}
                             aria-label="Close"
@@ -136,7 +140,7 @@ export function FormInput({
                         <TimeField
                             value={value}
                             onChange={(e) => setValue(e.target.value)}
-                            input={<input type="text" className={"w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-300 leading-tight focus:outline-none focus:shadow-outline" + (highlight ? " bg-volt-400/20 dark:bg-volt-400/10 ": "") + additionalClasses} />}
+                            input={<input type="text" className={FIELD_INPUT_CLASS + (highlight ? " bg-volt-400/20 dark:bg-volt-400/10 ": "") + additionalClasses} />}
                             showSeconds={true}
                         />
                     ) :
@@ -163,7 +167,7 @@ export function FormInput({
                         <>
                             {/* Dropdown Input Element */}
                             <select
-                                className={"w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-850 dark:text-gray-300 leading-tight focus:outline-none focus:shadow-outline" + (highlight ? " bg-volt-400/15 dark:bg-volt-400/10 border border-volt-500/50 ": "") + additionalClasses}
+                                className={FIELD_INPUT_CLASS + (highlight ? " bg-volt-400/15 dark:bg-volt-400/10 border-volt-500/50 ": "") + additionalClasses}
                                 id={name}
                                 name={name}
                                 tabIndex={tabIndex}
@@ -184,7 +188,7 @@ export function FormInput({
                         <>
                             {/* All Other Input Elements */}
                             <input
-                                className={"w-full shadow border rounded py-2 px-3 text-gray-700 dark:text-gray-400 dark:placeholder-gray-600 leading-tight focus:outline-none focus:shadow-outline" + (highlight ? " bg-volt-400/15 dark:bg-volt-400/10 border border-volt-500/50 ": " dark:bg-ink-900 ") + additionalClasses}
+                                className={FIELD_INPUT_CLASS + (highlight ? " bg-volt-400/15 dark:bg-volt-400/10 border-volt-500/50 ": "") + additionalClasses}
                                 id={name}
                                 name={name}
                                 type={(type === "duration") ? "time" : type}
@@ -318,7 +322,7 @@ function GenericButton({onClick, icon, label, highlighted, larger, IconObject, i
 
     return (
         <button
-            className={"flex items-center gap-2 transition hover:shadow active:scale-[0.97] " + tapTargetClass + " " + (larger ? (label ? " px-5 py-2.5 font-semibold rounded-full " : " px-3 py-3 rounded-2xl ") : (label ? " px-4 py-2 rounded-full " : " p-2 rounded-2xl ")) + (isLoading ? " bg-white hover:bg-white shadow-none border border-gray-200/70 dark:bg-ink-850 dark:hover:bg-ink-850 dark:border-ink-700/60 " : (highlighted ? " bg-volt-400 text-ink-950 font-bold hover:bg-volt-300 " : " bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:text-gray-200 dark:hover:bg-ink-700 ")) + additionalClasses}
+            className={"flex items-center gap-2 transition active:scale-[0.97] " + tapTargetClass + " " + (larger ? (label ? " px-5 py-2.5 font-semibold rounded-full " : " px-3 py-3 rounded-2xl ") : (label ? " px-4 py-2 rounded-full " : " p-2 rounded-2xl ")) + (isLoading ? " btn-glass shadow-none " : (highlighted ? " bg-volt-400 text-ink-950 font-bold hover:bg-volt-300 shadow-glow-volt " : " btn-glass ")) + additionalClasses}
             onClick={onClick}
             disabled={isLoading}
         >

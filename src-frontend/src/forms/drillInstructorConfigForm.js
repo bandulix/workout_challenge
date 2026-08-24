@@ -266,7 +266,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                         <button
                             onClick={handleTest}
                             disabled={testLoading}
-                            className="px-4 py-2 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-sm font-semibold transition"
+                            className="px-4 py-2 rounded-full btn-glass text-sm font-semibold transition"
                         >
                             {testLoading ? <BeatLoader size={6} color="#d7ff3e"/> : "Send"}
                         </button>

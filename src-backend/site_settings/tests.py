@@ -76,6 +76,38 @@ class SiteSettingsApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("llm_base_url", response.json())
 
+    def test_health_urls_reject_credentials_and_non_http(self):
+        self.client.force_authenticate(self.admin)
+        bad = self.client.put(
+            "/api/site-settings/",
+            {"health_public_url": "javascript:alert(1)"},
+            format="json",
+        )
+        self.assertEqual(bad.status_code, 400)
+        self.assertIn("health_public_url", bad.json())
+        creds = self.client.put(
+            "/api/site-settings/",
+            {"health_base_url": "https://user:pass@ow.example/"},
+            format="json",
+        )
+        self.assertEqual(creds.status_code, 400)
+        self.assertIn("health_base_url", creds.json())
+
+    def test_health_urls_allow_http_and_https_hosts(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.put(
+            "/api/site-settings/",
+            {
+                "health_base_url": "http://openwearables:8000",
+                "health_public_url": "https://challenge.example.com/health",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        solo = SiteSettings.get_solo()
+        self.assertEqual(solo.health_base_url, "http://openwearables:8000")
+        self.assertEqual(solo.health_public_url, "https://challenge.example.com/health")
+
     def test_resolve_llm_prefers_db_over_env(self):
         solo = SiteSettings.get_solo()
         solo.llm_api_key = "db-key"

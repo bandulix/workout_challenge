@@ -100,7 +100,7 @@ export default function EchoArtNudge() {
     return (
         <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
              onClick={() => { if (!busy) close(); }}>
-            <div className="w-full max-w-md rounded-3xl bg-white border border-gray-300 dark:bg-ink-850 dark:border-ink-700/60 shadow-card dark:shadow-card-dark p-6 animate-pop-in"
+            <div className="w-full max-w-md rounded-3xl glass-card p-6 animate-pop-in"
                  onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-start gap-3">
                     <span className="h-11 w-11 rounded-2xl bg-volt-400/20 flex items-center justify-center shrink-0">
@@ -127,7 +127,7 @@ export default function EchoArtNudge() {
                         Later
                     </button>
                     <button type="button" disabled={busy} onClick={() => pick("camera")}
-                            className="min-h-[44px] px-4 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-sm font-bold uppercase tracking-wide inline-flex items-center gap-1.5 disabled:opacity-50">
+                            className="min-h-[44px] px-4 rounded-full btn-glass text-sm font-bold uppercase tracking-wide inline-flex items-center gap-1.5 disabled:opacity-50">
                         <Camera className="h-3.5 w-3.5"/> Camera
                     </button>
                     <button type="button" disabled={busy} onClick={() => pick("gallery")}

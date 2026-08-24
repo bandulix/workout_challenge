@@ -46,6 +46,10 @@ module.exports = {
           '0%': { transform: 'translateY(16px)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
         },
+        'dock-expand': {
+          '0%': { opacity: '0', transform: 'translateY(12px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
         'pop-in': {
           '0%': { transform: 'scale(0.92)', opacity: '0' },
           '100%': { transform: 'scale(1)', opacity: '1' },
@@ -86,6 +90,7 @@ module.exports = {
       },
       animation: {
         'slide-up': 'slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both',
+        'dock-expand': 'dock-expand 0.32s cubic-bezier(0.22, 1, 0.36, 1) both',
         'pop-in': 'pop-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both',
         'pulse-ring': 'pulse-ring 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'float-slow': 'float-slow 4s ease-in-out infinite',

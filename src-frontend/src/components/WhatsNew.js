@@ -123,7 +123,7 @@ function WhatsNew() {
 
             <div className="relative flex justify-center gap-3 pt-2">
                 <button onClick={close}
-                        className="px-5 py-2.5 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:text-gray-200 dark:hover:bg-ink-700 text-sm font-semibold transition">
+                        className="px-5 py-2.5 rounded-full btn-glass text-sm font-semibold transition">
                     Later
                 </button>
                 <button onClick={reload}

@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from "react";
-import {Modal, SaveButton} from "./basicComponents";
+import {FIELD_INPUT_CLASS, Modal, SaveButton} from "./basicComponents";
 import {useGetSiteSettingsQuery, useUpdateSiteSettingsMutation} from "../utils/reducers/siteSettingsSlice";
 import {workoutTypes} from "./workoutForm";
 import {confirmAction, notice} from "../utils/dialogs";
@@ -54,28 +54,28 @@ export default function SportFactorsForm({setModalState}) {
 
     return (
         <Modal title="Points per Activity Type" landscape={true} setShowModal={setModalState} isLoading={isLoading || saving}>
-            <p className="text-gray-700 dark:text-gray-300">
-                Every activity type's raw points are multiplied by its factor. <b>1.00 is neutral</b> -
-                raise a factor to reward a sport, lower it to dampen it. Applies to <b>all challenges</b> on
+            <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                Every activity type’s raw points are multiplied by its factor. <b>1.00 is neutral</b> —
+                raise a factor to reward a sport, lower it to dampen it. Applies to all challenges on
                 this server and re-scores existing workouts.
             </p>
-            <div className="max-h-[50vh] overflow-y-auto pr-1">
+            <div className="rounded-2xl glass-inset overflow-hidden max-h-[50vh] overflow-y-auto">
                 <table className="w-full text-sm">
                     <tbody>
                     {Object.entries(workoutTypes).map(([sport, labels]) => (
-                        <tr key={sport} className="border-b border-gray-100 dark:border-ink-700/40">
-                            <td className="py-1.5 pl-2 text-gray-700 dark:text-gray-300">{labels.label}</td>
-                            <td className="py-1.5 pr-2 w-28">
+                        <tr key={sport} className="border-b border-gray-100 dark:border-ink-700/40 last:border-0">
+                            <td className="py-2 pl-3 text-gray-700 dark:text-gray-300">{labels.label}</td>
+                            <td className="py-2 pr-3 w-28">
                                 <input
                                     type="number"
                                     step="0.05"
                                     min="0"
                                     max="100"
                                     inputMode="decimal"
-                                    className={"w-full shadow border rounded py-1 px-2 text-right dark:text-gray-200 focus:outline-none focus:shadow-outline " +
+                                    className={FIELD_INPUT_CLASS + " text-right py-1.5 " +
                                         ((parseFloat(factors[sport] ?? 1) !== 1.0 && factors[sport] !== '' && factors[sport] !== undefined)
                                             ? "bg-volt-400/15 dark:bg-volt-400/10 border-volt-500/50"
-                                            : "dark:bg-ink-900")}
+                                            : "")}
                                     value={factors[sport] ?? ''}
                                     placeholder="1.00"
                                     onChange={(e) => setFactor(sport, e.target.value)}

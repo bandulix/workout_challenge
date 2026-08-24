@@ -1265,6 +1265,32 @@ class PhotoPostTests(TestCase):
 
     # ---- feed integration ----------------------------------------------
 
+    def test_activity_message_carries_points_and_order_ribbon(self):
+        from django.db.models import Sum
+        from competition.models import ActivityGoal, Points
+        from .models import DailyOrder
+        root = self._activity_root(self.athlete)
+        goal = ActivityGoal.objects.create(
+            competition=self.competition, name="Minutes", metric="min", goal=30, period="day",
+        )
+        Points.objects.create(goal=goal, workout=root.workout, points_raw=40, points_capped=32)
+        order = DailyOrder.objects.create(
+            config=self.config, date=timezone.localdate(),
+            kind=DailyOrder.KIND_LOG, brief="Log something.",
+        )
+        order.completed_by.add(self.athlete)
+        self.client.force_authenticate(self.athlete)
+        card = self.client.get("/api/drill-instructor/message/").json()[0]
+        totals = Points.objects.filter(workout=root.workout).aggregate(
+            capped=Sum("points_capped"), raw=Sum("points_raw"),
+        )
+        self.assertEqual(card["id"], root.id)
+        self.assertEqual(card["points_capped"], float(totals["capped"]))
+        self.assertEqual(card["points_raw"], float(totals["raw"]))
+        self.assertGreaterEqual(card["points_capped"], 32.0)
+        self.assertTrue(card["order_ribbon"])
+        self.assertEqual(card["workout_summary"], "30 min Run · 5.00 km · 300 kcal")
+
     def test_photo_post_hangs_under_the_workout_in_the_feed(self):
         root = self._activity_root(self.athlete)
         self._post(self.athlete, parent=root)
@@ -1275,6 +1301,8 @@ class PhotoPostTests(TestCase):
         self.assertEqual(results[0]["id"], root.id)
         self.assertEqual(results[0]["kind"], DrillInstructorMessage.KIND_ACTIVITY)
         self.assertEqual(results[0]["workout_user_id"], self.athlete.id)
+        self.assertEqual(results[0]["athlete_name"], "Alex")
+        self.assertIn("athlete_profile_picture", results[0])
         photo_replies = [r for r in results[0]["replies"] if r["kind"] == DrillInstructorMessage.KIND_PHOTO]
         self.assertEqual(len(photo_replies), 1)
         self.assertEqual(photo_replies[0]["author_name"], "Alex")
@@ -2852,9 +2880,10 @@ class LegendEchoTests(TestCase):
         self.assertEqual(me.status_code, 200, me.content)
         self.assertGreaterEqual(me.json().get("echoes_held") or 0, 1)
         self.client.force_authenticate(self.nina)
-        other = self.client.get(f"/api/user/{self.alex.id}/")
-        self.assertEqual(other.status_code, 200, other.content)
-        self.assertGreaterEqual(other.json().get("echoes_held") or 0, 1)
+        listed = self.client.get("/api/user/")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        other = next(row for row in listed.json() if row["id"] == self.alex.id)
+        self.assertGreaterEqual(other.get("echoes_held") or 0, 1)
 
     def test_personal_best_needs_a_prior_same_sport(self):
         from .echoes import mint_echo

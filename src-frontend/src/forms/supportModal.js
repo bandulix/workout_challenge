@@ -1,38 +1,32 @@
 import React, {useState} from "react";
 import {Modal} from "./basicComponents";
-import {ChevronDown, ChevronUp, ExternalLink} from "lucide-react";
+import {ChevronDown, ExternalLink} from "lucide-react";
 
 const SENTRY_DSN = window.RUNTIME_CONFIG?.REACT_APP_SENTRY_DSN;
+
 const AccordionItem = ({title, content, link}) => {
     const [isOpen, setIsOpen] = useState(false);
 
+    const row = "w-full flex justify-between items-center gap-3 px-3 py-3 text-left font-semibold text-sm min-h-[48px]";
+
     if (link) {
         return (
-            <div className="border-b">
-                <a
-                    href={link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex justify-between items-center py-3 text-left font-medium text-gray-800 dark:text-gray-200 hover:underline"
-                >
-                    <span>{title}</span>
-                    <ExternalLink className="w-4 h-4"/>
-                </a>
-            </div>
+            <a href={link} target="_blank" rel="noopener noreferrer"
+               className={row + " rounded-2xl hover:bg-gray-100 dark:hover:bg-ink-800"}>
+                <span>{title}</span>
+                <ExternalLink className="w-4 h-4 text-gray-400 shrink-0"/>
+            </a>
         );
     }
 
     return (
-        <div className="border-b">
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className="w-full flex justify-between items-center py-3 text-left font-medium text-gray-800 dark:text-gray-200 hover:underline"
-            >
+        <div className="rounded-2xl hover:bg-gray-100 dark:hover:bg-ink-800">
+            <button onClick={() => setIsOpen(!isOpen)} className={row}>
                 <span>{title}</span>
-                {isOpen ? <ChevronUp className="w-4 h-4"/> : <ChevronDown className="w-4 h-4"/>}
+                <ChevronDown className={"w-4 h-4 text-gray-400 shrink-0 transition-transform " + (isOpen ? "rotate-180" : "")}/>
             </button>
             {isOpen && (
-                <div className="pb-4 text-gray-600 dark:text-gray-400">
+                <div className="px-3 pb-3 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
                     {content}
                 </div>
             )}
@@ -65,17 +59,16 @@ function AccordionMenu() {
     ];
 
     return (
-        <div className="max-w-xl mx-auto divide-y divide-gray-300">
+        <div className="space-y-0.5">
             {items.map((item, index) => (
                 <AccordionItem key={index} {...item} />
             ))}
-            <div className="border-b py-4">
-                <div align="center" className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                    <p><b>Workout Challenge</b> — fork of <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick/workout_challenge">vanalmsick/workout_challenge</a></p>
-                    <p>Original work © 2025 <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick">github.com/vanalmsick</a><br/>
-                    Fork modifications © 2026 <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/bandulix/workout_challenge">bandulix</a></p>
-                    <p className="text-xs">Licensed under the <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/bandulix/workout_challenge/blob/main/LICENSE">Server Side Public License v1 (SSPL)</a></p>
-                </div>
+            <div className="mt-3 rounded-2xl glass-inset px-4 py-3 text-center text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                <p><b className="font-display uppercase tracking-wide text-ink-950 dark:text-gray-200">Workout Challenge</b></p>
+                <p>Fork of <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick/workout_challenge">vanalmsick/workout_challenge</a></p>
+                <p>Original work © 2025 <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick">github.com/vanalmsick</a><br/>
+                Fork modifications © 2026 <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/bandulix/workout_challenge">bandulix</a></p>
+                <p>Licensed under the <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/bandulix/workout_challenge/blob/main/LICENSE">Server Side Public License v1 (SSPL)</a></p>
             </div>
         </div>
     );
@@ -83,10 +76,9 @@ function AccordionMenu() {
 
 
 export default function SupportModal({setModalState}) {
-
     return (
-        <Modal title="Information & Help" landscape={false} setShowModal={setModalState} isLoading={false}>
+        <Modal title="Help & Support" landscape={false} setShowModal={setModalState} isLoading={false}>
             <AccordionMenu/>
         </Modal>
-    )
+    );
 }

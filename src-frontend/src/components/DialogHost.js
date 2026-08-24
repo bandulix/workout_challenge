@@ -19,7 +19,7 @@ export default function DialogHost() {
     return (
         <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
              onClick={() => close(dialog.kind === "confirm" ? false : undefined)}>
-            <div className="w-full max-w-md rounded-3xl bg-white border border-gray-300 dark:bg-ink-850 dark:border-ink-700/60 shadow-card dark:shadow-card-dark p-6 animate-pop-in"
+            <div className="w-full max-w-md rounded-3xl glass-card p-6 animate-pop-in"
                  onClick={(e) => e.stopPropagation()}>
                 <p className="text-base text-gray-800 dark:text-gray-100 leading-relaxed">{dialog.message}</p>
                 <div className="mt-6 flex justify-end gap-3">

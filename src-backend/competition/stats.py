@@ -203,6 +203,48 @@ def get_competition_stats(competition, last_seven_days=False):
         value['profile_picture'] = f"/api/user/{value['id']}/picture/" if value['profile_picture'] else None
         value['echoes_held'] = int(echo_holds.get(key, 0))
 
+    # Public athlete-card extras (no email / legal name). One batch for
+    # tags, one for workout counts; streak and active days come from the
+    # timeseries we already built.
+    tags_by_user = {}
+    if user_dict:
+        from drill_instructor.game import TAG_CATALOG
+        from drill_instructor.models import DogTag
+        for tag in DogTag.objects.filter(user_id__in=user_dict.keys()).order_by("earned_at"):
+            tags_by_user.setdefault(tag.user_id, []).append({
+                "slug": tag.slug,
+                "title": TAG_CATALOG.get(tag.slug, {}).get("title", tag.slug),
+                "blurb": TAG_CATALOG.get(tag.slug, {}).get("blurb", ""),
+            })
+    workout_n = {
+        row["workout__user__id"]: int(row["n"])
+        for row in all_points.values("workout__user__id").annotate(n=Count("workout", distinct=True))
+    }
+
+    def _day_total(per_day, days_ago):
+        cell = per_day.get(days_ago)
+        if cell is None:
+            cell = per_day.get(str(days_ago))
+        return float((cell or {}).get("total") or 0)
+
+    def _streak(per_day):
+        start = 0 if _day_total(per_day, 0) > 0 else 1
+        if _day_total(per_day, start) <= 0:
+            return 0
+        n = 0
+        d = start
+        while _day_total(per_day, d) > 0 and n < 400:
+            n += 1
+            d += 1
+        return n
+
+    for uid, value in user_dict.items():
+        days = timeseries_user.get(uid, {})
+        value["dog_tags"] = tags_by_user.get(uid, [])
+        value["workouts"] = int(workout_n.get(uid, 0))
+        value["active_days"] = sum(1 for d in days if _day_total(days, d) > 0)
+        value["streak"] = _streak(days)
+
     # Get user rankings
     leaderboard_user = (
         all_points

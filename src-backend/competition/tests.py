@@ -388,6 +388,57 @@ class GoalCompetitionImmutableTests(TestCase):
         self.assertEqual(self.goal.name, "Still Alice's")
 
 
+class LeaderboardAthleteCardTests(TestCase):
+    """Public card fields on the stats leaderboard - no email or legal name."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "drill_instructor.tasks.post_workout_comment.delay",
+            "custom_user.models.welcome_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.alice = CustomUser.objects.create_user(
+            email="alice-card@example.com", password="test-pw",
+            first_name="Alice", last_name="Secret",
+        )
+        today = timezone.localdate()
+        self.cup = Competition.objects.create(
+            owner=self.alice, name="Card Cup",
+            start_date=today - datetime.timedelta(days=2),
+            end_date=today + datetime.timedelta(days=5),
+        )
+        self.alice.my_competitions.add(self.cup)
+        w = Workout(
+            user=self.alice, sport_type="Run",
+            start_datetime=timezone.now(),
+            duration=datetime.timedelta(minutes=40),
+            intensity_category=2,
+        )
+        w.save(score=False)
+        goal = self.cup.activitygoal_set.first()
+        Points.objects.create(goal=goal, workout=w, points_raw=40, points_capped=40)
+        from drill_instructor.models import DogTag
+        DogTag.objects.create(user=self.alice, slug=DogTag.SLUG_FIRST_BLOOD)
+
+    def test_leaderboard_card_is_public_only(self):
+        from .stats import get_competition_stats
+        snap = get_competition_stats(self.cup.id)
+        row = snap["leaderboard"]["individual"][0]
+        self.assertEqual(row["username"], self.alice.username)
+        self.assertNotIn("email", row)
+        self.assertNotIn("first_name", row)
+        self.assertNotIn("last_name", row)
+        self.assertEqual(row["workouts"], 1)
+        self.assertGreaterEqual(row["active_days"], 1)
+        self.assertGreaterEqual(row["streak"], 1)
+        slugs = [t["slug"] for t in row["dog_tags"]]
+        self.assertIn("first_blood", slugs)
+        self.assertEqual(row["echoes_held"], 0)
+
+
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
 )

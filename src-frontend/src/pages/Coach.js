@@ -7,9 +7,10 @@ import {SectionLoader} from "../utils/loaders";
 import PersonaAvatar from "../components/PersonaAvatar";
 import PhotoPost from "../components/PhotoPost";
 import RoastSwipeBox from "../components/RoastSwipeBox";
+import CoachVoteBox from "../components/CoachVoteBox";
 import PushOptInCard from "../components/PushOptIn";
 import {useGetPersonasQuery, useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
-import {HallOfRoasts, MoodMeter, OrderCard, SquadOrbit} from "../components/gameBits";
+import {HallOfRoasts, MOOD_CHIP, OrderCard, SquadOrbit} from "../components/gameBits";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {timeAgo} from "../utils/time";
@@ -32,15 +33,23 @@ function CoachHero({persona, config, latestMessage, ownedCompetitions, mood, use
         && latestMessage.workout_user_id === userId
     );
     return (
-        <div className="relative overflow-hidden rounded-3xl bg-white text-ink-950 border border-gray-300 shadow-card dark:bg-ink-900 dark:text-white dark:border-ink-700/60 dark:shadow-card-dark">
+        <div className="relative overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white">
             {/* volt aura */}
             <div className="pointer-events-none absolute -top-24 -right-16 h-64 w-64 rounded-full blur-3xl"
                  style={{background: persona.theme_color || "#d7ff3e",
                          opacity: 0.18 + 0.12 * (mood?.intensity ?? 1)}}/>
             <div className="relative p-5 sm:p-8">
-                <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400">
-                    <Radio className="h-3.5 w-3.5"/>
-                    {config ? (mood?.label ? `On duty · ${mood.label}` : "On duty") : "Drill Instructor"}
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400">
+                        <Radio className="h-3.5 w-3.5"/>
+                        {config ? "On duty" : "Drill Instructor"}
+                    </span>
+                    {config && mood?.label && (
+                        <span className={"rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.16em] " +
+                            (MOOD_CHIP[mood.key] || "bg-gray-200 text-gray-700 dark:bg-ink-800 dark:text-gray-300")}>
+                            {mood.label}
+                        </span>
+                    )}
                 </div>
 
                 <div className="mt-5 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-5">
@@ -56,8 +65,8 @@ function CoachHero({persona, config, latestMessage, ownedCompetitions, mood, use
                 </div>
 
                 {/* speech bubble */}
-                <div className="relative mt-6 rounded-2xl bg-gray-100 dark:bg-white/10 backdrop-blur px-5 py-4 animate-pop-in">
-                    <div className="absolute -top-2 left-12 h-4 w-4 rotate-45 bg-gray-100 dark:bg-white/10"/>
+                <div className="relative mt-6 rounded-2xl glass-inset px-5 py-4 animate-pop-in">
+                    <div className="absolute -top-2 left-12 h-4 w-4 rotate-45 glass-inset"/>
                     {latestMessage ? (
                         <>
                             {/* Photo posts carry their text in the caption -
@@ -85,8 +94,6 @@ function CoachHero({persona, config, latestMessage, ownedCompetitions, mood, use
                         </p>
                     )}
                 </div>
-
-                {mood && <MoodMeter mood={mood} personaName={persona.name}/>}
 
                 {ownActivity && (
                     <div className="mt-5">
@@ -154,13 +161,13 @@ function CoachPage() {
 
                         {heroConfig?.daily_order && <OrderCard order={heroConfig.daily_order}/>}
 
-                        {/* Hot-or-not over the coach's roasted photos -
-                            the box itself decides between game, empty
-                            state and hidden (image model not set + no
-                            roasts yet). */}
+                        {/* Hot-or-not over the coach's roasted photos.
+                            Hidden when there is nothing left to vote on. */}
                         <RoastSwipeBox/>
 
                         <HallOfRoasts cards={hall}/>
+
+                        <CoachVoteBox configs={configs} preferredConfigId={heroConfig?.id}/>
 
                         <PushOptInCard/>
                     </div>

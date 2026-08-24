@@ -340,8 +340,12 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     persona_profile_picture = serializers.SerializerMethodField()
     persona_theme_color = serializers.SerializerMethodField()
     athlete_name = serializers.SerializerMethodField()
+    athlete_profile_picture = serializers.SerializerMethodField()
     workout_user_id = serializers.SerializerMethodField()
     workout_summary = serializers.SerializerMethodField()
+    points_capped = serializers.SerializerMethodField()
+    points_raw = serializers.SerializerMethodField()
+    order_ribbon = serializers.SerializerMethodField()
     replies = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
     author_name = serializers.SerializerMethodField()
@@ -366,8 +370,12 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             "persona_profile_picture",
             "persona_theme_color",
             "athlete_name",
+            "athlete_profile_picture",
             "workout_user_id",
             "workout_summary",
+            "points_capped",
+            "points_raw",
+            "order_ribbon",
             "replies",
             "image",
             "author_name",
@@ -425,8 +433,59 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             return None
         return user.first_name or user.username or None
 
+    def get_athlete_profile_picture(self, obj):
+        user = getattr(obj.workout, "user", None)
+        if user is None:
+            return None
+        return _user_picture_url(user)
+
     def get_workout_user_id(self, obj):
         return getattr(obj.workout, "user_id", None)
+
+    def _workout_point_totals(self, obj):
+        workout = getattr(obj, "workout", None)
+        if workout is None:
+            return None, None
+        rows = list(workout.points_set.all())
+        if not rows:
+            return 0.0, 0.0
+        capped = sum(float(p.points_capped or 0) for p in rows)
+        raw = sum(float(p.points_raw or 0) for p in rows)
+        return capped, raw
+
+    def get_points_capped(self, obj):
+        if obj.kind != DrillInstructorMessage.KIND_ACTIVITY or obj.workout_id is None:
+            return None
+        return self._workout_point_totals(obj)[0]
+
+    def get_points_raw(self, obj):
+        if obj.kind != DrillInstructorMessage.KIND_ACTIVITY or obj.workout_id is None:
+            return None
+        return self._workout_point_totals(obj)[1]
+
+    def get_order_ribbon(self, obj):
+        if obj.kind != DrillInstructorMessage.KIND_ACTIVITY or obj.workout_id is None:
+            return False
+        workout = obj.workout
+        start = getattr(workout, "start_datetime", None)
+        if start is None:
+            return False
+        from django.utils import timezone as dj_tz
+        today = dj_tz.localdate()
+        local = dj_tz.localtime(start) if dj_tz.is_aware(start) else start
+        if local.date() != today:
+            return False
+        cache = self.context.setdefault("_order_completers", {})
+        cid = obj.config.competition_id
+        if cid not in cache:
+            from .models import DailyOrder
+            order = (
+                DailyOrder.objects.filter(config__competition_id=cid, date=today)
+                .prefetch_related("completed_by")
+                .first()
+            )
+            cache[cid] = set(order.completed_by.values_list("id", flat=True)) if order else set()
+        return workout.user_id in cache[cid]
 
     def get_workout_summary(self, obj):
         workout = obj.workout

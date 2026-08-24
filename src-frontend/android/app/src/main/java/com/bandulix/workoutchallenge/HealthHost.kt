@@ -9,7 +9,9 @@ internal object HealthHost {
         return try {
             val uri = URI(host.trim())
             val scheme = uri.scheme?.lowercase()
-            (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
+            (scheme == "http" || scheme == "https") &&
+                !uri.host.isNullOrBlank() &&
+                uri.userInfo.isNullOrBlank()
         } catch (_: Exception) {
             false
         }

@@ -140,9 +140,6 @@ export function PersonaEditModal({persona, setModalState}) {
                     <span className="absolute inset-0 rounded-full bg-ink-950/45 opacity-0 group-hover:opacity-100 group-active:opacity-100 transition flex items-center justify-center">
                         <Camera className="h-6 w-6 text-volt-400"/>
                     </span>
-                    <span className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-volt-400 text-ink-950 flex items-center justify-center shadow-glow-volt pointer-events-none">
-                        <Camera className="h-3 w-3"/>
-                    </span>
                 </button>
                 <input ref={fileInput} type="file" accept={PICTURE_ACCEPT} className="hidden" onChange={handlePictureFile}/>
                 <div>

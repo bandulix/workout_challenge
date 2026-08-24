@@ -25,15 +25,7 @@ function BaseHome({children, tagline}) {
     }, [navType]);
 
     return (
-        <div className="relative min-h-screen overflow-hidden bg-ink-950">
-            <img src="/login-bg.webp"
-                 alt=""
-                 width={1080}
-                 height={1920}
-                 fetchpriority="high"
-                 decoding="async"
-                 className="absolute inset-0 h-full w-full object-cover object-center animate-kenburns"/>
-            <div className="absolute inset-0 bg-gradient-to-b from-ink-950/25 via-ink-950/40 to-ink-950/88 z-0"/>
+        <div className="relative z-10 min-h-screen overflow-hidden">
             <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-96 w-96 rounded-full bg-volt-400/25 blur-3xl z-0"/>
 
             <div className="relative z-10 flex items-center justify-center min-h-screen px-0 md:px-4">
@@ -209,7 +201,7 @@ function goAfterLogin(navigate, location, params) {
 
 const LoadingForm = () => {
     return (
-        <div className="bg-ink-850/95 backdrop-blur border border-ink-700/60 shadow-card-dark rounded-3xl px-8 pt-6 pb-8 mb-4 flex items-center justify-center"
+        <div className="glass-card rounded-3xl px-8 pt-6 pb-8 mb-4 flex items-center justify-center"
              style={{minWidth: '310px'}}>
             <BarLoader height={6} width={200} color="#d7ff3e"/>
         </div>
@@ -297,7 +289,7 @@ function RegisterPage() {
                 isLoading ? <LoadingForm/> : (
 
                     <div className="flex justify-center">
-                        <form className="bg-ink-850/95 backdrop-blur border border-ink-700/60 shadow-card-dark rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}
+                        <form className="glass-card rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}
                               onSubmit={handleSubmit}>
                             <div className="mb-4">
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="email">
@@ -544,7 +536,7 @@ function LogInPage() {
                     isLoading ? <LoadingForm/> : (
 
                         <div>
-                            <form className="bg-ink-850/95 backdrop-blur border border-ink-700/60 shadow-card-dark rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}
+                            <form className="glass-card rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}
                                   onSubmit={handleSubmit}>
                                 <div className="mb-4">
                                     <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="email">
@@ -624,7 +616,7 @@ function ResetPasswordPage() {
             <div className="flex justify-center">
                 {
                     isLoading ? <LoadingForm/> : (
-                    <form onSubmit={handleSubmit} className="bg-ink-850/95 backdrop-blur border border-ink-700/60 shadow-card-dark rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}>
+                    <form onSubmit={handleSubmit} className="glass-card rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}>
                         <div className="mb-4">
                             <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="email" autoFocus="True">
                                 Email
@@ -693,7 +685,7 @@ function SetNewPasswordPage() {
             <div className="flex justify-center">
                 {
                     isLoading ? <LoadingForm/> : (
-                    <form onSubmit={handleSubmit} className="bg-ink-850/95 backdrop-blur border border-ink-700/60 shadow-card-dark rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '45%'}}>
+                    <form onSubmit={handleSubmit} className="glass-card rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '45%'}}>
                         <div className="mb-6">
                             <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="password1">
                                 Password

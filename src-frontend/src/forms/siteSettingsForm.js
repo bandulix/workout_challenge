@@ -5,7 +5,7 @@ import {
 } from "../utils/reducers/siteSettingsSlice";
 import {useGetPushStatusQuery, useSubscribePushMutation, useUnsubscribePushMutation} from "../utils/reducers/pushSlice";
 import {subscribeToPush, unsubscribeFromPush} from "../index";
-import {Modal, SaveButton} from "./basicComponents";
+import {FIELD_INPUT_CLASS, Modal, SaveButton} from "./basicComponents";
 
 
 function Field({label, error, hint, children}) {
@@ -23,12 +23,14 @@ function Field({label, error, hint, children}) {
 
 function Section({title, description, children}) {
     return (
-        <section className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4 first:border-t-0 first:pt-0 first:mt-0">
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 px-4">{title}</h3>
-            {description && (
-                <p className="text-xs text-gray-500 px-4 mb-2">{description}</p>
-            )}
-            <div className="flex flex-wrap">{children}</div>
+        <section className="rounded-2xl glass-inset p-4 space-y-3">
+            <div>
+                <h3 className="font-display text-xs uppercase tracking-[0.16em]">{title}</h3>
+                {description && (
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{description}</p>
+                )}
+            </div>
+            <div className="flex flex-wrap -mx-2">{children}</div>
         </section>
     );
 }
@@ -89,7 +91,7 @@ function PushSubscribeButton({status, onSubscribed}) {
         <div className="px-4 w-full">
             {status.subscribed ? (
                 <button onClick={handleUnsubscribe} disabled={busy}
-                        className="px-4 py-2 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-sm font-semibold min-h-[44px] transition">
+                        className="px-4 py-2 rounded-full btn-glass text-sm font-semibold min-h-[44px] transition">
                     {busy ? "Working..." : "Disable browser notifications"}
                 </button>
             ) : (
@@ -212,11 +214,10 @@ export default function SiteSettingsForm({setModalState}) {
 
     return (
         <Modal title="Site Settings" landscape={true} setShowModal={setModalState} isLoading={isLoading || saving}>
-            <div className="px-4 pb-2 text-sm text-gray-600 dark:text-gray-400">
-                Each section is independent. Leave any field blank to fall back to the
-                corresponding environment variable from <code>docker-compose.yml</code>. Last
-                updated: {updatedAt}.
-            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 px-1">
+                Each block is independent. Leave a field blank to keep the matching
+                environment variable from <code>docker-compose.yml</code>. Last updated {updatedAt}.
+            </p>
 
             <Section title="LLM / AI Provider"
                      description="Used by the AI Drill Instructor and the weekly email AI fact.">
@@ -224,7 +225,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Provider Preset" error={fieldErrors.llm_provider}
                            hint="Picking MiniMax auto-fills the base URL and model below. You can still override either. 'Deployment default' follows the .env values (LLM_PROVIDER/LLM_BASE_URL/LLM_MODEL) - a docker recreate applies them.">
                         <select
-                            className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                            className={FIELD_INPUT_CLASS}
                             value={values.llm_provider ?? ""}
                             onChange={(e) => handleProviderChange(e.target.value)}>
                             <option value="">Deployment default (.env)</option>
@@ -237,14 +238,14 @@ export default function SiteSettingsForm({setModalState}) {
                 <Field label="API Key" error={fieldErrors.llm_api_key}
                        hint={<>Currently stored: <code>{settings?.llm_api_key_masked || "(not set)"}</code></>}>
                     <input type="password" autoComplete="off"
-                           className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                           className={FIELD_INPUT_CLASS}
                            value={values.llm_api_key || ""}
                            onChange={(e) => setField("llm_api_key", e.target.value)}
                            placeholder="leave blank to keep current"/>
                 </Field>
                 <Field label="Base URL" error={fieldErrors.llm_base_url}>
                     <input type="text"
-                           className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                           className={FIELD_INPUT_CLASS}
                            value={values.llm_base_url || ""}
                            onChange={(e) => setField("llm_base_url", e.target.value)}
                            placeholder="https://openrouter.ai/api/v1"/>
@@ -253,7 +254,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Drill Instructor Model" error={fieldErrors.llm_model}
                            hint="Default: gpt-4o-mini">
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.llm_model || ""}
                                onChange={(e) => setField("llm_model", e.target.value)}
                                placeholder="gpt-4o-mini"/>
@@ -263,7 +264,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Weekly Email Model" error={fieldErrors.llm_email_model}
                            hint="Default: gpt-4o">
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.llm_email_model || ""}
                                onChange={(e) => setField("llm_email_model", e.target.value)}
                                placeholder="gpt-4o"/>
@@ -276,7 +277,7 @@ export default function SiteSettingsForm({setModalState}) {
                 <div className="px-4 w-full sm:w-1/2">
                     <Field label="Client ID" error={fieldErrors.strava_client_id}>
                         <input type="number"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.strava_client_id ?? ""}
                                onChange={(e) => setField("strava_client_id", e.target.value)}
                                placeholder="123456"/>
@@ -286,7 +287,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Client Secret" error={fieldErrors.strava_client_secret}
                            hint={<>Currently stored: <code>{settings?.strava_client_secret_masked || "(not set)"}</code></>}>
                         <input type="password" autoComplete="off"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.strava_client_secret || ""}
                                onChange={(e) => setField("strava_client_secret", e.target.value)}
                                placeholder="leave blank to keep current"/>
@@ -296,7 +297,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Rate Limit / 15min" error={fieldErrors.strava_limit_15min}
                            hint="Default 100 (300 with Strava developer program).">
                         <input type="number"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.strava_limit_15min ?? ""}
                                onChange={(e) => setField("strava_limit_15min", e.target.value)}
                                placeholder="100"/>
@@ -306,7 +307,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Rate Limit / Day" error={fieldErrors.strava_limit_day}
                            hint="Default 1000 (3000 with Strava developer program).">
                         <input type="number"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.strava_limit_day ?? ""}
                                onChange={(e) => setField("strava_limit_day", e.target.value)}
                                placeholder="1000"/>
@@ -320,7 +321,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Base URL" error={fieldErrors.health_base_url}
                            hint="The Open Wearables instance, e.g. https://health.your-domain.com">
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.health_base_url || ""}
                                onChange={(e) => setField("health_base_url", e.target.value)}
                                placeholder="https://health.your-domain.com"/>
@@ -330,7 +331,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Public URL (phones)" error={fieldErrors.health_public_url}
                            hint="Shown in the connection code - the address athletes' phones must reach. Leave blank to use the Base URL.">
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.health_public_url || ""}
                                onChange={(e) => setField("health_public_url", e.target.value)}
                                placeholder="https://health.your-domain.com"/>
@@ -340,7 +341,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Developer Email" error={fieldErrors.health_developer_email}
                            hint="The Open Wearables developer login the connector uses (its JWT works on all OW endpoints).">
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.health_developer_email || ""}
                                onChange={(e) => setField("health_developer_email", e.target.value)}
                                placeholder="admin@example.com"/>
@@ -350,7 +351,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Developer Password" error={fieldErrors.health_developer_password}
                            hint={<>Currently stored: <code>{settings?.health_developer_password_masked || "(not set)"}</code></>}>
                         <input type="password" autoComplete="off"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.health_developer_password || ""}
                                onChange={(e) => setField("health_developer_password", e.target.value)}
                                placeholder="leave blank to keep current"/>
@@ -363,7 +364,7 @@ export default function SiteSettingsForm({setModalState}) {
                 <div className="px-4 w-full sm:w-1/2">
                     <Field label="Host" error={fieldErrors.email_host}>
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.email_host || ""}
                                onChange={(e) => setField("email_host", e.target.value)}
                                placeholder="smtp.gmail.com"/>
@@ -372,7 +373,7 @@ export default function SiteSettingsForm({setModalState}) {
                 <div className="px-4 w-full sm:w-1/2">
                     <Field label="Port" error={fieldErrors.email_port}>
                         <input type="number"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.email_port ?? ""}
                                onChange={(e) => setField("email_port", e.target.value)}
                                placeholder="465"/>
@@ -381,7 +382,7 @@ export default function SiteSettingsForm({setModalState}) {
                 <div className="px-4 w-full sm:w-1/2">
                     <Field label="Username" error={fieldErrors.email_host_user}>
                         <input type="text"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.email_host_user || ""}
                                onChange={(e) => setField("email_host_user", e.target.value)}
                                placeholder="competition@yourdomain.com"/>
@@ -391,7 +392,7 @@ export default function SiteSettingsForm({setModalState}) {
                     <Field label="Password" error={fieldErrors.email_host_password}
                            hint={<>Currently stored: <code>{settings?.email_host_password_masked || "(not set)"}</code></>}>
                         <input type="password" autoComplete="off"
-                               className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                               className={FIELD_INPUT_CLASS}
                                value={values.email_host_password || ""}
                                onChange={(e) => setField("email_host_password", e.target.value)}
                                placeholder="leave blank to keep current"/>
@@ -421,7 +422,7 @@ export default function SiteSettingsForm({setModalState}) {
                 </div>
                 <Field label="From Address" error={fieldErrors.email_from}>
                     <input type="email"
-                           className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                           className={FIELD_INPUT_CLASS}
                            value={values.email_from || ""}
                            onChange={(e) => setField("email_from", e.target.value)}
                            placeholder="competition@yourdomain.com"/>
@@ -429,7 +430,7 @@ export default function SiteSettingsForm({setModalState}) {
                 <Field label="Reply-To" error={fieldErrors.email_reply_to}
                        hint="Comma-separated list of addresses.">
                     <input type="text"
-                           className="w-full shadow border rounded py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-400 leading-tight focus:outline-none focus:shadow-outline"
+                           className={FIELD_INPUT_CLASS}
                            value={values.email_reply_to || ""}
                            onChange={(e) => setField("email_reply_to", e.target.value)}
                            placeholder="support@yourdomain.com, admin@yourdomain.com"/>

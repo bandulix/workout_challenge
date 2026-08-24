@@ -23,5 +23,6 @@ class HealthHostTest {
         assertFalse(HealthHost.isAllowed("javascript:alert(1)"))
         assertFalse(HealthHost.isAllowed("file:///data/data"))
         assertFalse(HealthHost.isAllowed("not a url"))
+        assertFalse(HealthHost.isAllowed("https://user:pass@evil.example/health"))
     }
 }

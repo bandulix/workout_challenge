@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useState} from "react";
+import {Capacitor, SystemBars, SystemBarsStyle} from "@capacitor/core";
 
 // Class-based theme with three modes: light / dark / system (default).
 // The inline boot script in public/index.html applies the class before
@@ -21,12 +22,23 @@ export function resolveTheme(theme = getStoredTheme()) {
     return theme === "system" ? (systemPrefersDark() ? "dark" : "light") : theme;
 }
 
+function syncNativeSystemBars(resolved) {
+    if (!Capacitor.isNativePlatform()) return;
+    SystemBars.setStyle({
+        style: resolved === "dark" ? SystemBarsStyle.Dark : SystemBarsStyle.Light,
+    }).catch(() => {});
+}
+
 export function applyTheme(theme = getStoredTheme()) {
     const resolved = resolveTheme(theme);
     document.documentElement.classList.toggle("dark", resolved === "dark");
     document.documentElement.style.colorScheme = resolved;
+    const color = resolved === "dark" ? DARK_COLOR : LIGHT_COLOR;
     const meta = document.querySelector('meta[name="theme-color"]:not([media])');
-    if (meta) meta.setAttribute("content", resolved === "dark" ? DARK_COLOR : LIGHT_COLOR);
+    if (meta) meta.setAttribute("content", color);
+    document.documentElement.style.background = color;
+    if (document.body) document.body.style.background = color;
+    syncNativeSystemBars(resolved);
     return resolved;
 }
 

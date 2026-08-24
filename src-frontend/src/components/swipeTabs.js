@@ -46,7 +46,7 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0}) {
                     <ChevronLeft className="h-5 w-5"/>
                 </button>
 
-                <div className="relative min-w-0 flex-1 grid grid-cols-3 gap-1 p-1 rounded-2xl bg-white dark:bg-ink-850 border border-gray-300 dark:border-ink-700/60"
+                <div className="relative min-w-0 flex-1 grid grid-cols-3 gap-1 p-1 rounded-2xl glass-card"
                      role="tablist" aria-label="Challenge pages. Swipe or tap to switch.">
                     <span aria-hidden
                           className="pointer-events-none absolute top-1 bottom-1 left-1 rounded-xl bg-volt-400 shadow-glow-volt"

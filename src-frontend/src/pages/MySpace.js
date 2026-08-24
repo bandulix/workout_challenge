@@ -638,7 +638,7 @@ function StreakCard({workouts}) {
     const whoGoalHit = weekMinutes >= 150;
 
     return (
-        <div className="relative overflow-hidden rounded-3xl bg-white text-ink-950 border border-gray-300 shadow-card dark:bg-ink-900 dark:text-white dark:border-ink-700/60 dark:shadow-card-dark p-5 w-full xl:w-72 shrink-0">
+        <div className="relative overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white p-5 w-full xl:w-72 shrink-0">
             <div className="pointer-events-none absolute -top-14 -right-14 h-40 w-40 rounded-full bg-volt-400/25 blur-3xl"/>
             <div className="relative">
                 <div className="flex items-center gap-4">
@@ -762,7 +762,7 @@ function ApkUpdateBanner() {
     const {update, dismiss} = useApkUpdateInfo();
     if (!update) return null;
     return (
-        <div className="mb-4 flex items-center gap-3 rounded-2xl bg-white text-ink-950 border border-volt-500/50 shadow-card dark:bg-ink-900 dark:text-white dark:border-volt-500/40 dark:shadow-card-dark p-4">
+        <div className="mb-4 flex items-center gap-3 rounded-2xl glass-card text-ink-950 dark:text-white border-volt-500/50 dark:border-volt-500/40 p-4">
             <Download className="h-5 w-5 text-volt-700 dark:text-volt-400 shrink-0"/>
             <div className="flex-1 min-w-0">
                 <p className="font-display text-xs uppercase tracking-wider">App update available</p>

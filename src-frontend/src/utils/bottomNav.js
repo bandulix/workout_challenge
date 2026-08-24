@@ -41,7 +41,7 @@ function NavLink({to, icon: Icon, label, isActive, onClick}) {
             </span>
         </>
     );
-    if (onClick) {
+    if (!to || to === "#") {
         return (
             <button onClick={onClick} className={className} aria-label={label} aria-current={isActive ? "page" : undefined}>
                 {inner}
@@ -49,68 +49,70 @@ function NavLink({to, icon: Icon, label, isActive, onClick}) {
         );
     }
     return (
-        <Link to={to} className={className} aria-label={label} aria-current={isActive ? "page" : undefined}>
+        <Link to={to} onClick={onClick} className={className} aria-label={label} aria-current={isActive ? "page" : undefined}>
             {inner}
         </Link>
     );
 }
 
-function Sheet({onClose, title, children}) {
+function DockPanel({title, children}) {
     return (
-        <div className="fixed inset-0 z-50 bg-ink-950/35 dark:bg-black/50 backdrop-blur-[2px]" onClick={onClose}>
-            <div className="glass-sheet absolute bottom-0 left-0 right-0 md:left-1/2 md:-translate-x-1/2 md:max-w-md text-ink-950 dark:text-white rounded-t-3xl md:rounded-3xl md:bottom-4 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] animate-slide-up overflow-hidden"
-                 onClick={(e) => e.stopPropagation()}>
-                <span className="glass-sheen" aria-hidden="true"/>
-                <div className="relative">
-                    <div className="w-12 h-1.5 bg-ink-950/20 dark:bg-white/25 rounded-full mx-auto mb-4 md:hidden"/>
-                    <h3 className="font-display text-sm uppercase tracking-wider mb-3">{title}</h3>
-                    {children}
-                </div>
-            </div>
+        <div className="relative px-3 pt-3 pb-1 animate-dock-expand max-h-[min(58vh,32rem)] overflow-y-auto overscroll-contain">
+            <h3 className="font-display text-[11px] uppercase tracking-[0.18em] px-1 mb-2 text-ink-700/70 dark:text-gray-400">{title}</h3>
+            {children}
         </div>
     );
 }
 
-function CompetitionPickerSheet({setShowCompetitionPicker}) {
+function CompetitionPickerPanel({onClose}) {
     const {data: competitions, isSuccess} = useGetCompetitionsQuery();
     const navigate = useNavigate();
 
     return (
-        <Sheet onClose={() => setShowCompetitionPicker(false)} title="Your challenges">
-            <div className="space-y-1 max-h-72 overflow-y-auto">
+        <DockPanel title="Your challenges">
+            <div className="space-y-0.5">
                 {(competitions || []).map((c) => (
                     <button key={c.id}
-                            onClick={() => {setShowCompetitionPicker(false); navigate(`/competition/${c.id}`);}}
-                            className="w-full text-left px-3 py-3 rounded-2xl hover:bg-ink-950/8 dark:hover:bg-white/10 min-h-[44px]">
-                        <div className="font-semibold">{c.name}</div>
-                        <div className="text-xs text-gray-400">{c.start_date_fmt} – {c.end_date_fmt}</div>
+                            onClick={() => {onClose(); navigate(`/competition/${c.id}`);}}
+                            className="w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-2xl hover:bg-ink-950/8 dark:hover:bg-white/10 min-h-[48px]">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-volt-400/25 text-volt-800 dark:text-volt-300">
+                            <Flag className="h-4 w-4"/>
+                        </span>
+                        <span className="min-w-0 flex-1">
+                            <span className="block font-semibold truncate">{c.name}</span>
+                            <span className="block text-[11px] text-gray-500 dark:text-gray-400">{c.start_date_fmt} – {c.end_date_fmt}</span>
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-gray-400 shrink-0"/>
                     </button>
                 ))}
                 {isSuccess && competitions?.length === 0 && (
-                    <div className="text-sm text-gray-400 px-3 py-2">No challenges yet.</div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 px-3 py-3">No challenges yet. Start one below.</p>
                 )}
             </div>
             <button
-                onClick={() => {setShowCompetitionPicker(false); navigate("/dashboard");}}
-                className="w-full mt-3 px-3 py-3 rounded-2xl bg-volt-400 text-ink-950 font-bold uppercase tracking-wide text-sm min-h-[44px]">
+                onClick={() => {onClose(); navigate("/dashboard");}}
+                className="w-full mt-2 mb-1 px-3 py-3 rounded-2xl bg-volt-400 text-ink-950 font-bold uppercase tracking-wide text-sm min-h-[44px] shadow-glow-volt">
                 + Create a challenge
             </button>
-        </Sheet>
+        </DockPanel>
     );
 }
 
-function SettingsSheetRow({icon: Icon, label, onClick, danger = false, trailing = null}) {
+function SettingsSheetRow({icon: Icon, label, onClick, danger = false, trailing = undefined}) {
     return (
         <button onClick={onClick}
-                className={"w-full flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-ink-950/8 dark:hover:bg-white/10 min-h-[44px] text-left " + (danger ? "text-red-500 dark:text-red-400" : "")}>
-            <Icon className="h-5 w-5 shrink-0"/>
+                className={"w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-ink-950/8 dark:hover:bg-white/10 min-h-[48px] text-left " + (danger ? "text-red-500 dark:text-red-400" : "")}>
+            <span className={"flex h-9 w-9 shrink-0 items-center justify-center rounded-full " +
+                (danger ? "bg-red-500/10" : "bg-ink-950/6 dark:bg-white/8")}>
+                <Icon className="h-4 w-4"/>
+            </span>
             <span className="flex-1 font-semibold text-sm">{label}</span>
-            {trailing || <ChevronRight className="h-4 w-4 text-gray-500"/>}
+            {trailing === null ? null : (trailing || <ChevronRight className="h-4 w-4 text-gray-400"/>)}
         </button>
     );
 }
 
-function SettingsSheet({setShowSettingsSheet, user, isStaff, onAccount, onEqualizer, onRoaster, onSupport}) {
+function SettingsPanel({onClose, user, isStaff, onAccount, onEqualizer, onRoaster, onSupport}) {
     const navigate = useNavigate();
     const {theme, resolvedTheme, cycle} = useTheme();
     const themeLabel = theme === "system"
@@ -118,35 +120,30 @@ function SettingsSheet({setShowSettingsSheet, user, isStaff, onAccount, onEquali
         : theme === "dark" ? "Dark mode" : "Light mode";
     const ThemeIcon = theme === "system" ? Monitor : (resolvedTheme === "dark" ? Sun : Moon);
 
-    const close = () => setShowSettingsSheet(false);
-
     return (
-        <Sheet onClose={close} title="Settings">
-            <div className="flex items-center gap-3 px-3 pb-3 mb-2 border-b border-ink-950/10 dark:border-white/10">
-                <ProfileAvatar user={user} size={52} editable/>
+        <DockPanel title="Settings">
+            <div className="flex items-center gap-3 px-2 py-2 mb-1 rounded-2xl bg-ink-950/5 dark:bg-white/5">
+                <ProfileAvatar user={user} size={48} editable/>
                 <div className="min-w-0">
                     <p className="font-bold truncate">{user?.first_name} {user?.last_name}</p>
-                    <p className="text-xs text-gray-400 truncate">{user?.email}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
                     <DogTagRow tags={user?.dog_tags}/>
                 </div>
             </div>
-            <div className="space-y-1">
-                <SettingsSheetRow icon={User2} label="Account" onClick={() => {close(); onAccount();}}/>
-                <SettingsSheetRow icon={Scale} label="Goal Equalizer" onClick={() => {close(); onEqualizer();}}/>
-                <SettingsSheetRow icon={Bot} label="The roaster" onClick={() => {close(); onRoaster();}}/>
-                <SettingsSheetRow
-                    icon={ThemeIcon}
-                    label={themeLabel}
-                    onClick={cycle}
-                    trailing={null}
-                />
-                <SettingsSheetRow icon={BadgeHelp} label="Help & Support" onClick={() => {close(); onSupport();}}/>
+            <div className="space-y-0.5">
+                <SettingsSheetRow icon={User2} label="Account" onClick={() => {onClose(); onAccount();}}/>
+                <SettingsSheetRow icon={Scale} label="Goal Equalizer" onClick={() => {onClose(); onEqualizer();}}/>
+                <SettingsSheetRow icon={Bot} label="The roaster" onClick={() => {onClose(); onRoaster();}}/>
+                <SettingsSheetRow icon={ThemeIcon} label={themeLabel} onClick={cycle} trailing={null}/>
+                <SettingsSheetRow icon={BadgeHelp} label="Help & Support" onClick={() => {onClose(); onSupport();}}/>
                 {isStaff && (
-                    <SettingsSheetRow icon={Shield} label="Admin" onClick={() => {close(); navigate("/admin/site-settings");}}/>
+                    <SettingsSheetRow icon={Shield} label="Admin" onClick={() => {onClose(); navigate("/admin/site-settings");}}/>
                 )}
-                <SettingsSheetRow icon={LogOut} label="Log out" danger onClick={() => navigate("/logout")}/>
             </div>
-        </Sheet>
+            <div className="mt-1 mb-1 border-t border-ink-950/10 dark:border-white/10 pt-1">
+                <SettingsSheetRow icon={LogOut} label="Log out" danger onClick={() => navigate("/logout")} trailing={null}/>
+            </div>
+        </DockPanel>
     );
 }
 
@@ -222,15 +219,41 @@ export default function BottomNav() {
         return null;
     }
 
+    const sheetOpen = showCompetitionPicker || showSettingsSheet;
+    const closeSheets = () => {
+        setShowCompetitionPicker(false);
+        setShowSettingsSheet(false);
+    };
+
     return (
         <>
+            {sheetOpen && (
+                <div className="fixed inset-0 z-40 bg-ink-950/30 dark:bg-black/45 backdrop-blur-[2px]"
+                     onClick={closeSheets} aria-hidden="true"/>
+            )}
             <nav className="fixed inset-x-0 bottom-0 z-40 overflow-visible animate-nav-rise pointer-events-none pb-[max(0.5rem,env(safe-area-inset-bottom))] md:bottom-5 md:pb-0"
                  aria-label="Primary navigation">
-                {/* Floating glass capsule. mx-auto (not translateX) so
-                    animate-nav-rise's transform cannot un-centre the dock. */}
-                <div className="glass-dock pointer-events-auto mx-3 flex items-stretch justify-around overflow-visible rounded-[1.75rem] px-1 md:mx-auto md:w-max md:gap-1 md:rounded-full md:px-4">
+                {/* One glass capsule: the dock, and when open the panel
+                    grows up from it as the same piece of frost. */}
+                <div className={"glass-dock pointer-events-auto mx-3 flex flex-col md:mx-auto " +
+                    (sheetOpen
+                        ? "overflow-hidden rounded-[1.75rem] md:w-full md:max-w-md"
+                        : "overflow-visible rounded-[1.75rem] md:w-max md:rounded-full")}>
                     <span className="glass-sheen rounded-[inherit]" aria-hidden="true"/>
-                    <NavLink to="/dashboard" icon={Home} label="Home" isActive={onDashboard}/>
+                    {showCompetitionPicker && (
+                        <CompetitionPickerPanel onClose={closeSheets}/>
+                    )}
+                    {showSettingsSheet && (
+                        <SettingsPanel
+                            onClose={closeSheets} user={user} isStaff={isStaff}
+                            onAccount={() => setShowSettings(true)}
+                            onEqualizer={() => setShowEqualizer(true)}
+                            onRoaster={() => setShowRoaster(true)}
+                            onSupport={() => setShowSupport(true)}/>
+                    )}
+                    {sheetOpen && <div className="mx-5 h-px shrink-0 bg-ink-950/10 dark:bg-white/10" aria-hidden="true"/>}
+                    <div className="relative flex items-stretch justify-around px-1 py-0.5 md:gap-1 md:px-4">
+                    <NavLink to="/dashboard" icon={Home} label="Home" isActive={onDashboard} onClick={closeSheets}/>
 
                     <NavLink
                         to="#"
@@ -238,15 +261,19 @@ export default function BottomNav() {
                         label="Compete"
                         isActive={onCompetition || showCompetitionPicker}
                         onClick={() => {
+                            setShowSettingsSheet(false);
                             const one = primaryChallenge(competitions);
                             if (one) navigate(`/competition/${one.id}`);
-                            else setShowCompetitionPicker(true);
+                            else setShowCompetitionPicker((v) => !v);
                         }}
                     />
 
-                    {/* Centre stage: the Coach sits in a glass lens above the bar. */}
+                    {/* Centre stage: the Coach sits in a glass lens above the bar.
+                        Flattened into the row while a dock panel is open. */}
                     <Link to="/coach"
-                          className="relative z-10 flex flex-col items-center justify-center -mt-8 md:-mt-9 min-h-[44px] px-2"
+                          onClick={closeSheets}
+                          className={"relative z-10 flex flex-col items-center justify-center min-h-[44px] px-2 transition-[margin] duration-300 " +
+                              (sheetOpen ? "" : "-mt-8 md:-mt-9")}
                           aria-label="Coach"
                           aria-current={onCoach ? "page" : undefined}>
                         <span className="relative">
@@ -268,7 +295,7 @@ export default function BottomNav() {
                         icon={Plus}
                         label="Log"
                         isActive={showLogWorkout}
-                        onClick={() => setShowLogWorkout(true)}
+                        onClick={() => { closeSheets(); setShowLogWorkout(true); }}
                     />
 
                     <NavLink
@@ -276,8 +303,12 @@ export default function BottomNav() {
                         icon={Settings}
                         label="Settings"
                         isActive={onAdmin || showSettingsSheet}
-                        onClick={() => setShowSettingsSheet(true)}
+                        onClick={() => {
+                            setShowCompetitionPicker(false);
+                            setShowSettingsSheet((v) => !v);
+                        }}
                     />
+                    </div>
                 </div>
             </nav>
 
@@ -286,25 +317,13 @@ export default function BottomNav() {
                              scaling_distance={parseFloat(user?.scaling_distance || "1.0")}/>
             )}
 
-            {showCompetitionPicker && (
-                <CompetitionPickerSheet setShowCompetitionPicker={setShowCompetitionPicker}/>
-            )}
-
-            {showSettingsSheet && (
-                <SettingsSheet setShowSettingsSheet={setShowSettingsSheet} user={user} isStaff={isStaff}
-                         onAccount={() => setShowSettings(true)}
-                         onEqualizer={() => setShowEqualizer(true)}
-                         onRoaster={() => setShowRoaster(true)}
-                         onSupport={() => setShowSupport(true)}/>
-            )}
-
             {/* Account form needs the profile. While it is still loading
                 (or after a failed fetch) show feedback inside the modal
                 instead of the tap on "Account" silently doing nothing. */}
             {showSettings && (user ? (
                 <SettingsForm user={user} setModalState={setShowSettings} setLinkStrava={setLinkStrava}/>
             ) : (
-                <Modal title="Personal Setting" landscape={true} setShowModal={setShowSettings} isLoading={!userError}>
+                <Modal title="Account" landscape={true} setShowModal={setShowSettings} isLoading={!userError}>
                     <div className="text-center space-y-3 px-4">
                         <p className="text-red-500 text-sm">Your profile could not be loaded.</p>
                         <button onClick={() => refetchUser()}

@@ -5,7 +5,7 @@ import {useUploadProfilePictureMutation} from "../utils/reducers/usersSlice";
 import {invalidateProtectedImage, useProtectedImage} from "../utils/protectedMedia";
 import {isAcceptablePhoto, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
 
-// The user's profile picture with an optional camera-badge edit affordance.
+// The user's profile picture with an optional hover-to-edit overlay.
 // Uploads go straight to PATCH /api/user/me/ as multipart form data.
 //
 // Profile pictures are not public: the API hands out an authenticated
@@ -35,7 +35,7 @@ function EchoCrown({count, size}) {
     );
 }
 
-function ProfileAvatar({user, size = 96, editable = false, className = "", dunce = false}) {
+function ProfileAvatar({user, size = 96, editable = false, className = "", dunce = false, onClick}) {
     const fileInput = useRef(null);
     const [upload, {isLoading}] = useUploadProfilePictureMutation();
     const [error, setError] = useState(null);
@@ -100,8 +100,9 @@ function ProfileAvatar({user, size = 96, editable = false, className = "", dunce
     const holds = echoHoldCount(user);
 
     if (!editable) {
-        return (
-            <div className={"relative shrink-0 rounded-full " + className} style={{width: size, height: size}}>
+        const wrapClass = "relative shrink-0 rounded-full " + className + (onClick ? " cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400" : "");
+        const inner = (
+            <>
                 {img}
                 {dunce && (
                     <span title="Dunce megaphone — last on the board until they log"
@@ -110,6 +111,21 @@ function ProfileAvatar({user, size = 96, editable = false, className = "", dunce
                     </span>
                 )}
                 <EchoCrown count={holds} size={size}/>
+            </>
+        );
+        if (onClick) {
+            return (
+                <button type="button" onClick={onClick}
+                        className={wrapClass}
+                        style={{width: size, height: size}}
+                        aria-label={(user?.username ? user.username + "'s card" : "Athlete card")}>
+                    {inner}
+                </button>
+            );
+        }
+        return (
+            <div className={wrapClass} style={{width: size, height: size}}>
+                {inner}
             </div>
         );
     }
@@ -130,9 +146,6 @@ function ProfileAvatar({user, size = 96, editable = false, className = "", dunce
                 </span>
             </button>
             <EchoCrown count={holds} size={size}/>
-            <span className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-volt-400 text-ink-950 flex items-center justify-center shadow-glow-volt pointer-events-none">
-                <Camera className="h-4 w-4"/>
-            </span>
             <input ref={fileInput} type="file" accept={ACCEPT} className="hidden" onChange={handleFile}/>
             {error && (
                 <p className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-48 text-center text-xs text-red-500">{error}</p>

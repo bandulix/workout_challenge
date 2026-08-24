@@ -15,7 +15,7 @@ Turn staying active into a rivalry your friends actually care about. Compete wit
   <a href="docs/imgs/preview-mobile-competition-dark.png"><img src="docs/imgs/preview-mobile-competition-dark.png" width="180" alt="Challenge with AI Drill Instructor - Workout Challenge PWA"></a>
   <a href="docs/imgs/preview-mobile-coach-dark.png"><img src="docs/imgs/preview-mobile-coach-dark.png" width="180" alt="Coach page - Workout Challenge PWA"></a>
 </p>
-<p align="center"><i>The PWA on a phone: login, Home, a challenge, and the Coach.</i></p>
+<p align="center"><i>The PWA on a phone: login, Home, a challenge (Feed), and the Coach — gym glass over a night plate.</i></p>
 
 **Contents:** [Changes from the original](#changes-from-the-original) · [How it works](#how-it-works) · [Getting started](#getting-started) · [AI Drill Instructor](#ai-drill-instructor) · [Admin & site settings](#admin--site-settings) · [Mobile app & push](#mobile-app--push-notifications) · [Apple / Google Health](#apple--google-health-open-wearables) · [Android app](#android-app-sideload-apk) · [Strava API credentials](#strava-api-credentials)
 
@@ -27,15 +27,15 @@ This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/w
 - Personas have **profile pictures, taglines and accent colours** — 10 hand-crafted avatar artworks ship in `src-frontend/public/personas/`; anyone can add their own roaster (artwork or an emoji). Staff can edit or delete every roaster; everyone else only the ones they made.
 - Messages live in an in-app audit log (REST: `/api/drill-instructor/*`) and can be pushed to athletes' devices via web push.
 - **Quiet-day nudges:** if a running competition sees zero workouts in a day, the instructor posts one motivational, group-addressed message on its own (daily sweep, per-competition toggle).
-- **Arcade:** Order of the Day (sealed morning mission, ribbon on the feed), Dunce megaphone on last place until they log, Hall of Roasts on the Coach page (top 3 + show more), coach mood from the last 48h (orbit of who moved around the persona), and permanent dog tags on Home (tap a tag for the achievement).
+- **Arcade:** Order of the Day (sealed morning mission, ribbon on the feed), Dunce megaphone on last place until they log, Hall of Roasts on the Coach page (top 3 + show more), coach mood from the last 48h (orbit of who trained around the persona), and permanent dog tags on Home (tap a tag for the achievement).
 - **Legend Echoes:** standout workouts become living, claimable trophies in the Echo Chamber — stylized photo, coach narrative, power rating. **Only the current holder** can set the picture; the coach remixes you and the coach into a splashy, persona-styled world (stats stay on the art). Holders get a **volt crown** on their avatar. Anyone can declare war (7-day window); the coach announces it in Coach's Corner. A successful beat claims the Echo and grows the lineage. Survive three failed claims or the season and it goes Immortal. End of season: the Book of Echoes. Holders without art get a one-time reminder to add a photo.
-- **Weekly coach vote:** everyone in a challenge votes for next week's instructor (box under the leaderboard; tallies stay visible and you can change your vote until Monday). The winner takes over Monday morning; ties are drawn at random; a handover still shows in Coach's Corner.
+- **Weekly coach vote:** everyone in a challenge votes for next week's instructor on the Coach page (below Hall of Roasts; a chip row if you are in more than one coached challenge). Tallies stay visible and you can change your vote until Monday. The winner takes over Monday morning; ties are drawn at random; a handover still shows in Coach's Corner.
 
 **📱 Coach-centred PWA redesign (mobile-first)**
 - **Volt** accent (`#d7ff3e`) on a moss canvas in light mode and night charcoal in dark (`#0b0b0c` — not olive). Self-hosted Archivo Black + Inter, class-based dark mode. Theme defaults to the **device setting**; Settings cycles Match device → Light → Dark. The **volt lightning** mark is the favicon, PWA icons, Apple touch icon, Android launcher and splash.
 - **Coach page** (`/coach`): persona hero (orbit of who moved, Add a photo when the coach just commented on *your* workout), Hall of Roasts, hot-or-not, platform-aware push opt-in. The persona roaster (create yours / manage) lives under **Settings**.
-- Bottom-bar navigation (frosted glass dock, slim volt dash under the active tab, breathing lime halo on the coach) with the persona at centre stage; installable PWA with offline shell and push on iOS & Android.
-- Login/welcome uses a gym / volt-neon still that stays on screen.
+- Bottom-bar navigation (frosted glass dock, slim volt dash under the active tab, breathing lime halo on the coach) with the persona at centre stage. **Settings** and **Compete** pull up as a dock extension. Installable PWA with offline shell and push on iOS & Android.
+- A gym / volt-neon still sits behind the whole app (night plate in dark mode, a daylight twin in light mode). Cards, modals and the dock are frosted glass over it.
 
 **🏠 Home / profile**
 - Redesigned dashboard with compact **Streak Card**; 30-day stats and personal-goal blocks.
@@ -62,9 +62,9 @@ Create a competition or join one via a friend's invite link, log workouts manual
 - Competitions with custom goals, teams, leaderboards and weekly email recaps — editing a goal rescores every activity in the challenge (caps reapplied in the site timezone)
 - **AI Drill Instructor** with persona avatars — comments on every workout, nudges quiet groups, optionally pings phones via push
 - **Coach arcade** — daily mission, dunce, hall of roasts, mood, dog tags, weekly coach vote, Legend Echoes (holder art + avatar crown)
-- **Challenge page** — Feed first, then swipe or tap to Board and Trophies; frosted dock; HEIC camera-roll photos on Android and iPhone. Coach's Corner shows the latest 3 messages with a show-more for older ones.
+- **Challenge page** — Feed first, then swipe or tap to Board and Trophies. Coach's Corner *is* the feed (athlete picture, points, order ribbon). The Board folds week bars, trend and goals into the leaderboard and the challenge info box; tap an avatar for a public athlete card. HEIC camera-roll photos on Android and iPhone.
 - **Your own roaster** — Settings: anyone can add a coach voice; staff can edit or delete every persona
-- **Coach page** — persona hero, Hall of Roasts, hot-or-not, coach pings; Add a photo when the latest comment is on your workout
+- **Coach page** — persona hero with an orbit of who trained, Hall of Roasts, weekly coach vote, hot-or-not, coach pings; Add a photo when the latest comment is on your workout
 - Workout entry manually or via Strava / Garmin Connect auto-import
 - Personal dashboard with workout stats, streak card and personal goals
 - Installable PWA (offline shell, push notifications), light & dark mode, mobile-first
@@ -151,7 +151,7 @@ DEBUG=true SECRET_KEY=ci-test-not-a-real-secret-32bytes-min \
 Each competition can optionally activate an AI coach that generates a short, persona-voiced comment for every logged activity, stores it in an in-app audit log, and optionally pushes it to athletes' devices.
 
 **Enable it (competition owner):**
-1. On the competition page, open **Coach's Corner → Configure** (owner only).
+1. On the challenge page, tap the **megaphone** in the header (owner only).
 2. Pick a persona, toggle **Activate the Drill Instructor**, save — use the built-in test message to verify.
 
 **What it does:**
@@ -160,7 +160,7 @@ Each competition can optionally activate an AI coach that generates a short, per
 - **Dunce:** last place on the board gets the megaphone until they log (assigned at 00:10).
 - **Hall of Roasts** on the Coach page (hottest remixed photos across your challenges; tap to enlarge, show more for the rest), coach mood (Proud / Watching / Disappointed / Unleashed from the last 48h, shown as an orbit around the persona), and **dog tags** on Home (tap for the achievement).
 - **Legend Echoes:** the coach can immortalize a standout workout as a living trophy in the Echo Chamber (remix art + narrative + power). **Only the holder** can set the picture; the coach paints you both into a splashy, persona-styled world. Anyone in the challenge can contest it (the coach announces the war); beat the metric in 7 days and you claim it. Three successful defenses — or the end of the competition — makes it Immortal (Echo Immortal / Echo Slayer dog tags). The Book of Echoes is the season chronicle.
-- **Weekly coach vote:** participants pick next week's instructor under the leaderboard (tallies stay visible; you can change your vote until Monday). Votes tally Monday 07:15; ties are drawn at random; the winner takes the megaphone and a handover shows in Coach's Corner.
+- **Weekly coach vote:** participants pick next week's instructor on the Coach page (tallies stay visible; you can change your vote until Monday). Votes tally Monday 07:15; ties are drawn at random; the winner takes the megaphone and a handover shows in Coach's Corner.
 - **Random daily push:** 1-2 times per day at random times (07:00–22:00) the instructor posts a pep talk pushing the whole group (toggleable per competition).
 - **Quiet-day nudge:** if a whole day passes without any workout in a running competition, the instructor posts one motivational nudge to the group (toggleable per competition).
 - With browser push enabled, messages are also dispatched to subscribed devices (nudges go to every participant).

@@ -196,7 +196,13 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         if str(lookup_value).lower() in ['me', 'my', 'myself', 'i']:
             lookup_value = self.request.user.id
 
-        return get_object_or_404(self.get_queryset(), pk=lookup_value)
+        obj = get_object_or_404(self.get_queryset(), pk=lookup_value)
+        # GenericAPIView.get_object() runs this; skipping it here used
+        # to let any co-participant PATCH/DELETE another athlete in
+        # the same challenge (IDOR). Picture() swaps in IsAuthenticated
+        # so avatars of teammates still load.
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def destroy(self, request, *args, **kwargs):
         # Blacklist the user's refresh tokens before the user row is

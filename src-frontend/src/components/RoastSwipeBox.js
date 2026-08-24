@@ -1,7 +1,7 @@
 import React, {useCallback, useEffect, useRef, useState} from "react";
 import {Flame, FlameKindling, X} from "lucide-react";
 import {BoxSection} from "../utils/miscellaneous";
-import {useGetDrillConfigsQuery, useGetRoastsQuery, useVoteRoastMutation} from "../utils/reducers/drillInstructorSlice";
+import {useGetRoastsQuery, useVoteRoastMutation} from "../utils/reducers/drillInstructorSlice";
 import {fetchProtectedImage} from "../utils/protectedMedia";
 import {timeAgo} from "../utils/time";
 import usePollingInterval from "../utils/usePollingInterval";
@@ -78,7 +78,7 @@ function RoastCard({card, top, onVote}) {
              onPointerCancel={top ? onPointerUp : undefined}
              className={"absolute inset-0 select-none " + (top ? "cursor-grab active:cursor-grabbing touch-pan-y" : "pointer-events-none scale-[0.96] translate-y-2 opacity-70")}
              style={{zIndex: top ? 2 : 1}}>
-            <div className="h-full w-full overflow-hidden rounded-3xl bg-white dark:bg-ink-850 border border-gray-300 dark:border-ink-700/60 shadow-card dark:shadow-card-dark flex flex-col">
+            <div className="h-full w-full overflow-hidden rounded-3xl glass-card flex flex-col">
                 <div className="relative flex-1 min-h-0 bg-ink-950/95 flex items-center justify-center">
                     {src
                         ? <img src={src} alt={card.body || "Roasted"} draggable={false}
@@ -133,16 +133,11 @@ function useProtectedImageState(url) {
 export default function RoastSwipeBox() {
     const pollFast = usePollingInterval(60000);
     const {data: roasts} = useGetRoastsQuery(undefined, {pollingInterval: pollFast});
-    const {data: configs} = useGetDrillConfigsQuery();
     const [voteRoast] = useVoteRoastMutation();
     // Cards already judged leave the stack (server also omits them).
     const [doneIds, setDoneIds] = useState([]);
     const [tallies, setTallies] = useState({});
 
-    // The box exists when an image-edit model is configured (new roasts
-    // can be produced) - or while unjudged roasts remain, so the game
-    // doesn't vanish when the admin unsets the model.
-    const imageModelSet = (configs || []).some((c) => c.image_edit_capable);
     const cards = (roasts || [])
         .map((c) => ({...c, ...(tallies[c.id] || {})}))
         .filter((c) => !doneIds.includes(c.id) && c.my_vote == null);
@@ -164,21 +159,7 @@ export default function RoastSwipeBox() {
     }, [top, voteRoast]);
 
     // After the hooks - early return must not reorder hook calls.
-    if (!imageModelSet && !top) return null;
-
-    if (!top) {
-        return (
-            <BoxSection>
-                <h2 className="font-display text-sm uppercase tracking-wider flex items-center gap-2 mb-2">
-                    <Flame className="h-4 w-4 text-volt-500"/> Hot or Not: Roast Edition
-                </h2>
-                <p className="text-sm text-gray-400 px-2 py-3">
-                    No new roasts to judge. Post a picture in your challenge's Coach's Corner and
-                    the coach will cook one up — each picture can only be rated once.
-                </p>
-            </BoxSection>
-        );
-    }
+    if (!top) return null;
 
     return (
         <BoxSection>
@@ -196,7 +177,7 @@ export default function RoastSwipeBox() {
 
             <div className="mt-3 flex items-center justify-center gap-6">
                 <button onClick={() => handleVote(false)} aria-label="Nope"
-                        className="min-h-[52px] min-w-[52px] rounded-full bg-gray-100 dark:bg-ink-800 text-red-400 hover:bg-red-50 dark:hover:bg-ink-700 transition flex items-center justify-center border border-gray-200/70 dark:border-ink-700/60">
+                        className="min-h-[52px] min-w-[52px] rounded-full btn-glass text-red-400 hover:bg-red-50/40 dark:hover:bg-red-400/10 transition flex items-center justify-center">
                     <X className="h-6 w-6"/>
                 </button>
                 <button onClick={() => handleVote(true)} aria-label="Hot"
