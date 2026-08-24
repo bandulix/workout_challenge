@@ -43,8 +43,8 @@ export function CoachHandover({configId, enabled}) {
     const countdown = formatCountdown(ballot.next_switch_at, now);
     return (
         <div className="px-4 sm:px-5 py-3 border-b border-gray-100 dark:border-ink-700/60">
-            <div className="rounded-2xl bg-ink-900 text-white px-3.5 py-3 border border-volt-400/40 shadow-glow-volt">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-400 flex items-center gap-1.5">
+            <div className="rounded-2xl bg-gray-100 text-ink-950 dark:bg-ink-900 dark:text-white px-3.5 py-3 border border-volt-500/50 dark:border-volt-400/40">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400 flex items-center gap-1.5">
                     <Timer className="h-3.5 w-3.5"/> New coach
                 </p>
                 <div className="mt-2 flex items-center gap-3">
@@ -57,12 +57,12 @@ export function CoachHandover({configId, enabled}) {
                     <PersonaAvatar persona={current} size={44} glow/>
                     <div className="min-w-0">
                         <p className="font-display text-sm uppercase tracking-wide truncate">{current.name}</p>
-                        <p className="text-[11px] text-gray-400">
+                        <p className="text-[11px] text-gray-600 dark:text-gray-400">
                             {previous ? `took over from ${previous.name}` : "took the megaphone"}
                         </p>
                     </div>
                 </div>
-                <p className="mt-2 text-xs text-volt-300 font-bold uppercase tracking-wider tabular-nums">
+                <p className="mt-2 text-xs text-volt-700 dark:text-volt-300 font-bold uppercase tracking-wider tabular-nums">
                     On the clock · {countdown}
                 </p>
             </div>
@@ -79,9 +79,10 @@ export default function CoachVoteBox({configId, enabled}) {
     const [vote, {isLoading}] = useVoteCoachPersonaMutation();
     const now = useNowTick(Boolean(ballot?.next_switch_at));
 
-    if (!enabled || !ballot || ballot.my_vote) return null;
+    if (!enabled || !ballot) return null;
 
     const countdown = formatCountdown(ballot.next_switch_at, now);
+    const tiedLeaders = (ballot.candidates || []).filter((c) => c.leading && c.votes > 0).length > 1;
 
     async function pick(personaId) {
         if (isLoading || personaId === ballot.my_vote) return;
@@ -106,7 +107,14 @@ export default function CoachVoteBox({configId, enabled}) {
                 {ballot.vote_count === 0
                     ? "No votes yet. Winner takes over Monday morning."
                     : `${ballot.vote_count} ${ballot.vote_count === 1 ? "vote" : "votes"} in · switches ${countdown === "any moment" ? "now" : "in " + countdown}.`}
+                {" "}You can change your vote until the switch.
+                {tiedLeaders ? " Tied coaches are drawn at random." : ""}
             </p>
+            {ballot.my_vote && (
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                    Your pick is highlighted. Tap another coach to switch.
+                </p>
+            )}
 
             <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 py-0.5">
                 {(ballot.candidates || []).map((c) => {
@@ -123,11 +131,13 @@ export default function CoachVoteBox({configId, enabled}) {
                             <p className="mt-1.5 text-[11px] font-bold leading-tight truncate">{c.persona.name}</p>
                             <p className="text-[10px] text-gray-400 mt-0.5">
                                 {c.votes} {c.votes === 1 ? "vote" : "votes"}
-                                {c.leading && c.votes > 0 ? " · lead" : ""}
+                                {c.leading && c.votes > 0 ? (tiedLeaders ? " · tie" : " · lead") : ""}
                             </p>
-                            {onDuty && (
+                            {selected ? (
+                                <p className="text-[9px] font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 mt-0.5">Your vote</p>
+                            ) : onDuty ? (
                                 <p className="text-[9px] font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 mt-0.5">On duty</p>
-                            )}
+                            ) : null}
                         </button>
                     );
                 })}

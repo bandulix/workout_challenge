@@ -36,7 +36,7 @@ export function Modal({setShowModal, title = null, landscape = false, isLoading 
             onClick={closeModal}
         >
             <div
-                className={"relative flex max-h-[100dvh] w-full flex-col overflow-hidden bg-white dark:bg-ink-850 dark:border dark:border-ink-700/60 shadow-card-dark animate-pop-in " +
+                className={"relative flex max-h-[100dvh] w-full flex-col overflow-hidden bg-white border border-gray-300 dark:bg-ink-850 dark:border-ink-700/60 shadow-card dark:shadow-card-dark animate-pop-in " +
                     ((landscape) ? "max-w-4xl " : "max-w-2xl ") +
                     "sm:max-h-[90vh] sm:rounded-3xl max-sm:min-h-[100dvh] max-sm:rounded-none"}
                 onClick={(e) => e.stopPropagation()}

@@ -1,6 +1,10 @@
 package com.bandulix.workoutchallenge
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -36,12 +40,55 @@ class OWHealthPlugin : Plugin() {
         activity?.let { sdk().setActivity(it) }
     }
 
+    override fun handleOnResume() {
+        super.handleOnResume()
+        try {
+            activity?.let { sdk().setActivity(it) }
+            // Resumes an interrupted upload; without this, a process
+            // kill left Health Connect data sitting on the phone.
+            sdk().onForeground()
+        } catch (e: Exception) {
+            Log.w(TAG, "onForeground failed", e)
+        }
+    }
+
+    override fun handleOnPause() {
+        try {
+            // Schedules an expedited WorkManager run when the app
+            // backgrounds - the SDK will not do this on its own.
+            sdk().onBackground()
+        } catch (e: Exception) {
+            Log.w(TAG, "onBackground failed", e)
+        }
+        super.handleOnPause()
+    }
+
     override fun handleOnDestroy() {
         pluginScope.cancel()
         super.handleOnDestroy()
     }
 
     private fun sdk(): OpenWearablesHealthSDK = OpenWearablesHealthSDK.getInstance()
+
+    // WorkManager's HealthSyncWorker defaults to Samsung Health when no
+    // provider is stored. Always pin Google so a restore after process
+    // death does not silently read the wrong store.
+    private fun ensureGoogleProvider() {
+        if (!sdk().setProvider("google")) {
+            Log.w(TAG, "Health Connect is not available on this device")
+        }
+    }
+
+    // Android 13+: the SDK's WorkManager worker is a foreground service
+    // and needs POST_NOTIFICATIONS. Without it, setForeground throws and
+    // background Health Connect reads often never run.
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33) return
+        val act = activity ?: return
+        if (ContextCompat.checkSelfPermission(act, Manifest.permission.POST_NOTIFICATIONS)
+            == PackageManager.PERMISSION_GRANTED) return
+        act.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIF_REQ)
+    }
 
     @PluginMethod
     fun configure(call: PluginCall) {
@@ -59,6 +106,7 @@ class OWHealthPlugin : Plugin() {
             return
         }
         sdk().configure(host = host)
+        ensureGoogleProvider()
         call.resolve()
     }
 
@@ -90,6 +138,7 @@ class OWHealthPlugin : Plugin() {
         }
         // The permission dialog needs the current Activity as context.
         sdk().setActivity(activity)
+        requestNotificationPermission()
         pluginScope.launch {
             try {
                 val granted = sdk().requestAuthorization(healthTypes)
@@ -103,9 +152,16 @@ class OWHealthPlugin : Plugin() {
         }
     }
 
+    private fun clampedDaysBack(call: PluginCall): Int? {
+        val raw = call.getInt("daysBack") ?: return null
+        return raw.coerceIn(1, 43)
+    }
+
     @PluginMethod
     fun startSync(call: PluginCall) {
-        val daysBack = call.getInt("daysBack")
+        val daysBack = clampedDaysBack(call)
+        ensureGoogleProvider()
+        requestNotificationPermission()
         pluginScope.launch {
             try {
                 if (daysBack != null) {
@@ -117,6 +173,28 @@ class OWHealthPlugin : Plugin() {
             } catch (e: Exception) {
                 Log.w(TAG, "startBackgroundSync failed", e)
                 call.reject("startBackgroundSync failed")
+            }
+        }
+    }
+
+    // Foreground, in-process upload. startBackgroundSync only *schedules*
+    // WorkManager and returns immediately, so a manual Re-Sync that then
+    // polls the server would always race an empty Open Wearables store.
+    @PluginMethod
+    fun syncNow(call: PluginCall) {
+        val daysBack = clampedDaysBack(call)
+        ensureGoogleProvider()
+        requestNotificationPermission()
+        pluginScope.launch {
+            try {
+                if (daysBack != null) {
+                    sdk().startBackgroundSync(syncDaysBack = daysBack)
+                }
+                sdk().syncNow()
+                call.resolve()
+            } catch (e: Exception) {
+                Log.w(TAG, "syncNow failed", e)
+                call.reject("syncNow failed")
             }
         }
     }
@@ -157,5 +235,6 @@ class OWHealthPlugin : Plugin() {
 
     companion object {
         private const val TAG = "OWHealth"
+        private const val NOTIF_REQ = 48021
     }
 }

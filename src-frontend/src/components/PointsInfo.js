@@ -65,7 +65,7 @@ export default function PointsInfoModal({competition, goals, user, setModalState
                         const target = Math.round(Number(goal.goal) * scaling);
                         const scaledNote = scaling !== 1 ? ` (${goal.goal} × your ${Math.round(scaling * 100)}% factor)` : "";
                         return (
-                            <div key={goal.id} className="mb-3 rounded-xl bg-gray-50 dark:bg-ink-900 p-3">
+                            <div key={goal.id} className="mb-3 rounded-xl bg-gray-100 border border-gray-300 dark:bg-ink-900 dark:border-0 p-3">
                                 <p className="font-semibold">{goal.name}: {target.toLocaleString()} {METRIC_TEXT[goal.metric]?.unit ?? goal.metric} {PERIOD_TEXT[goal.period] ?? goal.period}{scaledNote}</p>
                                 <p className="font-mono text-xs text-gray-600 dark:text-gray-400 mt-1">
                                     {METRIC_TEXT[goal.metric]?.formula(goal.goal) ?? ""} × activity-type factor

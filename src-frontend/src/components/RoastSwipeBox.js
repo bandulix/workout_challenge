@@ -78,7 +78,7 @@ function RoastCard({card, top, onVote}) {
              onPointerCancel={top ? onPointerUp : undefined}
              className={"absolute inset-0 select-none " + (top ? "cursor-grab active:cursor-grabbing touch-pan-y" : "pointer-events-none scale-[0.96] translate-y-2 opacity-70")}
              style={{zIndex: top ? 2 : 1}}>
-            <div className="h-full w-full overflow-hidden rounded-3xl bg-white dark:bg-ink-850 border border-gray-200/70 dark:border-ink-700/60 shadow-card dark:shadow-card-dark flex flex-col">
+            <div className="h-full w-full overflow-hidden rounded-3xl bg-white dark:bg-ink-850 border border-gray-300 dark:border-ink-700/60 shadow-card dark:shadow-card-dark flex flex-col">
                 <div className="relative flex-1 min-h-0 bg-ink-950/95 flex items-center justify-center">
                     {src
                         ? <img src={src} alt={card.body || "Roasted"} draggable={false}

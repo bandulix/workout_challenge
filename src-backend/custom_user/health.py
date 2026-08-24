@@ -106,6 +106,7 @@ def _ow_request(method, path, _retried=False, **kwargs):
         # Expired/revoked token - log in once more and retry.
         return _ow_request(method, path, _retried=True, **kwargs)
     if response.status_code == 404:
+        logger.warning("Open Wearables %s %s -> 404", method, path)
         return None
     if response.status_code == 409:
         return {"_conflict": True}
@@ -168,11 +169,13 @@ _VALID_SPORT_TYPES = {key for key, _label in SPORT_TYPES}
 HEALTH_SPORT_MAP = {
     "running": "Run",
     "running_track": "Run",
+    "running_treadmill": "VirtualRun",
     "trail_running": "TrailRun",
     "treadmill": "VirtualRun",
     "treadmill_running": "VirtualRun",
     "indoor_running": "VirtualRun",
     "cycling": "Ride",
+    "cycling_stationary": "VirtualRide",
     "biking": "Ride",
     "biking_road": "Ride",
     "e_bike": "EBikeRide",
@@ -194,6 +197,7 @@ HEALTH_SPORT_MAP = {
     "rowing": "Rowing",
     "indoor_rowing": "VirtualRow",
     "rowing_machine": "VirtualRow",
+    "stair_climbing_machine": "StairStepper",
     "kayaking": "Kayaking",
     "canoeing": "Canoeing",
     "paddleboarding": "StandUpPaddling",
@@ -344,19 +348,60 @@ def _ow_pick(ow_workout, *keys):
     return None
 
 
+# Android SDK unified payload uses camelCase (startDate/endDate). The
+# public Workout schema aliases those as start_time/end_time; EventRecord
+# uses start_datetime. Flatten so one mapper covers all three.
+_OW_FIELD_ALIASES = {
+    "startDate": "start_time",
+    "endDate": "end_time",
+    "startDatetime": "start_datetime",
+    "endDatetime": "end_datetime",
+    "durationSeconds": "duration_seconds",
+    "workoutType": "type",
+    "activityType": "type",
+    "caloriesKcal": "calories_kcal",
+    "distanceMeters": "distance_meters",
+    "avgHeartRateBpm": "avg_heart_rate_bpm",
+    "avgPaceSecPerKm": "avg_pace_sec_per_km",
+    "workoutId": "id",
+}
+
+
+def _flatten_ow_workout(ow_workout: dict) -> dict:
+    if not isinstance(ow_workout, dict):
+        return {}
+    nested = ow_workout.get("workout") or ow_workout.get("event")
+    if isinstance(nested, dict):
+        merged = {**nested, **{k: v for k, v in ow_workout.items() if k not in ("workout", "event")}}
+    else:
+        merged = dict(ow_workout)
+    for src, dest in _OW_FIELD_ALIASES.items():
+        if merged.get(dest) in (None, "", 0) and merged.get(src) not in (None, "", 0):
+            merged[dest] = merged[src]
+    return merged
+
+
 def workout_to_props(user, ow_workout: dict) -> dict | None:
     """Map one Open Wearables workout onto Workout field values."""
+    ow_workout = _flatten_ow_workout(ow_workout)
     # OW's unified event schema uses start_datetime / end_datetime;
     # Health Connect dumps and older docs also use start_time.
     health_id = _ow_pick(ow_workout, "id", "uuid", "workout_id")
-    start_dt = _parse_dt(_ow_pick(ow_workout, "start_time", "start_datetime", "start"))
+    start_dt = _parse_dt(_ow_pick(ow_workout, "start_time", "start_datetime", "start", "startDate"))
     if not health_id or start_dt is None:
         return None
 
     duration_raw = _ow_pick(ow_workout, "duration_seconds", "duration", "elapsed_time")
+    if duration_raw is None:
+        values = ow_workout.get("values")
+        if isinstance(values, list):
+            for item in values:
+                if isinstance(item, dict) and str(item.get("type") or "").lower() == "duration":
+                    duration_raw = item.get("value")
+                    break
     duration_s = _as_float(duration_raw)
     duration_s = int(duration_s) if duration_s else None
-    end_dt = _parse_dt(_ow_pick(ow_workout, "end_time", "end_datetime", "end"))
+    end_dt = _parse_dt(_ow_pick(ow_workout, "end_time", "end_datetime", "end", "endDate"))
     if not duration_s and end_dt is not None:
         duration_s = max(int((end_dt - start_dt).total_seconds()), 0)
     if not duration_s:
@@ -392,7 +437,12 @@ def _ow_page_items_and_cursor(page):
     """Unpack one OW list-workouts page (flat list or PaginatedResponse)."""
     if isinstance(page, list):
         return page, None
-    items = page.get("data") or page.get("items") or page.get("results") or []
+    # `[] or next` is wrong: an empty `data` list is a finished page,
+    # not a cue to fall through to a different key.
+    if "data" in page and isinstance(page.get("data"), list):
+        items = page.get("data")
+    else:
+        items = page.get("items") or page.get("results") or []
     pagination = page.get("pagination") if isinstance(page.get("pagination"), dict) else {}
     next_cursor = (
         pagination.get("next_cursor")
@@ -421,6 +471,7 @@ def _fetch_workouts(health_user_id: str, since: datetime.datetime) -> list:
         if page is None:
             # OW 404: the user vanished server-side - treat as empty, the
             # caller decides whether to drop the linkage.
+            logger.warning("Open Wearables returned 404 listing workouts for user %s", health_user_id)
             return []
         items, next_cursor = _ow_page_items_and_cursor(page)
         workouts.extend(items)
@@ -430,17 +481,29 @@ def _fetch_workouts(health_user_id: str, since: datetime.datetime) -> list:
     return workouts
 
 
-def _sync_user_workouts(user, start_datetime=None) -> dict:
+INGEST_RETRY_PAUSES = (2, 3)
+
+
+def _sync_user_workouts(user, start_datetime=None, wait_for_ingest=False) -> dict:
     # Same window as Garmin hourly/manual: watches and Health Connect
     # often land late. Initial link still requests ~43 days separately.
     since = start_datetime or (timezone.now() - datetime.timedelta(days=14))
     ow_workouts = _fetch_workouts(user.health_user_id, since)
+    # SDK ingest is queued on OW's Celery worker, so a poll that races
+    # the phone's POST /sdk/.../sync can still see an empty list.
+    if wait_for_ingest and not ow_workouts:
+        import time
+        for pause in INGEST_RETRY_PAUSES:
+            time.sleep(pause)
+            ow_workouts = _fetch_workouts(user.health_user_id, since)
+            if ow_workouts:
+                break
 
     # Only the fetched ids - not the whole table's health rows (which
     # loaded every user's full Workout instances per user per sync).
     ow_ids = []
     for w in ow_workouts:
-        hid = _ow_pick(w, "id", "uuid", "workout_id")
+        hid = _ow_pick(_flatten_ow_workout(w), "id", "uuid", "workout_id")
         if hid:
             ow_ids.append(str(hid))
     existing_map = Workout.objects.filter(health_id__in=ow_ids).in_bulk(field_name='health_id')
@@ -478,7 +541,7 @@ def _sync_user_workouts(user, start_datetime=None) -> dict:
 
 
 @app.task(bind=True, time_limit=60 * 30)
-def sync_health(self, user__id, start_datetime=None):
+def sync_health(self, user__id, start_datetime=None, wait_for_ingest=False):
     CustomUser = get_user_model()
     user = CustomUser.objects.get(id=user__id)
 
@@ -488,7 +551,9 @@ def sync_health(self, user__id, start_datetime=None):
         logger.info("Health sync user %s skipped: Health is not the selected activity source", user__id)
         return {"user": user__id, "skipped": "health is not the selected activity source"}
 
-    result = _sync_user_workouts(user, start_datetime=start_datetime)
+    result = _sync_user_workouts(
+        user, start_datetime=start_datetime, wait_for_ingest=wait_for_ingest,
+    )
     logger.info("Health sync user %s: %s", user__id, result)
     return {"user": user__id, **result}
 

@@ -17,7 +17,7 @@ export default function CompetitionInviteModal({competition, setModalState}) {
                 <p><b>Join code:</b> {competition.join_code}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Anyone opening this link can register right away - no invite token needed.</p>
             </div>
-            <div className="relative bg-gray-50 text-gray-800 dark:bg-ink-900 dark:text-gray-300 rounded-2xl border border-gray-200/70 dark:border-ink-700/60 p-4">
+            <div className="relative bg-gray-100 text-gray-800 dark:bg-ink-900 dark:text-gray-300 rounded-2xl border border-gray-300 dark:border-ink-700/60 p-4">
                 <button
                     onClick={() => navigator.clipboard.writeText(document.getElementById('code-block').innerText)}
                     className="absolute top-2 right-2 text-xs font-semibold rounded-full px-3 py-1 bg-gray-200 hover:bg-gray-300 dark:bg-ink-800 dark:hover:bg-ink-700 transition">

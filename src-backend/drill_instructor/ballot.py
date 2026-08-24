@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+import random
 
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -43,14 +44,17 @@ def eligible_personas(competition, incumbent_id=None):
 
 
 def pick_winner(tallies, incumbent_id):
-    """Highest vote count. Ties keep the incumbent if they are tied, else lowest pk."""
+    """Highest vote count. Ties (including the incumbent) are drawn at random.
+
+    No votes at all keeps the sitting coach.
+    """
     if not tallies:
         return incumbent_id
     top_n = tallies[0]["n"]
     tied = [row["persona"] for row in tallies if row["n"] == top_n]
-    if incumbent_id in tied:
-        return incumbent_id
-    return tied[0]
+    if len(tied) == 1:
+        return tied[0]
+    return random.choice(tied)
 
 
 def ballot_payload_for_request(config, request):
@@ -109,20 +113,25 @@ def apply_persona_votes(config, now=None):
     from .tasks import _post_coach_line
 
     now = now or timezone.now()
+    incumbent_id = config.persona_id
     tallies = list(
         DrillInstructorPersonaVote.objects.filter(config=config)
         .values("persona")
         .annotate(n=Count("id"))
         .order_by("-n", "persona")
     )
-    winner_id = pick_winner(tallies, config.persona_id)
-    switched = winner_id != config.persona_id
+    winner_id = pick_winner(tallies, incumbent_id)
+    switched = winner_id != incumbent_id
     result = {
         "config": config.id,
         "switched": switched,
         "winner": winner_id,
         "votes": {row["persona"]: row["n"] for row in tallies},
     }
+    logger.info(
+        "Weekly coach vote config=%s incumbent=%s winner=%s switched=%s votes=%s",
+        config.id, incumbent_id, winner_id, switched, result["votes"],
+    )
     if switched:
         previous = config.persona
         winner = DrillInstructorPersona.objects.get(pk=winner_id)

@@ -1,12 +1,13 @@
 import React, {useEffect, useState} from "react";
 import {Link, useLocation, useNavigate} from "react-router-dom";
-import {Flag, Home, Plus, User2, Settings, Scale, BadgeHelp, Shield, LogOut, Sun, Moon, ChevronRight} from "lucide-react";
+import {Flag, Home, Plus, User2, Settings, Scale, BadgeHelp, Shield, LogOut, Sun, Moon, Monitor, ChevronRight, Bot} from "lucide-react";
 import WorkoutForm from "../forms/workoutForm";
 import {Modal} from "../forms/basicComponents";
 import SettingsForm from "../forms/settingsForm";
 import GoalEqualizerForm from "../forms/equalizerForm";
 import SupportModal from "../forms/supportModal";
 import {LinkStravaScreen} from "../pages/HowTo";
+import RoasterModal from "../components/RoasterBox";
 import PersonaAvatar from "../components/PersonaAvatar";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {DogTagRow} from "../components/gameBits";
@@ -24,18 +25,20 @@ const COACH_FALLBACK = {name: "Coach", avatar: "megaphone", theme_color: "#d7ff3
 
 function NavLink({to, icon: Icon, label, isActive, onClick}) {
     const className =
-        "relative flex flex-col items-center justify-center gap-1 py-2 px-2.5 min-w-[56px] min-h-[52px] transition-colors duration-200 " +
+        "relative flex flex-col items-center justify-center gap-1 py-2 px-2.5 min-w-[56px] min-h-[58px] transition-colors duration-200 " +
         (isActive ? "text-ink-950 dark:text-volt-200" : "text-ink-700/55 dark:text-gray-400 hover:text-ink-900 dark:hover:text-volt-200");
     const inner = (
         <>
-            <span aria-hidden="true"
-                  className={"absolute inset-x-1.5 inset-y-1 rounded-2xl transition-all duration-300 " +
-                      (isActive ? "glass-chip scale-100" : "bg-transparent scale-90")}/>
             <Icon className={"relative z-10 h-5 w-5 transition-transform duration-300 " + (isActive ? "scale-110" : "")}
                   strokeWidth={isActive ? 2.4 : 1.8}
                   fill={isActive ? "currentColor" : "none"}/>
-            <span className={"relative z-10 text-[10px] font-bold uppercase tracking-wider leading-none " +
-                (isActive ? "text-ink-950 dark:text-volt-200" : "")}>{label}</span>
+            <span className="relative z-10 flex flex-col items-center">
+                <span className={"text-[10px] font-bold uppercase tracking-wider leading-none " +
+                    (isActive ? "text-ink-950 dark:text-volt-200" : "")}>{label}</span>
+                <span aria-hidden="true"
+                      className={"nav-active-bar transition-all duration-300 " +
+                          (isActive ? "opacity-100 scale-100" : "opacity-0 scale-50")}/>
+            </span>
         </>
     );
     if (onClick) {
@@ -96,7 +99,7 @@ function CompetitionPickerSheet({setShowCompetitionPicker}) {
     );
 }
 
-function MeSheetRow({icon: Icon, label, onClick, danger = false, trailing = null}) {
+function SettingsSheetRow({icon: Icon, label, onClick, danger = false, trailing = null}) {
     return (
         <button onClick={onClick}
                 className={"w-full flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-ink-950/8 dark:hover:bg-white/10 min-h-[44px] text-left " + (danger ? "text-red-500 dark:text-red-400" : "")}>
@@ -107,14 +110,18 @@ function MeSheetRow({icon: Icon, label, onClick, danger = false, trailing = null
     );
 }
 
-function MeSheet({setShowMeSheet, user, isStaff, onSettings, onEqualizer, onSupport}) {
+function SettingsSheet({setShowSettingsSheet, user, isStaff, onAccount, onEqualizer, onRoaster, onSupport}) {
     const navigate = useNavigate();
-    const {resolvedTheme, toggle} = useTheme();
+    const {theme, resolvedTheme, cycle} = useTheme();
+    const themeLabel = theme === "system"
+        ? `Match device (${resolvedTheme})`
+        : theme === "dark" ? "Dark mode" : "Light mode";
+    const ThemeIcon = theme === "system" ? Monitor : (resolvedTheme === "dark" ? Sun : Moon);
 
-    const close = () => setShowMeSheet(false);
+    const close = () => setShowSettingsSheet(false);
 
     return (
-        <Sheet onClose={close} title="Me">
+        <Sheet onClose={close} title="Settings">
             <div className="flex items-center gap-3 px-3 pb-3 mb-2 border-b border-ink-950/10 dark:border-white/10">
                 <ProfileAvatar user={user} size={52} editable/>
                 <div className="min-w-0">
@@ -124,19 +131,20 @@ function MeSheet({setShowMeSheet, user, isStaff, onSettings, onEqualizer, onSupp
                 </div>
             </div>
             <div className="space-y-1">
-                <MeSheetRow icon={Settings} label="Settings" onClick={() => {close(); onSettings();}}/>
-                <MeSheetRow icon={Scale} label="Goal Equalizer" onClick={() => {close(); onEqualizer();}}/>
-                <MeSheetRow
-                    icon={resolvedTheme === "dark" ? Sun : Moon}
-                    label={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-                    onClick={toggle}
+                <SettingsSheetRow icon={User2} label="Account" onClick={() => {close(); onAccount();}}/>
+                <SettingsSheetRow icon={Scale} label="Goal Equalizer" onClick={() => {close(); onEqualizer();}}/>
+                <SettingsSheetRow icon={Bot} label="The roaster" onClick={() => {close(); onRoaster();}}/>
+                <SettingsSheetRow
+                    icon={ThemeIcon}
+                    label={themeLabel}
+                    onClick={cycle}
                     trailing={null}
                 />
-                <MeSheetRow icon={BadgeHelp} label="Help & Support" onClick={() => {close(); onSupport();}}/>
+                <SettingsSheetRow icon={BadgeHelp} label="Help & Support" onClick={() => {close(); onSupport();}}/>
                 {isStaff && (
-                    <MeSheetRow icon={Shield} label="Admin" onClick={() => {close(); navigate("/admin/site-settings");}}/>
+                    <SettingsSheetRow icon={Shield} label="Admin" onClick={() => {close(); navigate("/admin/site-settings");}}/>
                 )}
-                <MeSheetRow icon={LogOut} label="Log out" danger onClick={() => navigate("/logout")}/>
+                <SettingsSheetRow icon={LogOut} label="Log out" danger onClick={() => navigate("/logout")}/>
             </div>
         </Sheet>
     );
@@ -145,12 +153,13 @@ function MeSheet({setShowMeSheet, user, isStaff, onSettings, onEqualizer, onSupp
 export default function BottomNav() {
     const [showLogWorkout, setShowLogWorkout] = useState(false);
     const [showCompetitionPicker, setShowCompetitionPicker] = useState(false);
-    const [showMeSheet, setShowMeSheet] = useState(false);
-    // Modal state lives here (not inside MeSheet) so closing the sheet
+    const [showSettingsSheet, setShowSettingsSheet] = useState(false);
+    // Modal state lives here (not inside SettingsSheet) so closing the sheet
     // doesn't unmount the modal it was supposed to open.
     const [showSettings, setShowSettings] = useState(false);
     const [showEqualizer, setShowEqualizer] = useState(false);
     const [showSupport, setShowSupport] = useState(false);
+    const [showRoaster, setShowRoaster] = useState(false);
     const [linkStrava, setLinkStrava] = useState(false);
 
     const location = useLocation();
@@ -264,10 +273,10 @@ export default function BottomNav() {
 
                     <NavLink
                         to="#"
-                        icon={User2}
-                        label="Me"
-                        isActive={onAdmin || showMeSheet}
-                        onClick={() => setShowMeSheet(true)}
+                        icon={Settings}
+                        label="Settings"
+                        isActive={onAdmin || showSettingsSheet}
+                        onClick={() => setShowSettingsSheet(true)}
                     />
                 </div>
             </nav>
@@ -281,16 +290,17 @@ export default function BottomNav() {
                 <CompetitionPickerSheet setShowCompetitionPicker={setShowCompetitionPicker}/>
             )}
 
-            {showMeSheet && (
-                <MeSheet setShowMeSheet={setShowMeSheet} user={user} isStaff={isStaff}
-                         onSettings={() => setShowSettings(true)}
+            {showSettingsSheet && (
+                <SettingsSheet setShowSettingsSheet={setShowSettingsSheet} user={user} isStaff={isStaff}
+                         onAccount={() => setShowSettings(true)}
                          onEqualizer={() => setShowEqualizer(true)}
+                         onRoaster={() => setShowRoaster(true)}
                          onSupport={() => setShowSupport(true)}/>
             )}
 
-            {/* SettingsForm needs the profile. While it is still loading
+            {/* Account form needs the profile. While it is still loading
                 (or after a failed fetch) show feedback inside the modal
-                instead of the tap on "Settings" silently doing nothing. */}
+                instead of the tap on "Account" silently doing nothing. */}
             {showSettings && (user ? (
                 <SettingsForm user={user} setModalState={setShowSettings} setLinkStrava={setLinkStrava}/>
             ) : (
@@ -305,6 +315,7 @@ export default function BottomNav() {
                 </Modal>
             ))}
             {showEqualizer && user && <GoalEqualizerForm user={user} setModalState={setShowEqualizer}/>}
+            {showRoaster && <RoasterModal setShowModal={setShowRoaster}/>}
             {showSupport && <SupportModal setModalState={setShowSupport}/>}
             {linkStrava && <LinkStravaScreen setModal={setLinkStrava}/>}
         </>

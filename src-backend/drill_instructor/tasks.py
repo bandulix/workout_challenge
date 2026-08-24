@@ -690,19 +690,25 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
 
 
 @app.task(bind=True, max_retries=0, time_limit=240)
-def remix_echo_art(self, echo_id):
+def remix_echo_art(self, echo_id, uploaded_by_id=None):
     """Paint the holder's uploaded photo into Echo-specific trophy art.
 
     Best-effort: if the image-edit model is missing or refuses the edit,
     the original upload stays. Never raises into the worker loop.
+    Skip if the Echo changed hands after the upload was queued.
     """
     from django.core.files.base import ContentFile
 
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
     try:
-        echo = LegendEcho.objects.select_related("config", "config__persona").get(pk=echo_id)
+        echo = LegendEcho.objects.select_related(
+            "config", "config__persona", "holder_workout",
+        ).get(pk=echo_id)
     except LegendEcho.DoesNotExist:
         return {"echo": echo_id, "skipped": "missing"}
+    if uploaded_by_id and echo.holder_id != uploaded_by_id:
+        logger.info("Echo art remix skipped for %s: holder changed", echo_id)
+        return {"echo": echo_id, "skipped": "holder changed"}
     if not echo.image:
         return {"echo": echo_id, "skipped": "no image"}
     try:
@@ -717,16 +723,34 @@ def remix_echo_art(self, echo_id):
         logger.info("Echo art remix skipped for %s: no image-edit model", echo_id)
         return {"echo": echo_id, "skipped": "no image-edit model"}
 
+    persona = echo.config.persona
+    portrait_path = _persona_portrait_path(persona)
     unit = "km" if echo.metric == "distance" else "min"
     metric_label = f"{echo.metric_value:g} {unit} {echo.sport_type}"
+    if echo.holder_workout_id:
+        richer, _ = _format_workout_summary(echo.holder_workout)
+        if richer:
+            metric_label = richer
     prompt = build_echo_art_prompt(
         title=echo.title,
         narrative=echo.narrative or "",
         sport_type=echo.sport_type or "",
         metric_label=metric_label,
         power=echo.power,
+        persona_name=persona.name if persona else "",
+        persona_description=(persona.description or "") if persona else "",
+        persona_tagline=(persona.tagline or "") if persona else "",
+        persona_avatar=(persona.avatar or "") if persona else "",
+        has_coach_portrait=bool(portrait_path),
     )
-    png_bytes, error = generate_roast_image(image_path, prompt, roast_model)
+    png_bytes, error = generate_roast_image(
+        image_path, prompt, roast_model,
+        extra_image_paths=[portrait_path] if portrait_path else None,
+    )
+    if not png_bytes and portrait_path:
+        png_bytes, error = generate_roast_image(
+            image_path, prompt, roast_model, extra_image_paths=None,
+        )
     if not png_bytes:
         logger.info("Echo art remix skipped for %s: %s", echo_id, error)
         return {"echo": echo_id, "skipped": error or "edit failed"}
@@ -1098,7 +1122,9 @@ def apply_weekly_persona_votes(self):
             switched += 1
         else:
             kept += 1
-    return {"date": str(today), "switched": switched, "kept": kept, "competitions": competitions.count()}
+    summary = {"date": str(today), "switched": switched, "kept": kept, "competitions": competitions.count()}
+    logger.info("Weekly coach vote sweep: %s", summary)
+    return summary
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)

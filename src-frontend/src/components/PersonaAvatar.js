@@ -62,7 +62,7 @@ function PersonaAvatar({persona, size = 48, ring = true, glow = false, className
 
     return (
         <div
-            className={"relative shrink-0 rounded-full overflow-hidden bg-ink-800 " + className}
+            className={"relative shrink-0 rounded-full overflow-hidden bg-gray-200 dark:bg-ink-800 " + className}
             style={{width: size, height: size, ...ringStyle}}
             aria-label={persona?.name ? `${persona.name} avatar` : "Coach avatar"}
         >

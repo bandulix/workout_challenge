@@ -6,7 +6,7 @@ import PersonaAvatar from "./PersonaAvatar";
 import ProfileAvatar from "./ProfileAvatar";
 import {drillInstructorApi, useReplyToDrillMessageMutation} from "../utils/reducers/drillInstructorSlice";
 import {useProtectedImage} from "../utils/protectedMedia";
-import {timeAgo} from "../utils/time";
+import {elapsedSince, timeAgo} from "../utils/time";
 import PhotoPost from "./PhotoPost";
 
 // A reply's image (the coach's roasted-photo remix) - authenticated
@@ -40,6 +40,13 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
     const [sendReply, {isLoading}] = useReplyToDrillMessageMutation();
     const dispatch = useDispatch();
     const replies = message.replies || [];
+    const pictured = Boolean(message.image) || replies.some((r) => r.image);
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => {
+        if (!open || !pictured) return undefined;
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+    }, [open, pictured]);
     // Camera stays on every thread while the coach is on duty (own
     // workouts, @-mentions, group pushes). The picture always hangs
     // under lastOwnActivityId — your latest session, not this bubble.
@@ -90,7 +97,14 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
                                     instead of overflowing the viewport (page scrolled
                                     sideways on smartphones). */}
                                 <p className="text-sm leading-snug break-words dark:text-gray-100">{r.body}</p>
-                                {r.image && <ReplyImage url={r.image} alt={r.body ? `Coach remix: ${r.body}` : "Coach remix"}/>}
+                                {r.image && (
+                                    <>
+                                        <ReplyImage url={r.image} alt={r.body ? `Coach remix: ${r.body}` : "Coach remix"}/>
+                                        <p className="text-[10px] font-bold uppercase tracking-wider text-volt-700 dark:text-volt-400 mt-1">
+                                            elapsed {elapsedSince(r.posted_at, now)}
+                                        </p>
+                                    </>
+                                )}
                                 <p className="text-[11px] text-gray-400 mt-0.5">
                                     {r.is_coach ? (persona?.name || "Coach") : (r.author_name || "Participant")} · {timeAgo(r.posted_at)}
                                 </p>
@@ -100,11 +114,11 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
 
                     {canReply && (
                         <div className="min-w-0 w-full space-y-1">
-                            {showPhoto && (
-                                <PhotoPost competitionId={competitionId} parentId={lastOwnActivityId}
-                                           visionCapable={Boolean(visionCapable)}/>
-                            )}
-                            <div className="flex items-center gap-2 min-w-0 w-full">
+                            <div className="flex flex-wrap items-center gap-2 min-w-0 w-full">
+                                {showPhoto && (
+                                    <PhotoPost competitionId={competitionId} parentId={lastOwnActivityId}
+                                               visionCapable={Boolean(visionCapable)}/>
+                                )}
                                 <input
                                     type="text"
                                     value={text}
@@ -113,11 +127,11 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
                                     onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
                                     placeholder={`Reply to ${persona?.name || "the coach"}…`}
                                     aria-label={`Reply to ${persona?.name || "the coach"}`}
-                                    className="min-w-0 w-0 flex-1 shadow border border-gray-200 dark:border-ink-700/60 rounded-full py-2 px-3 sm:px-4 text-sm text-gray-700 dark:bg-ink-900 dark:text-gray-300 dark:placeholder-gray-600 leading-tight focus:outline-none focus:border-volt-500"
+                                    className="min-w-0 w-0 flex-1 min-h-[44px] h-11 shadow border border-gray-300 dark:border-ink-700/60 rounded-full py-2 px-3 sm:px-4 text-sm text-gray-800 dark:bg-ink-900 dark:text-gray-300 dark:placeholder-gray-600 leading-tight focus:outline-none focus:border-volt-500"
                                 />
                                 <button onClick={handleSend} disabled={isLoading || !text.trim()}
                                         aria-label="Send reply"
-                                        className="shrink-0 h-10 w-10 min-h-[40px] min-w-[40px] sm:h-11 sm:w-11 sm:min-h-[44px] sm:min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none flex items-center justify-center">
+                                        className="shrink-0 h-11 w-11 min-h-[44px] min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none flex items-center justify-center">
                                     {isLoading ? <BeatLoader size={5} color="#0b0b0c"/> : <Send className="h-4 w-4"/>}
                                 </button>
                             </div>

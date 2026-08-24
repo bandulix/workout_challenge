@@ -145,7 +145,7 @@ export const drillInstructorApi = createApi({
             query: (competition) => ({
                 url: 'drill-instructor/message/hall/',
                 method: 'GET',
-                params: {competition},
+                params: competition ? {competition} : {},
             }),
             providesTags: ['DrillRoast'],
         }),

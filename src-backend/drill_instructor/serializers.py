@@ -543,7 +543,7 @@ class LegendEchoSerializer(serializers.ModelSerializer):
         user = getattr(request, "user", None)
         if not user or not user.is_authenticated:
             return False
-        return obj.holder_id == user.id or bool(user.is_staff)
+        return obj.holder_id == user.id
 
     def get_metric_label(self, obj):
         unit = "km" if obj.metric == "distance" else "min"

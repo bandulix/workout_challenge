@@ -14,3 +14,14 @@ export function timeAgo(iso) {
     return then.toLocaleDateString(undefined, {day: "numeric", month: "short"});
 }
 
+export function elapsedSince(iso, now = Date.now()) {
+    if (!iso) return "";
+    const sec = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
+    if (sec < 60) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    if (m < 60) return `${m}m ${String(sec % 60).padStart(2, "0")}s`;
+    const h = Math.floor(m / 60);
+    if (h < 48) return `${h}h ${m % 60}m`;
+    return timeAgo(iso);
+}
+

@@ -6,10 +6,10 @@ export const VOLT = "#d7ff3e";
 
 export function SectionHead({title, hint, children}) {
     return (
-        <div className="flex flex-wrap items-center gap-2 border-b border-volt-600/20 dark:border-volt-400/15 pb-3 mb-1">
+        <div className="flex flex-wrap items-center gap-2 border-b border-gray-300 dark:border-volt-400/15 pb-3 mb-1">
             <div className="flex-1 min-w-0 px-1">
-                <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{title}</h2>
-                {hint && <p className="text-xs text-gray-400">{hint}</p>}
+                <h2 className="text-sm font-semibold text-ink-950 dark:text-gray-200">{title}</h2>
+                {hint && <p className="text-xs text-gray-600 dark:text-gray-400">{hint}</p>}
             </div>
             {children && <div className="flex items-center gap-2 shrink-0">{children}</div>}
         </div>
@@ -18,7 +18,7 @@ export function SectionHead({title, hint, children}) {
 
 export function Chip({children}) {
     return (
-        <span className="shrink-0 rounded-full bg-volt-400/15 text-volt-700 dark:text-volt-300 text-[11px] font-semibold px-2 py-0.5">
+        <span className="shrink-0 rounded-full bg-volt-400/30 text-volt-800 dark:bg-volt-400/15 dark:text-volt-300 text-[11px] font-semibold px-2 py-0.5">
             {children}
         </span>
     );
@@ -28,8 +28,8 @@ export function EmptyState({title, body, actionLabel, onAction}) {
     return (
         <div className="flex flex-col items-center text-center py-8 px-4">
             <PersonaAvatar persona={{avatar: "megaphone", theme_color: "#d7ff3e"}} size={56} glow/>
-            <p className="mt-3 font-semibold text-gray-800 dark:text-gray-100">{title}</p>
-            {body && <p className="mt-1 text-sm text-gray-400 max-w-xs">{body}</p>}
+            <p className="mt-3 font-semibold text-ink-950 dark:text-gray-100">{title}</p>
+            {body && <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 max-w-xs">{body}</p>}
             {onAction && actionLabel && (
                 <button type="button" onClick={onAction}
                         className="mt-4 px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
@@ -43,7 +43,7 @@ export function EmptyState({title, body, actionLabel, onAction}) {
 export function SyncChip({onClick, isLoading, short, long}) {
     return (
         <button type="button" onClick={onClick} disabled={isLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-sm font-semibold min-h-[44px] transition disabled:opacity-50">
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-gray-200 hover:bg-gray-300 text-ink-950 dark:bg-ink-800 dark:hover:bg-ink-700 dark:text-gray-200 text-sm font-semibold min-h-[44px] transition disabled:opacity-50">
             <RefreshCw className={"h-3.5 w-3.5 " + (isLoading ? "animate-spin" : "")}/>
             <span className="sm:hidden">{isLoading ? "…" : short}</span>
             <span className="hidden sm:inline">{isLoading ? "Syncing…" : long}</span>
@@ -52,4 +52,4 @@ export function SyncChip({onClick, isLoading, short, long}) {
 }
 
 export const rowClass =
-    "w-full flex items-center gap-3 py-3 px-2 rounded-2xl hover:bg-gray-50 dark:hover:bg-ink-800 transition min-h-[44px] text-left";
+    "w-full flex items-center gap-3 py-3 px-2 rounded-2xl hover:bg-gray-100 dark:hover:bg-ink-800 transition min-h-[44px] text-left";

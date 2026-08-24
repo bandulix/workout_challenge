@@ -16,34 +16,36 @@ const PILL =
 const ICON =
     "shrink-0 min-h-[44px] min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt flex items-center justify-center";
 
-export default function PhotoPost({competitionId, visionCapable, parentId, onPosted, variant = "icon"}) {
+export default function PhotoPost({competitionId, visionCapable, parentId, onPosted, variant = "icon", label = "Photo"}) {
     const [open, setOpen] = useState(false);
     const [hint, setHint] = useState(null);
     const pill = variant === "pill";
-    return (
-        <div className={pill ? "min-w-0 w-full flex flex-col" : undefined}>
-            <button onClick={() => {
-                        if (!visionCapable) {
-                            setHint((v) => v === "vision" ? null : "vision");
-                            setOpen(false);
-                            return;
-                        }
-                        if (!parentId) {
-                            setHint((v) => v === "workout" ? null : "workout");
-                            setOpen(false);
-                            return;
-                        }
-                        setHint(null);
-                        setOpen((v) => !v);
-                    }}
-                    title="Share a photo"
-                    aria-label="Share a photo"
-                    className={pill ? PILL : ICON}>
-                <Camera className="h-4 w-4 shrink-0"/>
-                {pill && <span>Photo</span>}
-            </button>
+    const button = (
+        <button onClick={() => {
+                    if (!visionCapable) {
+                        setHint((v) => v === "vision" ? null : "vision");
+                        setOpen(false);
+                        return;
+                    }
+                    if (!parentId) {
+                        setHint((v) => v === "workout" ? null : "workout");
+                        setOpen(false);
+                        return;
+                    }
+                    setHint(null);
+                    setOpen((v) => !v);
+                }}
+                title={label}
+                aria-label={label}
+                className={pill ? PILL : ICON}>
+            <Camera className="h-4 w-4 shrink-0"/>
+            {pill && <span>{label}</span>}
+        </button>
+    );
+    const extras = (
+        <>
             {hint && (
-                <div className="w-full min-w-0 px-1 pt-1 pb-1">
+                <div className={pill ? "w-full min-w-0 px-1 pt-1 pb-1" : "basis-full w-full min-w-0 px-1 pt-1"}>
                     <p className="text-xs text-gray-400">
                         {hint === "workout"
                             ? "Photos hang under your latest workout. Log one and wait for the coach to comment first."
@@ -52,11 +54,25 @@ export default function PhotoPost({competitionId, visionCapable, parentId, onPos
                 </div>
             )}
             {open && visionCapable && parentId && (
-                <div className="w-full min-w-0">
+                <div className={pill ? "w-full min-w-0" : "basis-full w-full min-w-0"}>
                     <PhotoComposer competitionId={competitionId} parentId={parentId} onDone={() => setOpen(false)} onPosted={onPosted}/>
                 </div>
             )}
-        </div>
+        </>
+    );
+    if (pill) {
+        return (
+            <div className="min-w-0 w-full flex flex-col">
+                {button}
+                {extras}
+            </div>
+        );
+    }
+    return (
+        <>
+            {button}
+            {extras}
+        </>
     );
 }
 

@@ -63,6 +63,11 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- SDK WorkManager sync is a health foreground service; Android 13+
+         hides the notification (and often the worker) without this. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <!-- Coach photo posts: native camera vs gallery (Capacitor Camera).
          WebView <input capture> is ignored on Android and both buttons
          opened the file picker; HEIC gallery shots were then rejected. -->

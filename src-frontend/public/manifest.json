@@ -39,8 +39,8 @@
   "handle_links": "preferred",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#0b0b0c",
-  "background_color": "#0b0b0c",
+  "theme_color": "#d4deba",
+  "background_color": "#d4deba",
   "categories": ["health", "fitness", "lifestyle"],
   "shortcuts": [
     {

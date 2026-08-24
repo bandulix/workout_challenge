@@ -154,7 +154,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                 </label>
             </Field>
 
-            <Field label="Persona" required error={fieldErrors.persona} hint="Built-ins plus any roaster you created on the Coach page.">
+            <Field label="Persona" required error={fieldErrors.persona} hint="Built-ins plus any roaster you created from Settings.">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {personasList.map((p) => {
                         const selected = String(persona) === String(p.id);

@@ -14,6 +14,7 @@ import {
 } from "./pages/Public";
 import BottomNav from "./utils/bottomNav";
 import WhatsNew from "./components/WhatsNew";
+import EchoArtNudge from "./components/EchoArtNudge";
 import DialogHost from "./components/DialogHost";
 import {InitStravaLink, ReturnStravaLink} from "./pages/StravaLink";
 
@@ -60,6 +61,7 @@ function App() {
             <DialogHost/>
             {/* Release popup: one changelog + reload prompt per release. */}
             <WhatsNew/>
+            <EchoArtNudge/>
         </Router>
     );
 }

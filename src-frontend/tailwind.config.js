@@ -71,6 +71,14 @@ module.exports = {
           '0%, 100%': { opacity: '0.35', transform: 'scale(1)' },
           '50%': { opacity: '0.8', transform: 'scale(1.08)' },
         },
+        'squad-orbit': {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' },
+        },
+        'squad-hop': {
+          '0%, 100%': { transform: 'translateY(0) scale(1)' },
+          '50%': { transform: 'translateY(-3px) scale(1.2)' },
+        },
         'kenburns': {
           '0%': { transform: 'scale(1) translate3d(0,0,0)' },
           '100%': { transform: 'scale(1.12) translate3d(0,-2%,0)' },
@@ -85,6 +93,10 @@ module.exports = {
         'nav-rise': 'nav-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both',
         'volt-breathe': 'volt-breathe 3.2s ease-in-out infinite',
         'kenburns': 'kenburns 28s ease-out forwards',
+        'squad-orbit-slow': 'squad-orbit 28s linear infinite',
+        'squad-orbit': 'squad-orbit 16s linear infinite',
+        'squad-orbit-fast': 'squad-orbit 9s linear infinite',
+        'squad-hop': 'squad-hop 1.1s ease-in-out infinite',
       },
     },
   },

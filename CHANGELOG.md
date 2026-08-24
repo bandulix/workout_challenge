@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Home latest workouts has “N older activities”** — same day-grouped history sheet as the challenge feed, instead of only the last 5.
+- **Challenge opens on Feed** and swipes to Board and Trophies. The tab bar has chevrons, a sliding pill, and page dots so it reads as swipeable.
+- **Echo art reminder** — if you hold an Echo without a picture, a popup asks you to add one (Camera or Gallery). Later dismisses that Echo until you upload.
+- **Coach comments when someone declares war on an Echo** — persona-voiced announcement in Coach’s Corner (canned fallback if the LLM is down), labelled “Declared war”.
+
+### Changed
+- **Challenge tabs are Feed / Board / Trophies** (Feed first).
+- **Hall of Roasts is on the Coach page**, not on the challenge Trophies tab. The box shows the top 3; a “N more roasts” button opens the rest.
+- **Dog tags are only on Home** (welcome box) and the Settings sheet — the extra Coach box is gone. Tapping a tag opens a short description of the achievement.
+- **Light mode contrast** — leftover night-ink cards (coach hero, streak, pings, Echoes, orders, dog tags) now have light surfaces; borders and body text are darker on the olive canvas. Theme still defaults to the device setting; Settings cycles Match device → Light → Dark.
+- **The roaster lives under Settings**, not on the Coach page. Same create / manage / detail flow, opened from the Settings sheet.
+- **Bottom nav “Me” is now Settings** — the sheet is the settings menu; Account opens personal details and device links.
+- **Dock is frostier** — stronger backdrop blur and a more opaque fill so page content does not show through. The active tab is a slim volt dash under the label instead of a green chip.
+- **Coach “who moved” is an orbit** around the persona portrait (lit hopping pips = athletes who trained in 48h) instead of a green bar.
+- **Coach “Open the feed” is “Add a photo”** and only appears when the speech bubble is the coach commenting on *your* workout.
+- **Coach’s Corner reply row** — camera, comment field and send sit on one 44px row. Picture replies show a live elapsed timer. A “N older messages” button expands the box past the latest 3.
+- **Weekly coach vote stays after you pick** — the box under the leaderboard keeps showing tallies and your highlighted pick; tap another coach to change your vote until Monday.
+- **Tied weekly coach votes are drawn at random** — previously a tie (including the sitting coach) always kept the incumbent, which looked like the vote never switched. No votes still keeps the current coach.
+- **Echo art is splashier** — the remix now puts the holder and the coach together in an invented, persona-styled world (movie-poster energy, not a snapshot). Workout stats stay on the picture; the coach portrait is used as a face lock when there is one.
+
+### Fixed
+- **Echo art can only be set by the current holder** — staff used to get the camera button on every Echo and the API accepted their upload. Admins who do not hold the Echo no longer can.
+- **Google Health Connect still not importing, and Re-Sync bringing in nothing** — tapping Sync only *scheduled* WorkManager, then the server polled Open Wearables immediately (still empty) and stamped `health_last_synced_at`, which locked both the hourly beat and the button for ~an hour. Re-Sync now waits for an in-process `syncNow()` upload, retries the OW list while ingest is queued, and the manual cooldown is 2 minutes. The Android plugin also pins the Google provider (the SDK worker defaulted to Samsung), calls the SDK foreground/background lifecycle hooks, and requests notification permission so the health foreground service can actually run.
+- **Challenge tab bar `role="tablist"` was outside the tag** and leaked as text; swipe tabs now expose a real tablist.
+- **Echo art daily cap is atomic** (`cache.incr`); remix is skipped if the Echo changed hands after upload. Health Re-Sync stamps under a row lock so overlapping GETs cannot skip the 2-minute cooldown. Native Health Connect `daysBack` is clamped to 1–43.
+
 ## [0.42.0] - 2026-08-23
 
 ### Added

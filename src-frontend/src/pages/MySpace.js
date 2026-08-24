@@ -33,6 +33,7 @@ import {LinkStravaScreen} from "./HowTo";
 import {
     AddButton,
     JoinButton,
+    Modal,
     ModifyGoalsButton,
 } from "../forms/basicComponents";
 import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
@@ -74,7 +75,7 @@ function GettingStarted({user, competitions, workouts, configs, onJoin, onCreate
         return (
             <li className="flex gap-3 py-2.5">
                 <span className={"shrink-0 mt-0.5 h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-bold " +
-                    (done ? "bg-volt-400 text-ink-950" : "bg-ink-900 text-volt-400")}>
+                    (done ? "bg-volt-400 text-ink-950" : "bg-gray-200 text-volt-800 dark:bg-ink-900 dark:text-volt-400")}>
                     {done ? <Check className="h-3.5 w-3.5"/> : n}
                 </span>
                 <div className="min-w-0 flex-1">
@@ -150,7 +151,7 @@ function WelcomeBox({user, workouts}) {
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 sm:px-3">
                 <ProfileAvatar user={user} size={64} editable className="shrink-0"/>
                 <div className="flex-1 min-w-0 basis-40">
-                    <p className="text-xs text-gray-500">Welcome back,</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">Welcome back,</p>
                     <p className="text-xl font-display uppercase tracking-wide truncate">{user.first_name}</p>
                     <DogTagRow tags={user.dog_tags}/>
                 </div>
@@ -170,9 +171,80 @@ function WelcomeBox({user, workouts}) {
 }
 
 
+const WORKOUT_PREVIEW = 5;
+
+function workoutDayLabel(workout) {
+    const ago = workout.start_datetime_fmt?.days_ago;
+    if (ago === 0) return "Today";
+    if (ago === 1) return "Yesterday";
+    return workout.start_datetime_fmt?.date_readable || "";
+}
+
+function groupWorkoutsByDay(items) {
+    const groups = [];
+    for (const workout of items) {
+        const key = workout.start_datetime_fmt?.date_iso || "unknown";
+        const last = groups[groups.length - 1];
+        if (!last || last.key !== key) {
+            groups.push({key, label: workoutDayLabel(workout), items: [workout]});
+        } else {
+            last.items.push(workout);
+        }
+    }
+    return groups;
+}
+
+function WorkoutRow({workout, onOpen, showDate = true}) {
+    const isSteps = workout.sport_type === "Steps";
+    const primary = isSteps
+        ? `${workout.steps?.toLocaleString() || 0} steps`
+        : (workout.duration || "").substring(0, 5);
+    return (
+        <li>
+            <button type="button" onClick={() => onOpen(workout.id)} className={rowClass}>
+                <div className="h-10 w-10 rounded-2xl bg-volt-400/15 flex items-center justify-center shrink-0">
+                    <Dumbbell className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                </div>
+                <div className="min-w-0 flex-1">
+                    <p className="font-semibold truncate">{sportLabelShort(workout.sport_type)} · {primary}</p>
+                    <p className="text-xs text-gray-400">
+                        {showDate
+                            ? workout.start_datetime_fmt?.date_readable
+                            : workout.start_datetime_fmt?.time_24h}
+                    </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                    {!isSteps && workout.distance ? <Chip>{workout.distance} km</Chip> : null}
+                    {!isSteps && workout.kcal ? <Chip>{Math.round(workout.kcal).toLocaleString()} kcal</Chip> : null}
+                </div>
+            </button>
+        </li>
+    );
+}
+
+function WorkoutHistory({items, onOpen}) {
+    return (
+        <div className="max-h-[70vh] overflow-y-auto -mx-1 px-1">
+            {groupWorkoutsByDay(items).map((group) => (
+                <section key={group.key} className="mb-2">
+                    <h3 className="sticky top-0 z-10 bg-white/95 dark:bg-ink-850/95 backdrop-blur px-1 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                        {group.label}
+                    </h3>
+                    <ul className="divide-y divide-gray-100 dark:divide-ink-700/60">
+                        {group.items.map((workout) => (
+                            <WorkoutRow key={workout.id} workout={workout} showDate={false} onOpen={onOpen}/>
+                        ))}
+                    </ul>
+                </section>
+            ))}
+        </div>
+    );
+}
+
 function WorkoutsBox({workouts, user, setLinkStrava}) {
 
     const [showEditWorkoutModal, setShowEditWorkoutModal] = useState(false);
+    const [showHistory, setShowHistory] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const stravaLinked = user?.strava_athlete_id !== null && user?.strava_athlete_id !== undefined;
     const garminLinked = Boolean(user?.garmin_email);
@@ -187,14 +259,20 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
     const [triggerStravaSync, { isFetching: stravaSyncIsFetching, error: stravaSyncError, isSuccess: stravaSyncIsSuccess }] = useLazySyncStravaQuery();
     const [triggerGarminSync, { isFetching: garminSyncIsFetching, error: garminSyncError, isSuccess: garminSyncIsSuccess }] = useLazySyncGarminQuery();
     const [triggerHealthSync, { isFetching: healthSyncIsFetching, error: healthSyncError, isSuccess: healthSyncIsSuccess }] = useLazySyncHealthQuery();
+    const [healthKickBusy, setHealthKickBusy] = useState(false);
 
-    // Only the 5 most recent workouts, newest first.
-    const recentWorkouts = useMemo(
+    const sortedWorkouts = useMemo(
         () => [...(workouts || [])]
-            .sort((a, b) => (b.start_datetime_fmt?.epoch || 0) - (a.start_datetime_fmt?.epoch || 0))
-            .slice(0, 5),
+            .sort((a, b) => (b.start_datetime_fmt?.epoch || 0) - (a.start_datetime_fmt?.epoch || 0)),
         [workouts]
     );
+    const recentWorkouts = sortedWorkouts.slice(0, WORKOUT_PREVIEW);
+    const older = Math.max(0, sortedWorkouts.length - WORKOUT_PREVIEW);
+
+    function openWorkout(id) {
+        setShowHistory(false);
+        setShowEditWorkoutModal(id);
+    }
 
     function handleSyncResult(isSuccess, error, provider) {
         if (isSuccess) {
@@ -228,7 +306,8 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
     return (
         <BoxSection>
 
-            <SectionHead title="Latest workouts" hint="Last 5">
+            <SectionHead title="Latest workouts"
+                         hint={sortedWorkouts.length > WORKOUT_PREVIEW ? `Latest ${WORKOUT_PREVIEW} of ${sortedWorkouts.length}` : null}>
                 {!stravaLinked && !garminLinked && !healthLinked && (
                     <SyncChip onClick={() => setShowSettings(true)} short="Link" long="Link a service"/>
                 )}
@@ -239,8 +318,23 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
                     <SyncChip onClick={() => triggerGarminSync()} isLoading={garminSyncIsFetching} short="Sync" long="Sync Garmin"/>
                 )}
                 {showSourceButton(healthLinked, 'health') && (
-                    <SyncChip onClick={async () => { await nativeHealthKickSync({daysBack: 14}); triggerHealthSync(); }}
-                              isLoading={healthSyncIsFetching} short="Sync" long="Sync Health"/>
+                    <SyncChip onClick={async () => {
+                                  setHealthKickBusy(true);
+                                  try {
+                                      const kick = await nativeHealthKickSync({daysBack: 14});
+                                      if (kick?.reason === "no-session") {
+                                          notice("Health Connect is not linked in this app - open Settings and reconnect.");
+                                          return;
+                                      }
+                                      const result = await triggerHealthSync().unwrap();
+                                      if (result?.message) notice(result.message);
+                                  } catch {
+                                      // Error toast is handled by the healthSyncIsFetching effect.
+                                  } finally {
+                                      setHealthKickBusy(false);
+                                  }
+                              }}
+                              isLoading={healthSyncIsFetching || healthKickBusy} short="Sync" long="Sync Health"/>
                 )}
             </SectionHead>
 
@@ -250,31 +344,25 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
                             actionLabel="Log a workout"
                             onAction={() => setShowEditWorkoutModal(true)}/>
             ) : (
-                <ul className="divide-y divide-gray-100 dark:divide-ink-700/60 mt-1">
-                    {recentWorkouts.map((workout) => {
-                        const isSteps = workout.sport_type === "Steps";
-                        const primary = isSteps
-                            ? `${workout.steps?.toLocaleString() || 0} steps`
-                            : (workout.duration || "").substring(0, 5);
-                        return (
-                            <li key={workout.id}>
-                                <button type="button" onClick={() => setShowEditWorkoutModal(workout.id)} className={rowClass}>
-                                    <div className="h-10 w-10 rounded-2xl bg-volt-400/15 flex items-center justify-center shrink-0">
-                                        <Dumbbell className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="font-semibold truncate">{sportLabelShort(workout.sport_type)} · {primary}</p>
-                                        <p className="text-xs text-gray-400">{workout.start_datetime_fmt?.date_readable}</p>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                        {!isSteps && workout.distance ? <Chip>{workout.distance} km</Chip> : null}
-                                        {!isSteps && workout.kcal ? <Chip>{Math.round(workout.kcal).toLocaleString()} kcal</Chip> : null}
-                                    </div>
-                                </button>
-                            </li>
-                        );
-                    })}
-                </ul>
+                <>
+                    <ul className="divide-y divide-gray-100 dark:divide-ink-700/60 mt-1">
+                        {recentWorkouts.map((workout) => (
+                            <WorkoutRow key={workout.id} workout={workout} onOpen={openWorkout}/>
+                        ))}
+                    </ul>
+                    {older > 0 && (
+                        <button type="button" onClick={() => setShowHistory(true)}
+                                className="mt-3 w-full min-h-[44px] rounded-2xl border border-volt-400/40 text-sm font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition">
+                            {older} older {older === 1 ? "activity" : "activities"}
+                        </button>
+                    )}
+                </>
+            )}
+
+            {showHistory && (
+                <Modal title="Activity history" setShowModal={setShowHistory}>
+                    <WorkoutHistory items={sortedWorkouts} onOpen={openWorkout}/>
+                </Modal>
             )}
 
             {(showEditWorkoutModal) && (
@@ -443,28 +531,28 @@ function ThirtyDayStats({thirtyDayStats}) {
                 <span className="uppercase text-xs tracking-[0.2em] text-gray-400 pb-1.5 pl-3">active<br/>days</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div className="flex items-center gap-3 rounded-2xl bg-gray-50 dark:bg-ink-900 border border-gray-200/60 dark:border-ink-700/60 p-3">
+                <div className="flex items-center gap-3 rounded-2xl bg-gray-100 dark:bg-ink-900 border border-gray-300 dark:border-ink-700/60 p-3">
                     <Dumbbell className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
                     <div className="text-left">
                         <div className="text-[11px] tracking-wide text-gray-500">Workouts</div>
                         <div className="text-xl font-bold leading-tight">{thirtyDayStats.workouts}</div>
                     </div>
                 </div>
-                <div className="flex items-center gap-3 rounded-2xl bg-gray-50 dark:bg-ink-900 border border-gray-200/60 dark:border-ink-700/60 p-3">
+                <div className="flex items-center gap-3 rounded-2xl bg-gray-100 dark:bg-ink-900 border border-gray-300 dark:border-ink-700/60 p-3">
                     <Timer className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
                     <div className="text-left">
                         <div className="text-[11px] tracking-wide text-gray-500">Time</div>
                         <div className="text-xl font-bold leading-tight">{Math.floor(thirtyDayStats.time / 3600).toLocaleString()}<span className="text-sm font-semibold">hr </span>{Math.floor((thirtyDayStats.time % 3600) / 60)}<span className="text-sm font-semibold">min</span></div>
                     </div>
                 </div>
-                <div className="flex items-center gap-3 rounded-2xl bg-gray-50 dark:bg-ink-900 border border-gray-200/60 dark:border-ink-700/60 p-3">
+                <div className="flex items-center gap-3 rounded-2xl bg-gray-100 dark:bg-ink-900 border border-gray-300 dark:border-ink-700/60 p-3">
                     <Flame className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
                     <div className="text-left">
                         <div className="text-[11px] tracking-wide text-gray-500">Calories</div>
                         <div className="text-xl font-bold leading-tight">{thirtyDayStats.kcal.toLocaleString()}<span className="text-sm font-semibold">kcal</span></div>
                     </div>
                 </div>
-                <div className="flex items-center gap-3 rounded-2xl bg-gray-50 dark:bg-ink-900 border border-gray-200/60 dark:border-ink-700/60 p-3">
+                <div className="flex items-center gap-3 rounded-2xl bg-gray-100 dark:bg-ink-900 border border-gray-300 dark:border-ink-700/60 p-3">
                     <Ruler className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
                     <div className="text-left">
                         <div className="text-[11px] tracking-wide text-gray-500">Distance</div>
@@ -494,13 +582,13 @@ function SevenDayStats({sevenDayStats, user}) {
 
             <div className="flex flex-col sm:overflow-x-auto sm:flex-row gap-2">
                 {sevenDayStats.map((goal, idx) => (
-                    <div key={idx} className="flex-1 rounded-2xl bg-gray-50 dark:bg-ink-900 border border-gray-200/60 dark:border-ink-700/60 p-4">
+                    <div key={idx} className="flex-1 rounded-2xl bg-gray-100 dark:bg-ink-900 border border-gray-300 dark:border-ink-700/60 p-4">
                         <div className="flex flex-col text-left">
                             <div className="tracking-wide text-gray-500 text-sm mb-0.5">{goal.name}</div>
                             <div className="text-2xl font-display text-volt-500 dark:text-volt-400 text-left mb-2">
                                 {goal.value.toLocaleString()} <span className="text-lg text-gray-400">/ {goal.target.toLocaleString()}{goal.unit}</span>
                             </div>
-                            <div className="w-full bg-gray-200 dark:bg-ink-700 rounded-full h-2.5">
+                            <div className="w-full bg-gray-300 dark:bg-ink-700 rounded-full h-2.5">
                                 <div className="h-2.5 rounded-full bg-volt-500 dark:bg-volt-400 transition-all" style={{
                                     width: Math.min(goal.value / goal.target * 100, 100) + '%',
                                 }}></div>
@@ -550,16 +638,16 @@ function StreakCard({workouts}) {
     const whoGoalHit = weekMinutes >= 150;
 
     return (
-        <div className="relative overflow-hidden rounded-3xl bg-ink-900 text-white border border-ink-700/60 shadow-card-dark p-5 w-full xl:w-72 shrink-0">
+        <div className="relative overflow-hidden rounded-3xl bg-white text-ink-950 border border-gray-300 shadow-card dark:bg-ink-900 dark:text-white dark:border-ink-700/60 dark:shadow-card-dark p-5 w-full xl:w-72 shrink-0">
             <div className="pointer-events-none absolute -top-14 -right-14 h-40 w-40 rounded-full bg-volt-400/25 blur-3xl"/>
             <div className="relative">
                 <div className="flex items-center gap-4">
-                    <div className="h-14 w-14 rounded-2xl bg-volt-400/15 flex items-center justify-center">
-                        <Flame className="h-7 w-7 text-volt-400"/>
+                    <div className="h-14 w-14 rounded-2xl bg-volt-400/20 dark:bg-volt-400/15 flex items-center justify-center">
+                        <Flame className="h-7 w-7 text-volt-700 dark:text-volt-400"/>
                     </div>
                     <div className="flex items-baseline gap-2">
-                        <span className="font-display text-5xl text-volt-400">{weekStreak}</span>
-                        <span className="uppercase text-xs tracking-[0.2em] text-gray-400">week<br/>streak</span>
+                        <span className="font-display text-5xl text-volt-700 dark:text-volt-400">{weekStreak}</span>
+                        <span className="uppercase text-xs tracking-[0.2em] text-gray-600 dark:text-gray-400">week<br/>streak</span>
                     </div>
                 </div>
 
@@ -570,12 +658,12 @@ function StreakCard({workouts}) {
                         const isToday = (new Date().getDay() + 6) % 7 === idx;
                         return (
                             <div key={idx} className="flex flex-col items-center gap-1.5">
-                                <span className="text-[10px] font-bold text-gray-500">{label}</span>
+                                <span className="text-[10px] font-bold text-gray-600 dark:text-gray-500">{label}</span>
                                 <span className={"h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold transition " +
                                     (active
                                         ? "bg-volt-400 text-ink-950 shadow-glow-volt"
-                                        : "bg-ink-700/60 text-gray-500") +
-                                    (isToday ? " ring-2 ring-white/70 ring-offset-2 ring-offset-ink-900" : "")}>
+                                        : "bg-gray-200 text-gray-500 dark:bg-ink-700/60") +
+                                    (isToday ? " ring-2 ring-volt-600/70 dark:ring-white/70 ring-offset-2 ring-offset-white dark:ring-offset-ink-900" : "")}>
                                     {active ? <Check className="h-4 w-4"/> : label}
                                 </span>
                             </div>
@@ -584,13 +672,13 @@ function StreakCard({workouts}) {
                 </div>
 
                 <div className="mt-4 flex items-center justify-between text-xs">
-                    <span className="text-gray-400">This week</span>
-                    <span className={"inline-flex items-center gap-1 font-bold " + (whoGoalHit ? "text-volt-400" : "text-gray-300")}>
+                    <span className="text-gray-600 dark:text-gray-400">This week</span>
+                    <span className={"inline-flex items-center gap-1 font-bold " + (whoGoalHit ? "text-volt-700 dark:text-volt-400" : "text-gray-700 dark:text-gray-300")}>
                         {whoGoalHit && <CheckCheck className="h-3.5 w-3.5"/>}
                         {weekMinutes} / 150 min
                     </span>
                 </div>
-                <div className="mt-1.5 h-1.5 rounded-full bg-ink-700/60 overflow-hidden">
+                <div className="mt-1.5 h-1.5 rounded-full bg-gray-200 dark:bg-ink-700/60 overflow-hidden">
                     <div className="h-full rounded-full bg-volt-400 transition-all"
                          style={{width: Math.min(weekMinutes / 150 * 100, 100) + "%"}}/>
                 </div>
@@ -674,18 +762,18 @@ function ApkUpdateBanner() {
     const {update, dismiss} = useApkUpdateInfo();
     if (!update) return null;
     return (
-        <div className="mb-4 flex items-center gap-3 rounded-2xl bg-ink-900 text-white border border-volt-500/40 shadow-card-dark p-4">
-            <Download className="h-5 w-5 text-volt-400 shrink-0"/>
+        <div className="mb-4 flex items-center gap-3 rounded-2xl bg-white text-ink-950 border border-volt-500/50 shadow-card dark:bg-ink-900 dark:text-white dark:border-volt-500/40 dark:shadow-card-dark p-4">
+            <Download className="h-5 w-5 text-volt-700 dark:text-volt-400 shrink-0"/>
             <div className="flex-1 min-w-0">
                 <p className="font-display text-xs uppercase tracking-wider">App update available</p>
-                <p className="text-[11px] text-gray-400">Version {update.versionName} — installing over the top keeps everything.</p>
+                <p className="text-[11px] text-gray-600 dark:text-gray-400">Version {update.versionName} — installing over the top keeps everything.</p>
             </div>
             <a href={apkDownloadHref()}
                    rel="noopener noreferrer"
                    className="shrink-0 rounded-full bg-volt-400 text-ink-950 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
                 Get it
             </a>
-            <button onClick={dismiss} aria-label="Dismiss" className="shrink-0 text-gray-500 hover:text-gray-300 transition">
+            <button onClick={dismiss} aria-label="Dismiss" className="shrink-0 text-gray-500 hover:text-ink-950 dark:hover:text-gray-300 transition">
                 <X className="h-4 w-4"/>
             </button>
         </div>

@@ -18,6 +18,12 @@ from .game import _minutes, award_tag
 
 logger = logging.getLogger(__name__)
 
+
+def _prompt_text(value, limit=80):
+    """Flatten user-facing strings before they enter an LLM prompt."""
+    return " ".join(str(value or "").split())[:limit]
+
+
 CHALLENGE_DAYS = 7
 DEFENSES_TO_IMMORTAL = 3
 MAX_LIVE_ECHOES = 6
@@ -329,17 +335,38 @@ def start_challenge(echo, user, now=None):
         echo.save(update_fields=["status"])
 
     persona = echo.config.persona
-    challenger = _name(user)
-    holder = _name(echo.holder)
-    body = (
-        f"{persona.name}: @{challenger} just declared war on @{holder}'s "
-        f"{echo.title}. Beat {echo.metric_value:g} "
-        f"{'km' if echo.metric == 'distance' else 'min'} of {echo.sport_type} "
-        f"before the clock runs out. The group is watching."
+    challenger = _prompt_text(_name(user), 40)
+    holder = _prompt_text(_name(echo.holder), 40)
+    title = _prompt_text(echo.title, 80)
+    sport = _prompt_text(echo.sport_type, 40)
+    unit = "km" if echo.metric == "distance" else "min"
+    fallback = (
+        f"@{challenger} just declared war on @{holder}'s {title}. "
+        f"Beat {echo.metric_value:g} {unit} of {sport} before the "
+        f"clock runs out. The group is watching."
     )
+    prompt = (
+        f"Competition: {_prompt_text(echo.config.competition.name, 80)}. "
+        f"@{challenger} just declared war on @{holder}'s Legend Echo "
+        f"\"{title}\" ({echo.metric_value:g} {unit} of {sport}, "
+        f"power {echo.power}). They have {CHALLENGE_DAYS} days to beat that mark. "
+        "Write 1-3 sentences in your persona voice announcing the war to the "
+        "group. Name both athletes with @FirstName. Taunt, hype, or salute in "
+        "character. Do not invent other names."
+    )
+    body = fallback
+    try:
+        from .llm_client import generate_message
+        spoken, _err = generate_message(
+            system_prompt=persona.system_prompt, user_prompt=prompt,
+        )
+        if spoken:
+            body = spoken
+    except Exception as exc:  # noqa: BLE001
+        logger.info("Echo war comment fell back: %s", exc)
     try:
         from .tasks import _post_coach_line
-        _post_coach_line(echo.config, DrillInstructorMessage.KIND_ECHO, body)
+        _post_coach_line(echo.config, DrillInstructorMessage.KIND_WAR, body)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Echo challenge post failed: %s", exc)
     return challenge

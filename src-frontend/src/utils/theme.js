@@ -5,7 +5,7 @@ import {useCallback, useEffect, useState} from "react";
 // first paint; this module is the React-side source of truth.
 
 const STORAGE_KEY = "wc-theme";
-const LIGHT_COLOR = "#dfe8c4";
+const LIGHT_COLOR = "#d4deba";
 const DARK_COLOR = "#0b0b0c";
 
 export function getStoredTheme() {
@@ -48,9 +48,15 @@ export function useTheme() {
         setThemeState(next);
     }, []);
 
-    const toggle = useCallback(() => {
-        setTheme(resolveTheme() === "dark" ? "light" : "dark");
-    }, [setTheme]);
+    const cycle = useCallback(() => {
+        const order = ["system", "light", "dark"];
+        const i = order.indexOf(theme);
+        setTheme(order[(i < 0 ? 0 : i + 1) % order.length]);
+    }, [theme, setTheme]);
 
-    return {theme, resolvedTheme: resolved, setTheme, toggle};
+    const toggle = useCallback(() => {
+        cycle();
+    }, [cycle]);
+
+    return {theme, resolvedTheme: resolved, setTheme, toggle, cycle};
 }

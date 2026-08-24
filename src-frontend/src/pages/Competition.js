@@ -4,6 +4,7 @@ import {useGetCompetitionByIdQuery} from "../utils/reducers/competitionsSlice";
 import {
     UsersRound,
 } from "lucide-react";
+import {SwipePages} from "../components/swipeTabs";
 import {Bar, Line} from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -37,11 +38,11 @@ import {sportLabelShort} from "../forms/workoutForm";
 import {Chip, EmptyState, SectionHead, VOLT} from "../components/uiBits";
 import {useDispatch} from "react-redux";
 import {teamsApi} from "../utils/reducers/teamsSlice";
-import {drillInstructorApi, useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
+import {drillInstructorApi, useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
 import ProfileAvatar from "../components/ProfileAvatar";
 import usePollingInterval from "../utils/usePollingInterval";
 import {CompetitionHead, CoachCorner} from "../components/competitionChrome";
-import {HallOfRoasts, OrderRibbon} from "../components/gameBits";
+import {OrderRibbon} from "../components/gameBits";
 import EchoChamber from "../components/EchoChamber";
 import CoachVoteBox from "../components/CoachVoteBox";
 
@@ -356,7 +357,7 @@ function FeedEntry({entry, open, onToggle, showDate = true}) {
     return (
         <li>
             <button type="button" onClick={onToggle}
-                    className="w-full flex items-center gap-3 py-3 px-1 min-h-[44px] text-left rounded-2xl hover:bg-gray-50 dark:hover:bg-ink-800 transition">
+                    className="w-full flex items-center gap-3 py-3 px-1 min-h-[44px] text-left rounded-2xl hover:bg-gray-100 dark:hover:bg-ink-800 transition">
                 <ProfileAvatar user={{first_name: entry.workout__user__username, profile_picture: entry.workout__user__profile_picture}} size={36}/>
                 <div className="min-w-0 flex-1">
                     <p className="font-semibold truncate">{entry.workout__user__username}</p>
@@ -552,14 +553,14 @@ function ActivityGoalsBox({user, stats, feed, competitionId, userId, isOwner}) {
                     if (goal.min_per_week) limits.push(`min ${Math.round(goal.min_per_week)} / week`);
                     if (goal.max_per_week) limits.push(`max ${Math.round(goal.max_per_week)} / week`);
                     return (
-                        <div key={goal.id} className="rounded-2xl bg-gray-50 dark:bg-ink-900 border border-gray-200/60 dark:border-ink-700/60 p-4">
+                        <div key={goal.id} className="rounded-2xl bg-gray-100 dark:bg-ink-900 border border-gray-300 dark:border-ink-700/60 p-4">
                             <div className="flex justify-between items-baseline gap-2">
                                 <p className="font-semibold truncate">{goal.name}</p>
                                 <p className="text-xs text-gray-400 shrink-0">{Math.round(goal.goal).toLocaleString()} {goal.metric} / {goal.period}</p>
                             </div>
                             <div className="mt-2 flex items-center gap-3">
-                                <div className="flex-1 h-3 rounded-full bg-gray-200 dark:bg-ink-700 overflow-hidden">
-                                    <div className={"h-full rounded-full transition-all " + (empty ? "bg-ink-600" : complete ? "bg-volt-400" : "bg-gradient-to-r from-volt-600 to-volt-400")}
+                                <div className="flex-1 h-3 rounded-full bg-gray-300 dark:bg-ink-700 overflow-hidden">
+                                    <div className={"h-full rounded-full transition-all " + (empty ? "bg-gray-400 dark:bg-ink-600" : complete ? "bg-volt-400" : "bg-gradient-to-r from-volt-600 to-volt-400")}
                                          style={{width: pct + "%"}}/>
                                 </div>
                                 <span className="text-sm font-bold text-volt-700 dark:text-volt-400 w-12 text-right">{Math.round(goal.points_capped || 0)}P</span>
@@ -721,7 +722,7 @@ export default function Competition() {
     const tabParam = searchParams.get("tab");
     const tab = (tabParam === "feed" || tabParam === "trophies" || tabParam === "board")
         ? tabParam
-        : (searchParams.get("reply") ? "feed" : "board");
+        : "feed";
     function setTab(next) {
         const nextParams = new URLSearchParams(searchParams);
         nextParams.set("tab", next);
@@ -785,7 +786,6 @@ export default function Competition() {
         {pollingInterval: pollFast, skip: !competition?.id}
     );
     const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: !competition?.id});
-    const {data: hall} = useGetHallOfRoastsQuery(id, {pollingInterval: pollSlow, skip: !id});
     const dunceUserId = (drillConfigs || []).find((c) => c.competition === competition?.id)?.dunce?.user_id ?? null;
     const lastDrillMsgId = React.useRef(null);
     useEffect(() => {
@@ -826,22 +826,23 @@ export default function Competition() {
                     )
                 }
 
-                <div className="mb-4 grid grid-cols-3 gap-1 p-1 rounded-2xl bg-white/70 dark:bg-ink-850 border border-gray-200/70 dark:border-ink-700/60">
-                    {[
-                        ["board", "Board"],
-                        ["feed", "Feed"],
-                        ["trophies", "Trophies"],
-                    ].map(([id, label]) => (
-                        <button key={id} type="button" onClick={() => setTab(id)}
-                                className={"rounded-xl py-2.5 text-xs font-bold uppercase tracking-wide min-h-[44px] transition " +
-                                    (tab === id ? "bg-volt-400 text-ink-950 shadow-glow-volt" : "text-gray-500 dark:text-gray-400")}>
-                            {label}
-                        </button>
-                    ))}
+                <SwipePages tab={tab} onChange={setTab}>
+                <div>
+                {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
+
+                <div className="mt-4">
+                    {
+                        (feedLoading) ? <SectionLoader height={"h-80"}/> : (feedError) ? (
+                            <ErrorBoxSection
+                                errorMsg={feedError?.status + ' / ' + (feedError?.error || feedError?.message || feedError?.data?.detail)}/>
+                        ) : (
+                            <FeedBox feed={feed}/>
+                        )
+                    }
+                </div>
                 </div>
 
-                {tab === "board" && <>
-                {/* Leaderboards */}
+                <div>
                 <div className="flex flex-col md:flex-row mb-4">
                     <div className={"w-full mb-4 md:mb-0 " + (competition?.has_teams === false ? "" : "md:w-1/2 md:pr-2")}>
                         {
@@ -878,33 +879,6 @@ export default function Competition() {
                     />
                 )}
 
-                {/* The Drill Instructor's corner */}
-                </>}
-
-                {tab === "feed" && <>
-                {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
-
-                <div className="mt-4">
-                    {
-                        (feedLoading) ? <SectionLoader height={"h-80"}/> : (feedError) ? (
-                            <ErrorBoxSection
-                                errorMsg={feedError?.status + ' / ' + (feedError?.error || feedError?.message || feedError?.data?.detail)}/>
-                        ) : (
-                            <FeedBox feed={feed}/>
-                        )
-                    }
-                </div>
-                </>}
-
-                {tab === "trophies" && <>
-                {competition && <EchoChamber competitionId={competition.id} userId={user?.id}/>}
-                <div className="mt-4">
-                    <HallOfRoasts cards={hall}/>
-                </div>
-                </>}
-
-                {tab === "board" && <>
-                {/* KPI bar */}
                 <div className="flex flex-col xl:flex-row">
                     <div className="w-full xl:w-1/3">
                         {
@@ -943,8 +917,12 @@ export default function Competition() {
                         }
                     </div>
                 </div>
+                </div>
 
-                </>}
+                <div>
+                {competition && <EchoChamber competitionId={competition.id} userId={user?.id}/>}
+                </div>
+                </SwipePages>
             </div>
 
         </PageWrapper>

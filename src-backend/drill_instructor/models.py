@@ -170,6 +170,7 @@ class DrillInstructorMessage(models.Model):
     KIND_HANDOVER = "handover"
     KIND_ECHO = "echo"
     KIND_CLAIM = "claim"
+    KIND_WAR = "war"
     KIND_CHOICES = [
         (KIND_ACTIVITY, "Workout comment"),
         (KIND_TEST, "Test message"),
@@ -184,6 +185,7 @@ class DrillInstructorMessage(models.Model):
         (KIND_HANDOVER, "Weekly coach handover"),
         (KIND_ECHO, "Legend Echo minted"),
         (KIND_CLAIM, "Legend Echo claimed"),
+        (KIND_WAR, "Legend Echo war"),
     ]
 
     config = models.ForeignKey(

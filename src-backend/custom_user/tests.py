@@ -704,6 +704,8 @@ class MapHealthSportTypeTests(TestCase):
         self.assertEqual(map_health_sport_type("swimming_open_water"), "Swim")
         self.assertEqual(map_health_sport_type("traditionalStrengthTraining"), "WeightTraining")
         self.assertEqual(map_health_sport_type("hiit"), "HighIntensityIntervalTraining")
+        self.assertEqual(map_health_sport_type("RUNNING_TREADMILL"), "VirtualRun")
+        self.assertEqual(map_health_sport_type("CYCLING_STATIONARY"), "VirtualRide")
 
     def test_unknown_types_fall_back_to_workout(self):
         from .health import map_health_sport_type
@@ -774,6 +776,22 @@ class HealthWorkoutMappingTests(TestCase):
         payload["start_datetime"] = "2026-08-01T06:00:00Z"
         payload["end_datetime"] = "2026-08-01T06:30:00Z"
         props = workout_to_props(self.user, payload)
+        self.assertEqual(props["duration"], datetime.timedelta(seconds=1800))
+        self.assertEqual(props["start_datetime"].isoformat(), "2026-08-01T06:00:00+00:00")
+
+    def test_android_sdk_camelcase_payload(self):
+        # Health Connect SDK unified dump uses startDate/endDate and
+        # duration inside values[], not duration_seconds.
+        from .health import workout_to_props
+        payload = {
+            "id": "9f1c2a34-0000-4aaa-bbbb-111122223333",
+            "type": "RUNNING",
+            "startDate": "2026-08-01T06:00:00Z",
+            "endDate": "2026-08-01T06:30:00Z",
+            "values": [{"type": "duration", "value": 1800, "unit": "s"}],
+        }
+        props = workout_to_props(self.user, payload)
+        self.assertEqual(props["sport_type"], "Run")
         self.assertEqual(props["duration"], datetime.timedelta(seconds=1800))
         self.assertEqual(props["start_datetime"].isoformat(), "2026-08-01T06:00:00+00:00")
 
@@ -921,6 +939,27 @@ class HealthConnectorTests(TestCase):
         self.assertEqual(req.call_count, 2)
         self.assertEqual(req.call_args_list[1].kwargs["params"]["cursor"], "cursor-2")
 
+    def test_empty_data_page_does_not_fall_through_to_items(self):
+        from .health import _ow_page_items_and_cursor
+        items, cursor = _ow_page_items_and_cursor({
+            "data": [],
+            "items": [{"id": "should-not-be-used"}],
+            "pagination": {"has_more": False},
+        })
+        self.assertEqual(items, [])
+        self.assertIsNone(cursor)
+
+    def test_wait_for_ingest_retries_empty_fetch(self):
+        from .health import _sync_user_workouts
+        self._link_health()
+        payload = self._ow_payload()
+        with mock.patch("time.sleep") as slept, \
+                mock.patch("custom_user.health._fetch_workouts", side_effect=[[], [payload]]) as fetch:
+            result = _sync_user_workouts(self.user, wait_for_ingest=True)
+        self.assertEqual(result["created"], 1)
+        self.assertEqual(fetch.call_count, 2)
+        slept.assert_called()
+
     def test_sync_skips_cross_provider_duplicate(self):
         from .health import _sync_user_workouts
         Workout.objects.create(
@@ -1001,6 +1040,24 @@ class HealthConnectorTests(TestCase):
 
         response = self.client.get("/api/health/sync/")
         self.assertEqual(response.status_code, 400)
+
+    def test_sync_view_cooldown_is_two_minutes_not_sixty(self):
+        self._link_health()
+        self.user.health_last_synced_at = timezone.now() - datetime.timedelta(minutes=3)
+        self.user.save()
+        self.client.force_authenticate(self.user)
+        empty = {"fetched": 0, "created": 0, "updated": 0, "skipped": 0, "duplicates_skipped": 0}
+        with mock.patch("custom_user.health._sync_user_workouts", return_value=empty):
+            response = self.client.get("/api/health/sync/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_sync_view_blocked_within_two_minutes(self):
+        self._link_health()
+        self.user.health_last_synced_at = timezone.now() - datetime.timedelta(seconds=30)
+        self.user.save()
+        self.client.force_authenticate(self.user)
+        response = self.client.get("/api/health/sync/")
+        self.assertEqual(response.status_code, 429)
 
 
 class HealthBeatTaskTests(TestCase):

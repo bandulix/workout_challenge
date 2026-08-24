@@ -635,12 +635,26 @@ class SyncHealthView(APIView):
             return Response({"message": "Another provider is your selected activity source - Health import is disabled so activities don't get doubled. You can switch the source in the personal settings."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        if user.health_last_synced_at and user.health_last_synced_at > (timezone.now() - datetime.timedelta(minutes=59)):
-            return Response({"message": "Too many requests! You can only request a Health sync every 60 minutes."},
-                            status=status.HTTP_429_TOO_MANY_REQUESTS)
+        # Short cap: the hourly beat stamps last_synced even on an empty
+        # poll, and a 60-minute lock then blocked the Re-Sync button that
+        # is supposed to recover a missed phone push. Stamp under a row
+        # lock first so two overlapping GETs cannot both skip the cooldown
+        # and pin two gunicorn workers on wait_for_ingest.
+        from django.db import transaction
+        with transaction.atomic():
+            locked = type(user).objects.select_for_update().get(pk=user.pk)
+            if locked.health_last_synced_at and locked.health_last_synced_at > (timezone.now() - datetime.timedelta(minutes=2)):
+                return Response({"message": "Too many requests! You can only request a Health sync every 2 minutes."},
+                                status=status.HTTP_429_TOO_MANY_REQUESTS)
+            locked.health_last_synced_at = timezone.now()
+            locked.save(update_fields=["health_last_synced_at"])
 
         try:
-            result = sync_health(user__id=user.id, start_datetime=timezone.now() - datetime.timedelta(days=14))
+            result = sync_health(
+                user__id=user.id,
+                start_datetime=timezone.now() - datetime.timedelta(days=14),
+                wait_for_ingest=True,
+            )
         except HealthConfigError:
             return Response({"message": "The Health connector is not configured on this server."},
                             status=status.HTTP_503_SERVICE_UNAVAILABLE)

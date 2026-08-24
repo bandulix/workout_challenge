@@ -470,25 +470,30 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         )
         return Response(RoastCardSerializer(qs, many=True, context={"request": request}).data)
 
-    HALL_SIZE = 3
+    HALL_SIZE = 50
 
     @action(detail=False, methods=["get"])
     def hall(self, request):
-        """Top roasted photos of one challenge (the Hall of Roasts box)."""
+        """Hottest roasted photos the caller can see (Hall of Roasts).
+
+        Optional ``competition`` limits the list to one challenge; omit it
+        for every challenge the caller owns or is in (Coach page).
+        """
         try:
             competition_id = int(request.query_params.get("competition") or 0)
         except (TypeError, ValueError):
             competition_id = 0
-        if not competition_id:
-            return Response({"competition": "required."}, status=status.HTTP_400_BAD_REQUEST)
         qs = (
             DrillInstructorMessage.objects
             .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
-            .filter(config__competition_id=competition_id)
             .filter(kind=DrillInstructorMessage.KIND_REACTION, user__isnull=True)
             .exclude(image="")
             .exclude(image__isnull=True)
-            .select_related("config", "config__competition", "config__persona", "persona", "parent", "parent__user")
+        )
+        if competition_id:
+            qs = qs.filter(config__competition_id=competition_id)
+        qs = (
+            qs.select_related("config", "config__competition", "config__persona", "persona", "parent", "parent__user")
             .prefetch_related(Prefetch(
                 "photo_votes",
                 queryset=DrillInstructorPhotoVote.objects.filter(user=request.user),
@@ -673,14 +678,15 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
     def art(self, request, pk=None):
         """Holder uploads a photo; we store it and remix it into Echo art.
 
-        The current holder (or staff) may set the picture. The raw upload
-        is saved immediately so the crown placeholder disappears; a
-        background edit then paints it to match the Echo title and sport.
-        If no image-edit model is configured the original photo stays.
+        Only the current holder may set the picture (staff included only
+        when they actually hold it). The raw upload is saved immediately
+        so the crown placeholder disappears; a background edit then
+        paints it to match the Echo title and sport. If no image-edit
+        model is configured the original photo stays.
         """
         echo = self.get_object()
         user = request.user
-        if echo.holder_id != user.id and not user.is_staff:
+        if echo.holder_id != user.id:
             return Response(
                 {"detail": "Only the athlete who holds this Echo can set its picture."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -693,13 +699,6 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
         from rest_framework.exceptions import ValidationError as DrfValidationError
         from workout_challenge.images import validate_and_reencode_image
 
-        day_key = f"echo-art-uploads:{user.id}:{timezone.now().date().isoformat()}"
-        used = cache.get(day_key, 0)
-        if used >= self.MAX_ECHO_ART_PER_DAY:
-            return Response(
-                {"image": f"That's enough Echo art for today - max {self.MAX_ECHO_ART_PER_DAY} per day."},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
         try:
             image = validate_and_reencode_image(image, max_bytes=self.MAX_ECHO_ART_BYTES, max_side=1600)
         except DrfValidationError as exc:
@@ -707,13 +706,21 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
             message = detail[0] if isinstance(detail, list) else detail
             return Response({"image": str(message)}, status=status.HTTP_400_BAD_REQUEST)
 
-        echo.image.save(f"echo-{echo.pk}.jpg", image, save=True)
+        day_key = f"echo-art-uploads:{user.id}:{timezone.now().date().isoformat()}"
         try:
-            cache.set(day_key, used + 1, 86400)
-        except Exception:  # noqa: BLE001
-            pass
+            used = cache.incr(day_key)
+        except ValueError:
+            cache.add(day_key, 1, 86400)
+            used = cache.get(day_key) or 1
+        if used > self.MAX_ECHO_ART_PER_DAY:
+            return Response(
+                {"image": f"That's enough Echo art for today - max {self.MAX_ECHO_ART_PER_DAY} per day."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        echo.image.save(f"echo-{echo.pk}.jpg", image, save=True)
         from .tasks import remix_echo_art
-        remix_echo_art.delay(echo.id)
+        remix_echo_art.delay(echo.id, uploaded_by_id=user.id)
         echo.refresh_from_db()
         return Response(
             LegendEchoSerializer(echo, context={"request": request}).data,

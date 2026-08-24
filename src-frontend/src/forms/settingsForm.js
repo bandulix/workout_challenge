@@ -162,7 +162,7 @@ function HealthSection({user, onChanged}) {
                 </p>
 
                 {isAndroidBrowser && (
-                    <div className="rounded-xl bg-gray-100 dark:bg-ink-900 dark:border dark:border-ink-700/60 p-3 space-y-2">
+                    <div className="rounded-xl bg-gray-100 border border-gray-300 dark:bg-ink-900 dark:border-ink-700/60 p-3 space-y-2">
                         <p className="text-xs text-gray-600 dark:text-gray-300">
                             <b>Best via our Android app:</b> direct Health Connect sync with one tap -
                             no code, no extra health app.
@@ -187,7 +187,7 @@ function HealthSection({user, onChanged}) {
                 )}
 
                 {invitation?.code && (
-                    <div className="rounded-xl bg-gray-100 dark:bg-ink-900 dark:border dark:border-ink-700/60 p-3 space-y-1.5">
+                    <div className="rounded-xl bg-gray-100 border border-gray-300 dark:bg-ink-900 dark:border-ink-700/60 p-3 space-y-1.5">
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                             In the health app (Open Wearables app, see your app store / the link your
                             organizer shared), choose <b>connect with code</b> and enter:

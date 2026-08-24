@@ -2563,10 +2563,16 @@ class ArcadeGameTests(TestCase):
         ids = [row["id"] for row in response.json()]
         self.assertEqual(ids[0], b.id)
 
-    def test_hall_requires_a_competition(self):
+    def test_hall_without_competition_lists_membership_roasts(self):
+        roast = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REACTION, body="A", user=None,
+        )
+        roast.image = "message_pics/a.png"
+        roast.save()
         self.client.force_authenticate(self.alex)
         response = self.client.get("/api/drill-instructor/message/hall/")
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([row["id"] for row in response.json()], [roast.id])
 
     def test_periodic_tasks_seeded(self):
         from django_celery_beat.models import PeriodicTask
@@ -2690,14 +2696,37 @@ class PersonaVoteTests(TestCase):
         self.assertEqual(handover.count(), 1)
         self.assertIn("Vote Roast", handover.get().body)
 
-    def test_weekly_apply_keeps_incumbent_on_tie_and_on_no_votes(self):
+    def test_pick_winner_empty_unique_and_tie(self):
+        from .ballot import pick_winner
+
+        self.assertEqual(pick_winner([], self.sergeant.id), self.sergeant.id)
+        with mock.patch("drill_instructor.ballot.random.choice") as choice:
+            winner = pick_winner(
+                [{"persona": self.roast.id, "n": 3}, {"persona": self.sergeant.id, "n": 1}],
+                self.sergeant.id,
+            )
+        self.assertEqual(winner, self.roast.id)
+        choice.assert_not_called()
+
+        with mock.patch("drill_instructor.ballot.random.choice", return_value=self.roast.id) as choice:
+            tied = pick_winner(
+                [{"persona": self.roast.id, "n": 2}, {"persona": self.sergeant.id, "n": 2}],
+                self.sergeant.id,
+            )
+        self.assertEqual(tied, self.roast.id)
+        self.assertCountEqual(choice.call_args[0][0], [self.roast.id, self.sergeant.id])
+
+    def test_weekly_apply_keeps_incumbent_when_nobody_voted(self):
         from .ballot import apply_persona_votes
-        from .models import DrillInstructorPersonaVote
 
         empty = apply_persona_votes(self.config)
         self.assertFalse(empty["switched"])
         self.config.refresh_from_db()
         self.assertEqual(self.config.persona_id, self.sergeant.id)
+
+    def test_weekly_apply_breaks_ties_at_random(self):
+        from .ballot import apply_persona_votes
+        from .models import DrillInstructorPersonaVote
 
         DrillInstructorPersonaVote.objects.create(
             config=self.config, user=self.athlete, persona=self.roast,
@@ -2705,7 +2734,27 @@ class PersonaVoteTests(TestCase):
         DrillInstructorPersonaVote.objects.create(
             config=self.config, user=self.owner, persona=self.sergeant,
         )
-        tied = apply_persona_votes(self.config)
+        with mock.patch("drill_instructor.ballot.random.choice", return_value=self.roast.id) as choice:
+            tied = apply_persona_votes(self.config)
+        self.assertCountEqual(choice.call_args[0][0], [self.roast.id, self.sergeant.id])
+        self.assertTrue(tied["switched"])
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.persona_id, self.roast.id)
+        self.assertEqual(self.config.previous_persona_id, self.sergeant.id)
+        self.assertEqual(DrillInstructorPersonaVote.objects.filter(config=self.config).count(), 0)
+
+    def test_weekly_apply_tie_can_keep_incumbent_when_drawn(self):
+        from .ballot import apply_persona_votes
+        from .models import DrillInstructorPersonaVote
+
+        DrillInstructorPersonaVote.objects.create(
+            config=self.config, user=self.athlete, persona=self.roast,
+        )
+        DrillInstructorPersonaVote.objects.create(
+            config=self.config, user=self.owner, persona=self.sergeant,
+        )
+        with mock.patch("drill_instructor.ballot.random.choice", return_value=self.sergeant.id):
+            tied = apply_persona_votes(self.config)
         self.assertFalse(tied["switched"])
         self.config.refresh_from_db()
         self.assertEqual(self.config.persona_id, self.sergeant.id)
@@ -2855,6 +2904,35 @@ class LegendEchoTests(TestCase):
             EchoChallenge.objects.filter(echo=echo, status=EchoChallenge.STATUS_WON).count(), 1,
         )
 
+    def test_challenge_posts_coach_comment(self):
+        from .echoes import mint_echo, start_challenge
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        with mock.patch(
+            "drill_instructor.llm_client.generate_message",
+            return_value=("@Nina just declared war on @Alex's Echo. Seven days. Move.", None),
+        ):
+            start_challenge(echo, self.nina)
+        wars = DrillInstructorMessage.objects.filter(
+            config=self.config, kind=DrillInstructorMessage.KIND_WAR,
+        )
+        self.assertEqual(wars.count(), 1)
+        self.assertIn("declared war", wars.get().body.lower())
+
+    def test_challenge_comment_falls_back_when_llm_fails(self):
+        from .echoes import mint_echo, start_challenge
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        with mock.patch(
+            "drill_instructor.llm_client.generate_message",
+            side_effect=RuntimeError("llm down"),
+        ):
+            start_challenge(echo, self.nina)
+        war = DrillInstructorMessage.objects.get(
+            config=self.config, kind=DrillInstructorMessage.KIND_WAR,
+        )
+        self.assertIn("declared war", war.body.lower())
+        self.assertIn("@Nina", war.body)
+        self.assertIn("@Alex", war.body)
+
     def test_holder_cannot_challenge_own_echo(self):
         from .echoes import mint_echo, start_challenge
         echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
@@ -3000,7 +3078,7 @@ class LegendEchoTests(TestCase):
         body = ok.json()
         self.assertTrue(body["can_upload_art"])
         self.assertTrue(body["image"])
-        queued.assert_called_once_with(echo.id)
+        queued.assert_called_once_with(echo.id, uploaded_by_id=self.alex.id)
         echo = LegendEcho.objects.get(pk=echo.id)
         self.assertTrue(echo.image)
 
@@ -3014,9 +3092,36 @@ class LegendEchoTests(TestCase):
         )
         self.assertEqual(denied.status_code, 403)
 
+        self.nina.is_staff = True
+        self.nina.save(update_fields=["is_staff"])
+        listed = self.client.get("/api/drill-instructor/echoes/", {"competition": self.competition.id})
+        self.assertFalse(listed.json()[0]["can_upload_art"])
+        still_denied = self.client.post(
+            f"/api/drill-instructor/echoes/{echo.id}/art/",
+            {"image": SimpleUploadedFile("staff.png", PNG_1PX, content_type="image/png")},
+            format="multipart",
+        )
+        self.assertEqual(still_denied.status_code, 403)
+
         pic = self.client.get(f"/api/drill-instructor/echoes/{echo.id}/picture/")
         self.assertEqual(pic.status_code, 200)
         self.assertTrue(pic["Content-Type"].startswith("image/"))
+
+    def test_remix_echo_art_skips_if_holder_changed(self):
+        from django.core.files.base import ContentFile
+        from .echoes import mint_echo
+        from .tasks import remix_echo_art
+
+        media = tempfile.TemporaryDirectory()
+        self.addCleanup(media.cleanup)
+        media_override = override_settings(MEDIA_ROOT=media.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        echo.image.save("echo-orig.jpg", ContentFile(PNG_1PX), save=True)
+        result = remix_echo_art(echo.id, uploaded_by_id=self.nina.id)
+        self.assertEqual(result.get("skipped"), "holder changed")
 
     def test_remix_echo_art_overwrites_with_edited_bytes(self):
         from django.core.files.base import ContentFile
@@ -3077,10 +3182,41 @@ class EchoArtPromptTests(TestCase):
             sport_type="Run",
             metric_label="45 min Run",
             power=12,
+            persona_name="Drill Sergeant",
         )
         self.assertIn("The First Flag", prompt)
         self.assertIn("Run", prompt)
         self.assertIn("45 min Run", prompt)
+        self.assertIn("Drill Sergeant", prompt)
+        self.assertIn("together with their coach", prompt.lower())
+        self.assertIn("COACH WORLD", prompt)
+        self.assertIn("boot-camp", prompt.lower())
+        self.assertIn("STATS OVERLAY", prompt)
         self.assertIn("trail", echo_sport_scene("TrailRun").lower())
         self.assertIn("treadmill", echo_sport_scene("VirtualRun").lower())
+
+    def test_prompt_face_locks_coach_portrait(self):
+        from .llm_client import build_echo_art_prompt
+        locked = build_echo_art_prompt(
+            title="Flag", sport_type="Run", persona_name="Roast Master",
+            has_coach_portrait=True,
+        )
+        self.assertIn("FACE LOCK", locked)
+        self.assertIn("IMAGE 2", locked)
+        free = build_echo_art_prompt(
+            title="Flag", sport_type="Run", persona_name="Roast Master",
+            has_coach_portrait=False,
+        )
+        self.assertIn("no portrait reference", free)
+        self.assertNotIn("FACE LOCK", free)
+
+    def test_custom_coach_world_uses_avatar_or_description(self):
+        from .llm_client import coach_echo_world
+        from_avatar = coach_echo_world(persona_name="Captain Nova", persona_avatar="captain")
+        self.assertIn("sky-ship", from_avatar.lower())
+        from_desc = coach_echo_world(
+            persona_name="Moon Goat",
+            persona_description="A disco goat who coaches from a glitter ball.",
+        )
+        self.assertIn("disco goat", from_desc.lower())
 

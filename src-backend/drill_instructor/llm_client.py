@@ -746,26 +746,79 @@ def build_roast_image_prompt(*, persona_name: str, persona_description: str = ""
 
 
 _ECHO_SPORT_SCENE = {
-    "Run": "a long-distance running world: open road, dawn trail, stadium track, finish-line tape",
-    "TrailRun": "a rugged mountain trail, roots and ridgelines, mist in the trees",
-    "VirtualRun": "an indoor treadmill arena turned mythical, neon HUD and city lights",
-    "Ride": "a cycling epic: tarmac, peloton shadows, alpine switchbacks",
-    "VirtualRide": "an indoor trainer transformed into a velodrome of light",
-    "MountainBikeRide": "a dirt jump and forest singletrack, dust and berms",
-    "EBikeRide": "an e-bike climb into big-sky country",
-    "Walk": "a determined walking pilgrimage, long road stretching to the horizon",
-    "Hike": "a summit ridge, backpack, weather rolling over peaks",
-    "Swim": "open water or a racing pool, lanes and sunlight through water",
-    "WeightTraining": "a heroic weight room, iron plates, chalk in the air",
-    "HighIntensityIntervalTraining": "an explosive HIIT arena, motion blur and volt sparks",
-    "Yoga": "a calm but powerful yoga hall, light shafts and mountain silhouettes",
-    "Rowing": "a river or indoor tank, oars cutting water like thunder",
-    "Kayaking": "wild water, kayak spray, canyon walls",
-    "Soccer": "a floodlit pitch at night, crowd as ghosts of volt",
-    "Ski": "alpine snow, steep pitch, ice crystals",
-    "AlpineSki": "a steep alpine descent, ice and sky",
-    "Snowboard": "a snow park in storm light",
-    "Workout": "a legendary training ground that fits a general athlete",
+    "Run": "mythic long-distance running: a glowing road into a storm of finish-line tape, stadium ghosts in the sky",
+    "TrailRun": "a floating mountain trail of roots and lightning, ridgelines above the clouds",
+    "VirtualRun": "a treadmill that punched through into a neon city of HUDs and rain",
+    "Ride": "a cycling epic of chrome pelotons, alpine switchbacks, and a sky made of tarmac",
+    "VirtualRide": "an indoor trainer exploded into a velodrome of light",
+    "MountainBikeRide": "dirt jumps and forest singletrack hanging in mid-air, dust like gold",
+    "EBikeRide": "an e-bike climb into a cartoon big-sky country",
+    "Walk": "a pilgrimage road that stretches to a painted horizon",
+    "Hike": "a summit ridge with weather rolling like theatre curtains",
+    "Swim": "a racing pool that becomes open ocean, lanes of light through water",
+    "WeightTraining": "a heroic weight room of hovering iron plates and chalk galaxies",
+    "HighIntensityIntervalTraining": "an explosive HIIT arena, motion-blur afterimages and volt sparks",
+    "Yoga": "a floating yoga hall, light shafts and mountain silhouettes as stained glass",
+    "Rowing": "a river of liquid metal, oars cutting water like thunder",
+    "Kayaking": "canyon walls and kayak spray frozen as crystal",
+    "Soccer": "a floodlit pitch at night, the crowd a galaxy of volt ghosts",
+    "Ski": "alpine snow on an impossible pitch, ice crystals as fireworks",
+    "AlpineSki": "a steep alpine descent through a torn-open sky",
+    "Snowboard": "a snow park in storm light, halfpipe like a cathedral",
+    "Workout": "a legendary training ground that could only exist on a poster",
+}
+
+# Splashy, invented stages keyed to built-in coaches (and artwork keys).
+_COACH_ECHO_WORLD = {
+    "Drill Sergeant": (
+        "a hyper-real boot-camp parade ground at golden hour: infinite "
+        "megaphones, volt-lime smoke grenades, giant flags, chrome obstacle "
+        "walls, cinematic dust, the sergeant mid-holler like a war-movie poster"
+    ),
+    "Roast Master": (
+        "a neon late-night sports-broadcast stage: floating jumbotrons, "
+        "confetti cannons, comic-book speed lines, a ringside throne, "
+        "pay-per-view energy, the roast master posing like the show just ended"
+    ),
+    "Cheerleader": (
+        "a stadium of impossible pep: giant pom-poms as planets, glitter rain, "
+        "pyramid of light, candy-coloured fireworks, the cheerleader leaping "
+        "mid-air as if the whole sky is a halftime show"
+    ),
+    "British Butler": (
+        "a palatial training manor that should not exist: marble halls opening "
+        "onto a racetrack, silver tea service hovering, stormlight through "
+        "tall windows, the butler impeccable in the middle of the chaos"
+    ),
+    "Zen Master": (
+        "a vast floating temple above clouds: koi the size of boats, ink-wash "
+        "mountains, a single lantern sun, still water that reflects another "
+        "sky, the zen master calm at the centre of the spectacle"
+    ),
+}
+_COACH_ECHO_WORLD_BY_AVATAR = {
+    "sergeant": _COACH_ECHO_WORLD["Drill Sergeant"],
+    "megaphone": _COACH_ECHO_WORLD["Drill Sergeant"],
+    "roast": _COACH_ECHO_WORLD["Roast Master"],
+    "cheerleader": _COACH_ECHO_WORLD["Cheerleader"],
+    "butler": _COACH_ECHO_WORLD["British Butler"],
+    "zen": _COACH_ECHO_WORLD["Zen Master"],
+    "rocket": (
+        "a launch-pad training world: countdown clocks, fire columns, a "
+        "running track that becomes a launch rail into painted stars"
+    ),
+    "ninja": (
+        "a midnight rooftop dojo over a neon old-city: paper lanterns, "
+        "thrown stars as constellations, ink-smoke and moon-sized drums"
+    ),
+    "robot": (
+        "a chrome coliseum of circuits and holograms: the coach as a "
+        "heroic machine, data-rain, volt-lime core light"
+    ),
+    "captain": (
+        "the deck of a sky-ship gym: sails of flag fabric, cannons that "
+        "fire confetti, a sea of clouds, the captain pointing at destiny"
+    ),
 }
 
 
@@ -787,28 +840,81 @@ def echo_sport_scene(sport_type: str) -> str:
     return _ECHO_SPORT_SCENE["Workout"]
 
 
+def coach_echo_world(*, persona_name: str = "", persona_description: str = "",
+                     persona_tagline: str = "", persona_avatar: str = "") -> str:
+    """Invented, splashy stage that matches this coach's vibe."""
+    name = (persona_name or "").strip()
+    if name in _COACH_ECHO_WORLD:
+        return _COACH_ECHO_WORLD[name]
+    avatar = (persona_avatar or "").strip().lower()
+    if avatar in _COACH_ECHO_WORLD_BY_AVATAR:
+        return _COACH_ECHO_WORLD_BY_AVATAR[avatar]
+    vibe = (persona_description or persona_tagline or "").strip()[:280]
+    if vibe:
+        return (
+            f"an original hyper-stylized realm invented for coach {name or 'this coach'}: {vibe}. "
+            "Treat it like a movie-poster world, not a real place — oversized props, "
+            "impossible architecture, dramatic weather, volt-lime sparks."
+        )
+    return (
+        f"a vivid theatrical training universe that belongs to coach {name or 'the coach'}: "
+        "movie-poster scale, impossible architecture, dramatic weather, volt-lime sparks"
+    )
+
+
 def build_echo_art_prompt(*, title: str, narrative: str = "", sport_type: str = "",
-                          metric_label: str = "", power: Optional[int] = None) -> str:
-    """Edit the holder's photo into living trophy art for this Echo."""
+                          metric_label: str = "", power: Optional[int] = None,
+                          persona_name: str = "", persona_description: str = "",
+                          persona_tagline: str = "", persona_avatar: str = "",
+                          has_coach_portrait: bool = False) -> str:
+    """Edit the holder's photo into splashy trophy art: athlete + coach in the coach's world."""
+    coach = " ".join((persona_name or "the coach").split())[:60] or "the coach"
+    world = coach_echo_world(
+        persona_name=persona_name,
+        persona_description=persona_description,
+        persona_tagline=persona_tagline,
+        persona_avatar=persona_avatar,
+    )
     scene = echo_sport_scene(sport_type)
+    safe_title = " ".join((title or "Legend").split())[:80]
     parts = [
         "Edit IMAGE 1, the athlete's photo, into legendary Echo Chamber trophy art.",
-        f"This Echo is titled \"{(title or 'Legend').strip()[:80]}\".",
-        f"SPORT SETTING: {scene}. The picture must clearly read as {sport_type or 'training'}, not a generic gym stock shot.",
+        f"This Echo is titled \"{safe_title}\".",
+        f"Place the athlete TOGETHER with their coach \"{coach}\" in one shared scene.",
+        f"COACH WORLD (the stage — match this coach's style, invent freely, do not look real): {world}",
+        f"SPORT ACTION (what they are doing): {scene}. It must clearly read as {sport_type or 'training'}.",
+        "Fuse the coach's world with the sport: the sport is the action, the coach's world is the impossible stage. "
+        "This is an ARTIFICIAL, splashy, interesting picture — movie-poster / comic splash page, not a snapshot, "
+        "not a generic gym, not a phone selfie with a filter.",
+        f"The coach \"{coach}\" must be clearly visible and interacting with the athlete "
+        "(celebrating, coaching, posing, running beside them). Match the coach's clothing and vibe to the world.",
+        "COMPOSITION: hero scale, low camera, rim light, particles, motion, saturated colour, "
+        "night-ink and volt-lime, oversized props. Make it loud and worth staring at.",
         "Keep the athlete's face from IMAGE 1 clearly recognizable. Do not "
         "beautify, distort, swap, or replace the athlete. The edit is heroic "
         "and good-natured - never mock body, appearance, or identity.",
-        "Style: cinematic living trophy, night-ink and volt-lime, dramatic light, "
-        "a sense of legend rather than a snapshot. Paint the Echo title as "
-        "readable lettering on a banner, stone, race bib, or HUD if it fits.",
+        "Paint the Echo title as readable lettering on a banner, stone, race bib, or HUD if it fits.",
     ]
-    story = (narrative or "").strip()[:400]
+    if has_coach_portrait:
+        parts.append(
+            f"FACE LOCK: IMAGE 2 is the official portrait of coach \"{coach}\". "
+            "The coach's face in the result MUST be an exact likeness of IMAGE 2 "
+            "(same face, same identity, same distinguishing features). "
+            "Do not genericize, age-shift, or invent a different person."
+        )
+    else:
+        parts.append(
+            f"There is no portrait reference. Invent a distinctive look for "
+            f"coach \"{coach}\" that fits the world above, and still include them in the scene."
+        )
+    story = " ".join((narrative or "").split())[:400]
     if story:
         parts.append(f"ECHO STORY (tone only, do not write a paragraph on the image): {story}")
     if metric_label:
         parts.append(
             "STATS OVERLAY: paint this feat as clean readable on-image text "
-            f"(do not cover the face). Spell it exactly: {metric_label}"
+            "(HUD, chalkboard, race bib, or scoreboard — pick what fits the world). "
+            f"Do not cover faces. Spell it exactly: {metric_label}"
         )
     if power:
         parts.append(f"Power rating to hint in the art: {int(power)}.")

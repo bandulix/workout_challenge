@@ -55,7 +55,7 @@ function compareDictLists(oldDict, newDict) {
 
 function BoxSection({additionalClasses = '', children}) {
     return (
-        <div className={"bg-white dark:bg-ink-850 rounded-3xl shadow-card dark:shadow-card-dark border border-volt-700/20 dark:border-volt-400/15 p-5 sm:p-6 " + additionalClasses}>
+        <div className={"bg-white dark:bg-ink-850 rounded-3xl shadow-card dark:shadow-card-dark border border-gray-300 dark:border-volt-400/15 p-5 sm:p-6 " + additionalClasses}>
             {children}
         </div>
     )
@@ -116,7 +116,7 @@ class ErrorBoundary extends React.Component {
         if (!this.state.hasError) return this.props.children;
 
         return (
-            <div className="min-h-screen bg-[#dfe8c4] dark:bg-ink-950 flex items-center justify-center p-6">
+            <div className="min-h-screen bg-[#d4deba] dark:bg-ink-950 flex items-center justify-center p-6">
                 <div className="bg-white dark:bg-ink-850 rounded-3xl shadow-card dark:shadow-card-dark dark:border dark:border-ink-700/60 p-8 max-w-md w-full text-center space-y-4">
                     <AlertCircle className="w-12 h-12 mx-auto text-red-500"/>
                     <p className="font-display text-lg uppercase tracking-wide dark:text-white">Something went wrong</p>
@@ -143,7 +143,7 @@ function PageWrapper({additionClasses = '', children}) {
     // pb-28 reserves space under the floating glass dock (mobile inset
     // + coach bump; desktop pill). Safe-area is on the nav itself.
     return (
-        <div className={"relative min-h-screen bg-[#dfe8c4] dark:bg-ink-950 dark:text-white p-2 sm:p-6 pb-28 " + additionClasses}>
+        <div className={"relative min-h-screen bg-[#d4deba] text-ink-950 dark:bg-ink-950 dark:text-white p-2 sm:p-6 pb-28 " + additionClasses}>
             <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-volt-400/25 to-transparent dark:from-volt-400/5" aria-hidden="true"/>
             {children}
         </div>

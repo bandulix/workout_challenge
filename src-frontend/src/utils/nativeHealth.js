@@ -87,21 +87,25 @@ export async function nativeHealthSetSource(source, publicUrl) {
     }
 }
 
-// Nudge WorkManager to pull Health Connect now. Manual "Re-Sync" used
-// to only poll the server, so nothing new arrived until the phone had
-// already pushed. Best-effort: a missing native session is a no-op.
+// Push Health Connect to Open Wearables *now* and wait until the
+// upload returns. startBackgroundSync only schedules WorkManager, so a
+// Re-Sync that then polls the server always raced an empty store.
+// Best-effort: a missing native session is a no-op (the server poll
+// still runs).
 export async function nativeHealthKickSync({daysBack} = {}) {
-    if (!isNativeHealthAvailable()) return;
+    if (!isNativeHealthAvailable()) return {ok: false, reason: "not-native"};
     try {
         const host = (localStorage.getItem(HEALTH_HOST_KEY) || "").trim();
         if (host) {
             await OWHealth.configure({host});
         }
         const status = await OWHealth.getStatus();
-        if (!status.sessionValid) return;
-        await OWHealth.startSync(daysBack != null ? {daysBack} : {});
+        if (!status.sessionValid) return {ok: false, reason: "no-session"};
+        await OWHealth.syncNow(daysBack != null ? {daysBack} : {});
+        return {ok: true};
     } catch (e) {
         console.warn("native health kick failed (ignored)", e);
+        return {ok: false, reason: "error"};
     }
 }
 
