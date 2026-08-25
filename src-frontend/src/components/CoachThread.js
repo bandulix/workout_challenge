@@ -127,7 +127,7 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
                                     onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
                                     placeholder={`Reply to ${persona?.name || "the coach"}…`}
                                     aria-label={`Reply to ${persona?.name || "the coach"}`}
-                                    className="min-w-0 w-0 flex-1 min-h-[44px] h-11 shadow border border-gray-300 dark:border-ink-700/60 rounded-full py-2 px-3 sm:px-4 text-sm text-gray-800 dark:bg-ink-900 dark:text-gray-300 dark:placeholder-gray-600 leading-tight focus:outline-none focus:border-volt-500"
+                                    className="min-w-0 w-0 flex-1 min-h-[44px] h-11 border border-ink-950/10 dark:border-ink-700/60 rounded-full py-2 px-3 sm:px-4 text-sm text-gray-800 bg-white/55 dark:bg-ink-900 dark:text-gray-300 dark:placeholder-gray-600 leading-tight shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:shadow-none focus:outline-none focus:border-volt-500"
                                 />
                                 <button onClick={handleSend} disabled={isLoading || !text.trim()}
                                         aria-label="Send reply"

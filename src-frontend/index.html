@@ -4,9 +4,9 @@
     <meta charset="utf-8"/>
     <link rel="icon" href="/favicon.ico"/>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"/>
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#d4deba"/>
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#efece4"/>
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0c"/>
-    <meta name="theme-color" content="#d4deba"/>
+    <meta name="theme-color" content="#efece4"/>
     <meta name="description" content="Compete with friends and coworkers - with an AI Drill Instructor in your corner."/>
     <meta name="apple-mobile-web-app-capable" content="yes"/>
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -23,20 +23,23 @@
     <link rel="stylesheet" href="/fonts/fonts.css"/>
     <link rel="preload" href="/fonts/Inter-var.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
     <link rel="preload" href="/fonts/ArchivoBlack-400.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
-    <link rel="preload" href="/login-bg.webp" as="image" type="image/webp"/>
+    <!-- Today's backdrop is preloaded from theme-init.js (one plate per day). -->
     <script src="/config.js"></script>
     <!-- External file so CSP can run without script-src 'unsafe-inline'. -->
     <script src="/theme-init.js"></script>
     <title>Workout Challenge</title>
     <style>
         :root {
-            --canvas: #d4deba;
+            --canvas: #efece4;
             --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
             --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
             --safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
             --safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
         }
         html.dark { --canvas: #0b0b0c; }
+        @media (prefers-color-scheme: dark) {
+            html:not(.light) { --canvas: #0b0b0c; }
+        }
         html { background: var(--canvas); }
         body, #root { background: transparent; }
         html {

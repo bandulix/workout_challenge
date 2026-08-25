@@ -2,6 +2,7 @@ import {fetchBaseQuery} from '@reduxjs/toolkit/query/react';
 import {throwErrorWithCode} from '../miscellaneous';
 import {getServerUrl} from '../serverUrl';
 import {ensureFreshAccessToken, refreshAccessToken} from '../authTokens';
+import {isPublicPath} from '../publicPath';
 
 // Sentry is loaded on demand (dynamic import) so the SDK stays out of
 // the initial bundle when no DSN is configured.
@@ -135,11 +136,8 @@ function redirectToLogin() {
     window.location.href = `/login?redirect=${encodeURIComponent(safeRedirect)}`;
 }
 
-const PUBLIC_PATHS = ['/login', '/signup', '/password', '/logout'];
-
 function onPublicPath() {
-    const path = window.location.pathname;
-    return PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/'));
+    return isPublicPath(window.location.pathname);
 }
 
 

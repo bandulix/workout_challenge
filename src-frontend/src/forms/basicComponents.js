@@ -15,59 +15,57 @@ import {
 import {BeatLoader} from "react-spinners";
 import { isMobile } from "react-device-detect";
 import TimeField from "./customTimefieldInput";
+import {OverlayPortal, useBodyScrollLock} from "../utils/overlay";
 
 
 export const FIELD_INPUT_CLASS =
-    "w-full rounded-xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-ink-900/80 py-2.5 px-3 text-gray-800 dark:text-gray-200 leading-tight focus:outline-none focus:border-volt-500";
+    "w-full rounded-xl border border-ink-950/10 dark:border-white/10 bg-white/55 dark:bg-ink-900/80 py-2.5 px-3 text-gray-800 dark:text-gray-200 leading-tight shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:shadow-none focus:outline-none focus:border-volt-500";
+
+export const PANEL_MAX_CLASS = "max-w-2xl";
+
+const SHEET_BACKDROP =
+    "modal-background fixed inset-0 flex items-stretch sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:p-4";
+const SHEET_PANEL =
+    "relative flex max-h-[100dvh] w-full flex-col overflow-hidden glass-card animate-pop-in " +
+    PANEL_MAX_CLASS + " sm:max-h-[90vh] sm:rounded-3xl max-sm:min-h-[100dvh] max-sm:rounded-none";
+
+
+export function OverlaySheet({title = null, onClose, children, isLoading = false, zClass = "z-50", labelledBy}) {
+    useBodyScrollLock();
+    return (
+        <OverlayPortal>
+            <div className={SHEET_BACKDROP + " " + zClass} onClick={onClose}
+                 role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
+                <div className={SHEET_PANEL} onClick={(e) => e.stopPropagation()}>
+                    <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-2 sm:px-8 sm:pt-6">
+                        <h2 id={labelledBy} className="font-display text-sm uppercase tracking-wider">{title}</h2>
+                        <button type="button"
+                                className="text-gray-400 hover:text-gray-600 dark:hover:text-volt-300 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                                onClick={onClose}
+                                aria-label="Close">
+                            <X className="h-5 w-5"/>
+                        </button>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 sm:pb-8 space-y-4">
+                        {isLoading ? (
+                            <div className="w-full h-64 flex items-center justify-center">
+                                <BeatLoader color="#d7ff3e"/>
+                            </div>
+                        ) : children}
+                    </div>
+                </div>
+            </div>
+        </OverlayPortal>
+    );
+}
 
 
 export function Modal({setShowModal, title = null, landscape = false, isLoading = false, children}) {
-    const closeModal = () => {
-        document.body.classList.remove('body-no-scroll');
-        setShowModal(false);
-    }
-
-    useEffect(() => {
-        document.body.classList.add('body-no-scroll');
-    }, []);
-
-    // Overlay is a flex box, not a scrollport: centering a taller-than-
-    // viewport panel with items-center clips the top AND the save button
-    // (classic flex overflow) so phone users could not reach Create.
     return (
-        <div
-            className="modal-background fixed inset-0 z-50 flex items-stretch sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:p-4"
-            onClick={closeModal}
-        >
-            <div
-                className={"relative flex max-h-[100dvh] w-full flex-col overflow-hidden glass-card animate-pop-in " +
-                    ((landscape) ? "max-w-4xl " : "max-w-2xl ") +
-                    "sm:max-h-[90vh] sm:rounded-3xl max-sm:min-h-[100dvh] max-sm:rounded-none"}
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-2 sm:px-8 sm:pt-6">
-                    <h2 className="font-display text-sm uppercase tracking-wider">{title}</h2>
-                    <button className="text-gray-400 hover:text-gray-600 dark:hover:text-volt-300 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                            onClick={closeModal}
-                            aria-label="Close"
-                    >
-                        <X className="h-5 w-5"/>
-                    </button>
-                </div>
-
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 sm:pb-8 space-y-4">
-                    {
-                        (isLoading) ? (
-                                <div className="w-full h-64 flex items-center justify-center">
-                                    <BeatLoader color="#d7ff3e"/>
-                                </div>
-                            ) :
-                            children
-                    }
-                </div>
-            </div>
-        </div>
-    )
+        <OverlaySheet title={title} onClose={() => setShowModal(false)} isLoading={isLoading}>
+            {children}
+        </OverlaySheet>
+    );
 }
 
 
@@ -97,10 +95,10 @@ export function FormInput({
 
     let additionalClasses = "";
     if (readOnly) {
-        additionalClasses += " text-gray-500 dark:text-gray-500 " + ((highlight) ? "": " bg-gray-100 dark:bg-ink-800 ");
+        additionalClasses += " text-gray-500 dark:text-gray-500 " + ((highlight) ? "": " bg-ink-950/[0.05] dark:bg-ink-800 ");
     }
     if (disabled) {
-        additionalClasses += " text-gray-500 dark:text-gray-500 cursor-not-allowed " + ((highlight) ? "": " bg-gray-100 dark:bg-ink-800 ");
+        additionalClasses += " text-gray-500 dark:text-gray-500 cursor-not-allowed " + ((highlight) ? "": " bg-ink-950/[0.05] dark:bg-ink-800 ");
     }
 
     return (
@@ -322,6 +320,7 @@ function GenericButton({onClick, icon, label, highlighted, larger, IconObject, i
 
     return (
         <button
+            type="button"
             className={"flex items-center gap-2 transition active:scale-[0.97] " + tapTargetClass + " " + (larger ? (label ? " px-5 py-2.5 font-semibold rounded-full " : " px-3 py-3 rounded-2xl ") : (label ? " px-4 py-2 rounded-full " : " p-2 rounded-2xl ")) + (isLoading ? " btn-glass shadow-none " : (highlighted ? " bg-volt-400 text-ink-950 font-bold hover:bg-volt-300 shadow-glow-volt " : " btn-glass ")) + additionalClasses}
             onClick={onClick}
             disabled={isLoading}

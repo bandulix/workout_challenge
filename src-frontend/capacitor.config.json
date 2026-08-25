@@ -2,10 +2,10 @@
   "appId": "com.bandulix.workoutchallenge",
   "appName": "Workout Challenge",
   "webDir": "build",
-  "backgroundColor": "#d4deba",
+  "backgroundColor": "#efece4",
   "android": {
     "allowMixedContent": false,
-    "backgroundColor": "#d4deba"
+    "backgroundColor": "#efece4"
   },
   "plugins": {
     "SystemBars": {

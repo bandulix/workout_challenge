@@ -4,7 +4,7 @@ import {BeatLoader} from "react-spinners";
 import {useDispatch} from "react-redux";
 import {drillInstructorApi, usePostDrillPhotoMutation} from "../utils/reducers/drillInstructorSlice";
 import {compressImage} from "../utils/imageCompress";
-import {isAcceptablePhoto, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
+import {isAcceptablePhoto, isNativeCameraAvailable, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
 
 // Photo sharing for the coach feed. The camera button is ALWAYS visible
 // while the coach is on duty - a click without a latest-own-workout
@@ -81,8 +81,9 @@ export default function PhotoPost({competitionId, visionCapable, parentId, onPos
 // compress it (see utils/imageCompress.js), then attach it to the
 // caller's latest own workout thread (parentId).
 function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
-    const cameraInput = React.useRef(null);
-    const galleryInput = React.useRef(null);
+    const cameraId = React.useId();
+    const galleryId = React.useId();
+    const native = isNativeCameraAvailable();
     const [file, setFile] = useState(null);
     const [error, setError] = useState(null);
     const [posting, setPosting] = useState(false);
@@ -111,17 +112,14 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
     async function pick(kind) {
         setError(null);
         try {
-            const native = await pickNativePhoto(kind);
-            if (native) {
-                applyPicked(native);
-                return;
-            }
+            const picked = await pickNativePhoto(kind);
+            if (picked) applyPicked(picked);
         } catch (err) {
             if (isPhotoPickCancel(err)) return;
-            // Native picker failed - fall through to the HTML input.
+            setError(kind === "camera"
+                ? "Could not open the camera. Check camera permission in system settings."
+                : "Could not open the gallery.");
         }
-        if (kind === "camera") cameraInput.current?.click();
-        else galleryInput.current?.click();
     }
 
     // Decode to a canvas JPEG so the <img> src is pixels, not a blob: of
@@ -185,13 +183,17 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
 
     return (
         <div className="w-full min-w-0 px-1 py-3 space-y-2">
-            {/* Two inputs: `capture` forces the camera on phones and
-                hides the gallery. Leaving it off opens the library.
-                Desktop treats both as a normal file picker. */}
-            <input ref={cameraInput} type="file" accept="image/*,image/heic,image/heif" capture="user" className="hidden"
-                   onChange={onPicked}/>
-            <input ref={galleryInput} type="file" accept="image/*,image/heic,image/heif" className="hidden"
-                   onChange={onPicked}/>
+            {/* Web: a <label> click is a real user gesture, so Chrome
+                honours `capture` and opens the camera. Hidden+JS .click()
+                does not. Native uses Capacitor takePhoto instead. */}
+            {!native && (
+                <>
+                    <input id={cameraId} type="file" accept="image/*" capture="environment"
+                           className="sr-only" onChange={onPicked}/>
+                    <input id={galleryId} type="file" accept="image/*"
+                           className="sr-only" onChange={onPicked}/>
+                </>
+            )}
             {file && (
                 <div className="relative inline-block">
                     <img src={preview} alt="Upload preview"
@@ -205,16 +207,32 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
             <div className="flex items-center gap-2">
                 {!file && (
                     <>
-                        <button type="button" onClick={() => pick("camera")}
-                                className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5">
-                            <Camera className="h-3.5 w-3.5"/>
-                            Camera
-                        </button>
-                        <button type="button" onClick={() => pick("gallery")}
-                                className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5">
-                            <ImageIcon className="h-3.5 w-3.5"/>
-                            Gallery
-                        </button>
+                        {native ? (
+                            <button type="button" onClick={() => pick("camera")}
+                                    className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5">
+                                <Camera className="h-3.5 w-3.5"/>
+                                Camera
+                            </button>
+                        ) : (
+                            <label htmlFor={cameraId}
+                                   className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5 cursor-pointer">
+                                <Camera className="h-3.5 w-3.5"/>
+                                Camera
+                            </label>
+                        )}
+                        {native ? (
+                            <button type="button" onClick={() => pick("gallery")}
+                                    className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5">
+                                <ImageIcon className="h-3.5 w-3.5"/>
+                                Gallery
+                            </button>
+                        ) : (
+                            <label htmlFor={galleryId}
+                                   className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5 cursor-pointer">
+                                <ImageIcon className="h-3.5 w-3.5"/>
+                                Gallery
+                            </label>
+                        )}
                     </>
                 )}
                 <div className="flex-1"/>

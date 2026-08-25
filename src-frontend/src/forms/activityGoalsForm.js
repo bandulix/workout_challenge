@@ -257,7 +257,7 @@ export default function ActivityGoalsForm({competitionId, setModalState}) {
 
 
     return (
-        <Modal title="Activity Goals" landscape={false} setShowModal={setModalState} isLoading={goalsLoading || createGoalIsLoading || deleteGoalIsLoading ||updateGoalIsLoading}>
+        <Modal title="Challenge Goals" landscape={false} setShowModal={setModalState} isLoading={goalsLoading || createGoalIsLoading || deleteGoalIsLoading ||updateGoalIsLoading}>
             <MultiForm fields={fields} values={values} setValues={setValues} errors={fieldErrors}/>
             <div className="text-center text-red-500 text-xs italic">{formError}</div>
             <div className="relative flex justify-between items-center">

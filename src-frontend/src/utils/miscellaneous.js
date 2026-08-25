@@ -144,7 +144,7 @@ function PageWrapper({additionClasses = '', children}) {
     // + coach bump; desktop pill). Safe-area is on the nav itself.
     return (
         <div className={"relative z-10 min-h-screen text-ink-950 dark:text-white p-2 sm:p-6 pb-28 " + additionClasses}>
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-volt-400/25 to-transparent dark:from-volt-400/5" aria-hidden="true"/>
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-[#efece4]/30 to-transparent dark:from-volt-400/5" aria-hidden="true"/>
             {children}
         </div>
     )

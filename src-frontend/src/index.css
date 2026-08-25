@@ -5,7 +5,17 @@
 :root {
   --volt: #d7ff3e;
   --ink: #0b0b0c;
-  --canvas: #d4deba;
+  /* Limestone, not olive — volt stays the only green in light mode too. */
+  --canvas: #efece4;
+}
+html.dark {
+  --canvas: #0b0b0c;
+}
+/* First paint / Match device: follow the OS before JS adds .dark. */
+@media (prefers-color-scheme: dark) {
+  html:not(.light) {
+    --canvas: #0b0b0c;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -20,27 +30,32 @@
   .animate-squad-orbit,
   .animate-squad-orbit-slow,
   .animate-squad-orbit-fast,
+  .animate-squad-orbit-ccw,
+  .animate-squad-orbit-tilt,
+  .animate-squad-orbit-swing,
+  .animate-squad-pip-wave,
   .animate-squad-hop,
   .glass-sheen {
     animation: none !important;
   }
 }
 
-/* Apple-style frosted glass (liquid glass): blur + saturate, specular
-   rim, soft drop shadow. Used by the bottom dock and action sheets.
-   -webkit- prefix is required for iOS Safari / Capacitor WebView. */
+/* Liquid glass: blur + saturate, specular rim, hairline edge.
+   Light is white frost over the gym (volt stays the only green).
+   Dark is charcoal frost. -webkit- prefix is required for iOS /
+   Capacitor WebView. */
 .glass-dock,
 .glass-sheet {
   position: relative;
   isolation: isolate;
-  background: rgba(248, 250, 240, 0.82);
-  -webkit-backdrop-filter: blur(56px) saturate(1.7);
-  backdrop-filter: blur(56px) saturate(1.7);
-  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: rgba(255, 253, 249, 0.52);
+  -webkit-backdrop-filter: blur(56px) saturate(1.85);
+  backdrop-filter: blur(56px) saturate(1.85);
+  border: 1px solid rgba(255, 255, 255, 0.78);
   box-shadow:
-    0 10px 40px rgba(11, 11, 12, 0.18),
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 -1px 0 rgba(11, 11, 12, 0.06) inset;
+    0 14px 48px rgba(28, 24, 18, 0.14),
+    0 1px 0 rgba(255, 255, 255, 0.92) inset,
+    0 -1px 0 rgba(28, 24, 18, 0.05) inset;
 }
 .dark .glass-dock,
 .dark .glass-sheet {
@@ -53,21 +68,22 @@
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass-dock,
-  .glass-sheet { background: rgba(236, 241, 214, 0.97); }
+  .glass-sheet { background: rgba(255, 252, 247, 0.94); }
   .dark .glass-dock,
   .dark .glass-sheet { background: rgba(12, 12, 14, 0.96); }
 }
 
-/* Page cards: frost the gym photo. Stronger fill than fully clear so
-   type stays readable; blur lets the neon/runners read through. */
+/* Page cards: frost the gym photo. Fill is thin enough that the neon
+   tube reads through; a dark hairline keeps the pane from dissolving. */
 .glass-card {
-  background: rgba(248, 250, 240, 0.64);
-  -webkit-backdrop-filter: blur(28px) saturate(1.45);
-  backdrop-filter: blur(28px) saturate(1.45);
-  border: 1px solid rgba(255, 255, 255, 0.62);
+  background: rgba(255, 253, 249, 0.46);
+  -webkit-backdrop-filter: blur(40px) saturate(1.7);
+  backdrop-filter: blur(40px) saturate(1.7);
+  border: 1px solid rgba(255, 255, 255, 0.72);
   box-shadow:
-    0 8px 32px rgba(11, 11, 12, 0.08),
-    0 1px 0 rgba(255, 255, 255, 0.7) inset;
+    0 12px 40px rgba(28, 24, 18, 0.10),
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 0 0 0.5px rgba(28, 24, 18, 0.06);
 }
 .dark .glass-card {
   background: rgba(12, 12, 14, 0.58);
@@ -77,35 +93,55 @@
     0 1px 0 rgba(255, 255, 255, 0.1) inset;
 }
 
-/* Nested surfaces inside a card (speech bubbles, inner groups). */
+/* Nested lift (speech bubbles, inner groups) — a second pane of frost. */
 .glass-inset {
-  background: rgba(255, 255, 255, 0.45);
-  -webkit-backdrop-filter: blur(12px) saturate(1.2);
-  backdrop-filter: blur(12px) saturate(1.2);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.38);
+  -webkit-backdrop-filter: blur(16px) saturate(1.35);
+  backdrop-filter: blur(16px) saturate(1.35);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 6px 18px rgba(28, 24, 18, 0.05);
 }
 .dark .glass-inset {
   background: rgba(255, 255, 255, 0.07);
   border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+/* Recessed wells for stats / settings blocks (not paper-grey slabs). */
+.glass-well {
+  background: rgba(28, 24, 18, 0.05);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  backdrop-filter: blur(12px) saturate(1.2);
+  border: 1px solid rgba(28, 24, 18, 0.08);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset;
+}
+.dark .glass-well {
+  background: rgba(0, 0, 0, 0.32);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass-card { background: rgba(236, 241, 214, 0.96); }
+  .glass-card { background: rgba(255, 252, 247, 0.94); }
   .dark .glass-card { background: rgba(12, 12, 14, 0.96); }
-  .glass-inset { background: rgba(255, 255, 255, 0.72); }
+  .glass-inset { background: rgba(255, 255, 255, 0.78); }
   .dark .glass-inset { background: rgba(255, 255, 255, 0.08); }
+  .glass-well { background: rgba(28, 24, 18, 0.06); }
+  .dark .glass-well { background: rgba(16, 16, 18, 0.92); }
 }
 
 /* Secondary actions: frost, not a grey slab. Primary stays solid volt. */
 .btn-glass {
-  background: rgba(248, 250, 240, 0.45);
-  -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  backdrop-filter: blur(16px) saturate(1.3);
+  background: rgba(255, 253, 249, 0.40);
+  -webkit-backdrop-filter: blur(16px) saturate(1.35);
+  backdrop-filter: blur(16px) saturate(1.35);
   border: 1px solid rgba(255, 255, 255, 0.55);
   color: inherit;
 }
 .btn-glass:hover {
-  background: rgba(248, 250, 240, 0.7);
+  background: rgba(255, 253, 249, 0.62);
 }
 .dark .btn-glass {
   background: rgba(255, 255, 255, 0.08);
@@ -116,33 +152,99 @@
   background: rgba(255, 255, 255, 0.14);
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .btn-glass { background: rgba(236, 241, 214, 0.95); }
+  .btn-glass { background: rgba(255, 252, 247, 0.95); }
   .dark .btn-glass { background: rgba(28, 28, 32, 0.95); }
 }
 
-/* Slow specular sweep across the dock — “glass catching light”. */
+/* Light mode: step secondary type and volt labels down so they read
+   on stone frost. Neon volt stays on solid buttons and dark chips. */
+html:not(.dark) .text-gray-300 { color: rgb(62, 57, 50); }
+html:not(.dark) .text-gray-400 { color: rgb(42, 38, 33); }
+html:not(.dark) .text-gray-500 { color: rgb(32, 29, 25); }
+html:not(.dark) .text-gray-600 { color: rgb(22, 20, 18); }
+html:not(.dark) .placeholder-gray-400::placeholder,
+html:not(.dark) .placeholder-gray-500::placeholder,
+html:not(.dark) .placeholder-gray-600::placeholder { color: rgb(62, 57, 50); }
+html:not(.dark) .text-volt-300,
+html:not(.dark) .text-volt-400 { color: #3a5808; }
+html:not(.dark) .text-volt-500 { color: #314c07; }
+html:not(.dark) .text-volt-600 { color: #294006; }
+html:not(.dark) .text-volt-700 { color: #223505; }
+html:not(.dark) .text-volt-800 { color: #1b2c04; }
+html:not(.dark) .bg-ink-950.text-volt-400,
+html:not(.dark) .bg-ink-950 .text-volt-400,
+html:not(.dark) .bg-ink-950\/80.text-volt-400,
+html:not(.dark) .bg-ink-900.text-volt-400,
+html:not(.dark) .bg-ink-900 .text-volt-400 { color: #d7ff3e; }
+
+/* Slow specular sweep across the dock — “glass catching light”.
+   Use background-image (not background) so dark-mode color overrides
+   do not reset background-size — that froze the bar in place. */
 .glass-sheen {
   pointer-events: none;
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(
+  background-image: linear-gradient(
     105deg,
-    transparent 36%,
-    rgba(255, 255, 255, 0.28) 50%,
-    transparent 64%
+    transparent 34%,
+    rgba(255, 255, 255, 0.55) 48%,
+    rgba(215, 255, 62, 0.14) 52%,
+    transparent 66%
   );
   background-size: 220% 100%;
+  background-repeat: no-repeat;
   animation: glass-sheen 8s ease-in-out infinite;
-  opacity: 0.65;
+  opacity: 0.7;
 }
 .dark .glass-sheen {
-  background: linear-gradient(
+  background-image: linear-gradient(
     105deg,
-    transparent 36%,
-    rgba(215, 255, 62, 0.12) 50%,
-    transparent 64%
+    transparent 34%,
+    rgba(255, 255, 255, 0.12) 48%,
+    rgba(215, 255, 62, 0.16) 52%,
+    transparent 66%
   );
+  opacity: 0.55;
+}
+
+/* Neon volt border of the coach pic. Activity ticks overlay this ring.
+   Light adds a thin ink hairline so the ring doesn't vanish into the
+   gym's yellow tube. */
+.coach-pic-ring {
+  border: 3px solid #d7ff3e;
+  box-shadow:
+    0 0 0 1px rgba(11, 11, 12, 0.18),
+    0 0 12px rgba(215, 255, 62, 0.5);
+}
+.dark .coach-pic-ring {
+  box-shadow: 0 0 12px rgba(215, 255, 62, 0.5);
+}
+.coach-pic-ring-full {
+  border-width: 3.5px;
+  box-shadow:
+    0 0 0 1px rgba(11, 11, 12, 0.18),
+    0 0 10px rgba(215, 255, 62, 0.95),
+    0 0 22px rgba(215, 255, 62, 0.55);
+}
+.dark .coach-pic-ring-full {
+  box-shadow:
+    0 0 10px rgba(215, 255, 62, 0.95),
+    0 0 22px rgba(215, 255, 62, 0.55);
+}
+.coach-pic-ring-sparse {
+  border-width: 2px;
+  box-shadow:
+    0 0 0 1px rgba(11, 11, 12, 0.16),
+    0 0 8px rgba(215, 255, 62, 0.35);
+}
+.dark .coach-pic-ring-sparse {
+  box-shadow: 0 0 8px rgba(215, 255, 62, 0.35);
+}
+.activity-ring-full {
+  filter:
+    drop-shadow(0 0 6px rgba(215, 255, 62, 0.95))
+    drop-shadow(0 0 16px rgba(215, 255, 62, 0.55));
 }
 @keyframes glass-sheen {
   0%, 18% { background-position: 120% 0; }
@@ -163,10 +265,7 @@
 }
 
 html {
-  background: #d4deba;
-}
-html.dark {
-  background: #0b0b0c;
+  background: var(--canvas);
 }
 body, #root {
   background: transparent;
@@ -190,13 +289,13 @@ body {
 /* Slim, theme-aware scrollbars (mainly desktop) */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(120, 130, 100, 0.5) transparent;
+  scrollbar-color: rgba(80, 72, 60, 0.35) transparent;
 }
 .dark * {
   scrollbar-color: rgba(140, 140, 150, 0.4) transparent;
 }
 *::-webkit-scrollbar { width: 6px; height: 6px; }
-*::-webkit-scrollbar-thumb { background: rgba(120, 130, 100, 0.5); border-radius: 3px; }
+*::-webkit-scrollbar-thumb { background: rgba(80, 72, 60, 0.35); border-radius: 3px; }
 .dark *::-webkit-scrollbar-thumb { background: rgba(140, 140, 150, 0.4); }
 
 .body-no-scroll {

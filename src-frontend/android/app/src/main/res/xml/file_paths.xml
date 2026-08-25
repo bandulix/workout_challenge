@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Camera / share intents only need the app cache, not the whole
-         external volume (Capacitor's default `external-path path="."`). -->
+    <!-- Camera / share intents only need the app's own dirs, not the
+         whole external volume (Capacitor's default `external-path path="."`).
+         Capacitor Camera writes captures to getExternalFilesDir(Pictures);
+         without that path FileProvider throws and the JS fallback opens
+         the gallery instead of the camera. -->
     <cache-path name="my_cache_images" path="." />
     <external-cache-path name="my_external_cache" path="." />
+    <files-path name="files" path="." />
+    <external-files-path name="external_files" path="." />
+    <external-files-path name="camera_pictures" path="Pictures/" />
 </paths>

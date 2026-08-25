@@ -6,7 +6,7 @@ export const VOLT = "#d7ff3e";
 
 export function SectionHead({title, hint, children}) {
     return (
-        <div className="flex flex-wrap items-center gap-2 border-b border-gray-300 dark:border-volt-400/15 pb-3 mb-1">
+        <div className="flex flex-wrap items-center gap-2 border-b border-ink-950/10 dark:border-volt-400/15 pb-3 mb-1">
             <div className="flex-1 min-w-0 px-1">
                 <h2 className="text-sm font-semibold text-ink-950 dark:text-gray-200">{title}</h2>
                 {hint && <p className="text-xs text-gray-600 dark:text-gray-400">{hint}</p>}
@@ -43,7 +43,7 @@ export function EmptyState({title, body, actionLabel, onAction}) {
 export function SyncChip({onClick, isLoading, short, long}) {
     return (
         <button type="button" onClick={onClick} disabled={isLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-gray-200 hover:bg-gray-300 text-ink-950 dark:bg-ink-800 dark:hover:bg-ink-700 dark:text-gray-200 text-sm font-semibold min-h-[44px] transition disabled:opacity-50">
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full btn-glass text-ink-950 dark:text-gray-200 text-sm font-semibold min-h-[44px] transition disabled:opacity-50">
             <RefreshCw className={"h-3.5 w-3.5 " + (isLoading ? "animate-spin" : "")}/>
             <span className="sm:hidden">{isLoading ? "…" : short}</span>
             <span className="hidden sm:inline">{isLoading ? "Syncing…" : long}</span>
@@ -52,4 +52,4 @@ export function SyncChip({onClick, isLoading, short, long}) {
 }
 
 export const rowClass =
-    "w-full flex items-center gap-3 py-3 px-2 rounded-2xl hover:bg-gray-100 dark:hover:bg-ink-800 transition min-h-[44px] text-left";
+    "w-full flex items-center gap-3 py-3 px-2 rounded-2xl hover:bg-ink-950/[0.05] dark:hover:bg-white/[0.06] transition min-h-[44px] text-left";

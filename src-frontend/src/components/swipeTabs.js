@@ -32,55 +32,47 @@ function isInteractive(el) {
 export function ChallengeTabBar({tab, onChange, dragRatio = 0}) {
     const idx = Math.max(0, CHALLENGE_TABS.findIndex((t) => t.id === tab));
     const last = CHALLENGE_TABS.length - 1;
-    const pill = Math.min(last, Math.max(0, idx + dragRatio));
 
     return (
-        <div className="mb-4" data-no-swipe>
-            <div className="flex items-center gap-1">
+        <div className="mb-3" data-no-swipe>
+            <div className="flex items-center justify-center gap-1">
                 <button type="button" aria-label="Previous page" disabled={idx === 0}
                         onClick={() => onChange(CHALLENGE_TABS[idx - 1].id)}
-                        className={"shrink-0 h-11 w-9 rounded-xl flex items-center justify-center transition " +
+                        className={"shrink-0 h-8 w-8 rounded-full flex items-center justify-center transition " +
                             (idx === 0
-                                ? "text-gray-300 dark:text-ink-600 cursor-default"
-                                : "text-volt-600 dark:text-volt-400 hover:bg-volt-400/10")}>
-                    <ChevronLeft className="h-5 w-5"/>
+                                ? "text-gray-300/80 dark:text-ink-600 cursor-default"
+                                : "text-gray-400 hover:text-volt-600 dark:hover:text-volt-400")}>
+                    <ChevronLeft className="h-4 w-4"/>
                 </button>
 
-                <div className="relative min-w-0 flex-1 grid grid-cols-3 gap-1 p-1 rounded-2xl glass-card"
-                     role="tablist" aria-label="Challenge pages. Swipe or tap to switch.">
-                    <span aria-hidden
-                          className="pointer-events-none absolute top-1 bottom-1 left-1 rounded-xl bg-volt-400 shadow-glow-volt"
-                          style={{
-                              width: "calc((100% - 1rem) / 3)",
-                              transform: `translateX(calc(${pill} * (100% + 0.25rem)))`,
-                              transition: dragRatio ? "none" : "transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)",
-                          }}/>
-                    {CHALLENGE_TABS.map((t) => (
+                <div className="flex items-center gap-0.5" role="tablist"
+                     aria-label="Challenge pages. Swipe left or right to switch.">
+                    {CHALLENGE_TABS.map((t, i) => (
                         <button key={t.id} type="button" role="tab" aria-selected={tab === t.id}
                                 onClick={() => onChange(t.id)}
-                                className={"relative z-10 rounded-xl py-2.5 text-xs font-bold uppercase tracking-wide min-h-[44px] transition " +
-                                    (tab === t.id ? "text-ink-950" : "text-gray-500 dark:text-gray-400")}>
+                                className={"relative px-3 py-1 min-h-[36px] text-[11px] font-bold uppercase tracking-[0.16em] transition " +
+                                    (tab === t.id
+                                        ? "text-volt-700 dark:text-volt-400"
+                                        : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300")}>
                             {t.label}
+                            <span aria-hidden="true"
+                                  className={"absolute left-1/2 -translate-x-1/2 bottom-0.5 h-[2px] rounded-full bg-volt-400 transition-all " +
+                                      (i === idx ? "w-4 opacity-100" : "w-0 opacity-0")}
+                                  style={i === idx && dragRatio
+                                      ? {transform: `translateX(calc(-50% + ${dragRatio * 28}px))`}
+                                      : undefined}/>
                         </button>
                     ))}
                 </div>
 
                 <button type="button" aria-label="Next page" disabled={idx === last}
                         onClick={() => onChange(CHALLENGE_TABS[idx + 1].id)}
-                        className={"shrink-0 h-11 w-9 rounded-xl flex items-center justify-center transition " +
+                        className={"shrink-0 h-8 w-8 rounded-full flex items-center justify-center transition " +
                             (idx === last
-                                ? "text-gray-300 dark:text-ink-600 cursor-default"
-                                : "text-volt-600 dark:text-volt-400 hover:bg-volt-400/10")}>
-                    <ChevronRight className="h-5 w-5"/>
+                                ? "text-gray-300/80 dark:text-ink-600 cursor-default"
+                                : "text-gray-400 hover:text-volt-600 dark:hover:text-volt-400")}>
+                    <ChevronRight className="h-4 w-4"/>
                 </button>
-            </div>
-
-            <div className="mt-2 flex justify-center gap-1.5" aria-hidden="true">
-                {CHALLENGE_TABS.map((t, i) => (
-                    <span key={t.id}
-                          className={"h-1 rounded-full transition-all " +
-                              (i === idx ? "w-4 bg-volt-600 dark:bg-volt-400" : "w-1 bg-gray-400 dark:bg-ink-600")}/>
-                ))}
             </div>
         </div>
     );

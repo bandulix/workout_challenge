@@ -172,7 +172,7 @@ function PushOptInCard({compact = false}) {
                     <button
                         onClick={handleUnsubscribe}
                         disabled={busy}
-                        className="mt-3 w-full flex items-center justify-center gap-2 rounded-2xl bg-gray-200 text-ink-950 dark:bg-ink-700 dark:text-gray-200 py-2.5 text-sm font-semibold hover:bg-gray-300 dark:hover:bg-ink-600 transition disabled:opacity-50"
+                        className="mt-3 w-full flex items-center justify-center gap-2 rounded-2xl btn-glass text-ink-950 dark:text-gray-200 py-2.5 text-sm font-semibold transition disabled:opacity-50"
                     >
                         <BellOff className="h-4 w-4"/> {busy ? "Turning off…" : "Turn off coach pings"}
                     </button>

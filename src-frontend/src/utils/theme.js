@@ -6,12 +6,16 @@ import {Capacitor, SystemBars, SystemBarsStyle} from "@capacitor/core";
 // first paint; this module is the React-side source of truth.
 
 const STORAGE_KEY = "wc-theme";
-const LIGHT_COLOR = "#d4deba";
+const LIGHT_COLOR = "#efece4";
 const DARK_COLOR = "#0b0b0c";
 
 export function getStoredTheme() {
-    const t = window.localStorage.getItem(STORAGE_KEY);
-    return t === "light" || t === "dark" ? t : "system";
+    try {
+        const t = window.localStorage.getItem(STORAGE_KEY);
+        return t === "light" || t === "dark" ? t : "system";
+    } catch {
+        return "system";
+    }
 }
 
 function systemPrefersDark() {
@@ -31,12 +35,17 @@ function syncNativeSystemBars(resolved) {
 
 export function applyTheme(theme = getStoredTheme()) {
     const resolved = resolveTheme(theme);
-    document.documentElement.classList.toggle("dark", resolved === "dark");
-    document.documentElement.style.colorScheme = resolved;
+    const root = document.documentElement;
+    root.classList.toggle("dark", resolved === "dark");
+    root.classList.toggle("light", theme === "light");
+    // Follow the device until the user picks Light or Dark. Locking
+    // color-scheme to the resolved value made "Match device" stick on
+    // whichever scheme first painted.
+    root.style.colorScheme = theme === "system" ? "light dark" : resolved;
     const color = resolved === "dark" ? DARK_COLOR : LIGHT_COLOR;
     const meta = document.querySelector('meta[name="theme-color"]:not([media])');
     if (meta) meta.setAttribute("content", color);
-    document.documentElement.style.background = color;
+    root.style.background = color;
     if (document.body) document.body.style.background = color;
     syncNativeSystemBars(resolved);
     return resolved;

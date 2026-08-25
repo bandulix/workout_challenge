@@ -160,7 +160,7 @@ function EchoCard({echo, userId, onChallenge, busy, now}) {
                 </span>
                 <span className="text-[11px] text-gray-600 dark:text-gray-400">{echo.metric_label}</span>
             </div>
-            <div className="mt-2 h-1.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden">
+            <div className="mt-2 h-1.5 rounded-full bg-ink-950/10 dark:bg-white/10 overflow-hidden">
                 <div className="h-full rounded-full bg-volt-400" style={{width: `${Math.max(8, Math.min(100, echo.power))}%`}}/>
             </div>
             <h3 className="mt-3 font-display text-sm uppercase tracking-wide leading-snug">{echo.title}</h3>
@@ -206,7 +206,7 @@ function EchoBook({competitionId, open}) {
     return (
         <ol className="mt-3 space-y-3">
             {book.chapters.map((ch) => (
-                <li key={ch.id} className="rounded-xl border border-gray-300 bg-gray-100 dark:border-volt-400/20 dark:bg-ink-950/60 p-3">
+                <li key={ch.id} className="rounded-xl glass-well p-3">
                     <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-volt-700 dark:text-volt-400">
                         {ch.status} · power {ch.power} · lineage ×{ch.chain_length}
                     </p>

@@ -34,13 +34,13 @@
       "type": "image/x-icon"
     }
   ],
-  "start_url": "/dashboard",
+  "start_url": "/coach",
   "scope": "/",
   "handle_links": "preferred",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#d4deba",
-  "background_color": "#d4deba",
+  "theme_color": "#efece4",
+  "background_color": "#efece4",
   "categories": ["health", "fitness", "lifestyle"],
   "shortcuts": [
     {

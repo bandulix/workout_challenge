@@ -88,7 +88,7 @@ function WhatsNew() {
 
             <ul className="space-y-3 px-1">
                 {HIGHLIGHTS.map((h) => (
-                    <li key={h.title} className="flex items-start gap-3 rounded-2xl bg-gray-100 dark:bg-ink-900 border border-gray-300 dark:border-ink-700/60 p-3">
+                    <li key={h.title} className="flex items-start gap-3 rounded-2xl glass-well p-3">
                         <span className="h-9 w-9 rounded-xl bg-volt-400/15 flex items-center justify-center shrink-0">
                             <h.icon className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
                         </span>

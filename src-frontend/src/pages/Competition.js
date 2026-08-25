@@ -113,7 +113,7 @@ function WeekBars({values, labels, showLabels = false, tall = false}) {
                     return (
                         <div key={i} className="flex-1 min-w-[5px] flex items-end justify-center h-full">
                             <div className={"w-full max-w-[10px] rounded-[3px] " +
-                                (n > 0 ? "bg-volt-400 shadow-[0_0_8px_rgba(215,255,62,0.45)]" : "bg-gray-200/80 dark:bg-white/10")}
+                                (n > 0 ? "bg-volt-400 shadow-[0_0_8px_rgba(215,255,62,0.45)]" : "bg-ink-950/10 dark:bg-white/10")}
                                  style={{height: px}}/>
                         </div>
                     );

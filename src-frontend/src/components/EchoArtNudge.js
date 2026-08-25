@@ -1,4 +1,4 @@
-import React, {useEffect, useRef, useState} from "react";
+import React, {useEffect, useId, useState} from "react";
 import {useLocation} from "react-router-dom";
 import {Camera, Crown, Image as ImageIcon} from "lucide-react";
 import {BeatLoader} from "react-spinners";
@@ -6,11 +6,12 @@ import {useDispatch} from "react-redux";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {drillInstructorApi, useGetEchoesQuery, useUploadEchoArtMutation} from "../utils/reducers/drillInstructorSlice";
 import {compressImage} from "../utils/imageCompress";
-import {isAcceptablePhoto, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
+import {isAcceptablePhoto, isNativeCameraAvailable, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
+import {OverlaySheet} from "../forms/basicComponents";
 import {notice} from "../utils/dialogs";
+import {isPublicPath} from "../utils/publicPath";
 
 const DISMISS_KEY = "wc-echo-art-nudge";
-const PUBLIC_PATHS = ["/", "/login", "/signup", "/logout", "/password"];
 
 function readDismissed() {
     try {
@@ -30,7 +31,7 @@ function rememberDismissed(id) {
 
 export default function EchoArtNudge() {
     const location = useLocation();
-    const onPublic = PUBLIC_PATHS.some((p) => location.pathname === p || location.pathname.startsWith("/password"));
+    const onPublic = isPublicPath(location.pathname);
     const {data: user} = useGetUserByIdQuery("me", {skip: onPublic});
     const {data: echoes} = useGetEchoesQuery(undefined, {skip: onPublic || !user});
     const [uploadArt] = useUploadEchoArtMutation();
@@ -39,8 +40,9 @@ export default function EchoArtNudge() {
     const [nudge, setNudge] = useState(null);
     const [snoozed, setSnoozed] = useState(false);
     const [busy, setBusy] = useState(false);
-    const cameraInput = useRef(null);
-    const galleryInput = useRef(null);
+    const cameraId = useId();
+    const galleryId = useId();
+    const nativeCam = isNativeCameraAvailable();
 
     useEffect(() => {
         if (snoozed || busy || !echoes) return undefined;
@@ -88,9 +90,12 @@ export default function EchoArtNudge() {
             }
         } catch (err) {
             if (isPhotoPickCancel(err)) return;
+            notice(kind === "camera"
+                ? "Could not open the camera. Check camera permission in system settings."
+                : "Could not open the gallery.");
+            return;
         }
-        if (kind === "camera") cameraInput.current?.click();
-        else galleryInput.current?.click();
+        if (nativeCam) return;
     }
 
     if (!nudge) return null;
@@ -98,45 +103,59 @@ export default function EchoArtNudge() {
     const others = Math.max(0, (echoes || []).filter((e) => e.can_upload_art && !e.image && e.id !== nudge.id).length);
 
     return (
-        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-             onClick={() => { if (!busy) close(); }}>
-            <div className="w-full max-w-md rounded-3xl glass-card p-6 animate-pop-in"
-                 onClick={(e) => e.stopPropagation()}>
+        <OverlaySheet title="Give your Echo a face" onClose={() => { if (!busy) close(); }} zClass="z-[80]">
                 <div className="flex items-start gap-3">
                     <span className="h-11 w-11 rounded-2xl bg-volt-400/20 flex items-center justify-center shrink-0">
                         <Crown className="h-5 w-5 text-volt-600 dark:text-volt-400"/>
                     </span>
-                    <div className="min-w-0">
-                        <p className="font-display text-sm uppercase tracking-wide">Give your Echo a face</p>
-                        <p className="mt-1.5 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                            You’re holding <span className="font-semibold">{nudge.title}</span>
-                            {others > 0 ? ` (and ${others} more)` : ""}. It still has the crown placeholder.
-                            Add a photo and the coach will paint it into trophy art.
-                        </p>
-                    </div>
+                    <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                        You’re holding <span className="font-semibold">{nudge.title}</span>
+                        {others > 0 ? ` (and ${others} more)` : ""}. It still has the crown placeholder.
+                        Add a photo and the coach will paint it into trophy art.
+                    </p>
                 </div>
 
-                <input ref={cameraInput} type="file" accept="image/*,image/heic,image/heif" capture="user" className="hidden"
-                       onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; send(f); }}/>
-                <input ref={galleryInput} type="file" accept="image/*,image/heic,image/heif" className="hidden"
-                       onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; send(f); }}/>
+                {!nativeCam && (
+                    <>
+                        <input id={cameraId} type="file" accept="image/*" capture="environment"
+                               className="sr-only" disabled={busy}
+                               onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; send(f); }}/>
+                        <input id={galleryId} type="file" accept="image/*"
+                               className="sr-only" disabled={busy}
+                               onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; send(f); }}/>
+                    </>
+                )}
 
                 <div className="mt-6 flex flex-wrap justify-end gap-2">
                     <button type="button" disabled={busy} onClick={close}
                             className="min-h-[44px] px-4 rounded-full text-sm font-semibold text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-50">
                         Later
                     </button>
-                    <button type="button" disabled={busy} onClick={() => pick("camera")}
-                            className="min-h-[44px] px-4 rounded-full btn-glass text-sm font-bold uppercase tracking-wide inline-flex items-center gap-1.5 disabled:opacity-50">
-                        <Camera className="h-3.5 w-3.5"/> Camera
-                    </button>
-                    <button type="button" disabled={busy} onClick={() => pick("gallery")}
-                            className="min-h-[44px] px-4 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide inline-flex items-center gap-1.5 disabled:opacity-50">
-                        {busy ? <BeatLoader size={6} color="#0b0b0c"/> : <ImageIcon className="h-3.5 w-3.5"/>}
-                        Gallery
-                    </button>
+                    {nativeCam ? (
+                        <button type="button" disabled={busy} onClick={() => pick("camera")}
+                                className="min-h-[44px] px-4 rounded-full btn-glass text-sm font-bold uppercase tracking-wide inline-flex items-center gap-1.5 disabled:opacity-50">
+                            <Camera className="h-3.5 w-3.5"/> Camera
+                        </button>
+                    ) : (
+                        <label htmlFor={cameraId}
+                               className={"min-h-[44px] px-4 rounded-full btn-glass text-sm font-bold uppercase tracking-wide inline-flex items-center gap-1.5 cursor-pointer " + (busy ? "opacity-50 pointer-events-none" : "")}>
+                            <Camera className="h-3.5 w-3.5"/> Camera
+                        </label>
+                    )}
+                    {nativeCam ? (
+                        <button type="button" disabled={busy} onClick={() => pick("gallery")}
+                                className="min-h-[44px] px-4 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide inline-flex items-center gap-1.5 disabled:opacity-50">
+                            {busy ? <BeatLoader size={6} color="#0b0b0c"/> : <ImageIcon className="h-3.5 w-3.5"/>}
+                            Gallery
+                        </button>
+                    ) : (
+                        <label htmlFor={galleryId}
+                               className={"min-h-[44px] px-4 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide inline-flex items-center gap-1.5 cursor-pointer " + (busy ? "opacity-50 pointer-events-none" : "")}>
+                            {busy ? <BeatLoader size={6} color="#0b0b0c"/> : <ImageIcon className="h-3.5 w-3.5"/>}
+                            Gallery
+                        </label>
+                    )}
                 </div>
-            </div>
-        </div>
+        </OverlaySheet>
     );
 }

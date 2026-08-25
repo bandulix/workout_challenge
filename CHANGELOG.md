@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-08-25
+
+### Added
+- **Daily action backdrops** — five volt-neon plates (snowboard, swim, gravel, studio, lift) rotate one per local calendar day. Dark mode and login use the night grade; light mode uses a brighter twin. The old gym-runners still is gone.
+- **Coach 24h activity ring** — neon-green volt ring on the persona portrait, segmented by who trained in the last 24 hours (full/glowing vs sparse). Mood-based orbiting pips stay around it.
+- **Coach message wheel** — last five coach lines in the hero bubble, with up/down and drag.
+- **Overlay portal** — popups (roasts, info, athlete cards, forms) render on `document.body` so glass `backdrop-filter` no longer traps `position:fixed`.
+- **Native camera vs gallery** — Android `takePhoto` / `chooseFromGallery` (FileProvider Pictures path). Web keeps a labelled capture input.
+
+### Changed
+- **Light mode glass** — limestone canvas (`#efece4`), white frost over the plate, darker secondary type and volt labels. Dark charcoal glass is unchanged. Dock sheen runs in both themes (quieter on dark).
+- **Theme first launch is Match device** — `color-scheme: light dark` until the user picks Light or Dark. Android WebView follows the system night setting.
+- **Coach is the default landing** (`/coach`). Challenge goals pull-down, quieter tabs, 48h feed, replies only on activity posts.
+- **Create a challenge** from the Compete dock actually opens the challenge form.
+- **Ken Burns plate** on every screen, including after login.
+- **Popups** share one glass size/shape. Roaster cards sit in a multi-column grid. AI Drill Instructor settings use the same glass chrome.
+- **Android status / WebView canvas** uses limestone in light and ink in night.
+
+### Fixed
+- **Popup freeze** when closing X / info / hall of roasts / activity rows — overlays were clipped inside frosted cards.
+- **Login dock** no longer shows on `/login/` (trailing slash) or when logged out.
+- **Camera button opened the gallery** on Android because FileProvider missed `Pictures/` and HTML `capture` was ignored.
+- **Coach portrait animation** missing after the five-style experiment — mood orbit is back, with one calm default when there is no mood yet.
+
 ## [0.44.0] - 2026-08-24
 
 ### Added

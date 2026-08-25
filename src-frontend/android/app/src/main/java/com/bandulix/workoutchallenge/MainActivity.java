@@ -6,11 +6,14 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
+import androidx.webkit.WebSettingsCompat;
+import androidx.webkit.WebViewFeature;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -41,6 +44,28 @@ public class MainActivity extends BridgeActivity {
         applySystemChrome();
     }
 
+    private boolean systemNightMode() {
+        int night = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        return night == Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    // WebView only reports prefers-color-scheme from the app's DayNight
+    // theme if we tell it to. Without this, "Match device" stays light.
+    @SuppressWarnings("deprecation")
+    private void syncWebViewColorScheme() {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        WebView webView = getBridge().getWebView();
+        WebSettings settings = webView.getSettings();
+        boolean dark = systemNightMode();
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+            WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, false);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            settings.setForceDark(dark ? WebSettings.FORCE_DARK_ON : WebSettings.FORCE_DARK_OFF);
+        }
+    }
+
     // The WebView parent is padded for the status bar on Android 15
     // (Capacitor SystemBars) and on older versions the status bar is a
     // separate strip. In both cases the gap used to show the splash
@@ -62,6 +87,7 @@ public class MainActivity extends BridgeActivity {
             window.setNavigationBarContrastEnforced(false);
         }
         window.getDecorView().setBackgroundColor(canvas);
+        syncWebViewColorScheme();
 
         if (getBridge() == null || getBridge().getWebView() == null) return;
         WebView webView = getBridge().getWebView();

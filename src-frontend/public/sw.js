@@ -31,7 +31,7 @@ const ASSET_CACHE_LIMIT = 200;
 const API_CACHE_LIMIT = 100;
 
 // Install precache: ONLY the offline shell. Do not add icons / personas /
-// fonts / login-bg here. cache.addAll() fires every URL in parallel, and
+// fonts / backdrops here. cache.addAll() fires every URL in parallel, and
 // a reverse-proxy limit_req (commonly ~5 r/s, burst 20) then logs
 // "limiting requests". CrowdSec's nginx-req-limit-exceeded bans the IP
 // for 24h after 5 of those in a minute — which is exactly what a new

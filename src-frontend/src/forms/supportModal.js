@@ -12,7 +12,7 @@ const AccordionItem = ({title, content, link}) => {
     if (link) {
         return (
             <a href={link} target="_blank" rel="noopener noreferrer"
-               className={row + " rounded-2xl hover:bg-gray-100 dark:hover:bg-ink-800"}>
+               className={row + " rounded-2xl hover:bg-ink-950/[0.05] dark:hover:bg-white/[0.06]"}>
                 <span>{title}</span>
                 <ExternalLink className="w-4 h-4 text-gray-400 shrink-0"/>
             </a>
@@ -20,7 +20,7 @@ const AccordionItem = ({title, content, link}) => {
     }
 
     return (
-        <div className="rounded-2xl hover:bg-gray-100 dark:hover:bg-ink-800">
+        <div className="rounded-2xl hover:bg-ink-950/[0.05] dark:hover:bg-white/[0.06]">
             <button onClick={() => setIsOpen(!isOpen)} className={row}>
                 <span>{title}</span>
                 <ChevronDown className={"w-4 h-4 text-gray-400 shrink-0 transition-transform " + (isOpen ? "rotate-180" : "")}/>

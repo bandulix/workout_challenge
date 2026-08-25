@@ -2,6 +2,7 @@ import React, {useEffect, useState} from "react";
 import {Link, useLocation, useNavigate} from "react-router-dom";
 import {Flag, Home, Plus, User2, Settings, Scale, BadgeHelp, Shield, LogOut, Sun, Moon, Monitor, ChevronRight, Bot} from "lucide-react";
 import WorkoutForm from "../forms/workoutForm";
+import CompetitionForm from "../forms/competitionForm";
 import {Modal} from "../forms/basicComponents";
 import SettingsForm from "../forms/settingsForm";
 import GoalEqualizerForm from "../forms/equalizerForm";
@@ -19,6 +20,7 @@ import {useGetCompetitionsQuery} from "./reducers/competitionsSlice";
 import {useGetDrillConfigsQuery} from "./reducers/drillInstructorSlice";
 import {ensureFreshAccessToken} from "./authTokens";
 import {primaryChallenge} from "./challenge";
+import {isPublicPath} from "./publicPath";
 
 
 const COACH_FALLBACK = {name: "Coach", avatar: "megaphone", theme_color: "#d7ff3e"};
@@ -26,7 +28,7 @@ const COACH_FALLBACK = {name: "Coach", avatar: "megaphone", theme_color: "#d7ff3
 function NavLink({to, icon: Icon, label, isActive, onClick}) {
     const className =
         "relative flex flex-col items-center justify-center gap-1 py-2 px-2.5 min-w-[56px] min-h-[58px] transition-colors duration-200 " +
-        (isActive ? "text-ink-950 dark:text-volt-200" : "text-ink-700/55 dark:text-gray-400 hover:text-ink-900 dark:hover:text-volt-200");
+        (isActive ? "text-ink-950 dark:text-volt-200" : "text-ink-800 dark:text-gray-400 hover:text-ink-950 dark:hover:text-volt-200");
     const inner = (
         <>
             <Icon className={"relative z-10 h-5 w-5 transition-transform duration-300 " + (isActive ? "scale-110" : "")}
@@ -58,13 +60,13 @@ function NavLink({to, icon: Icon, label, isActive, onClick}) {
 function DockPanel({title, children}) {
     return (
         <div className="relative px-3 pt-3 pb-1 animate-dock-expand max-h-[min(58vh,32rem)] overflow-y-auto overscroll-contain">
-            <h3 className="font-display text-[11px] uppercase tracking-[0.18em] px-1 mb-2 text-ink-700/70 dark:text-gray-400">{title}</h3>
+            <h3 className="font-display text-[11px] uppercase tracking-[0.18em] px-1 mb-2 text-ink-800 dark:text-gray-400">{title}</h3>
             {children}
         </div>
     );
 }
 
-function CompetitionPickerPanel({onClose}) {
+function CompetitionPickerPanel({onClose, onCreate}) {
     const {data: competitions, isSuccess} = useGetCompetitionsQuery();
     const navigate = useNavigate();
 
@@ -90,7 +92,7 @@ function CompetitionPickerPanel({onClose}) {
                 )}
             </div>
             <button
-                onClick={() => {onClose(); navigate("/dashboard");}}
+                onClick={() => {onClose(); onCreate();}}
                 className="w-full mt-2 mb-1 px-3 py-3 rounded-2xl bg-volt-400 text-ink-950 font-bold uppercase tracking-wide text-sm min-h-[44px] shadow-glow-volt">
                 + Create a challenge
             </button>
@@ -149,6 +151,7 @@ function SettingsPanel({onClose, user, isStaff, onAccount, onEqualizer, onRoaste
 
 export default function BottomNav() {
     const [showLogWorkout, setShowLogWorkout] = useState(false);
+    const [showCreateChallenge, setShowCreateChallenge] = useState(false);
     const [showCompetitionPicker, setShowCompetitionPicker] = useState(false);
     const [showSettingsSheet, setShowSettingsSheet] = useState(false);
     // Modal state lives here (not inside SettingsSheet) so closing the sheet
@@ -163,9 +166,10 @@ export default function BottomNav() {
     const navigate = useNavigate();
     // Hide the bar (and skip its API hooks) on public pages. Without
     // skip, `me` fired unauthenticated on /login and logged a 401 on
-    // every visit - CrowdSec http-auth-bf counts those.
-    const publicPaths = ["/", "/login", "/signup", "/logout", "/password"];
-    const onPublic = publicPaths.some((p) => location.pathname === p || location.pathname.startsWith("/password"));
+    // every visit - CrowdSec http-auth-bf counts those. Trailing
+    // slashes (/login/) used to miss the exact-path check, so the dock
+    // sat on the login screen.
+    const onPublic = isPublicPath(location.pathname);
     const {data: user, error: userError, refetch: refetchUser} = useGetUserByIdQuery('me', {skip: onPublic});
     const {data: competitions} = useGetCompetitionsQuery(undefined, {skip: onPublic || !user});
     const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: onPublic || !user});
@@ -201,7 +205,7 @@ export default function BottomNav() {
             document.removeEventListener("visibilitychange", onVis);
         };
     }, [user?.id]);
-    const onDashboard = location.pathname === "/dashboard" || location.pathname === "/";
+    const onDashboard = location.pathname === "/dashboard" || location.pathname === "/dashboard/";
     const onCompetition = location.pathname.startsWith("/competition/");
     const onCoach = location.pathname.startsWith("/coach");
     const onAdmin = location.pathname.startsWith("/admin/");
@@ -215,7 +219,7 @@ export default function BottomNav() {
         return active[0].persona_detail;
     }, [drillConfigs]);
 
-    if (onPublic) {
+    if (onPublic || !user) {
         return null;
     }
 
@@ -241,7 +245,8 @@ export default function BottomNav() {
                         : "overflow-visible rounded-[1.75rem] md:w-max md:rounded-full")}>
                     <span className="glass-sheen rounded-[inherit]" aria-hidden="true"/>
                     {showCompetitionPicker && (
-                        <CompetitionPickerPanel onClose={closeSheets}/>
+                        <CompetitionPickerPanel onClose={closeSheets}
+                                                onCreate={() => setShowCreateChallenge(true)}/>
                     )}
                     {showSettingsSheet && (
                         <SettingsPanel
@@ -279,13 +284,13 @@ export default function BottomNav() {
                         <span className="relative">
                             <span aria-hidden="true"
                                   className="absolute -inset-2.5 rounded-full bg-volt-400/25 blur-md animate-volt-breathe"/>
-                            <span className={"relative block rounded-full ring-2 ring-white/70 dark:ring-volt-400 shadow-glow-volt transition active:scale-95 " +
+                            <span className={"relative block rounded-full ring-2 ring-volt-400 shadow-glow-volt transition active:scale-95 " +
                                 (onCoach ? "animate-pulse-ring" : "")}>
                                 <PersonaAvatar persona={coachPersona} size={58} glow/>
                             </span>
                         </span>
                         <span className={"text-[10px] font-bold leading-none mt-1.5 tracking-widest uppercase md:hidden " +
-                            (onCoach ? "text-volt-700 dark:text-volt-400" : "text-ink-700/55 dark:text-gray-400")}>
+                            (onCoach ? "text-volt-700 dark:text-volt-400" : "text-ink-800 dark:text-gray-400")}>
                             Coach
                         </span>
                     </Link>
@@ -316,6 +321,7 @@ export default function BottomNav() {
                 <WorkoutForm setModalState={setShowLogWorkout}
                              scaling_distance={parseFloat(user?.scaling_distance || "1.0")}/>
             )}
+            {showCreateChallenge && <CompetitionForm setModalState={setShowCreateChallenge}/>}
 
             {/* Account form needs the profile. While it is still loading
                 (or after a failed fetch) show feedback inside the modal

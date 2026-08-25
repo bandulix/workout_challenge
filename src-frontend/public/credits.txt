@@ -1,4 +1,4 @@
 running.jpg, running.webp, running_email.jpg - Image by <a href="https://pixabay.com/users/fotorech-5554393/?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=4782722">Daniel Reche</a> from <a href="https://pixabay.com//?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=4782722">Pixabay</a>
 profile.png - Image by <a href="https://pixabay.com/users/raphaelsilva-4702998/?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=3814049">Raphael Silva</a> from <a href="https://pixabay.com//?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=3814049">Pixabay</a>
-login-bg.webp, login-bg.jpg - generated with xAI Imagine (gym / volt-neon scene).
+backdrops/*.webp, backdrops/*.jpg - generated with xAI Imagine (volt-neon action plates: snowboard, swim, gravel, studio, lift).
 favicon.ico, apple-touch-icon.png, favicon-*.png, icon-*.png, icon-*.svg, maskable-icon.svg, Android launcher/splash - Workout Challenge volt-lightning mark (ink #0a0d06, volt #d7ff3e).

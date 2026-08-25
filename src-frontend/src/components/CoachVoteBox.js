@@ -42,8 +42,8 @@ export function CoachHandover({configId, enabled}) {
     const previous = ballot.previous_persona;
     const countdown = formatCountdown(ballot.next_switch_at, now);
     return (
-        <div className="px-4 sm:px-5 py-3 border-b border-gray-100 dark:border-ink-700/60">
-            <div className="rounded-2xl bg-gray-100 text-ink-950 dark:bg-ink-900 dark:text-white px-3.5 py-3 border border-volt-500/50 dark:border-volt-400/40">
+        <div className="px-4 sm:px-5 py-3 border-b border-ink-950/10 dark:border-ink-700/60">
+            <div className="rounded-2xl glass-inset text-ink-950 dark:text-white px-3.5 py-3 ring-1 ring-volt-500/40 dark:ring-volt-400/40">
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400 flex items-center gap-1.5">
                     <Timer className="h-3.5 w-3.5"/> New coach
                 </p>

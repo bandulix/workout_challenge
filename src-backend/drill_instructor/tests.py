@@ -2537,10 +2537,16 @@ class ArcadeGameTests(TestCase):
         from .game import coach_mood
         mood = coach_mood(self.config)
         self.assertEqual(mood["key"], "disappointed")
+        self.assertEqual(mood["active_24h"], 0)
         self._workout(self.alex)
         self._workout(self.nina)
         mood = coach_mood(self.config)
         self.assertIn(mood["key"], ("proud", "unleashed", "watching"))
+        self.assertEqual(mood["active_24h"], 2)
+        self._workout(self.alex, when=timezone.now() - datetime.timedelta(hours=36))
+        mood = coach_mood(self.config)
+        self.assertEqual(mood["active_24h"], 2)
+        self.assertGreaterEqual(mood["active_48h"], 2)
 
     def test_config_payload_exposes_arcade(self):
         from .models import DailyOrder

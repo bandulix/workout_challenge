@@ -143,6 +143,10 @@ def coach_mood(config, now=None):
     workouts = Workout.objects.filter(user__in=participants, start_datetime__gte=window)
     n_workouts = workouts.count()
     n_active = workouts.values("user").distinct().count()
+    window_24 = now - datetime.timedelta(hours=24)
+    workouts_24 = Workout.objects.filter(user__in=participants, start_datetime__gte=window_24)
+    n_workouts_24 = workouts_24.count()
+    n_active_24 = workouts_24.values("user").distinct().count()
     n_photos = DrillInstructorMessage.objects.filter(
         config=config,
         kind=DrillInstructorMessage.KIND_PHOTO,
@@ -161,6 +165,8 @@ def coach_mood(config, now=None):
             mood = dict(MOODS["watching"])
     mood["workouts_48h"] = n_workouts
     mood["active_48h"] = n_active
+    mood["workouts_24h"] = n_workouts_24
+    mood["active_24h"] = n_active_24
     mood["participants"] = n_part
     return mood
 

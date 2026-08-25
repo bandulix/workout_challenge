@@ -1,7 +1,7 @@
 import React, {useEffect, useState} from "react";
 import {useNavigate, useSearchParams} from "react-router-dom";
 import {useDispatch} from "react-redux";
-import {DoorOpen, Info, Megaphone, Settings, UserRoundPlus} from "lucide-react";
+import {ChevronDown, DoorOpen, Info, Megaphone, Settings, UserRoundPlus} from "lucide-react";
 import lodFilter from "lodash/filter";
 import lodFlatmap from "lodash/flatMap";
 import lodFrompairs from "lodash/fromPairs";
@@ -21,7 +21,6 @@ import TransferOwnershipForm from "../forms/transferOwnershipForm";
 import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
 import PointsInfoModal from "./PointsInfo";
 import ActivityGoalsForm from "../forms/activityGoalsForm";
-import {BoxSection} from "../utils/miscellaneous";
 import {sportLabelShort} from "../forms/workoutForm";
 import CoachThread from "./CoachThread";
 import {CoachHandover} from "./CoachVoteBox";
@@ -38,7 +37,7 @@ export function HeaderIconButton({onClick, title, icon: Icon, danger = false, is
         <button onClick={onClick} title={title} aria-label={title} disabled={isLoading}
                 className={"p-2 rounded-full min-h-[40px] min-w-[40px] flex items-center justify-center transition active:scale-95 " +
                     (danger ? "text-gray-400 hover:text-red-500 hover:bg-red-500/10"
-                            : "text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 hover:bg-gray-100 dark:hover:bg-ink-800")}>
+                            : "text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 hover:bg-ink-950/[0.05] dark:hover:bg-white/[0.06]")}>
             <Icon className={"h-5 w-5 " + (isLoading ? "animate-pulse" : "")}/>
         </button>
     );
@@ -91,6 +90,8 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
     const [showDrillInstructorModal, setShowDrillInstructorModal] = useState(false);
     const [showPointsInfoModal, setShowPointsInfoModal] = useState(false);
     const [showModifyGoals, setShowModifyGoals] = useState(false);
+    const [goalsOpen, setGoalsOpen] = useState(false);
+    const pullStart = React.useRef(null);
     const [countTotal, setCountTotal] = useState(0);
     const [countGroups, setCountGroups] = useState({});
     const scoredGoals = React.useMemo(
@@ -132,12 +133,23 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
 
 
 
+    const showGoals = scoredGoals.length > 0 || isOwner;
+
+    function finishGoalsPull(event) {
+        const start = pullStart.current;
+        pullStart.current = null;
+        if (!start) return;
+        const dy = event.clientY - start.y;
+        if (start.dragged && Math.abs(dy) > 24) setGoalsOpen(dy > 0);
+        else if (!start.dragged) setGoalsOpen((v) => !v);
+    }
+
     return (
-        <BoxSection additionalClasses="mb-4">
+        <div className="mb-4 rounded-3xl glass-card overflow-hidden">
             {/* Two-row header on small screens: the title gets the full
                 width first (it used to truncate between the counts and
                 the action buttons), counts + icon actions sit below. */}
-            <div className="px-1 sm:px-3">
+            <div className="p-5 sm:p-6">
                 <p className="text-xl font-display uppercase tracking-wide">{competition.name}</p>
                 <p className="text-xs text-gray-500">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
                 <div className="mt-2.5 flex items-center gap-3">
@@ -165,49 +177,72 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                 </div>
             </div>
 
-            {(scoredGoals.length > 0 || isOwner) && (
-                <div className="mt-4 pt-3 border-t border-gray-200/70 dark:border-white/10 px-1 sm:px-3">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Your goals</p>
-                        {isOwner && (
-                            <button type="button" onClick={() => setShowModifyGoals(true)}
-                                    className="text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[32px]">
-                                Edit
-                            </button>
-                        )}
-                    </div>
-                    {scoredGoals.length === 0 ? (
-                        <p className="text-xs text-gray-400">No goals yet. Add targets so the field knows what to chase.</p>
-                    ) : (
-                        <div className="space-y-2">
-                            {scoredGoals.map((goal) => {
-                                const pct = Math.min(Math.max(Number(goal.points_capped) || 0, 0), 100);
-                                const complete = pct >= 100;
-                                const empty = pct <= 0;
-                                return (
-                                    <div key={goal.id} className="rounded-2xl glass-inset px-3 py-2">
-                                        <div className="flex items-baseline justify-between gap-2">
-                                            <p className="text-sm font-semibold truncate">{goal.name}</p>
-                                            <p className="text-[11px] text-gray-400 shrink-0">
-                                                {Math.round(goal.goal).toLocaleString()} {goal.metric} / {goal.period}
-                                            </p>
-                                        </div>
-                                        <div className="mt-1.5 flex items-center gap-2">
-                                            <div className="flex-1 h-2 rounded-full bg-gray-200/80 dark:bg-white/10 overflow-hidden">
-                                                <div className={"h-full rounded-full transition-all " +
-                                                    (empty ? "bg-gray-300 dark:bg-white/15" : complete ? "bg-volt-400" : "bg-gradient-to-r from-volt-600 to-volt-400")}
-                                                     style={{width: pct + "%"}}/>
-                                            </div>
-                                            <span className="text-[11px] font-extrabold text-volt-700 dark:text-volt-300 w-10 text-right">
-                                                {Math.round(pct)}P
-                                            </span>
-                                        </div>
+            {showGoals && (
+                <>
+                    <button type="button"
+                            aria-expanded={goalsOpen}
+                            aria-label={goalsOpen ? "Hide challenge goals" : "Show challenge goals"}
+                            onPointerDown={(e) => { pullStart.current = {y: e.clientY, dragged: false}; }}
+                            onPointerMove={(e) => {
+                                const start = pullStart.current;
+                                if (!start) return;
+                                if (Math.abs(e.clientY - start.y) > 8) start.dragged = true;
+                            }}
+                            onPointerUp={finishGoalsPull}
+                            onPointerCancel={() => { pullStart.current = null; }}
+                            className="w-full h-7 bg-volt-400 text-ink-950 flex items-center justify-center gap-2 shadow-[0_4px_16px_rgba(215,255,62,0.35)] active:brightness-95">
+                        <span className="w-9 h-1 rounded-full bg-ink-950/30" aria-hidden="true"/>
+                        <span className="text-[10px] font-extrabold uppercase tracking-[0.18em]">Challenge goals</span>
+                        <ChevronDown className={"h-3.5 w-3.5 transition-transform duration-200 " + (goalsOpen ? "rotate-180" : "")}/>
+                    </button>
+                    <div className={"grid transition-[grid-template-rows] duration-300 ease-out " +
+                        (goalsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+                        <div className="overflow-hidden">
+                            <div className="px-5 sm:px-6 pb-5 pt-3">
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Challenge goals</p>
+                                    {isOwner && (
+                                        <button type="button" onClick={() => setShowModifyGoals(true)}
+                                                className="text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[32px]">
+                                            Edit
+                                        </button>
+                                    )}
+                                </div>
+                                {scoredGoals.length === 0 ? (
+                                    <p className="text-xs text-gray-400">No challenge goals yet. Add targets so the field knows what to chase.</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {scoredGoals.map((goal) => {
+                                            const pct = Math.min(Math.max(Number(goal.points_capped) || 0, 0), 100);
+                                            const complete = pct >= 100;
+                                            const empty = pct <= 0;
+                                            return (
+                                                <div key={goal.id} className="rounded-2xl glass-inset px-3 py-2">
+                                                    <div className="flex items-baseline justify-between gap-2">
+                                                        <p className="text-sm font-semibold truncate">{goal.name}</p>
+                                                        <p className="text-[11px] text-gray-400 shrink-0">
+                                                            {Math.round(goal.goal).toLocaleString()} {goal.metric} / {goal.period}
+                                                        </p>
+                                                    </div>
+                                                    <div className="mt-1.5 flex items-center gap-2">
+                                                        <div className="flex-1 h-2 rounded-full bg-ink-950/10 dark:bg-white/10 overflow-hidden">
+                                                            <div className={"h-full rounded-full transition-all " +
+                                                                (empty ? "bg-ink-950/10 dark:bg-white/15" : complete ? "bg-volt-400" : "bg-gradient-to-r from-volt-600 to-volt-400")}
+                                                                 style={{width: pct + "%"}}/>
+                                                        </div>
+                                                        <span className="text-[11px] font-extrabold text-volt-700 dark:text-volt-300 w-10 text-right">
+                                                            {Math.round(pct)}P
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                );
-                            })}
+                                )}
+                            </div>
                         </div>
-                    )}
-                </div>
+                    </div>
+                </>
             )}
 
             {(showEditCompetitionModal) && <CompetitionForm setModalState={setShowEditCompetitionModal} setShowTransferCompetitionModal={setShowTransferCompetitionModal} competition={competition}/>}
@@ -219,14 +254,14 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                 <ActivityGoalsForm setModalState={setShowModifyGoals} competitionId={competition.id}/>
             )}
 
-        </BoxSection>
+        </div>
     )
 }
 
 
 // One photo post in the feed: the author's picture + caption bubble,
 // then the thread (coach reaction + participant replies) underneath.
-const CORNER_PREVIEW = 3;
+const FEED_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 function ActivityCoachPost({message, persona, canReply, defaultOpen, competitionId, visionCapable, lastOwnActivityId}) {
     const capped = message.points_capped;
@@ -310,6 +345,7 @@ export function CoachCorner({competition, isOwner}) {
     const [showConfigModal, setShowConfigModal] = useState(false);
     const [showOlder, setShowOlder] = useState(false);
     const [now, setNow] = useState(Date.now());
+    const cutoff = Date.now() - FEED_WINDOW_MS;
 
     // Deep link from the Coach page's "Respond" button
     // (/competition/<id>?reply=<messageId>): scroll Coach's Corner into
@@ -330,8 +366,10 @@ export function CoachCorner({competition, isOwner}) {
     }, [picturedFeed]);
     useEffect(() => {
         if (!replyTargetId || !messages) return;
-        const idx = messages.findIndex((m) => m.id === replyTargetId);
-        if (idx >= CORNER_PREVIEW) setShowOlder(true);
+        const target = messages.find((m) => m.id === replyTargetId);
+        if (target && new Date(target.posted_at).getTime() < Date.now() - FEED_WINDOW_MS) {
+            setShowOlder(true);
+        }
     }, [replyTargetId, messages]);
 
     if (!config) {
@@ -355,10 +393,10 @@ export function CoachCorner({competition, isOwner}) {
         );
     }
 
-    const persona = config.persona_detail || {};
     const all = messages || [];
-    const visible = showOlder ? all : all.slice(0, CORNER_PREVIEW);
-    const older = Math.max(0, all.length - CORNER_PREVIEW);
+    const recent = all.filter((m) => new Date(m.posted_at).getTime() >= cutoff);
+    const older = all.filter((m) => new Date(m.posted_at).getTime() < cutoff);
+    const visible = showOlder ? all : recent;
     const lastOwnActivityId = all.find(
         (m) => m.kind === "activity" && m.workout_user_id === me?.id
     )?.id ?? null;
@@ -366,11 +404,12 @@ export function CoachCorner({competition, isOwner}) {
     function renderMessage(m) {
         const threadPersona = {avatar: m.persona_avatar, profile_picture: m.persona_profile_picture, theme_color: m.persona_theme_color, name: m.persona_name};
         const picturedReplies = (m.replies || []).some((r) => r.image);
+        const canReply = Boolean(config.enabled && m.kind === "activity");
         if (m.kind === "photo") {
             return (
                 <li key={m.id} className="flex items-start gap-2 min-w-0">
                     <ProfileAvatar user={{profile_picture: m.author_profile_picture, first_name: m.author_name}} size={30}/>
-                    <PhotoMessage message={m} persona={threadPersona} canReply={config.enabled}
+                    <PhotoMessage message={m} persona={threadPersona} canReply={canReply}
                                   defaultOpen={m.id === replyTargetId}
                                   competitionId={competition.id}
                                   visionCapable={config.vision_capable}
@@ -382,7 +421,7 @@ export function CoachCorner({competition, isOwner}) {
         if (m.kind === "activity") {
             return (
                 <li key={m.id} className="min-w-0">
-                    <ActivityCoachPost message={m} persona={threadPersona} canReply={config.enabled}
+                    <ActivityCoachPost message={m} persona={threadPersona} canReply={canReply}
                                        defaultOpen={m.id === replyTargetId}
                                        competitionId={competition.id}
                                        visionCapable={config.vision_capable}
@@ -407,7 +446,7 @@ export function CoachCorner({competition, isOwner}) {
                         {m.athlete_name ? `→ ${m.athlete_name} · ` : ""}{timeAgo(m.posted_at)}
                         {picturedReplies && m.workout_summary ? ` · ${m.workout_summary}` : ""}
                     </p>
-                    <CoachThread message={m} persona={threadPersona} canReply={config.enabled}
+                    <CoachThread message={m} persona={threadPersona} canReply={canReply}
                                  defaultOpen={m.id === replyTargetId}
                                  competitionId={competition.id}
                                  visionCapable={config.vision_capable}
@@ -419,29 +458,20 @@ export function CoachCorner({competition, isOwner}) {
 
     return (
         <div ref={cornerRef} className="mb-4 rounded-3xl glass-card overflow-hidden">
-            <div className="flex flex-wrap items-center gap-3 px-4 sm:px-5 pt-4 pb-3 border-b border-gray-200 dark:border-ink-700/60">
-                <PersonaAvatar persona={persona} size={44} glow={config.enabled}/>
-                <div className="flex-1 min-w-0">
-                    <p className="font-display text-xs uppercase tracking-wider flex items-center gap-2">
-                        Coach's Corner
-                        <span className={"inline-block h-2 w-2 rounded-full " + (config.enabled ? "bg-volt-500 animate-pulse" : "bg-gray-300")}/>
-                    </p>
-                    <p className="text-xs text-gray-400 break-words">
-                        {persona.name}{config.enabled ? " is on duty" : " is benched"} · {config.messages_posted || 0} messages
-                    </p>
-                </div>
-            </div>
             <CoachHandover configId={config.id} enabled={config.enabled}/>
             {all.length > 0 ? (
                 <>
                     <ul className="px-3 sm:px-4 py-3 space-y-3">
                         {visible.map(renderMessage)}
                     </ul>
-                    {older > 0 && (
+                    {recent.length === 0 && !showOlder && (
+                        <p className="px-5 pb-3 text-sm text-gray-400">Nothing in the last 48 hours.</p>
+                    )}
+                    {older.length > 0 && (
                         <div className="px-3 sm:px-4 pb-3">
                             <button type="button" onClick={() => setShowOlder((v) => !v)}
                                     className="w-full min-h-[44px] rounded-2xl border border-volt-400/40 text-sm font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition">
-                                {showOlder ? "Show latest" : `${older} older ${older === 1 ? "message" : "messages"}`}
+                                {showOlder ? "Last 48 hours" : `${older.length} older ${older.length === 1 ? "message" : "messages"}`}
                             </button>
                         </div>
                     )}

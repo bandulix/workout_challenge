@@ -157,7 +157,7 @@ function WelcomePage() {
 
     // Session gate: this is the app's cold-start URL (the APK always
     // opens here). With a stored refresh token there is a live session -
-    // go straight to the dashboard instead of showing the landing page.
+    // go straight to the coach page instead of showing the landing page.
     // The dashboard's API queries refresh the access token as needed, and
     // a genuinely expired refresh token bounces back to /login via
     // baseQueryWithReauth - which is the correct end state anyway.
@@ -165,7 +165,10 @@ function WelcomePage() {
     // Android back button exits the app instead of bouncing back here.
     useEffect(() => {
         if (localStorage.getItem('refresh_token') !== null) {
-            navigate(`/dashboard/${location.search}`, {replace: true});
+            const params = new URLSearchParams(location.search);
+            navigate(params.get("join") || params.get("action")
+                ? `/dashboard${location.search}`
+                : `/coach${location.search}`, {replace: true});
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -195,7 +198,11 @@ function goAfterLogin(navigate, location, params) {
             return;
         }
     }
-    navigate(`/dashboard/${location.search}`);
+    if (params?.has("join") || params?.has("action")) {
+        navigate(`/dashboard${location.search}`);
+        return;
+    }
+    navigate(`/coach${location.search}`);
 }
 
 
@@ -246,12 +253,12 @@ function RegisterPage() {
                 const params = new URLSearchParams(location.search);
                 if (success_register && success_login) {
                     dispatch({type: "RESET_STORE"});
-                    navigate(`/dashboard/?${params.toString()}`);
+                    navigate(params.get("join") ? `/dashboard/?${params.toString()}` : `/coach`);
                 } else if (!success_register) {
                     setErrorMessage(msg_register.split(", "));
                 } else if (!success_login) {
                     setErrorMessage(["Successful Registration", "Login " + msg_login]);
-                    navigate(`/dashboard/?${params.toString()}`);
+                    navigate(params.get("join") ? `/dashboard/?${params.toString()}` : `/coach`);
                 }
             } catch (err) {
                 console.error("Registration failed", err);

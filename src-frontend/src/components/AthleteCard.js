@@ -1,8 +1,9 @@
 import React from "react";
-import {CalendarDays, Crown, Flame, Footprints, Timer, X} from "lucide-react";
+import {CalendarDays, Crown, Flame, Footprints, Timer} from "lucide-react";
 import ProfileAvatar from "./ProfileAvatar";
 import {DogTagRow} from "./gameBits";
 import {sportLabelShort} from "../forms/workoutForm";
+import {OverlaySheet} from "../forms/basicComponents";
 
 function Kpi({icon: Icon, value, label}) {
     return (
@@ -36,18 +37,10 @@ export default function AthleteCard({person, dunce, weekTotal, weekBars, trendSp
     const stravaId = person.strava_allow_follow ? person.strava_athlete_id : null;
 
     return (
-        <div className="fixed inset-0 z-[70] bg-ink-950/40 dark:bg-black/55 backdrop-blur-[3px] flex items-end sm:items-center justify-center p-3 sm:p-4"
-             onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="athlete-card-name">
-            <div className="glass-card w-full max-w-md rounded-3xl p-5 sm:p-6 animate-pop-in relative"
-                 onClick={(e) => e.stopPropagation()}>
-                <button type="button" onClick={onClose} aria-label="Close"
-                        className="absolute top-3 right-3 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-volt-600 dark:hover:text-volt-300">
-                    <X className="h-5 w-5"/>
-                </button>
-
+        <OverlaySheet title={name} onClose={onClose} zClass="z-[70]" labelledBy="athlete-card-name">
                 <div className="flex flex-col items-center text-center">
                     <ProfileAvatar user={person} size={88} dunce={dunce}/>
-                    <h2 id="athlete-card-name" className="mt-3 font-display text-xl uppercase tracking-wide leading-tight">
+                    <h2 className="mt-3 font-display text-xl uppercase tracking-wide leading-tight">
                         {name}
                     </h2>
                     <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -122,7 +115,6 @@ export default function AthleteCard({person, dunce, weekTotal, weekBars, trendSp
                         Strava profile
                     </a>
                 )}
-            </div>
-        </div>
+        </OverlaySheet>
     );
 }

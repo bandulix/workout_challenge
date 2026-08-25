@@ -4,6 +4,17 @@ module.exports = {
   content: [
     "./src/**/*.{js,jsx,ts,tsx}",
   ],
+  safelist: [
+    "animate-squad-orbit",
+    "animate-squad-orbit-slow",
+    "animate-squad-orbit-fast",
+    "animate-squad-orbit-ccw",
+    "animate-squad-orbit-tilt",
+    "animate-squad-orbit-swing",
+    "animate-squad-pip-wave",
+    "animate-squad-hop",
+    "animate-float-slow",
+  ],
   theme: {
     extend: {
       colors: {
@@ -79,6 +90,22 @@ module.exports = {
           '0%': { transform: 'rotate(0deg)' },
           '100%': { transform: 'rotate(360deg)' },
         },
+        'squad-orbit-ccw': {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(-360deg)' },
+        },
+        'squad-orbit-tilt': {
+          '0%': { transform: 'rotateX(58deg) rotateZ(0deg)' },
+          '100%': { transform: 'rotateX(58deg) rotateZ(360deg)' },
+        },
+        'squad-orbit-swing': {
+          '0%, 100%': { transform: 'rotate(-55deg)' },
+          '50%': { transform: 'rotate(55deg)' },
+        },
+        'squad-pip-wave': {
+          '0%, 100%': { transform: 'scale(1)', opacity: '0.4' },
+          '40%': { transform: 'scale(1.65)', opacity: '1' },
+        },
         'squad-hop': {
           '0%, 100%': { transform: 'translateY(0) scale(1)' },
           '50%': { transform: 'translateY(-3px) scale(1.2)' },
@@ -97,10 +124,14 @@ module.exports = {
         'blink-caret': 'blink-caret 1s step-end infinite',
         'nav-rise': 'nav-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both',
         'volt-breathe': 'volt-breathe 3.2s ease-in-out infinite',
-        'kenburns': 'kenburns 28s ease-out forwards',
+        'kenburns': 'kenburns 28s ease-in-out infinite alternate',
         'squad-orbit-slow': 'squad-orbit 28s linear infinite',
         'squad-orbit': 'squad-orbit 16s linear infinite',
         'squad-orbit-fast': 'squad-orbit 9s linear infinite',
+        'squad-orbit-ccw': 'squad-orbit-ccw 18s linear infinite',
+        'squad-orbit-tilt': 'squad-orbit-tilt 14s linear infinite',
+        'squad-orbit-swing': 'squad-orbit-swing 4.6s ease-in-out infinite',
+        'squad-pip-wave': 'squad-pip-wave 1.6s ease-in-out infinite',
         'squad-hop': 'squad-hop 1.1s ease-in-out infinite',
       },
     },
