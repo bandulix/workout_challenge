@@ -37,7 +37,7 @@ class RegistrationInviteGateTests(TestCase):
         # point-recalc plumbing that expects a Celery broker - no-op it.
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -146,7 +146,7 @@ class ProfilePictureEndpointTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -261,7 +261,7 @@ class UserListPrivacyTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -352,7 +352,7 @@ class ResetStravaTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -417,7 +417,7 @@ class ActivitySourceTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -526,7 +526,7 @@ class CrossProviderDuplicateGuardTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -766,7 +766,7 @@ class HealthWorkoutMappingTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -977,7 +977,7 @@ class HealthConnectorTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -1234,7 +1234,7 @@ class HealthOwAuthTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -1456,3 +1456,165 @@ class PasswordResetEmailTests(TestCase):
         from .emails.celery_emails import password_reset_email
 
         self.assertIn("not found", password_reset_email(999999, "https://x/"))
+
+    def test_reset_template_uses_volt_brand_and_fork_repo(self):
+        from django.core import mail
+        from .emails.celery_emails import password_reset_email
+
+        password_reset_email(self.user.pk, "https://workout.example.com/password/reset/MQ/tok/")
+        body = mail.outbox[-1].alternatives[0][0]
+        self.assertIn("#d7ff3e", body)
+        self.assertIn("#0b0b0c", body)
+        self.assertIn("github.com/bandulix/workout_challenge", body)
+        self.assertNotIn("#075985", body)
+        self.assertNotIn("vanalmsick", body)
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    MAIN_HOST="https://workout.example.com",
+    EMAIL_FROM="workout@example.com",
+    EMAIL_REPLY_TO=["support@example.com"],
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+    REGISTRATION_TOKEN="test-invite-token",
+)
+class EmailVerifyFlowTests(TestCase):
+    """Signup mails a confirm link, not the welcome. Welcome and weekly
+    mail wait until the address is confirmed. Resend is own-inbox only."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.verify_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+    def _user(self, email="new@example.com", verified=False):
+        user = CustomUser.objects.create_user(
+            email=email, password="Sup3r-Secret!Pass", first_name="Ned", last_name="",
+        )
+        if verified:
+            user.is_verified = True
+            user.save(update_fields=["is_verified"])
+        return user
+
+    def _uid_token(self, user):
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+        from .emails.tokens import email_verify_token
+        return urlsafe_base64_encode(force_bytes(user.pk)), email_verify_token.make_token(user)
+
+    def test_signup_queues_verify_not_welcome(self):
+        with mock.patch("custom_user.models.verify_email.apply_async") as queued_verify, \
+             mock.patch("custom_user.emails.celery_emails.welcome_email.apply_async") as queued_welcome:
+            response = self.client.post("/api/user/", {
+                "email": "fresh@example.com",
+                "first_name": "Fay",
+                "last_name": "",
+                "password": "Sup3r-Secret!Pass",
+                "invite_token": "test-invite-token",
+            }, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+        queued_verify.assert_called()
+        queued_welcome.assert_not_called()
+        user = CustomUser.objects.get(email="fresh@example.com")
+        self.assertFalse(user.is_verified)
+
+    def test_confirm_marks_verified_and_queues_welcome_once(self):
+        user = self._user()
+        uid, token = self._uid_token(user)
+        with mock.patch("custom_user.emails.celery_emails.welcome_email.apply_async") as queued:
+            first = self.client.post("/api/email-verify/confirm/", {"uid": uid, "token": token}, format="json")
+            second = self.client.post("/api/email-verify/confirm/", {"uid": uid, "token": token}, format="json")
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.is_verified)
+        queued.assert_called_once()
+
+    def test_confirm_rejects_bad_token_with_uniform_message(self):
+        user = self._user()
+        uid, _token = self._uid_token(user)
+        response = self.client.post(
+            "/api/email-verify/confirm/",
+            {"uid": uid, "token": "bogus"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("invalid or has expired", str(response.data))
+        user.refresh_from_db()
+        self.assertFalse(user.is_verified)
+
+    def test_welcome_skips_unverified(self):
+        from django.core import mail
+        from .emails.celery_emails import welcome_email
+        user = self._user()
+        result = welcome_email(user.pk)
+        self.assertIn("skip unverified", result)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_welcome_sends_after_confirm_with_brand(self):
+        from django.core import mail
+        from .emails.celery_emails import welcome_email
+        user = self._user(verified=True)
+        result = welcome_email(user.pk)
+        self.assertEqual(result["email"], user.email)
+        self.assertEqual(len(mail.outbox), 1)
+        body = mail.outbox[0].alternatives[0][0]
+        self.assertIn("#d7ff3e", body)
+        self.assertIn("github.com/bandulix/workout_challenge", body)
+        self.assertIn("Drill Instructor", body)
+        self.assertNotIn("#075985", body)
+
+    def test_verify_task_sends_link(self):
+        from django.core import mail
+        from .emails.celery_emails import verify_email
+        user = self._user()
+        verify_email(user.pk)
+        self.assertEqual(len(mail.outbox), 1)
+        body = mail.outbox[0].alternatives[0][0]
+        self.assertIn("/email/verify/", body)
+        self.assertIn("Confirm", body)
+        self.assertIn("#d7ff3e", body)
+
+    def test_weekly_skips_unverified(self):
+        from django.core import mail
+        from .emails.celery_emails import weekly_email
+        user = self._user()
+        user.email_mid_week = True
+        user.save(update_fields=["email_mid_week"])
+        result = weekly_email(user.pk)
+        self.assertIn("skip unverified", result)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_resend_requires_login_and_cools_down(self):
+        user = self._user()
+        denied = self.client.post("/api/email-verify/resend/")
+        self.assertEqual(denied.status_code, 401)
+        self.client.force_authenticate(user)
+        with mock.patch("custom_user.emails.celery_emails.verify_email.apply_async") as queued:
+            first = self.client.post("/api/email-verify/resend/")
+            second = self.client.post("/api/email-verify/resend/")
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 429)
+        queued.assert_called_once()
+
+    def test_changing_email_unsets_verified(self):
+        user = self._user(verified=True)
+        self.client.force_authenticate(user)
+        with mock.patch("custom_user.models.verify_email.apply_async") as queued:
+            response = self.client.patch(
+                f"/api/user/{user.pk}/",
+                {"email": "moved@example.com"},
+                format="json",
+            )
+        self.assertEqual(response.status_code, 200, response.content)
+        user.refresh_from_db()
+        self.assertEqual(user.email, "moved@example.com")
+        self.assertFalse(user.is_verified)
+        queued.assert_called()
+

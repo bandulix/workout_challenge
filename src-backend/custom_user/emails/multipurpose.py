@@ -54,6 +54,7 @@ def send_email(subject, body, to_email, cc=[], reply_to=[]):
         ) if reply_to == [] else reply_to
         # In DEBUG or to .local addresses, redirect to EMAIL_FROM so
         # emails don't escape to unintended recipients during dev.
+        to_email = _strip_control_chars(to_email)
         to_email = [settings.EMAIL_FROM] if (
             settings.DEBUG or '.local' in to_email.lower()
         ) else [to_email]

@@ -13,7 +13,7 @@ from django.db.models.signals import m2m_changed
 from django.dispatch import receiver
 
 from competition.scorer import trigger_user_change
-from custom_user.emails.celery_emails import welcome_email
+from custom_user.emails.celery_emails import verify_email
 
 # Create your models here.
 GENDER_CHOICES = [
@@ -199,6 +199,14 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
                 self.username = f'{self.first_name} {".".join([i[0] for i in self.last_name.replace("-"," ").split(" ") if len(i) >= 1])}.'
 
         is_create = self.pk is None
+        old_email = None if is_create else (self._original or {}).get("email")
+        email_changed = (
+            not is_create
+            and old_email is not None
+            and old_email != self.email
+        )
+        if email_changed:
+            self.is_verified = False
 
         # The very first user to register becomes the admin so they can
         # access /admin/ and edit Site Settings without a separate
@@ -232,9 +240,12 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
         super().save(*args, **kwargs)
 
-        if is_create:
-            eta = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60 * 5)
-            welcome_email.apply_async(args=[self.pk], eta=eta)
+        # Confirm the address before any welcome / coach / weekly mail.
+        # The verify task is the only mail that may leave the server for
+        # an unconfirmed inbox (short transactional link, not the
+        # branded welcome).
+        if is_create or email_changed:
+            verify_email.apply_async(args=[self.pk])
 
         changed = self.get_changed_fields()
         trigger_user_change(

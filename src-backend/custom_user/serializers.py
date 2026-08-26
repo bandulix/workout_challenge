@@ -6,6 +6,7 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes
 
 from .models import CustomUser
+from .emails.tokens import email_verify_token
 
 
 def user_picture_url(user):
@@ -279,3 +280,28 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         # outstanding refresh token so stolen sessions end here.
         from .views import _blacklist_user_tokens
         _blacklist_user_tokens(self.user)
+
+
+class EmailVerifyConfirmSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+
+    def validate(self, attrs):
+        try:
+            uid = urlsafe_base64_decode(attrs["uid"]).decode()
+            self.user = CustomUser.objects.get(pk=uid)
+        except (CustomUser.DoesNotExist, ValueError, TypeError, OverflowError):
+            raise serializers.ValidationError("This confirmation link is invalid or has expired.")
+
+        if not email_verify_token.check_token(self.user, attrs["token"]):
+            raise serializers.ValidationError("This confirmation link is invalid or has expired.")
+        return attrs
+
+    def save(self):
+        """Return True when this call flipped the flag (so the view
+        queues welcome only once)."""
+        if self.user.is_verified:
+            return False
+        self.user.is_verified = True
+        self.user.save(update_fields=["is_verified"])
+        return True

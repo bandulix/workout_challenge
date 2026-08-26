@@ -21,7 +21,7 @@ class SiteSettingsApiTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)

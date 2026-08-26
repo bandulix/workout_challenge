@@ -1,0 +1,35 @@
+<mjml>
+  <!-- Visual sketch. The sent template is email_verify.html (Django). Do not compile over it. -->
+  <mj-head>
+    <mj-preview>Confirm this email to start using Workout Challenge. The link expires in three days.</mj-preview>
+    <mj-attributes>
+      <mj-all font-family="Arial, Helvetica, sans-serif" />
+      <mj-text color="#e4e4e7" font-size="15px" line-height="1.55" />
+      <mj-button background-color="#d7ff3e" color="#0b0b0c" border-radius="999px" font-size="13px" font-weight="700" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#0b0b0c">
+    <mj-section background-color="#141416" padding="28px 28px 18px">
+      <mj-column>
+        <mj-text align="center" font-size="11px" letter-spacing="4px" color="#a1a1aa" padding-bottom="8px">YOUR AI DRILL INSTRUCTOR</mj-text>
+        <mj-text align="center" font-size="28px" font-weight="800" color="#f4f4f5" padding="0">WORKOUT</mj-text>
+        <mj-text align="center" font-size="28px" font-weight="800" color="#d7ff3e" padding="0 0 12px">CHALLENGE</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-section background-color="#d7ff3e" padding="0"><mj-column><mj-divider border-width="3px" border-color="#d7ff3e" padding="0"></mj-divider></mj-column></mj-section>
+    <mj-section background-color="#141416" padding="24px 28px">
+      <mj-column>
+        <mj-text>Hi {{ first_name }},</mj-text>
+        <mj-text>Confirm this address so we know the inbox is yours. Coach, weekly, and welcome mail starts after that.</mj-text>
+        <mj-text font-size="13px" color="#a1a1aa">If you did not create this account, ignore this message. Nothing else will be sent.</mj-text>
+        <mj-button href="{{ VERIFY_URL }}">Confirm email</mj-button>
+        <mj-text align="center" font-size="12px" color="#6b6b73">{{ VERIFY_URL }}</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-section padding="18px 12px 0">
+      <mj-column>
+        <mj-text align="center" font-size="11px" color="#6b6b73">Workout Challenge<br/>Issues? <a href="mailto:{{ EMAIL_REPLY_TO }}" style="color:#d7ff3e;">Email us</a>.<br/><a href="https://github.com/bandulix/workout_challenge" style="color:#6b6b73;">Source code</a></mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

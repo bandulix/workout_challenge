@@ -477,7 +477,7 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
                 </div>
             </SettingsGroup>
 
-            <SettingsGroup title="Emails">
+            <SettingsGroup title="Emails" hint={user.is_verified ? "Weekly mail only goes to a confirmed address." : "This address is not confirmed yet. Use the yellow bar to resend the link."}>
                 <div className="-mx-2">
                     <SingleForm fields={notifyFields} values={values} setValues={setValues} errors={fieldErrors}/>
                 </div>

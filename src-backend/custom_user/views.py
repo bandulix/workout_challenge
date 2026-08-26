@@ -21,7 +21,11 @@ from django.shortcuts import get_object_or_404
 from django.conf import settings
 from django.core.cache import cache
 
-from .serializers import PasswordResetSerializer, PasswordResetConfirmSerializer
+from .serializers import (
+    PasswordResetSerializer,
+    PasswordResetConfirmSerializer,
+    EmailVerifyConfirmSerializer,
+)
 from .models import CustomUser
 from .serializers import CustomUserSerializer
 from .filters import CustomUserFilter
@@ -114,9 +118,9 @@ class RegisterRateThrottle(BaseThrottle):
     behind a single NAT can create a few accounts in one sitting)
     while still keeping the
     ``first-registered-user-becomes-admin`` race outside the reach of
-    a single attacker. Pure-noise attacks (mass bot account creation
-    for spam) need to clear captcha / email verification before they
-    get this far, so 20/hr is well below that bar too.
+    a single attacker. Signup still sends one confirmation mail to the
+    posted address (20/hr/IP); branded welcome / weekly / board mail
+    wait until that link is clicked.
     """
     RATE_LIMIT = 20
     RATE_WINDOW_SECONDS = 60 * 60
@@ -253,6 +257,45 @@ class PasswordResetConfirmView(APIView):
             serializer.save()
             return Response({"detail": "Password has been reset."})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EmailVerifyConfirmView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
+
+    def post(self, request):
+        serializer = EmailVerifyConfirmSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        newly = serializer.save()
+        if newly:
+            from .emails.celery_emails import welcome_email
+            welcome_email.apply_async(args=[serializer.user.pk])
+        return Response({"detail": "Email confirmed."})
+
+
+class EmailVerifyResendView(APIView):
+    """Logged-in user, own inbox only. 10-minute cooldown."""
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
+    RESEND_COOLDOWN_SECONDS = 10 * 60
+
+    def post(self, request):
+        user = request.user
+        if user.is_verified:
+            return Response({"detail": "This email is already confirmed."})
+        key = f"email-verify-resend:{user.pk}"
+        if cache.get(key):
+            return Response(
+                {"detail": "Please wait before requesting another link."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        cache.set(key, 1, self.RESEND_COOLDOWN_SECONDS)
+        from .emails.celery_emails import verify_email
+        verify_email.apply_async(args=[user.pk])
+        return Response({"detail": "Check your inbox for a confirmation link."})
 
 
 class StravaStateView(APIView):

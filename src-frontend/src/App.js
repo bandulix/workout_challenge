@@ -8,6 +8,7 @@ import {
     LogInPage,
     ResetPasswordPage,
     SetNewPasswordPage,
+    VerifyEmailPage,
     NotFound,
     LogoutPage
 } from "./pages/Public";
@@ -15,6 +16,7 @@ import BottomNav from "./utils/bottomNav";
 import AppBackdrop from "./components/AppBackdrop";
 import WhatsNew from "./components/WhatsNew";
 import EchoArtNudge from "./components/EchoArtNudge";
+import VerifyEmailBanner from "./components/VerifyEmailBanner";
 import DialogHost from "./components/DialogHost";
 import {InitStravaLink, ReturnStravaLink} from "./pages/StravaLink";
 
@@ -48,6 +50,7 @@ function App() {
                 <Route path="logout" element={<LogoutPage />} />
                 <Route path="password" element={<ResetPasswordPage />} />
                 <Route path="password/reset/:id/:token" element={<SetNewPasswordPage />} />
+                <Route path="email/verify/:id/:token" element={<VerifyEmailPage />} />
 
                 <Route path="dashboard" element={
                     <Suspense fallback={null}><MySpace/></Suspense>
@@ -75,6 +78,7 @@ function App() {
             {/* Release popup: one changelog + reload prompt per release. */}
             <WhatsNew/>
             <EchoArtNudge/>
+            <VerifyEmailBanner/>
             </div>
         </Router>
     );

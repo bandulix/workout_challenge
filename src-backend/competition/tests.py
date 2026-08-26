@@ -26,7 +26,7 @@ class StatsCacheTests(TestCase):
         for target in (
             "competition.scorer.trigger_recalc_points",
             "drill_instructor.tasks.post_workout_comment.delay",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -303,7 +303,7 @@ class CeleryAllowlistTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -352,7 +352,7 @@ class GoalCompetitionImmutableTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -395,7 +395,7 @@ class LeaderboardAthleteCardTests(TestCase):
         for target in (
             "competition.scorer.trigger_recalc_points",
             "drill_instructor.tasks.post_workout_comment.delay",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -452,7 +452,7 @@ class GoalEditRescoresChallengeTests(TestCase):
         for target in (
             "competition.scorer.trigger_recalc_points",
             "drill_instructor.tasks.post_workout_comment.delay",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)

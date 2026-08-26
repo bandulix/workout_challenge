@@ -58,12 +58,18 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
         # picture also allow a custom coach assigned to a challenge the
         # caller is in - so avatars load in the feed - but never every
         # uploaded picture on the server.
+        #
+        # Assigned coaches go in via pk__in, not a JOIN on this queryset:
+        # ``filter(Q(is_builtin=True) | Q(competitions__...))`` INNER
+        # JOINs configs and drops built-ins that are not assigned, so
+        # PATCH/DELETE on a stock coach 404'd instead of 403.
         visible = Q(is_builtin=True) | Q(created_by=user)
         if self.action != "list":
-            visible |= (
+            assigned = DrillInstructorPersona.objects.filter(
                 Q(competitions__competition__owner=user)
                 | Q(competitions__competition__user=user)
-            )
+            ).values("pk")
+            visible |= Q(pk__in=assigned)
         return qs.filter(visible).distinct().order_by("name")
 
     def _may_write(self, persona):

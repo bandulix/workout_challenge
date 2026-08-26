@@ -8,17 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Confirm your email before any other mail.** Signup sends a short confirmation link, not the welcome. Welcome, weekly, board, and “log your workouts” wait until that link is clicked. Existing accounts stay confirmed. Changing your address sends a new link. Resend is on the yellow bar (own inbox, 10-minute cooldown).
 - **Photo on an activity is +10P** — one picture per workout. The coach still remixes it for Hall of Roasts; the remix is the activity-card backdrop, not a feed reply. The Photo button advertises +10P and disappears after upload.
 - **Tap the points chip** for how that score was made: real minutes / kcal / km, the activity-type factor from Site Settings, each challenge goal (target, period, caps), and Photo +10P. Several goals add up (`25 + 10 = 35P`). If a cap fired: “Capped at 40P. You hit the daily limit of 60 active minutes.”
 - **Leaderboard shows equalizer factors** for every athlete (`92% effort · 105% distance`), including team rows and the athlete card.
 
 ### Changed
+- **All outbound mail matches the app** — ink canvas, volt buttons, “Your AI Drill Instructor” wordmark, fork source link. No leftover teal hero or upstream GitHub URL.
 - **Dark theme only** — light mode, Match device, and the Settings theme cycle are gone. Night backdrops only; limestone (`-light`) plates removed.
 - **Coach shows the latest message**, not a wheel or card stack. Same activity card as the feed (points chip, photo, backdrop).
 - **Feed cards** — on-duty strip, one glass card per event, coach quote under the athlete, day hairlines. Board and Trophies use the same cards (no wrapping pane).
 - **“How Points Work”** in the challenge header is gone; the chip popup replaced it.
 
 ### Fixed
+- **CI persona tests (404 vs 403)** — listing assigned custom coaches used a JOIN that hid built-in personas on PATCH/DELETE. Stock coaches 403 again; someone else’s custom coach stays 404.
 - **Feed points leaked other competitions** — the chip summed every `Points` row on the workout. It now matches the Board (this challenge’s goals and awards only).
 - **Goal editors showed `130.00`** which `type=number` rejected on save. Values display without trailing zeros.
 - **APK cold start** landed on `/` with an empty cache. Last screen and a sanitized API snapshot restore immediately.

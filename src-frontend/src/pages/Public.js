@@ -11,6 +11,7 @@ import {
     apiLogin,
     apiRequestNewPassword,
     apiSetNewPassword,
+    apiConfirmEmail,
     apiRefreshToken,
     sanitizeRedirect,
 } from "../utils/authClient";
@@ -252,6 +253,7 @@ function RegisterPage() {
                 const params = new URLSearchParams(location.search);
                 if (success_register && success_login) {
                     dispatch({type: "RESET_STORE"});
+                    await notice("Account created. Confirm your email — we sent a link. Coach emails start after that.");
                     navigate(params.get("join") ? `/dashboard/?${params.toString()}` : `/coach`);
                 } else if (!success_register) {
                     setErrorMessage(msg_register.split(", "));
@@ -741,5 +743,51 @@ const NotFound = () => {
 };
 
 
-export {WelcomePage, NotFound, RegisterPage, LogInPage, LogoutPage, ResetPasswordPage, SetNewPasswordPage};
+function VerifyEmailPage() {
+    const {id, token} = useParams();
+    const navigate = useNavigate();
+    const [status, setStatus] = useState("working");
+    const started = React.useRef(false);
+
+    useEffect(() => {
+        if (started.current) return;
+        started.current = true;
+        apiConfirmEmail(id, token).then(([ok]) => {
+            setStatus((prev) => (prev === "ok" || ok ? "ok" : "err"));
+        });
+    }, [id, token]);
+
+    return (
+        <BaseHome children={
+            <div className="flex justify-center">
+                <div className="glass-card rounded-3xl px-8 pt-6 pb-8 mb-4 text-left" style={{minWidth: "310px"}}>
+                    {status === "working" && <p className="text-gray-300">Confirming your email…</p>}
+                    {status === "ok" && (
+                        <>
+                            <p className="text-gray-100 font-bold mb-2">Email confirmed.</p>
+                            <p className="text-gray-400 text-sm mb-5">Welcome mail is on its way. You can use the app now.</p>
+                            <button type="button"
+                                    className="bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm"
+                                    onClick={() => navigate("/coach")}>
+                                Open the app
+                            </button>
+                        </>
+                    )}
+                    {status === "err" && (
+                        <>
+                            <p className="text-gray-100 font-bold mb-2">This link is invalid or has expired.</p>
+                            <p className="text-gray-400 text-sm mb-5">Log in and tap Resend on the yellow bar to get a new one.</p>
+                            <Link to="/login" className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300">
+                                Back to sign in
+                            </Link>
+                        </>
+                    )}
+                </div>
+            </div>
+        }/>
+    );
+}
+
+
+export {WelcomePage, NotFound, RegisterPage, LogInPage, LogoutPage, ResetPasswordPage, SetNewPasswordPage, VerifyEmailPage};
 // Auth HTTP lives in utils/authClient.js (same RTK baseQuery as the rest of the app).

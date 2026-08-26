@@ -116,6 +116,14 @@ export const usersApi = createApi({
             query: (body) => ({url: "password-reset/confirm/", method: "POST", body}),
             extraOptions: {skipReauth: true},
         }),
+        emailVerifyConfirm: builder.mutation({
+            query: (body) => ({url: "email-verify/confirm/", method: "POST", body}),
+            extraOptions: {skipReauth: true},
+        }),
+        emailVerifyResend: builder.mutation({
+            query: () => ({url: "email-verify/resend/", method: "POST"}),
+            invalidatesTags: [{type: "User", id: "me"}],
+        }),
         uploadProfilePicture: builder.mutation({
             query: (file) => {
                 const formData = new FormData();
@@ -138,4 +146,5 @@ export const {
     useUpdateUserMutation,
     useDeleteUserMutation,
     useUploadProfilePictureMutation,
+    useEmailVerifyResendMutation,
 } = usersApi;

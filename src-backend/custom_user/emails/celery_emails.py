@@ -5,59 +5,91 @@ from django.core.cache import cache
 from django.conf import settings
 from django.apps import apps
 from django.template.loader import render_to_string
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from workout_challenge.celery import app
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum, Count
 from django.db.models.functions import TruncDate, TruncDay
 
 from .multipurpose import send_email, email_settings_context
+from .context import base_email_context
+from .tokens import email_verify_token
 from competition.stats import get_competition_stats
 
 logger = logging.getLogger(__name__)
 
 
+def _user(user_pk):
+    CustomUser = apps.get_model("custom_user", "CustomUser")
+    return CustomUser.objects.filter(pk=user_pk).first()
+
+
+def _send_user_email(user, subject, template, extra=None, require_verified=True):
+    """Render ``template`` and send. Marketing mail requires a confirmed
+    inbox; verify / password-reset pass ``require_verified=False``."""
+    if user is None:
+        return "user not found"
+    if require_verified and not user.is_verified:
+        return f"skip unverified user {user.pk}"
+    ctx = {**base_email_context(user), **(extra or {})}
+    with email_settings_context():
+        email_body = render_to_string(template, ctx)
+        if settings.DEBUG:
+            with open("tmp_email.html", "w") as file:
+                file.write(email_body)
+        send_email(subject=subject, body=email_body, to_email=user.email)
+    return {"pk": user.pk, "username": user.username, "email": user.email}
+
+
+@app.task()
+def verify_email(user_pk):
+    """Short confirmation link. The only mail sent to an unconfirmed address."""
+    user = _user(user_pk)
+    if user is None:
+        return f"user {user_pk} not found"
+    if user.is_verified:
+        return f"user {user_pk} already confirmed"
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = email_verify_token.make_token(user)
+    verify_url = f"{settings.MAIN_HOST}/email/verify/{uid}/{token}/"
+    return _send_user_email(
+        user,
+        subject="Workout Challenge — confirm your email",
+        template="email_verify.html",
+        extra={"VERIFY_URL": verify_url},
+        require_verified=False,
+    )
+
+
 @app.task()
 def welcome_email(user_pk):
-    """Welcome email for new users."""
-    CustomUser = apps.get_model('custom_user', 'CustomUser')
-    user_obj = CustomUser.objects.get(pk=user_pk)
-
-    email_subject = 'Welcome to the Workout Challenge!'
-
-    with email_settings_context():
-        email_body = render_to_string(
-            "email_welcome.html",
-            {
-                'first_name': user_obj.first_name,
-                'MAIN_HOST': settings.MAIN_HOST,
-                'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
-                'link_strava_note': user_obj.strava_refresh_token is None or user_obj.strava_refresh_token == '',
-            }
-        )
-
-        if settings.DEBUG:
-            with open('tmp_email.html', 'w') as file:
-                file.write(email_body)
-
-        send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
-
-    return {'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email}
+    """Welcome mail after the address is confirmed."""
+    user = _user(user_pk)
+    extra = {"link_import_note": user is not None and user.get_activity_source() is None}
+    return _send_user_email(
+        user,
+        subject="Welcome to the Workout Challenge",
+        template="email_welcome.html",
+        extra=extra,
+    )
 
 
 @app.task()
 def send_all_log_workouts_email():
-    logger.info('Scheduling log workout emails')
-    CustomUser = apps.get_model('custom_user', 'CustomUser')
+    logger.info("Scheduling log workout emails")
+    CustomUser = apps.get_model("custom_user", "CustomUser")
     user_lst = CustomUser.objects.filter(
-        Q(my_competitions__start_date__lte=datetime.date.today()) &
-        Q(my_competitions__end_date__gte=datetime.date.today())
-    ).order_by('pk').distinct()  # distinct: one row per user, not per active competition
+        is_verified=True,
+        my_competitions__start_date__lte=datetime.date.today(),
+        my_competitions__end_date__gte=datetime.date.today(),
+    ).order_by("pk").distinct()
     task_log = []
     if len(user_lst) > 0:
         eta_steps = max(min((60 * 60) // len(user_lst), 60), 10)
         eta = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10)
         for user_obj in user_lst:
             result = log_workouts_email.apply_async(args=[user_obj.pk], eta=eta)
-            task_log.append({'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email, 'task_id': result.task_id, 'eta': eta.isoformat()})
+            task_log.append({"pk": user_obj.pk, "username": user_obj.username, "email": user_obj.email, "task_id": result.task_id, "eta": eta.isoformat()})
             eta += datetime.timedelta(seconds=eta_steps)
     return task_log
 
@@ -65,47 +97,37 @@ def send_all_log_workouts_email():
 @app.task()
 def log_workouts_email(user_pk):
     """Email reminder for users to please log their workouts."""
-    CustomUser = apps.get_model('custom_user', 'CustomUser')
-    user_obj = CustomUser.objects.get(pk=user_pk)
-    workout_obj_lst = user_obj.workout_set.order_by('-start_datetime')[:3]
-
-    email_subject = 'Workout Challenge - Log Your Workouts!'
-
-    with email_settings_context():
-        email_body = render_to_string(
-            "email_log_workouts.html",
-            {
-                'first_name': user_obj.first_name,
-                'last_workouts': workout_obj_lst,
-                'link_strava_note': user_obj.strava_refresh_token is None or user_obj.strava_refresh_token == '',
-                'MAIN_HOST': settings.MAIN_HOST,
-                'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
-            }
-        )
-
-        if settings.DEBUG:
-            with open('tmp_email.html', 'w') as file:
-                file.write(email_body)
-
-        send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
-
-    return {'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email}
+    user = _user(user_pk)
+    if user is None:
+        return f"user {user_pk} not found"
+    if not user.is_verified:
+        return f"skip unverified user {user.pk}"
+    extra = {
+        "last_workouts": user.workout_set.order_by("-start_datetime")[:3],
+        "link_import_note": user.get_activity_source() is None,
+    }
+    return _send_user_email(
+        user,
+        subject="Workout Challenge — log last week's workouts",
+        template="email_log_workouts.html",
+        extra=extra,
+    )
 
 
 @app.task()
 def send_all_competition_start_email():
-    logger.info('Scheduling competition start emails')
-    Competition = apps.get_model('competition', 'Competition')
-    competition_lst = Competition.objects.filter(start_date=datetime.date.today() + datetime.timedelta(days=1)).order_by('pk')
+    logger.info("Scheduling competition start emails")
+    Competition = apps.get_model("competition", "Competition")
+    competition_lst = Competition.objects.filter(start_date=datetime.date.today() + datetime.timedelta(days=1)).order_by("pk")
     task_log = []
     for i, competition_obj in enumerate(competition_lst):
         eta = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10) + datetime.timedelta(minutes=(15 * i))
-        user_lst = competition_obj.user.all().order_by('pk')
+        user_lst = competition_obj.user.filter(is_verified=True).order_by("pk")
         if len(user_lst) > 0:
             eta_steps = max(min((60 * 60) // len(user_lst), 60), 10)
             for user_obj in user_lst:
                 result = competition_start_email.apply_async(args=[competition_obj.pk, user_obj.pk], eta=eta)
-                task_log.append({'user_pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email, 'competition_pk': competition_obj.pk, 'competition_name': competition_obj.name, 'task_id': result.task_id, 'eta': eta.isoformat()})
+                task_log.append({"user_pk": user_obj.pk, "username": user_obj.username, "email": user_obj.email, "competition_pk": competition_obj.pk, "competition_name": competition_obj.name, "task_id": result.task_id, "eta": eta.isoformat()})
                 eta += datetime.timedelta(seconds=eta_steps)
     return task_log
 
@@ -113,49 +135,42 @@ def send_all_competition_start_email():
 @app.task()
 def competition_start_email(competition_pk, user_pk):
     """Email for competition start tomorrow."""
-    Competition = apps.get_model('competition', 'Competition')
+    Competition = apps.get_model("competition", "Competition")
     competition_obj = Competition.objects.get(pk=competition_pk)
-    goal_objs = competition_obj.activitygoal_set.all()
-
-    CustomUser = apps.get_model('custom_user', 'CustomUser')
-    user_obj = CustomUser.objects.get(pk=user_pk)
-
-    email_subject = 'Workout Challenge - READY, SET, GO!'
-
-    with email_settings_context():
-        email_body = render_to_string(
-            "email_competition_start.html",
-            {
-                'first_name': user_obj.first_name,
-                'MAIN_HOST': settings.MAIN_HOST,
-                'competition': competition_obj,
-                'goals': goal_objs,
-                'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
-                'goal_equalizer_note': user_obj.scaling_kcal == 1 and user_obj.scaling_distance == 1,
-            }
-        )
-
-        if settings.DEBUG:
-            with open('tmp_email.html', 'w') as file:
-                file.write(email_body)
-
-        send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
-
-    return ({'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email})
+    user = _user(user_pk)
+    if user is None:
+        return f"user {user_pk} not found"
+    if not user.is_verified:
+        return f"skip unverified user {user.pk}"
+    extra = {
+        "competition": competition_obj,
+        "goals": competition_obj.activitygoal_set.all(),
+        "goal_equalizer_note": user.scaling_kcal == 1 and user.scaling_distance == 1,
+    }
+    return _send_user_email(
+        user,
+        subject="Workout Challenge — ready, set, go",
+        template="email_competition_start.html",
+        extra=extra,
+    )
 
 
 @app.task()
 def send_all_leaderboard_emails():
-    logger.info('Scheduling leaderboard emails')
-    CustomUser = apps.get_model('custom_user', 'CustomUser')
-    user_lst = CustomUser.objects.filter(my_competitions__start_date__lt=datetime.date.today(), my_competitions__end_date__gte=datetime.date.today()).order_by('pk').distinct()  # distinct: one row per user, not per active competition
+    logger.info("Scheduling leaderboard emails")
+    CustomUser = apps.get_model("custom_user", "CustomUser")
+    user_lst = CustomUser.objects.filter(
+        is_verified=True,
+        my_competitions__start_date__lt=datetime.date.today(),
+        my_competitions__end_date__gte=datetime.date.today(),
+    ).order_by("pk").distinct()
     task_log = []
     if len(user_lst) > 0:
         eta_steps = max(min((60 * 60) // len(user_lst), 60), 10)
         eta = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10)
         for user_obj in user_lst:
             result = leaderboard_email.apply_async(args=[user_obj.pk], eta=eta)
-            task_log.append({'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email, 'task_id': result.task_id, 'eta': eta.isoformat()})
+            task_log.append({"pk": user_obj.pk, "username": user_obj.username, "email": user_obj.email, "task_id": result.task_id, "eta": eta.isoformat()})
             eta += datetime.timedelta(seconds=eta_steps)
     return task_log
 
@@ -163,60 +178,49 @@ def send_all_leaderboard_emails():
 @app.task()
 def leaderboard_email(user_pk):
     """Email to send users their leaderboard."""
-    CustomUser = apps.get_model('custom_user', 'CustomUser')
-    user_obj = CustomUser.objects.get(pk=user_pk)
-
+    user = _user(user_pk)
+    if user is None:
+        return f"user {user_pk} not found"
+    if not user.is_verified:
+        return f"skip unverified user {user.pk}"
     competition_all_data = []
     competition_7d_data = []
-
-    for competition in user_obj.my_competitions.filter(start_date__lte=datetime.date.today(), end_date__gte=datetime.date.today()).order_by('-start_date'):
+    for competition in user.my_competitions.filter(start_date__lte=datetime.date.today(), end_date__gte=datetime.date.today()).order_by("-start_date"):
         competition_all_stats = get_competition_stats(competition.pk)
         competition_all_data.append({
-            'competition': competition_all_stats['competition'],
-            'leaderboard': competition_all_stats['leaderboard'],
+            "competition": competition_all_stats["competition"],
+            "leaderboard": competition_all_stats["leaderboard"],
         })
         competition_7d_stats = get_competition_stats(competition.pk, last_seven_days=True)
         competition_7d_data.append({
-            'competition': competition_7d_stats['competition'],
-            'leaderboard': competition_7d_stats['leaderboard'],
+            "competition": competition_7d_stats["competition"],
+            "leaderboard": competition_7d_stats["leaderboard"],
         })
-
-    email_subject = 'Workout Challenge - Your Spot on the Leaderboard!'
-
-    with email_settings_context():
-        email_body = render_to_string(
-            "email_leaderboard.html",
-            {
-                'first_name': user_obj.first_name,
-                'MAIN_HOST': settings.MAIN_HOST,
-                'competitions_all': competition_all_data,
-                'competitions_7d': competition_7d_data,
-                'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
-                'goal_equalizer_note': user_obj.scaling_kcal == 1 and user_obj.scaling_distance == 1,
-            }
-        )
-
-        if settings.DEBUG:
-            with open('tmp_email.html', 'w') as file:
-                file.write(email_body)
-
-        send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
-
-    return ({'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email})
+    extra = {
+        "competitions_all": competition_all_data,
+        "competitions_7d": competition_7d_data,
+        "goal_equalizer_note": user.scaling_kcal == 1 and user.scaling_distance == 1,
+    }
+    return _send_user_email(
+        user,
+        subject="Workout Challenge — your spot on the board",
+        template="email_leaderboard.html",
+        extra=extra,
+    )
 
 
 @app.task()
 def send_all_weekly_emails():
-    logger.info('Scheduling weekly emails')
-    CustomUser = apps.get_model('custom_user', 'CustomUser')
-    user_lst = CustomUser.objects.filter(email_mid_week=True).order_by('pk')
+    logger.info("Scheduling weekly emails")
+    CustomUser = apps.get_model("custom_user", "CustomUser")
+    user_lst = CustomUser.objects.filter(is_verified=True, email_mid_week=True).order_by("pk")
     task_log = []
     if len(user_lst) > 0:
         eta_steps = max(min((60 * 60) // len(user_lst), 60), 10)
         eta = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10)
         for user_obj in user_lst:
             result = weekly_email.apply_async(args=[user_obj.pk], eta=eta)
-            task_log.append({'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email, 'task_id': result.task_id, 'eta': eta.isoformat()})
+            task_log.append({"pk": user_obj.pk, "username": user_obj.username, "email": user_obj.email, "task_id": result.task_id, "eta": eta.isoformat()})
             eta += datetime.timedelta(seconds=eta_steps)
     return task_log
 
@@ -233,7 +237,7 @@ def openai_quote():
 
     base_url = _safe_base_url(config["base_url"])
 
-    todays_ai_quote = cache.get('todays_ai_quote', None)
+    todays_ai_quote = cache.get("todays_ai_quote", None)
 
     if todays_ai_quote is None:
         client_kwargs = {"api_key": api_key}
@@ -251,9 +255,9 @@ def openai_quote():
             top_p=1.0
         )
         todays_ai_quote = response.choices[0].message.content
-        cache.set('todays_ai_quote', todays_ai_quote, 60 * 60 * 20)
+        cache.set("todays_ai_quote", todays_ai_quote, 60 * 60 * 20)
 
-        logger.info('Today AI quote: %s', todays_ai_quote)
+        logger.info("Today AI quote: %s", todays_ai_quote)
 
     return todays_ai_quote
 
@@ -261,17 +265,14 @@ def openai_quote():
 def calendar_stats(user_pk):
     today = datetime.date.today()
 
-    # Step 1: Find next Sunday (or today if Sunday)
-    days_until_sunday = (6 - today.weekday()) % 7  # weekday(): Monday=0, Sunday=6
+    days_until_sunday = (6 - today.weekday()) % 7
     next_sunday = today + datetime.timedelta(days=days_until_sunday)
-
-    # Step 2: Create list of days going back 5 weeks (inclusive)
     dates_list = [next_sunday - datetime.timedelta(days=i) for i in range(34, -1, -1)]
 
-    Workout = apps.get_model('workouts', 'Workout')
-    all_workouts = Workout.objects.filter(user=user_pk).annotate(date=TruncDay('start_datetime')).values('date').annotate(count=Count('id'))
-    workouts_by_date = {row['date'].date().isoformat(): row['count'] for row in all_workouts}
-    workouts_by_week = {(settings.TIME_ZONE_OBJ.localize(datetime.datetime.combine(next_sunday, datetime.datetime.min.time())) - row['date']).days // 7: True for row in all_workouts}
+    Workout = apps.get_model("workouts", "Workout")
+    all_workouts = Workout.objects.filter(user=user_pk).annotate(date=TruncDay("start_datetime")).values("date").annotate(count=Count("id"))
+    workouts_by_date = {row["date"].date().isoformat(): row["count"] for row in all_workouts}
+    workouts_by_week = {(settings.TIME_ZONE_OBJ.localize(datetime.datetime.combine(next_sunday, datetime.datetime.min.time())) - row["date"]).days // 7: True for row in all_workouts}
 
     streak_weeks = 0
     streak_i = 0
@@ -288,70 +289,69 @@ def calendar_stats(user_pk):
     return_calendar = []
     for date in dates_list:
         workout_num = workouts_by_date.get(date.isoformat(), 0)
+        if workout_num > 0:
+            color, background_color = "#0b0b0c", "#d7ff3e"
+        elif date == today:
+            color, background_color = "#d7ff3e", "#1c1c20"
+        elif date > today:
+            color, background_color = "#6b6b73", "#141416"
+        else:
+            color, background_color = "#3c3c46", "#101012"
         return_calendar.append({
-            'datetime': date,
-            'day': date.day,
-            'workout_num': workout_num,
-            'color': '#FFFFFF' if date == today or workout_num > 0 else ('#e5e5e5' if date > today else '#000000'),
-            'background_color': '#7F1D1D' if date == today else ('#075971' if workout_num > 0 else '#FFFFFF')
+            "datetime": date,
+            "day": date.day,
+            "workout_num": workout_num,
+            "color": color,
+            "background_color": background_color,
         })
 
-    return streak_weeks, [return_calendar[i:i+7] for i in range(0, len(return_calendar), 7)]
+    return streak_weeks, [return_calendar[i:i + 7] for i in range(0, len(return_calendar), 7)]
 
 
 @app.task()
 def weekly_email(user_pk):
     """Email to send users their weekly update."""
-    CustomUser = apps.get_model('custom_user', 'CustomUser')
-    user_obj = CustomUser.objects.get(pk=user_pk)
+    user = _user(user_pk)
+    if user is None:
+        return f"user {user_pk} not found"
+    if not user.is_verified:
+        return f"skip unverified user {user.pk}"
 
-    Workout = apps.get_model('workouts', 'Workout')
+    Workout = apps.get_model("workouts", "Workout")
     workout_7day_stats = Workout.objects.filter(
-        user=user_obj,
+        user=user,
         start_datetime__gte=datetime.date.today() - datetime.timedelta(days=7)
     ).annotate(
-        day=TruncDate('start_datetime')
+        day=TruncDate("start_datetime")
     ).aggregate(
-        total_duration=Sum('duration'),
-        total_distance=Sum('distance'),
-        distinct_days=Count('day', distinct=True)
+        total_duration=Sum("duration"),
+        total_distance=Sum("distance"),
+        distinct_days=Count("day", distinct=True)
     )
 
     week_streak, calendar = calendar_stats(user_pk)
-
     todays_ai_quote = openai_quote()
-
-    email_subject = 'Workout Challenge - Your Weekly Update!'
 
     recorded_total_duration = 0 if workout_7day_stats["total_duration"] is None else (workout_7day_stats["total_duration"].seconds // 60)
     recorded_total_distance = 0 if workout_7day_stats["total_distance"] is None else workout_7day_stats["total_distance"]
     recorded_distinct_days = 0 if workout_7day_stats["distinct_days"] is None else workout_7day_stats["distinct_days"]
 
-    with email_settings_context():
-        email_body = render_to_string(
-            "email_weekly.html",
-            {
-                'first_name': user_obj.first_name,
-                'MAIN_HOST': settings.MAIN_HOST,
-                'calendar': calendar,
-                'week_streak': week_streak,
-                'goals': {
-                    'active_days': None if user_obj.goal_active_days is None or user_obj.goal_active_days == '' else {'recorded': recorded_distinct_days,'target': user_obj.goal_active_days, 'percent': min(1, recorded_distinct_days / user_obj.goal_active_days) * 100, 'percent_vml': int(min(1, recorded_distinct_days / user_obj.goal_active_days) * 100 * 2.5)},
-                    'distance': None if user_obj.goal_distance is None or user_obj.goal_distance == '' else {'recorded': recorded_total_distance,'target': user_obj.goal_distance, 'percent': min(1, recorded_total_distance / user_obj.goal_distance) * 100, 'percent_vml': int(min(1, recorded_total_distance / user_obj.goal_distance) * 100 * 2.5)},
-                    'minutes': None if user_obj.goal_workout_minutes is None or user_obj.goal_workout_minutes == '' else {'recorded': recorded_total_duration,'target': user_obj.goal_workout_minutes, 'percent': min(1, recorded_total_duration / user_obj.goal_workout_minutes) * 100, 'percent_vml': int(min(1, recorded_total_duration / user_obj.goal_workout_minutes) * 100 * 2.5)},
-                },
-                'openai_quote': todays_ai_quote,
-                'EMAIL_REPLY_TO': settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO is not None else settings.EMAIL_FROM,
-            }
-        )
-
-        if settings.DEBUG:
-            with open('tmp_email.html', 'w') as file:
-                file.write(email_body)
-
-        send_email(subject=email_subject, body=email_body, to_email=user_obj.email)
-
-    return {'pk': user_obj.pk, 'username': user_obj.username, 'email': user_obj.email}
+    extra = {
+        "calendar": calendar,
+        "week_streak": week_streak,
+        "goals": {
+            "active_days": None if user.goal_active_days is None or user.goal_active_days == "" else {"recorded": recorded_distinct_days, "target": user.goal_active_days, "percent": min(1, recorded_distinct_days / user.goal_active_days) * 100, "percent_vml": int(min(1, recorded_distinct_days / user.goal_active_days) * 100 * 2.5)},
+            "distance": None if user.goal_distance is None or user.goal_distance == "" else {"recorded": recorded_total_distance, "target": user.goal_distance, "percent": min(1, recorded_total_distance / user.goal_distance) * 100, "percent_vml": int(min(1, recorded_total_distance / user.goal_distance) * 100 * 2.5)},
+            "minutes": None if user.goal_workout_minutes is None or user.goal_workout_minutes == "" else {"recorded": recorded_total_duration, "target": user.goal_workout_minutes, "percent": min(1, recorded_total_duration / user.goal_workout_minutes) * 100, "percent_vml": int(min(1, recorded_total_duration / user.goal_workout_minutes) * 100 * 2.5)},
+        },
+        "openai_quote": todays_ai_quote,
+    }
+    return _send_user_email(
+        user,
+        subject="Workout Challenge — your week",
+        template="email_weekly.html",
+        extra=extra,
+    )
 
 
 @app.task()
@@ -363,25 +363,16 @@ def password_reset_email(user_pk, reset_url):
     otherwise the sync SMTP round-trip leaks which emails are
     registered (user enumeration timing oracle).
     """
-    CustomUser = apps.get_model("custom_user", "CustomUser")
-    user = CustomUser.objects.filter(pk=user_pk).first()
+    user = _user(user_pk)
     if user is None:
         return f"user {user_pk} not found"
-    from django.conf import settings
-    from django.template.loader import render_to_string
-    from .multipurpose import send_email, email_settings_context
-
-    with email_settings_context():
-        email_body = render_to_string(
-            "email_password_reset.html",
-            {
-                "first_name": user.first_name,
-                "MAIN_HOST": settings.MAIN_HOST,
-                "RESET_URL": reset_url,
-                # Single address string like the other emails - passing
-                # the raw list rendered "mailto:['a@b.com']" (or None).
-                "EMAIL_REPLY_TO": settings.EMAIL_REPLY_TO[0] if settings.EMAIL_REPLY_TO else settings.EMAIL_FROM,
-            },
-        )
-        send_email(subject="Workout Challenge - Reset Your Password", body=email_body, to_email=user.email)
-    return f"password reset email queued for user {user_pk}"
+    result = _send_user_email(
+        user,
+        subject="Workout Challenge — reset your password",
+        template="email_password_reset.html",
+        extra={"RESET_URL": reset_url},
+        require_verified=False,
+    )
+    if isinstance(result, dict):
+        return f"password reset email queued for user {user_pk}"
+    return result

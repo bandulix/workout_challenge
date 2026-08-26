@@ -42,6 +42,8 @@ Tests: `cd src-backend && DEBUG=true SECRET_KEY=ci-test-not-a-real-secret-32byte
 
 **Admin** — the first registered user is staff. Runtime config (LLM, Strava, SMTP) is at `/admin/site-settings`. Promote someone: `docker compose exec workoutchallenge python manage.py promotetostaff user@example.com`.
 
+**Email** — SMTP in `.env` / Site Settings. New accounts get a confirmation link first; welcome, weekly, and board mail wait until the address is confirmed. Password reset still works on an unconfirmed account.
+
 **AI coach** — challenge owner: megaphone on the challenge page → pick a persona → activate. Any OpenAI-compatible LLM in Site Settings. Push: Coach page → Enable coach pings (native notifications inside the Android app).
 
 **Strava** — [create an API app](https://www.strava.com/settings/api). Since June 2026 Strava requires a paid subscription for Standard-Tier API access; Health Connect needs no Strava at all.
@@ -64,7 +66,7 @@ Phones reach it at `MAIN_HOST/health` by default. In the Android app, Health Con
 This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/workout_challenge) (base `main` @ `256e5b1`) under the same SSPL v1. Original copyright is untouched. Full list: [CHANGELOG.md](CHANGELOG.md).
 
 - **AI Drill Instructor** — persona-voiced comments, quiet-day nudges, Order of the Day, dunce, Hall of Roasts, Legend Echoes, weekly coach vote, photo posts, web push / native Android pings.
-- **Coach-centred PWA** — volt accent, glass dock, Coach as home, daily action plates, dark theme, profile pictures. Uploaded photos stay private (login required; never a public `/media/` URL).
+- **Coach-centred PWA** — volt accent, glass dock, Coach as home, daily action plates, dark theme, profile pictures. Uploaded photos stay private (login required; never a public `/media/` URL). Mail uses the same identity; new inboxes must confirm before welcome / weekly mail.
 - **Garmin Connect** and **Apple Health / Health Connect** (via Open Wearables) next to Strava; one activity source per user.
 - **Sideload Android app** with one-tap Health Connect.
 

@@ -13,5 +13,6 @@ export function isPublicPath(pathname) {
     const p = normalizePath(pathname);
     if (PUBLIC_EXACT.has(p)) return true;
     if (p.startsWith("/password/")) return true;
+    if (p.startsWith("/email/verify")) return true;
     return false;
 }

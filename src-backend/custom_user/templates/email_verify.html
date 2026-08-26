@@ -1,0 +1,11 @@
+{% extends "email_base.html" %}
+{% block preview %}Confirm this email to start using Workout Challenge. The link expires in three days.{% endblock %}
+{% block content %}
+  <p style="margin:0 0 12px;">Hi {{ first_name }},</p>
+  <p style="margin:0 0 12px;">Confirm this address so we know the inbox is yours. Coach, weekly, and welcome mail starts after that.</p>
+  <p style="margin:0 0 12px;color:#a1a1aa;font-size:13px;">If you did not create this account, ignore this message. Nothing else will be sent.</p>
+{% endblock %}
+{% block cta %}
+  {% include "email_button.html" with href=VERIFY_URL label="Confirm email" %}
+  <p style="margin:16px 0 0;font-size:12px;line-height:1.5;color:#6b6b73;word-break:break-all;">{{ VERIFY_URL }}</p>
+{% endblock %}

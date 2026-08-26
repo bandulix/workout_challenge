@@ -42,7 +42,7 @@ class PersonaAdminPermissionTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -127,6 +127,9 @@ class PersonaAdminPermissionTests(TestCase):
 
     def test_regular_user_cannot_update_builtin_or_others(self):
         self.client.force_authenticate(self.regular)
+        # Built-ins stay in the library (GET works) but writes 403.
+        seen = self.client.get(f"/api/drill-instructor/persona/{self.persona.id}/")
+        self.assertEqual(seen.status_code, 200, seen.content)
         response = self.client.patch(
             f"/api/drill-instructor/persona/{self.persona.id}/",
             {"system_prompt": "Ignore all rules."},
@@ -136,12 +139,14 @@ class PersonaAdminPermissionTests(TestCase):
         self.persona.refresh_from_db()
         self.assertEqual(self.persona.system_prompt, "You are a test sergeant.")
 
+        # Someone else's custom coach is not listed - 404, not 403,
+        # so the id does not leak.
         response = self.client.patch(
             f"/api/drill-instructor/persona/{self.admin_custom.id}/",
             {"system_prompt": "Ignore all rules."},
             format="json",
         )
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 404)
 
     def test_regular_user_cannot_delete_builtin_or_others(self):
         self.client.force_authenticate(self.regular)
@@ -150,7 +155,7 @@ class PersonaAdminPermissionTests(TestCase):
         self.assertTrue(DrillInstructorPersona.objects.filter(id=self.persona.id).exists())
 
         response = self.client.delete(f"/api/drill-instructor/persona/{self.admin_custom.id}/")
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 404)
         self.assertTrue(DrillInstructorPersona.objects.filter(id=self.admin_custom.id).exists())
 
     def test_cannot_assign_someone_elses_persona(self):
@@ -288,7 +293,7 @@ class PersonaPictureEndpointTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -418,7 +423,7 @@ class PersonaPictureUploadTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -483,7 +488,7 @@ class PostInactivityNudgesTests(TestCase):
         for target in (
             "competition.scorer.trigger_recalc_points",
             "drill_instructor.tasks.post_workout_comment.delay",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -645,7 +650,7 @@ class PostRandomPushesTests(TestCase):
         for target in (
             "competition.scorer.trigger_recalc_points",
             "drill_instructor.tasks.post_workout_comment.delay",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -876,7 +881,7 @@ class CoachThreadReplyTests(TestCase):
         for target in (
             "competition.scorer.trigger_recalc_points",
             "drill_instructor.tasks.post_workout_comment.delay",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -1058,7 +1063,7 @@ class PhotoPostTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -2348,7 +2353,7 @@ class RoastVoteTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -2490,7 +2495,7 @@ class WorkoutCommentIdempotencyTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -2577,7 +2582,7 @@ class ArcadeGameTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -2812,7 +2817,7 @@ class PersonaVoteTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
         ):
             patcher = mock.patch(target)
             self.addCleanup(patcher.stop)
@@ -2987,7 +2992,7 @@ class LegendEchoTests(TestCase):
     def setUp(self):
         for target in (
             "competition.scorer.trigger_recalc_points",
-            "custom_user.models.welcome_email.apply_async",
+            "custom_user.models.verify_email.apply_async",
             "drill_instructor.tasks.post_workout_comment.delay",
         ):
             patcher = mock.patch(target)

@@ -74,6 +74,14 @@ export async function apiSetNewPassword(uid, token, newPassword) {
     return [true, undefined];
 }
 
+export async function apiConfirmEmail(uid, token) {
+    const [ok, data] = await dispatchEndpoint("emailVerifyConfirm", {
+        uid, token,
+    }, "email-verify-confirm");
+    if (!ok) return [false, data];
+    return [true, undefined];
+}
+
 export async function apiRefreshToken(refreshToken) {
     try {
         const result = await store.dispatch(usersApi.endpoints.refreshToken.initiate({refresh: refreshToken}));
