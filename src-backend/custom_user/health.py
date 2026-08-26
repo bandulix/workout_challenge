@@ -253,7 +253,8 @@ def map_health_sport_type(raw_type) -> str:
     """OW workout type -> our sport type (unknown types -> 'Workout',
     same philosophy as the Strava unknown-type guard).
 
-    Health Connect emits UPPER_SNAKE names, Apple HealthKit camelCase
+    Health Connect emits UPPER_SNAKE names (and sometimes
+    ``EXERCISE_TYPE_BIKING``), Apple HealthKit camelCase
     ("traditionalStrengthTraining") - both are normalised to
     lower_snake_case before the lookup.
     """
@@ -262,6 +263,8 @@ def map_health_sport_type(raw_type) -> str:
     # camelCase -> snake_case, then lowercase everything.
     key = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key)
     key = key.lower().replace(" ", "_").replace("-", "_")
+    if key.startswith("exercise_type_"):
+        key = key[len("exercise_type_"):]
     mapped = HEALTH_SPORT_MAP.get(key)
     if mapped:
         return mapped
@@ -316,6 +319,48 @@ def _values_entry(ow_workout: dict, type_names):
     return None
 
 
+def _duration_seconds(raw, unit=None):
+    """Normalise a duration figure to whole seconds.
+
+    Health Connect / OW sometimes send milliseconds (a 30 min ride as
+    1_800_000). Treat that as ms when the unit says so, or when the
+    number is implausibly large for a single session.
+    """
+    number = _as_float(raw)
+    if number is None or number <= 0:
+        return None
+    u = str(unit or "").lower()
+    if u in ("ms", "msec", "millisecond", "milliseconds"):
+        return int(number / 1000)
+    if u in ("min", "mins", "minute", "minutes"):
+        return int(number * 60)
+    if u in ("h", "hr", "hour", "hours"):
+        return int(number * 3600)
+    if number >= 100_000:  # ≥ ~28 h if seconds → almost certainly ms
+        return int(number / 1000)
+    return int(number)
+
+
+def _distance_metres_from_laps(ow_workout: dict):
+    """Sum lap lengths. Health Connect often stores km on ExerciseLaps
+    (``distanceM``) instead of on the session itself."""
+    laps = ow_workout.get("laps")
+    if not isinstance(laps, list):
+        return None
+    total = 0.0
+    found = False
+    for lap in laps:
+        if not isinstance(lap, dict):
+            continue
+        for key in ("distanceM", "distance_m", "distance_meters", "distance"):
+            value = _as_float(lap.get(key))
+            if value is not None and value > 0:
+                total += value
+                found = True
+                break
+    return total if found else None
+
+
 def distance_km_from_ow(ow_workout: dict, duration_s) -> float | None:
     """OW workout payload -> kilometres.
 
@@ -342,6 +387,10 @@ def distance_km_from_ow(ow_workout: dict, duration_s) -> float | None:
         if entry is not None:
             raw = entry.get("value")
             unit = entry.get("unit")
+    if raw is None:
+        raw = _distance_metres_from_laps(ow_workout)
+        if raw is not None:
+            unit = unit or "m"
     metres = _as_float(raw)
     if metres is not None and metres > 0:
         u = str(unit or "").lower()
@@ -416,22 +465,30 @@ def workout_to_props(user, ow_workout: dict) -> dict | None:
         return None
 
     duration_raw = _ow_pick(ow_workout, "duration_seconds", "duration", "elapsed_time")
+    duration_unit = None
     if duration_raw is None:
-        values = ow_workout.get("values")
-        if isinstance(values, list):
-            for item in values:
-                if isinstance(item, dict) and str(item.get("type") or "").lower() == "duration":
-                    duration_raw = item.get("value")
-                    break
-    duration_s = _as_float(duration_raw)
-    duration_s = int(duration_s) if duration_s else None
+        entry = _values_entry(ow_workout, ("duration", "elapsed_time"))
+        if entry is not None:
+            duration_raw = entry.get("value")
+            duration_unit = entry.get("unit")
+    duration_s = _duration_seconds(duration_raw, duration_unit)
     end_dt = _parse_dt(_ow_pick(ow_workout, "end_time", "end_datetime", "end", "endDate"))
-    if not duration_s and end_dt is not None:
-        duration_s = max(int((end_dt - start_dt).total_seconds()), 0)
+    if end_dt is not None:
+        span = max(int((end_dt - start_dt).total_seconds()), 0)
+        # Prefer the wall-clock span when the figure looks like ms of a
+        # normal session (or is missing).
+        if not duration_s:
+            duration_s = span
+        elif span and 0 < span <= 12 * 3600 and duration_s > 12 * 3600:
+            duration_s = span
     if not duration_s:
         return None
 
     kcal = _ow_pick(ow_workout, "calories_kcal", "calories", "kcal")
+    if kcal is None:
+        entry = _values_entry(ow_workout, ("calories", "calories_kcal", "energy", "active_energy", "activeEnergy"))
+        if entry is not None:
+            kcal = entry.get("value")
     avg_hr = _ow_pick(ow_workout, "avg_heart_rate_bpm", "avg_hr", "average_heart_rate")
 
     return {
@@ -553,8 +610,25 @@ def _sync_user_workouts(user, start_datetime=None, wait_for_ingest=False) -> dic
             continue
         # Cross-provider duplicate guard: the same activity may already
         # exist from Strava/Garmin or as a manual entry - never twice.
-        if find_duplicate_workout(user, props["start_datetime"], props["duration"], provider="health") is not None:
-            duplicates += 1
+        dup = find_duplicate_workout(user, props["start_datetime"], props["duration"], provider="health")
+        if dup is not None:
+            # A manual (or earlier empty) copy of this ride should pick
+            # up Health Connect kilometres instead of staying at 0 km.
+            filled = False
+            if not dup.health_id:
+                dup.health_id = health_id
+                filled = True
+            if props.get("distance") and not dup.distance:
+                dup.distance = props["distance"]
+                filled = True
+            if props.get("kcal") and not dup.kcal:
+                dup.kcal = props["kcal"]
+                filled = True
+            if filled:
+                dup.save()
+                updated += 1
+            else:
+                duplicates += 1
             continue
         Workout.objects.create(**props)
         created += 1

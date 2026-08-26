@@ -144,10 +144,10 @@ export async function nativeHealthSetSource(source, publicUrl) {
 // Re-Sync that then polls the server always raced an empty store.
 // Best-effort: a missing native session is a no-op (the server poll
 // still runs).
-export async function nativeHealthKickSync({daysBack} = {}) {
+export async function nativeHealthKickSync({daysBack, publicUrl} = {}) {
     if (!isNativeHealthAvailable()) return {ok: false, reason: "not-native"};
     try {
-        const host = resolveHealthHost("");
+        const host = resolveHealthHost(publicUrl || "");
         if (host) {
             await OWHealth.configure({host});
         }

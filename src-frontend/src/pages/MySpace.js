@@ -321,7 +321,7 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
                     <SyncChip onClick={async () => {
                                   setHealthKickBusy(true);
                                   try {
-                                      const kick = await nativeHealthKickSync({daysBack: 14});
+                                      const kick = await nativeHealthKickSync({daysBack: 14, publicUrl: user?.health_public_url});
                                       if (kick?.reason === "no-session") {
                                           notice("Health Connect is not linked in this app - open Settings and reconnect.");
                                           return;

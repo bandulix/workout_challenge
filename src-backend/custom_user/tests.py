@@ -870,6 +870,57 @@ class HealthWorkoutMappingTests(TestCase):
         props = workout_to_props(self.user, payload)
         self.assertEqual(props["distance"], 5.0)
 
+    def test_distance_from_health_connect_laps(self):
+        # ExerciseSessionRecord often has no session distance; laps carry
+        # distanceM in metres.
+        from .health import workout_to_props
+        payload = {
+            "id": "9f1c2a34-0000-4aaa-bbbb-111122223333",
+            "type": "cycling",
+            "startDate": "2026-08-01T06:00:00Z",
+            "endDate": "2026-08-01T07:30:00Z",
+            "values": [{"type": "duration", "value": 5400, "unit": "s"}],
+            "laps": [
+                {"distanceM": 12000},
+                {"distanceM": 16000},
+            ],
+        }
+        props = workout_to_props(self.user, payload)
+        self.assertEqual(props["sport_type"], "Ride")
+        self.assertEqual(props["distance"], 28.0)
+
+    def test_duration_milliseconds_uses_start_end_span(self):
+        from .health import workout_to_props
+        payload = {
+            "id": "9f1c2a34-0000-4aaa-bbbb-111122223333",
+            "type": "running",
+            "startDate": "2026-08-01T06:00:00Z",
+            "endDate": "2026-08-01T06:30:00Z",
+            "values": [{"type": "duration", "value": 1_800_000, "unit": "ms"}],
+        }
+        props = workout_to_props(self.user, payload)
+        self.assertEqual(props["duration"], datetime.timedelta(seconds=1800))
+
+    def test_calories_from_values_array(self):
+        from .health import workout_to_props
+        payload = {
+            "id": "9f1c2a34-0000-4aaa-bbbb-111122223333",
+            "type": "running",
+            "startDate": "2026-08-01T06:00:00Z",
+            "endDate": "2026-08-01T06:30:00Z",
+            "values": [
+                {"type": "duration", "value": 1800, "unit": "s"},
+                {"type": "calories", "value": 412, "unit": "kcal"},
+            ],
+        }
+        props = workout_to_props(self.user, payload)
+        self.assertEqual(props["kcal"], 412)
+
+    def test_exercise_type_prefix_maps_to_ride(self):
+        from .health import map_health_sport_type
+        self.assertEqual(map_health_sport_type("EXERCISE_TYPE_BIKING"), "Ride")
+        self.assertEqual(map_health_sport_type("EXERCISE_TYPE_RUNNING"), "Run")
+
     def test_malformed_duration_does_not_abort_the_user_sync(self):
         from .health import _sync_user_workouts
         good = self._payload()
@@ -1046,8 +1097,29 @@ class HealthConnectorTests(TestCase):
             result = _sync_user_workouts(self.user)
 
         self.assertEqual(result["created"], 0)
-        self.assertEqual(result["duplicates_skipped"], 1)
         self.assertEqual(Workout.objects.filter(user=self.user).count(), 1)
+        existing = Workout.objects.get(strava_id=112233)
+        # Missing kilometres on the Strava copy are filled from Health
+        # Connect rather than leaving a km challenge at 0.
+        self.assertEqual(result["updated"], 1)
+        self.assertEqual(float(existing.distance), 4.8)
+
+    def test_sync_fills_distance_on_manual_duplicate(self):
+        # A hand-logged ride of the same session must pick up Health
+        # Connect kilometres instead of staying blank (km challenges).
+        from .health import _sync_user_workouts
+        manual = Workout.objects.create(
+            user=self.user, sport_type="Workout", start_datetime=self.start,
+            duration=self.duration, intensity_category=2, distance=None,
+        )
+        self._link_health()
+        with mock.patch("custom_user.health._fetch_workouts", return_value=[self._ow_payload(type="cycling")]):
+            result = _sync_user_workouts(self.user)
+        manual.refresh_from_db()
+        self.assertEqual(result["created"], 0)
+        self.assertEqual(result["updated"], 1)
+        self.assertEqual(float(manual.distance), 4.8)
+        self.assertEqual(manual.health_id, "9f1c2a34-0000-4aaa-bbbb-111122223333")
 
     # ---- link / unlink views -------------------------------------------
 
