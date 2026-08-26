@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from "react";
 import {Link, useLocation, useNavigate} from "react-router-dom";
-import {Flag, Home, Plus, User2, Settings, Scale, BadgeHelp, Shield, LogOut, Sun, Moon, Monitor, ChevronRight, Bot} from "lucide-react";
+import {Flag, Home, Plus, User2, Settings, Scale, BadgeHelp, Shield, LogOut, ChevronRight, Bot} from "lucide-react";
 import WorkoutForm from "../forms/workoutForm";
 import CompetitionForm from "../forms/competitionForm";
 import {Modal} from "../forms/basicComponents";
@@ -12,7 +12,6 @@ import RoasterModal from "../components/RoasterBox";
 import PersonaAvatar from "../components/PersonaAvatar";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {DogTagRow} from "../components/gameBits";
-import {useTheme} from "./theme";
 import {isNativeHealthAvailable, nativeHealthSetSource} from "./nativeHealth";
 import {startNativeCoachPings} from "./nativeCoachPings";
 import {useGetUserByIdQuery} from "./reducers/usersSlice";
@@ -116,11 +115,6 @@ function SettingsSheetRow({icon: Icon, label, onClick, danger = false, trailing 
 
 function SettingsPanel({onClose, user, isStaff, onAccount, onEqualizer, onRoaster, onSupport}) {
     const navigate = useNavigate();
-    const {theme, resolvedTheme, cycle} = useTheme();
-    const themeLabel = theme === "system"
-        ? `Match device (${resolvedTheme})`
-        : theme === "dark" ? "Dark mode" : "Light mode";
-    const ThemeIcon = theme === "system" ? Monitor : (resolvedTheme === "dark" ? Sun : Moon);
 
     return (
         <DockPanel title="Settings">
@@ -136,7 +130,6 @@ function SettingsPanel({onClose, user, isStaff, onAccount, onEqualizer, onRoaste
                 <SettingsSheetRow icon={User2} label="Account" onClick={() => {onClose(); onAccount();}}/>
                 <SettingsSheetRow icon={Scale} label="Goal Equalizer" onClick={() => {onClose(); onEqualizer();}}/>
                 <SettingsSheetRow icon={Bot} label="The roaster" onClick={() => {onClose(); onRoaster();}}/>
-                <SettingsSheetRow icon={ThemeIcon} label={themeLabel} onClick={cycle} trailing={null}/>
                 <SettingsSheetRow icon={BadgeHelp} label="Help & Support" onClick={() => {onClose(); onSupport();}}/>
                 {isStaff && (
                     <SettingsSheetRow icon={Shield} label="Admin" onClick={() => {onClose(); navigate("/admin/site-settings");}}/>

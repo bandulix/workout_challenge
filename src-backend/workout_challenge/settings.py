@@ -128,6 +128,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'workout_challenge.middleware.BlockPublicMediaMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -342,9 +343,12 @@ CACHES = {
 STATIC_URL = 'apistatic/'
 STATIC_ROOT = BASE_DIR / 'static'
 
-# User-uploaded media (profile pictures). Served by nginx under /media/
-# in the container; persisted in the data volume.
-MEDIA_URL = 'media/'
+# User-uploaded media (profile / photo / Echo pictures). NEVER served
+# at this URL: nginx 404s /media/, Django middleware 404s it too, and
+# serializers only emit authenticated /api/.../picture/ paths. Files
+# live in the data volume and are delivered via X-Accel-Redirect to
+# the internal /protected-media/ location after a JWT check.
+MEDIA_URL = '/media/'
 MEDIA_ROOT = DATA_DIR / 'media'
 
 # Default primary key field type

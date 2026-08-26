@@ -13,14 +13,11 @@ import {useGetWorkoutsQuery, workoutsApi} from "../utils/reducers/workoutsSlice"
 import WorkoutForm, {sportLabelShort} from "../forms/workoutForm";
 import lodFilter from 'lodash/filter';
 import lodFind from 'lodash/find';
-import lodFrompairs from 'lodash/fromPairs';
 import lodGroupby from 'lodash/groupBy';
 import lodMapvalues from 'lodash/mapValues';
-import lodOrderby from 'lodash/orderBy';
 import lodSumby from 'lodash/sumBy';
-import lodTopairs from 'lodash/toPairs';
 import lodUniqby from 'lodash/uniqBy';
-import lodValues from 'lodash/values';
+import {topSportCounts} from "../utils/sportCounts";
 import {useGetUserByIdQuery, usersApi} from "../utils/reducers/usersSlice";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {useGetDrillConfigsQuery} from "../utils/reducers/drillInstructorSlice";
@@ -126,20 +123,10 @@ function GettingStarted({user, competitions, workouts, configs, onJoin, onCreate
 
 
 function WelcomeBox({user, workouts}) {
-
-    const [countTotal, setCountTotal] = useState(0);
-    const [countGroups, setCountGroups] = useState({});
-
-    useEffect(() => {
-        if (workouts !== undefined) {
-            const filteredWorkouts = lodFilter(workouts || [], item => item.sport_type !== 'Steps');
-            setCountTotal(filteredWorkouts.length);
-            const grouped = lodMapvalues(lodGroupby(lodValues(filteredWorkouts), 'sport_type'), group => group.length);
-            const sorted = lodFrompairs(lodOrderby(lodTopairs(grouped), ([, value]) => value, 'desc'));
-            const limited = Object.fromEntries(Object.entries(sorted).slice(0, 4));
-            setCountGroups(limited);
-        }
-    }, [workouts]);
+    const {total: countTotal, groups: countGroups} = useMemo(
+        () => topSportCounts(workouts, "sport_type"),
+        [workouts],
+    );
 
     return (
         <BoxSection additionalClasses={"mb-4"}>

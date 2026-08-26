@@ -14,11 +14,10 @@ export function dailyBackdropId(date = new Date()) {
     return BACKDROP_IDS[(h >>> 0) % BACKDROP_IDS.length];
 }
 
-export function backdropUrls(night, date) {
+export function backdropUrls(date) {
     const id = dailyBackdropId(date);
-    const suffix = night ? "" : "-light";
     return {
-        webp: `/backdrops/${id}${suffix}.webp`,
-        jpg: `/backdrops/${id}${suffix}.jpg`,
+        webp: `/backdrops/${id}.webp`,
+        jpg: `/backdrops/${id}.jpg`,
     };
 }

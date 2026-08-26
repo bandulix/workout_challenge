@@ -459,3 +459,40 @@ def trigger_user_change(instance, new, changes):
             RecalcRequest.objects.bulk_create(requests)
 
         logger.info("User %s scaling factors %s changed, triggering cap recalc", instance.pk, goal_metrics)
+
+
+PHOTO_BONUS_POINTS = 10
+PHOTO_AWARD_NAME = "Photo"
+
+
+def grant_photo_bonus(workout, competition):
+    """Add a flat +10 to a workout when the athlete posts a photo on it.
+
+    Stored as an Award-backed Points row so goal rescores do not wipe it
+    and the Board still attributes it to this competition.
+    """
+    if workout is None or competition is None:
+        return None
+    Award = apps.get_model("competition", "Award")
+    Points = apps.get_model("competition", "Points")
+    award, _ = Award.objects.get_or_create(
+        competition=competition,
+        name=PHOTO_AWARD_NAME,
+        defaults={
+            "sport": "GROUP_ANY",
+            "threshold": 1,
+            "period": "day",
+            "reward_points": PHOTO_BONUS_POINTS,
+        },
+    )
+    row, created = Points.objects.get_or_create(
+        award=award,
+        workout=workout,
+        defaults={
+            "goal": None,
+            "points_raw": PHOTO_BONUS_POINTS,
+            "points_capped": PHOTO_BONUS_POINTS,
+        },
+    )
+    bump_stats_generation([competition.pk])
+    return row if created else row

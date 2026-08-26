@@ -13,8 +13,8 @@ import JoinTeamForm from "../forms/joinTeamForm";
 import {
     ChangeTeamButton,
 } from "../forms/basicComponents";
-import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
-import {EmptyState, SectionHead} from "../components/uiBits";
+import {ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
+import {EmptyState, PaneHead, paneCardClass} from "../components/uiBits";
 import {useDispatch} from "react-redux";
 import {teamsApi} from "../utils/reducers/teamsSlice";
 import {drillInstructorApi, useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
@@ -39,27 +39,29 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
 
     return (
         <>
-            <BoxSection>
-                <SectionHead title="Team leaderboard">
+            <div>
+                <PaneHead title="Team leaderboard">
                     {(!competition.organizer_assigns_teams || isOwner) && (
                         <ChangeTeamButton onClick={() => setShowChangeTeamModalMiddleware(true)} larger={false}/>
                     )}
-                </SectionHead>
+                </PaneHead>
 
                 {stats.leaderboard.team.length === 0 ? (
-                    <EmptyState title="No teams yet" body="Create the first team and start scoring together."
-                                actionLabel={(!competition.organizer_assigns_teams || isOwner) ? "Add a team" : null}
-                                onAction={(!competition.organizer_assigns_teams || isOwner) ? () => setShowChangeTeamModalMiddleware(true) : null}/>
+                    <article className={paneCardClass}>
+                        <EmptyState title="No teams yet" body="Create the first team and start scoring together."
+                                    actionLabel={(!competition.organizer_assigns_teams || isOwner) ? "Add a team" : null}
+                                    onAction={(!competition.organizer_assigns_teams || isOwner) ? () => setShowChangeTeamModalMiddleware(true) : null}/>
+                    </article>
                 ) : (
-                    <ul className="mt-1 divide-y divide-gray-100 dark:divide-ink-700/60">
+                    <ul className="space-y-3">
                         {stats.leaderboard.team.map((team) => {
                             const id = team.workout__user__my_teams__id;
                             const mine = parseInt(teamId) === id;
                             const open = openTeam === id;
                             return (
-                                <li key={id} className={mine ? "bg-volt-400/10 dark:bg-volt-400/5 rounded-2xl" : ""}>
+                                <li key={id} className={paneCardClass + (mine ? " ring-1 ring-volt-400/40" : "")}>
                                     <button type="button" onClick={() => setOpenTeam(open ? null : id)}
-                                            className="w-full flex items-center gap-3 py-3 px-2 min-h-[44px] text-left">
+                                            className="w-full flex items-center gap-3 min-h-[44px] text-left">
                                         <span className="w-8 shrink-0 font-display text-lg text-gray-400">#{team.rank}</span>
                                         <span className="flex-1 min-w-0 font-semibold truncate">{team.name}</span>
                                         <span className="text-xs text-gray-400 inline-flex items-center gap-1 shrink-0">
@@ -68,13 +70,21 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
                                         <span className="font-semibold shrink-0">{Math.round(team.total_capped || 0).toLocaleString()}P</span>
                                     </button>
                                     {open && (
-                                        <ul className="px-4 pb-3 space-y-1">
-                                            {team.members.map((member, i) => (
-                                                <li key={i} className="flex justify-between text-sm text-gray-600 dark:text-gray-300">
-                                                    <span>{member.username}</span>
-                                                    <span>{Math.round(member.total_capped || 0).toLocaleString()}P</span>
+                                        <ul className="mt-3 space-y-2 border-t border-ink-950/10 dark:border-white/10 pt-3">
+                                            {team.members.map((member, i) => {
+                                                const factors = effortLabel(member);
+                                                return (
+                                                <li key={i} className="flex justify-between gap-3 text-sm text-gray-600 dark:text-gray-300">
+                                                    <span className="min-w-0">
+                                                        <span className="block truncate">{member.username}</span>
+                                                        {factors && (
+                                                            <span className="block text-[11px] text-gray-400">{factors}</span>
+                                                        )}
+                                                    </span>
+                                                    <span className="shrink-0">{Math.round(member.total_capped || 0).toLocaleString()}P</span>
                                                 </li>
-                                            ))}
+                                                );
+                                            })}
                                         </ul>
                                     )}
                                 </li>
@@ -83,12 +93,19 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
                     </ul>
                 )}
                 {competition.organizer_assigns_teams ? <p className="pt-2 text-center text-xs text-gray-400">The organizer assigns teams.</p> : null}
-            </BoxSection>
+            </div>
 
             {(showChangeTeamModal) && <JoinTeamForm setModalState={setShowChangeTeamModalMiddleware} competition={competition} user={user} isOwner={isOwner}/>}
 
         </>
     )
+}
+
+function effortLabel(person) {
+    const effort = Math.round(Number(person?.scaling_kcal ?? 1) * 100);
+    const dist = Math.round(Number(person?.scaling_distance ?? 1) * 100);
+    if (!Number.isFinite(effort) || !Number.isFinite(dist)) return null;
+    return `${effort}% effort · ${dist}% distance`;
 }
 
 const RANK_STYLES = {
@@ -191,21 +208,24 @@ function IndividualLeaderboardBox({stats, userId, dunceUserId, feed}) {
     }, [range, stats?.timeseries?.all, fieldN]);
 
     return (
-        <BoxSection>
-            <SectionHead title="Leaderboard" hint="Week bars · trend vs the field"/>
+        <div>
+            <PaneHead title="Leaderboard" hint="Week bars · trend vs the field"/>
 
             {(stats.leaderboard.individual.length === 0) ? (
-                <EmptyState title="Waiting for the field" body="The first logged workout puts someone on the board."/>
+                <article className={paneCardClass}>
+                    <EmptyState title="Waiting for the field" body="The first logged workout puts someone on the board."/>
+                </article>
             ) : (
-                <ul className="my-1 space-y-1">
+                <ul className="space-y-3">
                     {stats.leaderboard.individual.map((person, index) => {
                         const personId = person.id ?? person.workout__user__id;
                         const mine = userId === personId;
                         const week = weekValues(personId);
                         const weekTotal = week.reduce((s, n) => s + n, 0);
+                        const factors = effortLabel(person);
                         return (
                         <li key={personId ?? `lb-${index}`}
-                            className={"rounded-2xl px-3 py-2.5 " + (mine ? "bg-volt-400/10 dark:bg-volt-400/5 ring-1 ring-volt-400/30" : "")}>
+                            className={paneCardClass + (mine ? " ring-1 ring-volt-400/40" : "")}>
                             <div className="flex items-center gap-3">
                                 <span className={"w-8 shrink-0 text-center font-display text-lg " + (RANK_STYLES[person.rank] || "text-gray-400")}>
                                     {person.rank !== null ? `#${person.rank}` : "–"}
@@ -219,6 +239,9 @@ function IndividualLeaderboardBox({stats, userId, dunceUserId, feed}) {
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <p className="font-semibold truncate">{person.username}</p>
+                                    {factors && (
+                                        <p className="text-[11px] text-gray-400">{factors}</p>
+                                    )}
                                     {(person.rank !== null && person.days_on_rank > 0) && (
                                         <p className="text-[11px] text-gray-400">
                                             on #{person.rank} for {person.days_on_rank} {person.days_on_rank === 1 ? "day" : "days"}
@@ -263,7 +286,7 @@ function IndividualLeaderboardBox({stats, userId, dunceUserId, feed}) {
                     onClose={() => setCard(null)}
                 />
             )}
-        </BoxSection>
+        </div>
     )
 }
 

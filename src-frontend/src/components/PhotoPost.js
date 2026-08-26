@@ -5,6 +5,7 @@ import {useDispatch} from "react-redux";
 import {drillInstructorApi, usePostDrillPhotoMutation} from "../utils/reducers/drillInstructorSlice";
 import {compressImage} from "../utils/imageCompress";
 import {isAcceptablePhoto, isNativeCameraAvailable, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
+import {OverlaySheet} from "../forms/basicComponents";
 
 // Photo sharing for the coach feed. The camera button is ALWAYS visible
 // while the coach is on duty - a click without a latest-own-workout
@@ -13,65 +14,82 @@ import {isAcceptablePhoto, isNativeCameraAvailable, isPhotoPickCancel, pickNativ
 // the caller's latest activity comment (resolved server-side).
 const PILL =
     "inline-flex w-full items-center justify-center gap-2 rounded-full bg-volt-400 text-ink-950 px-4 sm:px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt min-h-[44px]";
+const CHIP =
+    "inline-flex items-center justify-center gap-1.5 rounded-full bg-volt-400 text-ink-950 px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt min-h-[36px]";
+const GHOST =
+    "inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-volt-700 dark:hover:text-volt-300 transition min-h-[32px] shrink-0";
 const ICON =
     "shrink-0 min-h-[44px] min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt flex items-center justify-center";
+
+export function PhotoCamBonus({large = false, neon = true, plus = false}) {
+    return (
+        <span className={"inline-flex items-center gap-[3px] font-extrabold tabular-nums leading-none " +
+            (large ? "text-[11px]" : "text-[9px]") + " " +
+            (neon ? "points-cam" : "")}>
+            <Camera className={(large ? "h-3.5 w-3.5" : "h-3 w-3") + " block shrink-0"}
+                    aria-hidden="true" strokeWidth={2.4}/>
+            <span className="leading-none">{plus ? "+10P" : "10P"}</span>
+        </span>
+    );
+}
 
 export default function PhotoPost({competitionId, visionCapable, parentId, onPosted, variant = "icon", label = "Photo"}) {
     const [open, setOpen] = useState(false);
     const [hint, setHint] = useState(null);
-    const pill = variant === "pill";
-    const button = (
-        <button onClick={() => {
-                    if (!visionCapable) {
-                        setHint((v) => v === "vision" ? null : "vision");
-                        setOpen(false);
-                        return;
-                    }
-                    if (!parentId) {
-                        setHint((v) => v === "workout" ? null : "workout");
-                        setOpen(false);
-                        return;
-                    }
-                    setHint(null);
-                    setOpen((v) => !v);
-                }}
-                title={label}
-                aria-label={label}
-                className={pill ? PILL : ICON}>
-            <Camera className="h-4 w-4 shrink-0"/>
-            {pill && <span>{label}</span>}
-        </button>
-    );
-    const extras = (
-        <>
-            {hint && (
-                <div className={pill ? "w-full min-w-0 px-1 pt-1 pb-1" : "basis-full w-full min-w-0 px-1 pt-1"}>
-                    <p className="text-xs text-gray-400">
-                        {hint === "workout"
-                            ? "Photos hang under your latest workout. Log one and wait for the coach to comment first."
-                            : "Photo posts are unavailable right now - the AI model configured on this server can't see pictures. (Organizer: pick a vision-capable model in Site Settings → AI.)"}
-                    </p>
-                </div>
-            )}
-            {open && visionCapable && parentId && (
-                <div className={pill ? "w-full min-w-0" : "basis-full w-full min-w-0"}>
-                    <PhotoComposer competitionId={competitionId} parentId={parentId} onDone={() => setOpen(false)} onPosted={onPosted}/>
-                </div>
-            )}
-        </>
-    );
-    if (pill) {
-        return (
-            <div className="min-w-0 w-full flex flex-col">
-                {button}
-                {extras}
-            </div>
-        );
+    const buttonClass = variant === "pill" ? PILL : variant === "chip" ? CHIP : variant === "ghost" ? GHOST : ICON;
+
+    function close() {
+        setOpen(false);
+        setHint(null);
     }
+
     return (
         <>
-            {button}
-            {extras}
+            <button type="button"
+                    onClick={() => {
+                        if (!visionCapable) {
+                            setHint("vision");
+                            setOpen(true);
+                            return;
+                        }
+                        if (!parentId) {
+                            setHint("workout");
+                            setOpen(true);
+                            return;
+                        }
+                        setHint(null);
+                        setOpen(true);
+                    }}
+                    title={`${label} · 10P`}
+                    aria-label={`${label}, 10 points`}
+                    className={buttonClass}>
+                {variant === "ghost" ? (
+                    <>
+                        <Camera className="h-3.5 w-3.5 shrink-0"/>
+                        +10P
+                    </>
+                ) : (
+                    <>
+                        <PhotoCamBonus large neon={false} plus/>
+                        {variant === "pill" && <span>{label}</span>}
+                    </>
+                )}
+            </button>
+            {open && (
+                <OverlaySheet title={label || "Add a photo"} onClose={close}
+                              labelledBy="photo-post-title" zClass="z-[80]">
+                    {hint ? (
+                        <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+                            {hint === "workout"
+                                ? "Photos hang under your latest workout. Log one and wait for the coach to comment first."
+                                : "Photo posts are unavailable right now - the AI model configured on this server can't see pictures. (Organizer: pick a vision-capable model in Site Settings → AI.)"}
+                        </p>
+                    ) : (
+                        <PhotoComposer competitionId={competitionId} parentId={parentId}
+                                       onDone={close} onPosted={onPosted}/>
+                    )}
+                </OverlaySheet>
+            )}
         </>
     );
 }
@@ -181,8 +199,11 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
         }
     }
 
+    const pickClass =
+        "flex flex-col items-center justify-center gap-2 rounded-2xl btn-glass min-h-[7.5rem] px-4 py-5 text-[11px] font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 hover:text-volt-700 dark:hover:text-volt-300 transition cursor-pointer";
+
     return (
-        <div className="w-full min-w-0 px-1 py-3 space-y-2">
+        <div className="w-full min-w-0 space-y-4">
             {/* Web: a <label> click is a real user gesture, so Chrome
                 honours `capture` and opens the camera. Hidden+JS .click()
                 does not. Native uses Capacitor takePhoto instead. */}
@@ -194,55 +215,47 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
                            className="sr-only" onChange={onPicked}/>
                 </>
             )}
-            {file && (
-                <div className="relative inline-block">
+            {file ? (
+                <div className="relative">
                     <img src={preview} alt="Upload preview"
-                         className="max-h-48 rounded-xl border border-gray-200/70 dark:border-ink-700/60"/>
-                    <button onClick={reset} aria-label="Discard photo"
-                            className="absolute -top-2 -right-2 min-h-[28px] min-w-[28px] rounded-full bg-ink-900 text-white flex items-center justify-center hover:bg-ink-700 transition">
-                        <X className="h-3.5 w-3.5"/>
+                         className="mx-auto max-h-[50vh] w-auto max-w-full rounded-2xl"/>
+                    <button type="button" onClick={() => { setFile(null); setError(null); }}
+                            aria-label="Discard photo"
+                            className="absolute top-2 right-2 min-h-[36px] min-w-[36px] rounded-full bg-ink-950/80 text-white flex items-center justify-center hover:bg-ink-800 transition">
+                        <X className="h-4 w-4"/>
                     </button>
                 </div>
+            ) : (
+                <div className="grid grid-cols-2 gap-3">
+                    {native ? (
+                        <button type="button" onClick={() => pick("camera")} className={pickClass}>
+                            <Camera className="h-6 w-6"/>
+                            Camera
+                        </button>
+                    ) : (
+                        <label htmlFor={cameraId} className={pickClass}>
+                            <Camera className="h-6 w-6"/>
+                            Camera
+                        </label>
+                    )}
+                    {native ? (
+                        <button type="button" onClick={() => pick("gallery")} className={pickClass}>
+                            <ImageIcon className="h-6 w-6"/>
+                            Gallery
+                        </button>
+                    ) : (
+                        <label htmlFor={galleryId} className={pickClass}>
+                            <ImageIcon className="h-6 w-6"/>
+                            Gallery
+                        </label>
+                    )}
+                </div>
             )}
-            <div className="flex items-center gap-2">
-                {!file && (
-                    <>
-                        {native ? (
-                            <button type="button" onClick={() => pick("camera")}
-                                    className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5">
-                                <Camera className="h-3.5 w-3.5"/>
-                                Camera
-                            </button>
-                        ) : (
-                            <label htmlFor={cameraId}
-                                   className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5 cursor-pointer">
-                                <Camera className="h-3.5 w-3.5"/>
-                                Camera
-                            </label>
-                        )}
-                        {native ? (
-                            <button type="button" onClick={() => pick("gallery")}
-                                    className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5">
-                                <ImageIcon className="h-3.5 w-3.5"/>
-                                Gallery
-                            </button>
-                        ) : (
-                            <label htmlFor={galleryId}
-                                   className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] inline-flex items-center gap-1.5 cursor-pointer">
-                                <ImageIcon className="h-3.5 w-3.5"/>
-                                Gallery
-                            </label>
-                        )}
-                    </>
-                )}
-                <div className="flex-1"/>
-                <button onClick={handleSend} disabled={posting || !file}
-                        aria-label="Post photo"
-                        className="shrink-0 min-h-[44px] min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none flex items-center justify-center">
-                    {posting ? <BeatLoader size={5} color="#0b0b0c"/> : <Send className="h-4 w-4"/>}
-                </button>
-            </div>
-            {error && <p className="text-xs text-red-500">{error}</p>}
+            <button type="button" onClick={handleSend} disabled={posting || !file}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-full bg-volt-400 text-ink-950 px-5 py-3 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none min-h-[48px]">
+                {posting ? <BeatLoader size={6} color="#0b0b0c"/> : <><Send className="h-4 w-4"/> Post photo</>}
+            </button>
+            {error && <p className="text-sm text-red-500">{error}</p>}
         </div>
     );
 }

@@ -52,12 +52,19 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not user.is_authenticated:
             return qs.none()
+        if user.is_staff or user.is_superuser:
+            return qs.order_by("name")
         # List is the pickable library (built-ins + yours). Retrieve and
-        # picture stay open so a custom coach's avatar still loads for
-        # participants in that challenge. Writes are gated in perform_*.
-        if self.action == "list" and not (user.is_staff or user.is_superuser):
-            return qs.filter(Q(is_builtin=True) | Q(created_by=user)).order_by("name")
-        return qs.order_by("name")
+        # picture also allow a custom coach assigned to a challenge the
+        # caller is in - so avatars load in the feed - but never every
+        # uploaded picture on the server.
+        visible = Q(is_builtin=True) | Q(created_by=user)
+        if self.action != "list":
+            visible |= (
+                Q(competitions__competition__owner=user)
+                | Q(competitions__competition__user=user)
+            )
+        return qs.filter(visible).distinct().order_by("name")
 
     def _may_write(self, persona):
         user = self.request.user
@@ -234,6 +241,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
                     # across challenges, and Prefetch is keyed on Workout.
                     queryset=Points.objects.select_related("goal", "award"),
                 ),
+                "config__competition__activitygoal_set",
             )
         )
         competition = self.request.query_params.get("competition")
@@ -356,6 +364,11 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         parent = self._last_own_activity(user, competition_id)
         if parent is None:
             return Response(no_workout, status=status.HTTP_400_BAD_REQUEST)
+        if parent.replies.filter(kind=DrillInstructorMessage.KIND_PHOTO).exists():
+            return Response(
+                {"image": "This workout already has a photo."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         config = parent.config
         if not config.enabled:
             return Response({"competition": "The coach is benched for this competition - photo posts are paused."},
@@ -405,6 +418,12 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             body=caption,
             image=image,
         )
+
+        try:
+            from competition.scorer import grant_photo_bonus
+            grant_photo_bonus(parent.workout, config.competition)
+        except Exception:
+            pass
 
         try:
             from .game import evaluate_photo_game

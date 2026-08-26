@@ -1,9 +1,7 @@
 import React, {Suspense, lazy, useEffect} from "react";
-import './App.css';
-
-
 import {BrowserRouter as Router, Routes, Route, useLocation} from "react-router-dom";
 import {rememberPath} from "./utils/lastPath";
+import {useDarkTheme} from "./utils/theme";
 import {
     WelcomePage,
     RegisterPage,
@@ -37,6 +35,7 @@ function RememberPath() {
 
 
 function App() {
+    useDarkTheme();
     return (
         <Router>
             <RememberPath/>

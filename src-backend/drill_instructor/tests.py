@@ -363,6 +363,42 @@ class PersonaPictureEndpointTests(TestCase):
         self.assertNotIn("/media/", payload["Pictured Sergeant"]["profile_picture"])
         self.assertIsNone(payload["Plain Coach"]["profile_picture"])
 
+    def test_custom_persona_picture_hidden_from_unrelated_users(self):
+        """A user-uploaded coach portrait is not world-readable to every
+        account on the server - only creator, staff, and people in a
+        challenge that uses that persona."""
+        from competition.models import Competition
+        creator = _user("creator@example.com", "Cora")
+        outsider = _user("outsider-pic@example.com", "Omar")
+        custom = DrillInstructorPersona.objects.create(
+            name="Private Roaster",
+            system_prompt="Stay private.",
+            created_by=creator,
+            is_builtin=False,
+        )
+        custom.profile_picture.save(
+            "private.png", SimpleUploadedFile("private.png", PNG_1PX, content_type="image/png")
+        )
+        url = f"/api/drill-instructor/persona/{custom.id}/picture/"
+
+        self.client.force_authenticate(creator)
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+        self.client.force_authenticate(outsider)
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+        today = timezone.localdate()
+        cup = Competition.objects.create(
+            owner=creator, name="Private Cup",
+            start_date=today, end_date=today + datetime.timedelta(days=7),
+        )
+        outsider.my_competitions.add(cup)
+        DrillInstructorConfig.objects.create(
+            competition=cup, persona=custom, enabled=True,
+        )
+        self.client.force_authenticate(outsider)
+        self.assertEqual(self.client.get(url).status_code, 200)
+
 
 class PersonaPictureUploadTests(TestCase):
     """The multipart upload itself: the write-only profile_picture_upload
@@ -1190,6 +1226,43 @@ class PhotoPostTests(TestCase):
         self.reply_delay.assert_called_once_with(message.id)
         self.reaction_delay.assert_not_called()
 
+    def test_second_photo_on_same_activity_rejected(self):
+        root = self._activity_root(self.athlete)
+        first = self._post(self.athlete, parent=root)
+        self.assertEqual(first.status_code, 201, first.content)
+        second = self._post(self.athlete, parent=root)
+        self.assertEqual(second.status_code, 400)
+        self.assertIn("already has a photo", second.json()["image"])
+        self.assertEqual(
+            DrillInstructorMessage.objects.filter(
+                kind=DrillInstructorMessage.KIND_PHOTO, parent=root,
+            ).count(),
+            1,
+        )
+
+    def test_photo_adds_ten_points_to_the_activity(self):
+        from competition.models import Points
+        from competition.scorer import PHOTO_BONUS_POINTS, PHOTO_AWARD_NAME
+        from .serializers import DrillInstructorMessageSerializer
+        root = self._activity_root(self.athlete)
+        before = sum(float(p.points_capped or 0) for p in root.workout.points_set.all())
+        response = self._post(self.athlete, parent=root)
+        self.assertEqual(response.status_code, 201, response.content)
+        bonus = Points.objects.get(workout=root.workout, award__name=PHOTO_AWARD_NAME)
+        self.assertEqual(float(bonus.points_capped), float(PHOTO_BONUS_POINTS))
+        self.assertEqual(bonus.award.competition_id, self.competition.id)
+        payload = DrillInstructorMessageSerializer(root).data
+        self.assertEqual(payload["points_capped"], before + PHOTO_BONUS_POINTS)
+        photo_row = next(row for row in payload["points_breakdown"] if row["kind"] == "photo")
+        self.assertEqual(photo_row["points"], float(PHOTO_BONUS_POINTS))
+        # One photo, one bonus — a rejected second post must not double it.
+        second = self._post(self.athlete, parent=root)
+        self.assertEqual(second.status_code, 400)
+        self.assertEqual(
+            Points.objects.filter(workout=root.workout, award__name=PHOTO_AWARD_NAME).count(),
+            1,
+        )
+
     def test_payload_exposes_image_via_authenticated_url(self):
         response = self._post(self.athlete)
         payload = response.json()
@@ -1292,6 +1365,48 @@ class PhotoPostTests(TestCase):
         self.assertGreaterEqual(card["points_capped"], 32.0)
         self.assertTrue(card["order_ribbon"])
         self.assertEqual(card["workout_summary"], "30 min Run · 5.00 km · 300 kcal")
+        labels = [row["label"] for row in card["points_breakdown"]]
+        self.assertIn("Exercise", labels)
+        self.assertIn("Move", labels)
+        self.assertIn("Minutes", labels)
+        self.assertIn("Photo", labels)
+        photo = next(row for row in card["points_breakdown"] if row["kind"] == "photo")
+        self.assertEqual(photo["points"], 0.0)
+        minutes = next(row for row in card["points_breakdown"] if row["label"] == "Minutes")
+        self.assertEqual(minutes["kind"], "goal")
+        self.assertEqual(minutes["metric"], "min")
+        self.assertEqual(minutes["target"], 30.0)
+        self.assertEqual(minutes["period"], "day")
+        self.assertEqual(minutes["minutes"], 30)
+        self.assertEqual(minutes["sport"], "Run")
+        self.assertEqual(minutes["kcal"], 300.0)
+        self.assertEqual(minutes["km"], 5.0)
+        self.assertIn("sport_factor", minutes)
+        self.assertIn("max_per_day", minutes)
+        self.assertIn("max_per_week", minutes)
+        self.assertIn("min_per_workout", minutes)
+        move = next(row for row in card["points_breakdown"] if row["label"] == "Move")
+        self.assertEqual(move["kind"], "goal")
+        self.assertEqual(move["metric"], "kcal")
+
+    def test_points_breakdown_names_the_daily_cap(self):
+        from competition.models import ActivityGoal, Points
+        root = self._activity_root(self.athlete)
+        goal = ActivityGoal.objects.create(
+            competition=self.competition, name="DailyCap", metric="min",
+            goal=150, period="week", max_per_day=60,
+        )
+        Points.objects.filter(goal=goal, workout=root.workout).delete()
+        Points.objects.create(goal=goal, workout=root.workout, points_raw=80, points_capped=40)
+        self.client.force_authenticate(self.athlete)
+        card = self.client.get("/api/drill-instructor/message/").json()[0]
+        row = next(item for item in card["points_breakdown"] if item["label"] == "DailyCap")
+        self.assertEqual(row["minutes"], 30)
+        self.assertEqual(row["sport"], "Run")
+        self.assertIsNotNone(row["cap_hit"])
+        self.assertEqual(row["cap_hit"]["kind"], "day")
+        self.assertEqual(row["cap_hit"]["limit"], 60.0)
+        self.assertEqual(row["cap_hit"]["points"], 40.0)
 
     def test_activity_message_points_ignore_other_competitions(self):
         """Feed badges must match the Board: only this competition's
@@ -1420,21 +1535,25 @@ class PhotoPostTests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_reply_reaction_task_attaches_photo_when_vision_capable(self):
+    def test_reply_reaction_task_skips_in_feed_reply_for_photos(self):
+        # A workout photo is not a chat turn: no coach bubble in the
+        # feed. The remix (when an edit model is on) is the backdrop /
+        # hot-or-not card instead.
         from .tasks import post_reply_reaction
         photo_reply = self._photo_message()
         photo_reply.parent = self._coach_root()
         photo_reply.save()
-        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
-                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value=None), \
-                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - I see it!", None)) as gen:
+        with mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value=None), \
+                mock.patch("drill_instructor.tasks.generate_message") as gen:
             result = post_reply_reaction(photo_reply.id)
-        _, kwargs = gen.call_args
-        self.assertEqual(kwargs["image_path"], photo_reply.image.path)
-        self.assertIn("PHOTO", kwargs["user_prompt"])
-        reaction = DrillInstructorMessage.objects.get(pk=result["reaction_id"])
-        self.assertEqual(reaction.parent, photo_reply.parent)
-        self.assertIsNone(result["roast_id"])  # no image-edit model probed
+        gen.assert_not_called()
+        self.assertIsNone(result["reaction_id"])
+        self.assertIsNone(result["roast_id"])
+        self.assertFalse(
+            DrillInstructorMessage.objects.filter(
+                parent=photo_reply.parent, kind=DrillInstructorMessage.KIND_REACTION,
+            ).exists()
+        )
 
     def test_photo_reply_earns_the_roast_remix(self):
         # The Coach page's photo button always replies to the coach's

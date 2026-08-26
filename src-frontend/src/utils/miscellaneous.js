@@ -2,7 +2,7 @@ import React from "react";
 import {AlertCircle} from "lucide-react";
 import { createAsyncThunk } from '@reduxjs/toolkit';
 import {useDispatch} from "react-redux";
-import {useTheme} from "./theme";
+
 
 function throwErrorWithCode(message, errorCode) {
     const error = new Error(message);
@@ -150,12 +150,4 @@ function PageWrapper({additionClasses = '', children}) {
     )
 }
 
-function useDarkMode() {
-  // Resolved class-based theme (light/dark/system) - keeps canvas charts
-  // in sync with the user-selected theme rather than only the OS setting.
-  const {resolvedTheme} = useTheme();
-  return resolvedTheme === 'dark';
-}
-
-
-export {throwErrorWithCode, deepDiff, compareDictLists, PageWrapper, BoxSection, ErrorBoxSection, ErrorBoundary, useDarkMode};
+export {throwErrorWithCode, deepDiff, compareDictLists, PageWrapper, BoxSection, ErrorBoxSection, ErrorBoundary};

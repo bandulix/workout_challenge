@@ -129,6 +129,8 @@ def protected_media_response(file_field):
     """
     from django.conf import settings
 
+    from urllib.parse import quote
+
     name = (getattr(file_field, "name", "") or "").replace("\\", "/")
     parts = name.split("/")
     if not name or name.startswith("/") or any(p in ("", ".", "..") for p in parts):
@@ -143,9 +145,12 @@ def protected_media_response(file_field):
         response = FileResponse(file_field.open("rb"), content_type=content_type)
     else:
         response = HttpResponse(content_type=content_type)
-        response["X-Accel-Redirect"] = f"/protected-media/{name}"
+        response["X-Accel-Redirect"] = "/protected-media/" + quote(name, safe="/")
     response["Cache-Control"] = "private, no-store"
     response["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet"
     response["Cross-Origin-Resource-Policy"] = "same-origin"
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Referrer-Policy"] = "same-origin"
+    response["X-Frame-Options"] = "SAMEORIGIN"
     return response
 

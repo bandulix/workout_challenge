@@ -437,6 +437,8 @@ class LeaderboardAthleteCardTests(TestCase):
         slugs = [t["slug"] for t in row["dog_tags"]]
         self.assertIn("first_blood", slugs)
         self.assertEqual(row["echoes_held"], 0)
+        self.assertEqual(float(row["scaling_kcal"]), 1.0)
+        self.assertEqual(float(row["scaling_distance"]), 1.0)
 
 
 @override_settings(

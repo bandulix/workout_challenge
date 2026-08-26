@@ -16,6 +16,23 @@ export function SectionHead({title, hint, children}) {
     );
 }
 
+/** Feed-style section label: hairline rule, no wrapping box. */
+export function PaneHead({title, hint, children}) {
+    return (
+        <div className="mb-3 px-1">
+            <div className="flex items-center gap-3">
+                <h2 className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-gray-400 shrink-0">{title}</h2>
+                <span className="flex-1 h-px bg-ink-950/10 dark:bg-white/10" aria-hidden="true"/>
+                {children && <div className="flex items-center gap-2 shrink-0">{children}</div>}
+            </div>
+            {hint && <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{hint}</p>}
+        </div>
+    );
+}
+
+export const paneCardClass =
+    "min-w-0 rounded-3xl glass-card p-3.5 sm:p-4 text-ink-950 dark:text-white";
+
 export function Chip({children}) {
     return (
         <span className="shrink-0 rounded-full bg-volt-400/30 text-volt-800 dark:bg-volt-400/15 dark:text-volt-300 text-[11px] font-semibold px-2 py-0.5">

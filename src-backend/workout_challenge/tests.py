@@ -306,6 +306,23 @@ class ApiNoStoreMiddlewareTests(TestCase):
         self.assertNotIn("no-store", response.get("Cache-Control", ""))
 
 
+class BlockPublicMediaMiddlewareTests(TestCase):
+    """Guessing /media/<filename> must not stream an upload, even if
+    Django's runserver or a future static() mapping would have."""
+
+    def test_media_path_is_404(self):
+        response = self.client.get("/media/profile_pics/secret.jpg")
+        self.assertEqual(response.status_code, 404)
+
+    def test_protected_media_path_is_404_without_accel(self):
+        response = self.client.get("/protected-media/profile_pics/secret.jpg")
+        self.assertEqual(response.status_code, 404)
+
+    def test_api_picture_prefix_is_not_blocked(self):
+        response = self.client.get("/api/user/1/picture/")
+        self.assertNotEqual(response.status_code, 404)
+
+
 class HeicUploadTests(TestCase):
     """iPhone and Galaxy camera rolls default to HEIC. Pillow alone cannot
     open that container; pillow-heif must be registered and the upload

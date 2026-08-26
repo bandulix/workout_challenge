@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="colorPrimary">#d7ff3e</color>
-    <color name="colorPrimaryDark">#efece4</color>
+    <color name="colorPrimaryDark">#0b0b0c</color>
     <color name="colorAccent">#d7ff3e</color>
     <color name="splashBackground">#0b0b0c</color>
     <!-- Page canvas: fills the status-bar inset so the WebView padding
-         never shows a black strip above the limestone (or night) background. -->
-    <color name="canvas">#efece4</color>
+         never shows a black strip above the night background. -->
+    <color name="canvas">#0b0b0c</color>
 </resources>

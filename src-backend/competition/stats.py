@@ -176,7 +176,7 @@ def get_competition_stats(competition, last_seven_days=False):
         timeseries_team[team_id][days_ago] = i
 
     # Get user data
-    user_dict = {i['id']: i for i in CustomUser.objects.filter(my_competitions=competition).values('id', 'username', 'strava_allow_follow', 'strava_athlete_id', 'profile_picture').order_by('username', 'id')}
+    user_dict = {i['id']: i for i in CustomUser.objects.filter(my_competitions=competition).values('id', 'username', 'strava_allow_follow', 'strava_athlete_id', 'profile_picture', 'scaling_kcal', 'scaling_distance').order_by('username', 'id')}
     echo_holds = {}
     if user_dict:
         from django.db.models import Count
@@ -202,6 +202,14 @@ def get_competition_stats(competition, last_seven_days=False):
         # frontend fetches it with the JWT), never the raw /media/ path.
         value['profile_picture'] = f"/api/user/{value['id']}/picture/" if value['profile_picture'] else None
         value['echoes_held'] = int(echo_holds.get(key, 0))
+        try:
+            value['scaling_kcal'] = float(value.get('scaling_kcal') or 1)
+        except (TypeError, ValueError):
+            value['scaling_kcal'] = 1.0
+        try:
+            value['scaling_distance'] = float(value.get('scaling_distance') or 1)
+        except (TypeError, ValueError):
+            value['scaling_distance'] = 1.0
 
     # Public athlete-card extras (no email / legal name). One batch for
     # tags, one for workout counts; streak and active days come from the

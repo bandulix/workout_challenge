@@ -63,7 +63,6 @@ export const competitionsApi = createApi({
 export const {
     useGetCompetitionsQuery,
     useGetCompetitionByIdQuery,
-    useGetPointsFactorsQuery,
     useAddCompetitionMutation,
     useUpdateCompetitionMutation,
     useDeleteCompetitionMutation,

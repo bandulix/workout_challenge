@@ -7,16 +7,21 @@ import ProfileAvatar from "./ProfileAvatar";
 import {drillInstructorApi, useReplyToDrillMessageMutation} from "../utils/reducers/drillInstructorSlice";
 import {useProtectedImage} from "../utils/protectedMedia";
 import {elapsedSince, timeAgo} from "../utils/time";
-import PhotoPost from "./PhotoPost";
 
 // A reply's image (the coach's roasted-photo remix) - authenticated
 // endpoint, so loaded through the protected-media cache like avatars.
-function ReplyImage({url, alt}) {
+function ReplyImage({url, alt, elapsed}) {
     const {src} = useProtectedImage(url);
     if (!src) return null;
     return (
-        <img src={src} alt={alt}
-             className="mt-1 max-h-72 w-auto max-w-full rounded-xl border border-gray-200/70 dark:border-ink-700/60"/>
+        <div className="relative mt-1.5 overflow-hidden rounded-xl">
+            <img src={src} alt={alt} className="max-h-72 w-auto max-w-full"/>
+            {elapsed && (
+                <span className="absolute bottom-1.5 right-1.5 rounded-full bg-ink-950/75 text-volt-400 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 tabular-nums">
+                    {elapsed}
+                </span>
+            )}
+        </div>
     );
 }
 
@@ -28,7 +33,7 @@ function ReplyImage({url, alt}) {
 // Coach bubbles use the persona's avatar/accent, participant bubbles the
 // user's profile picture + first name, so it is always clear who spoke.
 
-function CoachThread({message, persona, canReply = true, defaultOpen = false, competitionId, visionCapable, lastOwnActivityId}) {
+function CoachThread({message, persona, canReply = true, defaultOpen = false, className = "mt-2.5"}) {
     const [open, setOpen] = useState(defaultOpen);
     // Deep links pass defaultOpen; the messages query usually resolves
     // after the first render, so sync the prop in when it flips true.
@@ -39,7 +44,11 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
     const [error, setError] = useState(null);
     const [sendReply, {isLoading}] = useReplyToDrillMessageMutation();
     const dispatch = useDispatch();
-    const replies = message.replies || [];
+    // Photos and the coach remix are not chat: they hang on the activity
+    // card (backdrop) and the hot-or-not box, not in this thread.
+    const replies = (message.replies || []).filter(
+        (r) => r.kind !== "photo" && !(r.is_coach && r.image)
+    );
     const pictured = Boolean(message.image) || replies.some((r) => r.image);
     const [now, setNow] = useState(Date.now());
     useEffect(() => {
@@ -47,10 +56,6 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
         const id = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(id);
     }, [open, pictured]);
-    // Camera stays on every thread while the coach is on duty (own
-    // workouts, @-mentions, group pushes). The picture always hangs
-    // under lastOwnActivityId — your latest session, not this bubble.
-    const showPhoto = Boolean(canReply && competitionId);
 
     // Benched coach (disabled config): existing threads stay readable,
     // but new replies are pointless - the coach can't react.
@@ -75,16 +80,16 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
     }
 
     return (
-        <div className="mt-1 min-w-0 w-full">
+        <div className={"min-w-0 w-full " + className}>
             <button onClick={() => setOpen((v) => !v)}
-                    className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[32px]">
+                    className="inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-volt-700 dark:hover:text-volt-300 transition min-h-[32px]">
                 <MessageCircle className="h-3.5 w-3.5"/>
                 {replies.length > 0 ? `${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : (canReply ? "Reply" : "")}
                 {(canReply || replies.length > 0) && (open ? <ChevronUp className="h-3 w-3"/> : <ChevronDown className="h-3 w-3"/>)}
             </button>
 
             {open && (
-                <div className="mt-1.5 ml-1 pl-2 sm:ml-1.5 sm:pl-3 border-l-2 border-volt-400/40 space-y-3 min-w-0">
+                <div className="mt-2 space-y-2.5 min-w-0">
                     {replies.map((r) => (
                         <div key={r.id} className="flex items-start gap-2">
                             {r.is_coach ? (
@@ -92,20 +97,18 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
                             ) : (
                                 <ProfileAvatar user={{profile_picture: r.author_profile_picture, first_name: r.author_name}} size={24}/>
                             )}
-                            <div className="min-w-0">
+                            <div className={"min-w-0 flex-1 rounded-2xl px-3 py-2 " +
+                                (r.is_coach ? "glass-inset" : "bg-ink-950/[0.04] dark:bg-white/[0.05]")}>
                                 {/* break-words: pasted URLs / unbreakable strings wrap
                                     instead of overflowing the viewport (page scrolled
                                     sideways on smartphones). */}
                                 <p className="text-sm leading-snug break-words dark:text-gray-100">{r.body}</p>
                                 {r.image && (
-                                    <>
-                                        <ReplyImage url={r.image} alt={r.body ? `Coach remix: ${r.body}` : "Coach remix"}/>
-                                        <p className="text-[10px] font-bold uppercase tracking-wider text-volt-700 dark:text-volt-400 mt-1">
-                                            elapsed {elapsedSince(r.posted_at, now)}
-                                        </p>
-                                    </>
+                                    <ReplyImage url={r.image}
+                                                alt={r.body ? `Coach remix: ${r.body}` : "Coach remix"}
+                                                elapsed={elapsedSince(r.posted_at, now)}/>
                                 )}
-                                <p className="text-[11px] text-gray-400 mt-0.5">
+                                <p className="text-[11px] text-gray-400 mt-1">
                                     {r.is_coach ? (persona?.name || "Coach") : (r.author_name || "Participant")} · {timeAgo(r.posted_at)}
                                 </p>
                             </div>
@@ -114,11 +117,7 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, co
 
                     {canReply && (
                         <div className="min-w-0 w-full space-y-1">
-                            <div className="flex flex-wrap items-center gap-2 min-w-0 w-full">
-                                {showPhoto && (
-                                    <PhotoPost competitionId={competitionId} parentId={lastOwnActivityId}
-                                               visionCapable={Boolean(visionCapable)}/>
-                                )}
+                            <div className="flex items-center gap-2 min-w-0 w-full">
                                 <input
                                     type="text"
                                     value={text}

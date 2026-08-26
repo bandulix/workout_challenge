@@ -8,6 +8,27 @@ in the nginx log). Browsers revalidate properly, which is why the bug
 only showed in the APK.
 """
 
+from django.http import HttpResponseNotFound
+
+
+class BlockPublicMediaMiddleware:
+    """Uploaded files must never be reachable by guessing /media/<name>.
+
+    nginx already 404s /media/ and marks /protected-media/ internal.
+    This is the Django-side belt: DEBUG runserver, a future
+    ``static(MEDIA_URL)``, or a request that somehow bypasses nginx
+    still cannot stream profile/photo/echo bytes.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        path = request.path or ""
+        if path.startswith("/media/") or path.startswith("/protected-media/"):
+            return HttpResponseNotFound()
+        return self.get_response(request)
+
 
 class ApiNoStoreMiddleware:
     def __init__(self, get_response):

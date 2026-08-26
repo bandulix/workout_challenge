@@ -42,30 +42,28 @@ export function CoachHandover({configId, enabled}) {
     const previous = ballot.previous_persona;
     const countdown = formatCountdown(ballot.next_switch_at, now);
     return (
-        <div className="px-4 sm:px-5 py-3 border-b border-ink-950/10 dark:border-ink-700/60">
-            <div className="rounded-2xl glass-inset text-ink-950 dark:text-white px-3.5 py-3 ring-1 ring-volt-500/40 dark:ring-volt-400/40">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400 flex items-center gap-1.5">
-                    <Timer className="h-3.5 w-3.5"/> New coach
-                </p>
-                <div className="mt-2 flex items-center gap-3">
-                    {previous && (
-                        <>
-                            <PersonaAvatar persona={previous} size={36}/>
-                            <span className="text-gray-500 text-sm">→</span>
-                        </>
-                    )}
-                    <PersonaAvatar persona={current} size={44} glow/>
-                    <div className="min-w-0">
-                        <p className="font-display text-sm uppercase tracking-wide truncate">{current.name}</p>
-                        <p className="text-[11px] text-gray-600 dark:text-gray-400">
-                            {previous ? `took over from ${previous.name}` : "took the megaphone"}
-                        </p>
-                    </div>
+        <div className="mb-3 rounded-3xl glass-card px-4 py-3 ring-1 ring-volt-500/40 dark:ring-volt-400/40">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400 flex items-center gap-1.5">
+                <Timer className="h-3.5 w-3.5"/> New coach
+            </p>
+            <div className="mt-2 flex items-center gap-3">
+                {previous && (
+                    <>
+                        <PersonaAvatar persona={previous} size={36}/>
+                        <span className="text-gray-500 text-sm">→</span>
+                    </>
+                )}
+                <PersonaAvatar persona={current} size={44} glow/>
+                <div className="min-w-0">
+                    <p className="font-display text-sm uppercase tracking-wide truncate">{current.name}</p>
+                    <p className="text-[11px] text-gray-600 dark:text-gray-400">
+                        {previous ? `took over from ${previous.name}` : "took the megaphone"}
+                    </p>
                 </div>
-                <p className="mt-2 text-xs text-volt-700 dark:text-volt-300 font-bold uppercase tracking-wider tabular-nums">
-                    On the clock · {countdown}
-                </p>
             </div>
+            <p className="mt-2 text-xs text-volt-700 dark:text-volt-300 font-bold uppercase tracking-wider tabular-nums">
+                On the clock · {countdown}
+            </p>
         </div>
     );
 }

@@ -4,6 +4,7 @@ import ProfileAvatar from "./ProfileAvatar";
 import {DogTagRow} from "./gameBits";
 import {sportLabelShort} from "../forms/workoutForm";
 import {OverlaySheet} from "../forms/basicComponents";
+import {topSportCounts} from "../utils/sportCounts";
 
 function Kpi({icon: Icon, value, label}) {
     return (
@@ -16,14 +17,8 @@ function Kpi({icon: Icon, value, label}) {
 }
 
 function sportsForUser(feed, userId) {
-    const counts = {};
-    for (const entry of feed || []) {
-        if (entry.workout__user !== userId) continue;
-        const sport = entry.workout__sport_type;
-        if (!sport || sport === "Steps") continue;
-        counts[sport] = (counts[sport] || 0) + 1;
-    }
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const mine = (feed || []).filter((entry) => entry.workout__user === userId);
+    return Object.entries(topSportCounts(mine, "workout__sport_type").groups);
 }
 
 export default function AthleteCard({person, dunce, weekTotal, weekBars, trendSpark, feed, onClose}) {
@@ -48,6 +43,11 @@ export default function AthleteCard({person, dunce, weekTotal, weekBars, trendSp
                         {" · "}
                         {points.toLocaleString()}P
                         {person.days_on_rank > 0 && rank != null ? ` · ${person.days_on_rank}d on rank` : ""}
+                    </p>
+                    <p className="mt-1 text-[13px] text-gray-500 dark:text-gray-400">
+                        {Math.round(Number(person.scaling_kcal ?? 1) * 100)}% effort
+                        {" · "}
+                        {Math.round(Number(person.scaling_distance ?? 1) * 100)}% distance
                     </p>
                     {dunce && (
                         <p className="mt-2 rounded-full bg-ink-950 text-volt-400 text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1">

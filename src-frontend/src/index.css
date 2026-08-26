@@ -5,17 +5,8 @@
 :root {
   --volt: #d7ff3e;
   --ink: #0b0b0c;
-  /* Limestone, not olive — volt stays the only green in light mode too. */
-  --canvas: #efece4;
-}
-html.dark {
   --canvas: #0b0b0c;
-}
-/* First paint / Match device: follow the OS before JS adds .dark. */
-@media (prefers-color-scheme: dark) {
-  html:not(.light) {
-    --canvas: #0b0b0c;
-  }
+  color-scheme: dark;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -35,7 +26,13 @@ html.dark {
   .animate-squad-orbit-swing,
   .animate-squad-pip-wave,
   .animate-squad-hop,
-  .glass-sheen {
+  .glass-sheen,
+  .points-chip,
+  .points-chip-bob,
+  .points-chip--photo,
+  .points-spark,
+  .points-cam,
+  .photo-bonus-tag {
     animation: none !important;
   }
 }
@@ -109,6 +106,161 @@ html.dark {
   box-shadow: none;
 }
 
+/* Coach hero: one latest-message bubble with a tail aimed at the portrait.
+   Orbit is 8.5rem (sm 9.6rem); tail centre sits on that midpoint. */
+.coach-quote {
+  --quote-tail-left: calc(4.25rem - 8px);
+  background: rgba(255, 255, 255, 0.46);
+  -webkit-backdrop-filter: blur(16px) saturate(1.35);
+  backdrop-filter: blur(16px) saturate(1.35);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-left: 3px solid #d7ff3e;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.88) inset,
+    0 10px 28px rgba(28, 24, 18, 0.07);
+}
+.dark .coach-quote {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.10);
+  border-left-color: #d7ff3e;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+.coach-quote::before {
+  content: "";
+  position: absolute;
+  top: -9px;
+  left: var(--quote-tail-left);
+  width: 16px;
+  height: 9px;
+  background: inherit;
+  clip-path: polygon(50% 0, 0 100%, 100% 100%);
+}
+.coach-quote-mark {
+  position: absolute;
+  top: -0.18em;
+  right: 0.28em;
+  font-family: "Archivo Black", Inter, system-ui, sans-serif;
+  font-size: 5.25rem;
+  line-height: 1;
+  color: #d7ff3e;
+  opacity: 0.22;
+  pointer-events: none;
+  user-select: none;
+}
+.dark .coach-quote-mark { opacity: 0.28; }
+@media (min-width: 640px) {
+  .coach-quote { --quote-tail-left: calc(4.8rem - 8px); }
+}
+/* Compact quote next to a 28px persona in the challenge feed.
+   No tail — the volt left edge plus the avatar already read as speech. */
+.coach-quote--inline::before { content: none; }
+.coach-quote--photo {
+  background: rgba(255, 255, 255, 0.22);
+}
+.dark .coach-quote--photo {
+  background: rgba(12, 12, 14, 0.38);
+}
+
+/* Activity-card photo wash: keep luminance low so white type still reads. */
+.activity-photo-bg {
+  filter: blur(1px) saturate(1.15) brightness(0.82) contrast(1.08);
+}
+.dark .activity-photo-bg {
+  filter: blur(1px) saturate(1.2) brightness(0.58) contrast(1.1);
+}
+
+/* Feed points chip: same box size always. Glow + a little bob;
+   orbiting sparks. Intensity comes from --pg/--pa/--px/--py/--pr. */
+@keyframes points-bob {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  35% { transform: translate(var(--px), calc(var(--py) * -1)) rotate(var(--pr)); }
+  70% { transform: translate(calc(var(--px) * -1), var(--py)) rotate(calc(var(--pr) * -1)); }
+}
+@keyframes points-orbit {
+  from { transform: rotate(var(--sa)); }
+  to { transform: rotate(calc(var(--sa) + 360deg)); }
+}
+@keyframes rainbow-shift {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+@keyframes rainbow-glow {
+  0%, 100% { box-shadow: 0 0 10px #ff3cac, 0 0 18px #d7ff3e; }
+  33% { box-shadow: 0 0 10px #d7ff3e, 0 0 18px #3cffff; }
+  66% { box-shadow: 0 0 10px #3cffff, 0 0 18px #c77dff; }
+}
+@keyframes cam-hue {
+  0%, 100% { color: #ff3cac; filter: drop-shadow(0 0 5px #ff3cac); }
+  33% { color: #d7ff3e; filter: drop-shadow(0 0 5px #d7ff3e); }
+  66% { color: #3cffff; filter: drop-shadow(0 0 5px #3cffff); }
+}
+.points-chip-bob {
+  animation: points-bob var(--pd, 2.4s) ease-in-out infinite;
+}
+.points-chip {
+  box-shadow:
+    0 0 var(--pg) rgba(215, 255, 62, var(--pa)),
+    0 0 calc(var(--pg) * 1.7) rgba(215, 255, 62, calc(var(--pa) * 0.4));
+}
+.points-chip--photo {
+  background: linear-gradient(90deg, #ff3cac, #ffd60a, #d7ff3e, #3cffff, #c77dff, #ff3cac);
+  background-size: 200% 100%;
+  animation: rainbow-shift 2.2s linear infinite, rainbow-glow 2.4s ease-in-out infinite;
+  box-shadow: none;
+}
+.points-spark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  animation: points-orbit var(--sd, 2.8s) linear infinite;
+  animation-delay: var(--sdelay, 0s);
+}
+.points-spark > span {
+  display: block;
+  margin-left: var(--sr);
+  color: #d7ff3e;
+  font-size: var(--ss, 6px);
+  font-weight: 300;
+  line-height: 1;
+  opacity: 0.8;
+  transform: scaleX(0.72);
+  text-shadow: 0 0 4px rgba(215, 255, 62, 0.7);
+}
+.points-chip-wrap--photo .points-spark > span {
+  color: hsl(var(--hue, 180) 100% 62%);
+  text-shadow: 0 0 5px hsl(var(--hue, 180) 100% 62% / 0.85);
+  opacity: 0.95;
+}
+.points-cam {
+  color: #d7ff3e;
+  filter: drop-shadow(0 0 5px rgba(215, 255, 62, 0.8));
+  animation: cam-hue 2.2s linear infinite;
+}
+.points-cam svg {
+  display: block;
+  flex-shrink: 0;
+}
+.photo-bonus-tag {
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ff3cac, #ffd60a, #d7ff3e, #3cffff, #c77dff, #ff3cac);
+  background-size: 200% 100%;
+  animation: rainbow-shift 2.2s linear infinite;
+  color: #0b0b0c;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 0 5px;
+  line-height: 1;
+  box-shadow: 0 0 10px rgba(215, 255, 62, 0.45);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .coach-quote { background: rgba(255, 252, 247, 0.94); }
+  .dark .coach-quote { background: rgba(22, 22, 26, 0.96); }
+}
+
 /* Recessed wells for stats / settings blocks (not paper-grey slabs). */
 .glass-well {
   background: rgba(28, 24, 18, 0.05);
@@ -155,27 +307,6 @@ html.dark {
   .btn-glass { background: rgba(255, 252, 247, 0.95); }
   .dark .btn-glass { background: rgba(28, 28, 32, 0.95); }
 }
-
-/* Light mode: step secondary type and volt labels down so they read
-   on stone frost. Neon volt stays on solid buttons and dark chips. */
-html:not(.dark) .text-gray-300 { color: rgb(62, 57, 50); }
-html:not(.dark) .text-gray-400 { color: rgb(42, 38, 33); }
-html:not(.dark) .text-gray-500 { color: rgb(32, 29, 25); }
-html:not(.dark) .text-gray-600 { color: rgb(22, 20, 18); }
-html:not(.dark) .placeholder-gray-400::placeholder,
-html:not(.dark) .placeholder-gray-500::placeholder,
-html:not(.dark) .placeholder-gray-600::placeholder { color: rgb(62, 57, 50); }
-html:not(.dark) .text-volt-300,
-html:not(.dark) .text-volt-400 { color: #3a5808; }
-html:not(.dark) .text-volt-500 { color: #314c07; }
-html:not(.dark) .text-volt-600 { color: #294006; }
-html:not(.dark) .text-volt-700 { color: #223505; }
-html:not(.dark) .text-volt-800 { color: #1b2c04; }
-html:not(.dark) .bg-ink-950.text-volt-400,
-html:not(.dark) .bg-ink-950 .text-volt-400,
-html:not(.dark) .bg-ink-950\/80.text-volt-400,
-html:not(.dark) .bg-ink-900.text-volt-400,
-html:not(.dark) .bg-ink-900 .text-volt-400 { color: #d7ff3e; }
 
 /* Slow specular sweep across the dock — “glass catching light”.
    Use background-image (not background) so dark-mode color overrides

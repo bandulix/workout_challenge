@@ -25,7 +25,7 @@ if (SENTRY_DSN !== undefined && SENTRY_DSN !== null && SENTRY_DSN !== '') {
                     blockAllMedia: true,
                 }),
                 Sentry.feedbackIntegration({
-                    colorScheme: "system",
+                    colorScheme: "dark",
                 }),
             ],
             sendDefaultPii: false,

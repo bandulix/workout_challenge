@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from workout_challenge.celery import app, is_task_already_executing
 
+from .formatters import format_workout_summary
 from .llm_client import build_echo_art_prompt, build_group_push_prompt, build_inactivity_prompt, build_photo_prompt, build_reply_prompt, build_roast_caption_prompt, build_roast_image_prompt, build_workout_prompt, check_image_edit_capability, check_vision_capability, generate_message, generate_roast_image
 
 try:
@@ -70,20 +71,6 @@ def _recent_bodies(config, limit=2):
         .order_by("-posted_at")
         .values_list("body", flat=True)[:limit]
     )
-
-
-def _format_workout_summary(workout):
-    """Build a human-readable one-liner of the workout (used as a fallback)."""
-    parts = []
-    duration_min = None
-    if workout.duration is not None:
-        duration_min = round(workout.duration.total_seconds() / 60)
-        parts.append(f"{duration_min} min {workout.sport_type}")
-    if workout.distance is not None and workout.sport_type != "Steps":
-        parts.append(f"{float(workout.distance):.2f} km")
-    if workout.kcal is not None:
-        parts.append(f"{round(float(workout.kcal))} kcal")
-    return " · ".join(parts), duration_min
 
 
 def _user_rank(workout, competition):
@@ -171,7 +158,7 @@ def post_workout_comment(self, workout_id):
         drill_instructor__comment_on_activity=True,
     ).select_related("drill_instructor", "drill_instructor__persona")
 
-    summary, duration_min = _format_workout_summary(workout)
+    summary, duration_min = format_workout_summary(workout)
 
     # Arcade rules (dunce, daily order, dog tags) run even when the
     # owner has workout comments switched off.
@@ -355,6 +342,18 @@ def post_reply_reaction(self, reply_id):
     root = reply.parent
     replier_first_name = reply.user.first_name or reply.user.username or "Athlete"
 
+    # A photo on a workout is not a chat turn. No in-feed coach reply:
+    # the remix is the activity backdrop and the hot-or-not card.
+    if reply.kind == DrillInstructorMessage.KIND_PHOTO:
+        roast_id = None
+        if reply.image:
+            roast_model = check_image_edit_capability()
+            if roast_model:
+                roast_id = _post_photo_roast(
+                    config, reply, roast_model, reply.image.path, parent=root,
+                )
+        return {"reply_id": reply_id, "reaction_id": None, "roast_id": roast_id}
+
     # A photo reply: the coach gets the actual picture when the model can
     # see (checked live - the model could have changed since the post).
     reply_image_path = None
@@ -452,20 +451,7 @@ def post_reply_reaction(self, reply_id):
         except Exception as exc:  # noqa: BLE001 - never block the reaction
             logger.warning("Drill Instructor: reaction push failed for user %s: %s", reply.user_id, exc)
 
-    # Photos now hang under the caller's workout comment, so they always
-    # arrive here (not post_photo_reaction). Image-edit can take ~3 min;
-    # this task's time_limit must outlast that. The chat model seeing the
-    # picture is nice for the text reaction, but the editor gets the
-    # pixels itself - roast even when the vision probe is cold.
-    roast_id = None
-    if reply.kind == DrillInstructorMessage.KIND_PHOTO and reply.image:
-        roast_model = check_image_edit_capability()
-        if roast_model:
-            roast_id = _post_photo_roast(
-                config, reply, roast_model, reply.image.path, parent=root,
-            )
-
-    return {"reply_id": reply_id, "reaction_id": message.id, "roast_id": roast_id}
+    return {"reply_id": reply_id, "reaction_id": message.id, "roast_id": None}
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
@@ -625,7 +611,7 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
     author_first_name = photo.user.first_name or photo.user.username or "Athlete"
     portrait_path = _persona_portrait_path(persona)
     workout = _workout_answered_to(photo, parent)
-    workout_summary = _format_workout_summary(workout)[0] if workout is not None else ""
+    workout_summary = format_workout_summary(workout)[0] if workout is not None else ""
 
     roast_prompt = build_roast_image_prompt(
         persona_name=persona.name,
@@ -728,7 +714,7 @@ def remix_echo_art(self, echo_id, uploaded_by_id=None):
     unit = "km" if echo.metric == "distance" else "min"
     metric_label = f"{echo.metric_value:g} {unit} {echo.sport_type}"
     if echo.holder_workout_id:
-        richer, _ = _format_workout_summary(echo.holder_workout)
+        richer, _ = format_workout_summary(echo.holder_workout)
         if richer:
             metric_label = richer
     prompt = build_echo_art_prompt(

@@ -2,8 +2,7 @@ import React, {useEffect, useRef, useState} from "react";
 import {Camera, Crown, ScrollText, Share2, Swords} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {useDispatch} from "react-redux";
-import {BoxSection} from "../utils/miscellaneous";
-import {SectionHead} from "./uiBits";
+import {PaneHead, paneCardClass} from "./uiBits";
 import {useProtectedImage} from "../utils/protectedMedia";
 import {compressImage} from "../utils/imageCompress";
 import {isAcceptablePhoto, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
@@ -148,7 +147,7 @@ function EchoCard({echo, userId, onChallenge, busy, now}) {
     const canChallenge = live && !mine && !war && Boolean(userId);
 
     return (
-        <article className="rounded-2xl glass-card text-ink-950 dark:text-white p-3.5">
+        <article className={paneCardClass}>
             <EchoArt url={echo.image} title={echo.title}
                      canUpload={Boolean(echo.can_upload_art)} echoId={echo.id}/>
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -198,13 +197,13 @@ function EchoBook({competitionId, open}) {
     const {data: book} = useGetEchoBookQuery(competitionId, {skip: !open || !competitionId});
     if (!open) return null;
     if (!book) {
-        return <p className="mt-3 text-sm text-gray-400">Opening the chronicle…</p>;
+        return <p className="text-sm text-gray-400">Opening the chronicle…</p>;
     }
     if (!book.chapters?.length) {
-        return <p className="mt-3 text-sm text-gray-400">No Echoes have been planted in this challenge yet.</p>;
+        return <p className="text-sm text-gray-400">No Echoes have been planted in this challenge yet.</p>;
     }
     return (
-        <ol className="mt-3 space-y-3">
+        <ol className="space-y-3">
             {book.chapters.map((ch) => (
                 <li key={ch.id} className="rounded-xl glass-well p-3">
                     <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-volt-700 dark:text-volt-400">
@@ -245,14 +244,16 @@ export default function EchoChamber({competitionId, userId}) {
     const now = useNowTick(ticking);
     if (rows.length === 0) {
         return (
-            <BoxSection additionalClasses="mt-4">
-                <SectionHead title="Echo Chamber" hint="Living trophies"/>
-                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                    No Echoes yet. They are planted for a personal best in this challenge,
-                    a 15 km or 90 min session, taking 1st place, or the first 40+ minute
-                    workout of the challenge.
-                </p>
-            </BoxSection>
+            <div>
+                <PaneHead title="Echo Chamber" hint="Living trophies"/>
+                <article className={paneCardClass}>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                        No Echoes yet. They are planted for a personal best in this challenge,
+                        a 15 km or 90 min session, taking 1st place, or the first 40+ minute
+                        workout of the challenge.
+                    </p>
+                </article>
+            </div>
         );
     }
 
@@ -269,17 +270,21 @@ export default function EchoChamber({competitionId, userId}) {
     }
 
     return (
-        <BoxSection additionalClasses="mt-4">
-            <SectionHead title="Echo Chamber" hint="Living trophies. Undefeated ones taunt the group until someone claims them.">
+        <div>
+            <PaneHead title="Echo Chamber" hint="Living trophies. Undefeated ones taunt the group until someone claims them.">
                 <button type="button" onClick={() => setBookOpen((v) => !v)}
                         className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition">
                     <ScrollText className="h-3.5 w-3.5"/>
                     {bookOpen ? "Hide book" : "Book of Echoes"}
                 </button>
-            </SectionHead>
-            <EchoBook competitionId={competitionId} open={bookOpen}/>
+            </PaneHead>
+            {bookOpen && (
+                <article className={paneCardClass + " mb-3"}>
+                    <EchoBook competitionId={competitionId} open={bookOpen}/>
+                </article>
+            )}
             {live.length > 0 && (
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2">
                     {live.map((echo) => (
                         <EchoCard key={echo.id} echo={echo} userId={userId} now={now}
                                   onChallenge={onChallenge} busy={isLoading}/>
@@ -288,10 +293,8 @@ export default function EchoChamber({competitionId, userId}) {
             )}
             {immortal.length > 0 && (
                 <div className="mt-4">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-volt-500 flex items-center gap-1.5">
-                        <Crown className="h-3.5 w-3.5"/> Immortal
-                    </p>
-                    <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    <PaneHead title="Immortal"/>
+                    <div className="grid gap-3 sm:grid-cols-2">
                         {immortal.map((echo) => (
                             <EchoCard key={echo.id} echo={echo} userId={userId} now={now}
                                       onChallenge={onChallenge} busy={isLoading}/>
@@ -299,6 +302,6 @@ export default function EchoChamber({competitionId, userId}) {
                     </div>
                 </div>
             )}
-        </BoxSection>
+        </div>
     );
 }

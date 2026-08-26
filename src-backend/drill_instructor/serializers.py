@@ -3,6 +3,10 @@ import re
 from django.urls import reverse
 from rest_framework import serializers
 
+from competition.scorer import PHOTO_AWARD_NAME, sport_factor
+from custom_user.serializers import user_picture_url
+
+from .formatters import format_workout_summary
 from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona, LegendEcho
 
 
@@ -193,6 +197,9 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
         cold cache. A miss queues a background probe (throttled); the
         next config refetch (mount or 60s poll) picks up the result.
         """
+        cached = getattr(self, "_caps", None)
+        if cached is not None:
+            return cached
         from django.core.cache import cache
 
         from .llm_client import read_cached_capabilities
@@ -202,7 +209,8 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
             if cache.add("drill-caps-probe-queued", 1, 120):
                 from .tasks import probe_llm_capabilities
                 probe_llm_capabilities.delay()
-        return bool(vision), bool(edit)
+        self._caps = (bool(vision), bool(edit))
+        return self._caps
 
     def get_vision_capable(self, obj):
         return self._capability_flags()[0]
@@ -272,15 +280,15 @@ def _persona_for_message(obj):
     New rows snapshot ``persona`` at insert; older rows fall back to
     the config's current persona (the pre-snapshot behaviour).
     """
-    return obj.persona or obj.config.persona
+    if not hasattr(obj, "_persona_snap"):
+        obj._persona_snap = obj.persona or getattr(obj.config, "persona", None)
+    return obj._persona_snap
 
 
-def _user_picture_url(user):
-    """Profile picture URL for a thread author - the authenticated
-    endpoint (never the raw /media/ path), shared helper shape with
-    custom_user.serializers.user_picture_url."""
-    from custom_user.serializers import user_picture_url
-    return user_picture_url(user)
+def _message_image_url(obj):
+    if not obj.image:
+        return None
+    return reverse("drill-message-picture", kwargs={"pk": obj.pk})
 
 
 class DrillInstructorReplySerializer(serializers.ModelSerializer):
@@ -305,9 +313,7 @@ class DrillInstructorReplySerializer(serializers.ModelSerializer):
         return obj.user_id is None
 
     def get_image(self, obj):
-        if not obj.image:
-            return None
-        return reverse("drill-message-picture", kwargs={"pk": obj.pk})
+        return _message_image_url(obj)
 
     def get_author_name(self, obj):
         if obj.user_id is None:
@@ -317,7 +323,7 @@ class DrillInstructorReplySerializer(serializers.ModelSerializer):
     def get_author_profile_picture(self, obj):
         if obj.user_id is None:
             return None
-        return _user_picture_url(obj.user)
+        return user_picture_url(obj.user)
 
 
 class DrillInstructorMessageSerializer(serializers.ModelSerializer):
@@ -345,6 +351,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     workout_summary = serializers.SerializerMethodField()
     points_capped = serializers.SerializerMethodField()
     points_raw = serializers.SerializerMethodField()
+    points_breakdown = serializers.SerializerMethodField()
     order_ribbon = serializers.SerializerMethodField()
     replies = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
@@ -375,6 +382,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             "workout_summary",
             "points_capped",
             "points_raw",
+            "points_breakdown",
             "order_ribbon",
             "replies",
             "image",
@@ -413,9 +421,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
         """Photo post image - the authenticated endpoint, never the raw
         /media/ path (same privacy model as profile pictures; relative
         URL, see _persona_picture_url)."""
-        if not obj.image:
-            return None
-        return reverse("drill-message-picture", kwargs={"pk": obj.pk})
+        return _message_image_url(obj)
 
     def get_author_name(self, obj):
         if obj.user_id is None:
@@ -425,7 +431,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     def get_author_profile_picture(self, obj):
         if obj.user_id is None:
             return None
-        return _user_picture_url(obj.user)
+        return user_picture_url(obj.user)
 
     def get_athlete_name(self, obj):
         user = getattr(obj.workout, "user", None)
@@ -437,7 +443,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
         user = getattr(obj.workout, "user", None)
         if user is None:
             return None
-        return _user_picture_url(user)
+        return user_picture_url(user)
 
     def get_workout_user_id(self, obj):
         return getattr(obj.workout, "user_id", None)
@@ -459,29 +465,184 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             return True
         return False
 
-    def _workout_point_totals(self, obj):
-        workout = getattr(obj, "workout", None)
+    def _points_payload(self, obj):
+        """(capped, raw, breakdown) from one walk of this workout's points."""
+        cache = self.context.setdefault("_points_payload", {})
+        key = obj.pk
+        if key in cache:
+            return cache[key]
+        if obj.kind != DrillInstructorMessage.KIND_ACTIVITY or obj.workout_id is None:
+            result = (None, None, [])
+            cache[key] = result
+            return result
+        result = self._build_points_payload(obj)
+        cache[key] = result
+        return result
+
+    def get_points_capped(self, obj):
+        return self._points_payload(obj)[0]
+
+    def get_points_raw(self, obj):
+        return self._points_payload(obj)[1]
+
+    @staticmethod
+    def _num(value):
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _workout_inputs(self, workout):
+        minutes = None
+        duration = getattr(workout, "duration", None)
+        if duration:
+            minutes = round(float(duration.total_seconds()) / 60, 2)
+            if minutes == int(minutes):
+                minutes = int(minutes)
+        user = getattr(workout, "user", None)
+        km = self._num(getattr(workout, "distance", None))
+        if workout.sport_type == "Steps":
+            km = None
+        return {
+            "minutes": minutes,
+            "kcal": self._num(getattr(workout, "kcal", None)),
+            "km": km,
+            "sport": workout.sport_type,
+            "sport_factor": float(sport_factor(workout.sport_type)),
+            "effort_factor": float(getattr(user, "scaling_kcal", 1) or 1),
+            "distance_factor": float(getattr(user, "scaling_distance", 1) or 1),
+        }
+
+    @staticmethod
+    def _cap_hit(goal, raw, capped):
+        """Which floor/cap trimmed this row, or None if the full raw counted."""
+        try:
+            raw = float(raw or 0)
+            capped = float(capped or 0)
+        except (TypeError, ValueError):
+            return None
+        if raw - capped < 0.05:
+            return None
+        target = float(goal.goal or 0) or 1.0
+
+        def as_points(metric_val):
+            if metric_val is None:
+                return None
+            return float(metric_val) / target * 100.0
+
+        floor_wo = as_points(goal.min_per_workout) or 0
+        if capped < 0.05 and floor_wo and raw <= floor_wo + 0.05:
+            return {
+                "kind": "workout_min",
+                "points": 0.0,
+                "limit": float(goal.min_per_workout),
+            }
+
+        caps = []
+        if goal.max_per_workout is not None:
+            caps.append(("workout", as_points(goal.max_per_workout), float(goal.max_per_workout)))
+        if goal.max_per_day is not None:
+            caps.append(("day", as_points(goal.max_per_day), float(goal.max_per_day)))
+        if goal.max_per_week is not None:
+            caps.append(("week", as_points(goal.max_per_week), float(goal.max_per_week)))
+        if not caps:
+            return None
+        applicable = [c for c in caps if c[1] is not None and c[1] < raw - 0.05]
+        if not applicable:
+            order = {"day": 0, "week": 1, "workout": 2}
+            applicable = sorted(caps, key=lambda c: order.get(c[0], 9))
+        kind, cap_pts, limit = min(applicable, key=lambda c: abs((c[1] or 0) - capped))
+        return {"kind": kind, "points": round(capped, 2), "limit": limit, "cap_points": round(cap_pts or 0, 2)}
+
+    def _goal_breakdown_row(self, goal, pts=0.0, raw=0.0, inputs=None, cap_hit=None):
+        row = {
+            "label": goal.name or "Goal",
+            "kind": "goal",
+            "points": pts,
+            "raw": raw,
+            "metric": goal.metric,
+            "target": self._num(goal.goal),
+            "period": goal.period,
+            "min_per_workout": self._num(goal.min_per_workout),
+            "max_per_workout": self._num(goal.max_per_workout),
+            "min_per_day": self._num(goal.min_per_day),
+            "max_per_day": self._num(goal.max_per_day),
+            "min_per_week": self._num(goal.min_per_week),
+            "max_per_week": self._num(goal.max_per_week),
+            "count_steps_as_walks": bool(goal.count_steps_as_walks),
+            "cap_hit": cap_hit,
+        }
+        if inputs:
+            row.update(inputs)
+        return row
+
+    def get_points_breakdown(self, obj):
+        return self._points_payload(obj)[2]
+
+    def _build_points_payload(self, obj):
+        """Per-goal / photo-bonus rows that make up the chip total.
+
+        Every goal on this challenge is listed (0P if this workout did
+        not score on it) so the chip popup can show a simple
+        Exercise + Move + Photo = total. Goal rows include the rule
+        (metric, target, period, min/max caps), this workout's inputs,
+        the activity-type factor, and which cap fired if one did.
+        """
+        workout = obj.workout
         if workout is None:
-            return None, None
-        competition_id = getattr(obj.config, "competition_id", None)
-        capped = 0.0
-        raw = 0.0
+            return None, None, []
+        competition = getattr(obj.config, "competition", None)
+        competition_id = getattr(competition, "id", None)
+        scored = {}
+        extras = []
         for point in workout.points_set.all():
             if not self._point_in_competition(point, competition_id):
                 continue
-            capped += float(point.points_capped or 0)
-            raw += float(point.points_raw or 0)
-        return capped, raw
-
-    def get_points_capped(self, obj):
-        if obj.kind != DrillInstructorMessage.KIND_ACTIVITY or obj.workout_id is None:
-            return None
-        return self._workout_point_totals(obj)[0]
-
-    def get_points_raw(self, obj):
-        if obj.kind != DrillInstructorMessage.KIND_ACTIVITY or obj.workout_id is None:
-            return None
-        return self._workout_point_totals(obj)[1]
+            pts = float(point.points_capped or 0)
+            raw = float(point.points_raw or 0)
+            if point.award_id:
+                label = point.award.name or "Bonus"
+                kind = "photo" if label == PHOTO_AWARD_NAME else "award"
+                extras.append({"label": label, "kind": kind, "points": pts, "raw": raw})
+                continue
+            if not point.goal_id:
+                continue
+            row = scored.get(point.goal_id)
+            if row:
+                row["points"] += pts
+                row["raw"] += raw
+            else:
+                scored[point.goal_id] = self._goal_breakdown_row(point.goal, pts, raw)
+        inputs = self._workout_inputs(workout)
+        rows = []
+        goals = list(competition.activitygoal_set.all()) if competition is not None else []
+        for goal in goals:
+            row = scored.pop(goal.id, None)
+            if row is None:
+                rows.append(self._goal_breakdown_row(goal, inputs=inputs))
+                continue
+            row.update(inputs)
+            row["cap_hit"] = self._cap_hit(goal, row["raw"], row["points"])
+            rows.append(row)
+        for row in scored.values():
+            row.update(inputs)
+            rows.append(row)
+        if not any(item.get("kind") == "photo" for item in extras):
+            extras.append({
+                "label": PHOTO_AWARD_NAME,
+                "kind": "photo",
+                "points": 0.0,
+                "raw": 0.0,
+            })
+        rows.extend(extras)
+        capped = 0.0
+        raw_total = 0.0
+        for row in rows:
+            capped += float(row.get("points") or 0)
+            raw_total += float(row.get("raw") or 0)
+        return capped, raw_total, rows
 
     def get_order_ribbon(self, obj):
         if obj.kind != DrillInstructorMessage.KIND_ACTIVITY or obj.workout_id is None:
@@ -504,23 +665,12 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
                 .prefetch_related("completed_by")
                 .first()
             )
-            cache[cid] = set(order.completed_by.values_list("id", flat=True)) if order else set()
+            cache[cid] = {u.id for u in order.completed_by.all()} if order else set()
         return workout.user_id in cache[cid]
 
     def get_workout_summary(self, obj):
-        workout = obj.workout
-        if workout is None:
-            return None
-        parts = []
-        if workout.duration is not None:
-            parts.append(f"{round(workout.duration.total_seconds() / 60)} min {workout.sport_type}")
-        else:
-            parts.append(workout.sport_type)
-        if workout.distance is not None and workout.sport_type != "Steps":
-            parts.append(f"{float(workout.distance):.2f} km")
-        if workout.kcal is not None:
-            parts.append(f"{round(float(workout.kcal))} kcal")
-        return " · ".join(parts)
+        summary, _ = format_workout_summary(obj.workout)
+        return summary or None
 
 
 class RoastCardSerializer(serializers.ModelSerializer):
@@ -556,9 +706,7 @@ class RoastCardSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_image(self, obj):
-        if not obj.image:
-            return None
-        return reverse("drill-message-picture", kwargs={"pk": obj.pk})
+        return _message_image_url(obj)
 
     def get_persona_name(self, obj):
         persona = _persona_for_message(obj)
