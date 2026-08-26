@@ -30,10 +30,24 @@ function _scrub(value) {
 }
 
 
+// Bump when persisted API query shapes change so old blobs are dropped
+// instead of rehydrating incompatible cache entries.
+export const PERSIST_VERSION = 1;
+
 export const loadState = () => {
   try {
     const serialized = localStorage.getItem('appState');
-    return serialized ? JSON.parse(serialized) : undefined;
+    if (!serialized) return undefined;
+    const parsed = JSON.parse(serialized);
+    if (parsed && parsed._v === PERSIST_VERSION && parsed.state) {
+      return parsed.state;
+    }
+    // Legacy unversioned blob: it used to include fossilized RTK caches.
+    // Keep only non-API keys (there are none today) rather than replay them.
+    if (parsed && !parsed._v) {
+      return Object.fromEntries(Object.entries(parsed).filter(([key]) => !key.endsWith('Api')));
+    }
+    return undefined;
   } catch {
     return undefined;
   }
@@ -41,9 +55,10 @@ export const loadState = () => {
 
 export const saveState = (state) => {
   try {
-    const serialized = JSON.stringify(_scrub(state));
+    const serialized = JSON.stringify({_v: PERSIST_VERSION, state: _scrub(state)});
     localStorage.setItem('appState', serialized);
+    return true;
   } catch {
-    // Ignore write errors
+    return false;
   }
 };

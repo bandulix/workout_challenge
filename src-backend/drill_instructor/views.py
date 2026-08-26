@@ -227,7 +227,12 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
                 ),
                 Prefetch(
                     "workout__points_set",
-                    queryset=Points.objects.only("id", "workout_id", "points_capped", "points_raw"),
+                    # Goal/award (and their competition) must be present
+                    # so the serializer can drop other challenges' points
+                    # without a query per row. Do not filter this prefetch
+                    # by competition: two messages can share a workout
+                    # across challenges, and Prefetch is keyed on Workout.
+                    queryset=Points.objects.select_related("goal", "award"),
                 ),
             )
         )

@@ -442,15 +442,35 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     def get_workout_user_id(self, obj):
         return getattr(obj.workout, "user_id", None)
 
+    @staticmethod
+    def _point_in_competition(point, competition_id):
+        """True when this Points row belongs to ``competition_id``.
+
+        Same filter the Board uses (goal or award of that competition).
+        A workout is scored independently in every challenge the athlete
+        is in, so summing ``workout.points_set`` would leak Competition B
+        onto Competition A's feed.
+        """
+        if competition_id is None:
+            return False
+        if point.goal_id and getattr(point.goal, "competition_id", None) == competition_id:
+            return True
+        if point.award_id and getattr(point.award, "competition_id", None) == competition_id:
+            return True
+        return False
+
     def _workout_point_totals(self, obj):
         workout = getattr(obj, "workout", None)
         if workout is None:
             return None, None
-        rows = list(workout.points_set.all())
-        if not rows:
-            return 0.0, 0.0
-        capped = sum(float(p.points_capped or 0) for p in rows)
-        raw = sum(float(p.points_raw or 0) for p in rows)
+        competition_id = getattr(obj.config, "competition_id", None)
+        capped = 0.0
+        raw = 0.0
+        for point in workout.points_set.all():
+            if not self._point_in_competition(point, competition_id):
+                continue
+            capped += float(point.points_capped or 0)
+            raw += float(point.points_raw or 0)
         return capped, raw
 
     def get_points_capped(self, obj):

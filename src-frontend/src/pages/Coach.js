@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useRef, useState} from "react";
 import {Link} from "react-router-dom";
-import {Megaphone, ChevronRight, ChevronUp, ChevronDown, Radio} from "lucide-react";
+import {Megaphone, ChevronRight, Radio} from "lucide-react";
 import {PageWrapper} from "../utils/miscellaneous";
 
 import {SectionLoader} from "../utils/loaders";
@@ -47,108 +47,75 @@ function HeroMessageBody({message}) {
 function MessageWheel({messages, empty}) {
     const list = messages || [];
     const n = list.length;
+    const scrollerRef = useRef(null);
     const [idx, setIdx] = useState(0);
-    const startRef = useRef(null);
-    const [tilt, setTilt] = useState(0);
 
     useEffect(() => {
         setIdx(0);
+        scrollerRef.current?.scrollTo({left: 0});
     }, [list[0]?.id]);
 
-    const current = n ? list[Math.min(idx, n - 1)] : null;
-    const peekPrev = n > 1 && idx < n - 1 ? list[idx + 1] : null;
-    const peekNext = n > 1 && idx > 0 ? list[idx - 1] : null;
-
-    function clamp(next) {
-        return Math.max(0, Math.min(n - 1, next));
-    }
-
-    function onPointerDown(e) {
-        if (n < 2) return;
-        if (e.pointerType === "mouse" && e.buttons !== 1) return;
-        startRef.current = {y: e.clientY, id: e.pointerId, axis: null};
-    }
-
-    function onPointerMove(e) {
-        const start = startRef.current;
-        if (!start || e.pointerId !== start.id) return;
-        const dy = e.clientY - start.y;
-        if (start.axis == null) {
-            if (Math.abs(dy) < 10) return;
-            start.axis = "y";
-            try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    function syncIndex(scroller) {
+        const slides = scroller.children;
+        let best = 0;
+        let bestDist = Infinity;
+        const left = scroller.scrollLeft;
+        for (let i = 0; i < slides.length; i++) {
+            const dist = Math.abs(slides[i].offsetLeft - left);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = i;
+            }
         }
-        const max = 36;
-        let next = dy;
-        if ((idx === 0 && next > 0) || (idx === n - 1 && next < 0)) next *= 0.28;
-        setTilt(Math.max(-max, Math.min(max, next)));
+        setIdx((prev) => (prev === best ? prev : best));
     }
 
-    function finish(e) {
-        const start = startRef.current;
-        startRef.current = null;
-        const dy = tilt;
-        setTilt(0);
-        if (!start || start.axis !== "y") return;
-        if (dy < -28) setIdx((v) => clamp(v + 1));
-        else if (dy > 28) setIdx((v) => clamp(v - 1));
-        try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* ignore */ }
+    function goTo(next) {
+        const clamped = Math.max(0, Math.min(n - 1, next));
+        const scroller = scrollerRef.current;
+        const slide = scroller?.children[clamped];
+        if (scroller && slide) {
+            scroller.scrollTo({left: slide.offsetLeft, behavior: "smooth"});
+        }
     }
 
     if (n === 0) return empty;
 
     return (
         <div className="mt-5">
-            <div className="relative"
-                 style={{perspective: 900}}
-                 onPointerDown={onPointerDown}
-                 onPointerMove={onPointerMove}
-                 onPointerUp={finish}
-                 onPointerCancel={finish}>
-                {peekPrev && (
-                    <p className="mb-1.5 px-4 text-[11px] leading-snug text-gray-400 dark:text-gray-500 line-clamp-2 opacity-60">
-                        {peekPrev.kind === "photo"
-                            ? (peekPrev.body || `${peekPrev.author_name || "Someone"} shared a photo.`)
-                            : peekPrev.body}
-                    </p>
-                )}
-                <div className={"relative rounded-2xl glass-inset px-5 py-4 " + (n > 1 ? "cursor-grab active:cursor-grabbing" : "")}
-                     style={{
-                         transform: `rotateX(${tilt * -0.45}deg)`,
-                         transformOrigin: "center center",
-                     }}>
-                    <div className="absolute -top-2 left-12 h-4 w-4 rotate-45 glass-inset"/>
-                    <HeroMessageBody message={current}/>
-                </div>
-                {peekNext && (
-                    <p className="mt-1.5 px-4 text-[11px] leading-snug text-gray-400 dark:text-gray-500 line-clamp-2 opacity-60">
-                        {peekNext.kind === "photo"
-                            ? (peekNext.body || `${peekNext.author_name || "Someone"} shared a photo.`)
-                            : peekNext.body}
-                    </p>
-                )}
+            <div
+                ref={scrollerRef}
+                role="region"
+                aria-roledescription="carousel"
+                aria-label="Recent coach messages"
+                tabIndex={n > 1 ? 0 : undefined}
+                onScroll={(e) => syncIndex(e.currentTarget)}
+                onKeyDown={(e) => {
+                    if (n < 2) return;
+                    if (e.key === "ArrowRight") { e.preventDefault(); goTo(idx + 1); }
+                    else if (e.key === "ArrowLeft") { e.preventDefault(); goTo(idx - 1); }
+                }}
+                className={"flex gap-3 overflow-x-auto snap-x snap-mandatory no-scrollbar overscroll-x-contain " +
+                    (n > 1 ? "-mr-5 sm:-mr-8 pr-5 sm:pr-8" : "")}>
+                {list.map((m, i) => (
+                    <article
+                        key={m.id}
+                        aria-hidden={i !== idx}
+                        className={"relative shrink-0 snap-start rounded-2xl glass-inset px-5 py-4 transition-opacity duration-300 " +
+                            (n > 1 ? "w-[86%]" : "w-full") +
+                            (i === idx ? "" : " opacity-50")}>
+                        <div className="absolute -top-2 left-12 h-4 w-4 rotate-45 glass-inset"/>
+                        <HeroMessageBody message={m}/>
+                    </article>
+                ))}
             </div>
             {n > 1 && (
-                <div className="mt-2 flex items-center justify-center gap-2">
-                    <button type="button" aria-label="Older message"
-                            disabled={idx >= n - 1}
-                            onClick={() => setIdx((v) => clamp(v + 1))}
-                            className="h-8 w-8 rounded-full flex items-center justify-center text-gray-400 hover:text-volt-600 dark:hover:text-volt-400 disabled:opacity-30 disabled:hover:text-gray-400">
-                        <ChevronUp className="h-4 w-4"/>
-                    </button>
-                    <div className="flex items-center gap-1" aria-hidden="true">
-                        {list.map((m, i) => (
-                            <span key={m.id}
-                                  className={"h-1 rounded-full transition-all " +
-                                      (i === idx ? "w-3 bg-volt-500" : "w-1 bg-gray-300 dark:bg-ink-600")}/>
-                        ))}
-                    </div>
-                    <button type="button" aria-label="Newer message"
-                            disabled={idx <= 0}
-                            onClick={() => setIdx((v) => clamp(v - 1))}
-                            className="h-8 w-8 rounded-full flex items-center justify-center text-gray-400 hover:text-volt-600 dark:hover:text-volt-400 disabled:opacity-30 disabled:hover:text-gray-400">
-                        <ChevronDown className="h-4 w-4"/>
-                    </button>
+                <div className="mt-3 flex items-center justify-center gap-1.5" aria-hidden="true">
+                    {list.map((m, i) => (
+                        <span key={m.id}
+                              className={"h-1 rounded-full transition-all duration-300 " +
+                                  (i === idx ? "w-4 bg-volt-400 shadow-glow-volt" : "w-1 bg-ink-950/20 dark:bg-white/20")}/>
+                    ))}
                 </div>
             )}
         </div>

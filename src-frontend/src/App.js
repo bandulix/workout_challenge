@@ -1,8 +1,9 @@
-import React, {Suspense, lazy} from "react";
+import React, {Suspense, lazy, useEffect} from "react";
 import './App.css';
 
 
-import {BrowserRouter as Router, Routes, Route} from "react-router-dom";
+import {BrowserRouter as Router, Routes, Route, useLocation} from "react-router-dom";
+import {rememberPath} from "./utils/lastPath";
 import {
     WelcomePage,
     RegisterPage,
@@ -26,9 +27,19 @@ const Coach = lazy(() => import("./pages/Coach"));
 const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 
 
+function RememberPath() {
+    const location = useLocation();
+    useEffect(() => {
+        rememberPath(location.pathname, location.search);
+    }, [location.pathname, location.search]);
+    return null;
+}
+
+
 function App() {
     return (
         <Router>
+            <RememberPath/>
             <AppBackdrop/>
             <div className="relative z-10">
             <Routes>

@@ -157,6 +157,30 @@ const fields = {
 }
 
 
+const NUMERIC_GOAL_FIELDS = [
+    "goal", "min_per_workout", "max_per_workout",
+    "min_per_day", "max_per_day", "min_per_week", "max_per_week",
+];
+
+// API DecimalFields serialize as "130.00". Show 130 so number inputs
+// (and a save without retyping) are valid.
+function asFormNumber(value) {
+    if (value === null || value === undefined || value === "") return value;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : value;
+}
+
+function normalizeGoalNumbers(item) {
+    const out = {...item};
+    for (const key of NUMERIC_GOAL_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(out, key)) {
+            out[key] = asFormNumber(out[key]);
+        }
+    }
+    return out;
+}
+
+
 export default function ActivityGoalsForm({competitionId, setModalState}) {
 
     const dispatch = useDispatch();
@@ -175,7 +199,7 @@ export default function ActivityGoalsForm({competitionId, setModalState}) {
     const [deleteGoal, {
         isLoading: deleteGoalIsLoading,
     }] = useDeleteGoalMutation();
-    const filteredGoals = lodFilter(goals || [], item => item?.competition == competitionId).map((item, index) => ({ ...item, index }));
+    const filteredGoals = lodFilter(goals || [], item => item?.competition == competitionId).map((item, index) => ({ ...normalizeGoalNumbers(item), index }));
 
     const [values, setValues] = useState(undefined);
     const [fieldErrors, setFieldErrors] = useState({});
@@ -239,7 +263,7 @@ export default function ActivityGoalsForm({competitionId, setModalState}) {
             // from the server state before the user can retry.
             const fresh = await refetchGoals();
             if (fresh.data) {
-                setValues([...lodFilter(fresh.data, item => item?.competition == competitionId).map(item => ({...item}))]);
+                setValues([...lodFilter(fresh.data, item => item?.competition == competitionId).map(item => normalizeGoalNumbers(item))]);
             }
         }
     }

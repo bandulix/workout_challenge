@@ -15,6 +15,7 @@ import {
     sanitizeRedirect,
 } from "../utils/authClient";
 import {accessTokenNeedsRefresh, getAccessToken} from "../utils/authTokens";
+import {readLastPath} from "../utils/lastPath";
 
 function BaseHome({children, tagline}) {
     const navType = useNavigationType();
@@ -156,19 +157,17 @@ function WelcomePage() {
     const navigate = useNavigate();
 
     // Session gate: this is the app's cold-start URL (the APK always
-    // opens here). With a stored refresh token there is a live session -
-    // go straight to the coach page instead of showing the landing page.
-    // The dashboard's API queries refresh the access token as needed, and
-    // a genuinely expired refresh token bounces back to /login via
-    // baseQueryWithReauth - which is the correct end state anyway.
-    // replace: the landing page stays out of the history stack, so the
-    // Android back button exits the app instead of bouncing back here.
+    // opens here). theme-init.js already replaceState's to the last
+    // screen when possible; this is the fallback if that didn't run.
+    // A genuinely expired refresh token bounces back to /login via
+    // baseQueryWithReauth. replace: the landing page stays out of the
+    // history stack, so Android back exits instead of bouncing here.
     useEffect(() => {
         if (localStorage.getItem('refresh_token') !== null) {
             const params = new URLSearchParams(location.search);
             navigate(params.get("join") || params.get("action")
                 ? `/dashboard${location.search}`
-                : `/coach${location.search}`, {replace: true});
+                : readLastPath(), {replace: true});
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

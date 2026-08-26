@@ -1281,7 +1281,9 @@ class PhotoPostTests(TestCase):
         order.completed_by.add(self.athlete)
         self.client.force_authenticate(self.athlete)
         card = self.client.get("/api/drill-instructor/message/").json()[0]
-        totals = Points.objects.filter(workout=root.workout).aggregate(
+        totals = Points.objects.filter(
+            workout=root.workout, goal__competition=self.competition,
+        ).aggregate(
             capped=Sum("points_capped"), raw=Sum("points_raw"),
         )
         self.assertEqual(card["id"], root.id)
@@ -1290,6 +1292,60 @@ class PhotoPostTests(TestCase):
         self.assertGreaterEqual(card["points_capped"], 32.0)
         self.assertTrue(card["order_ribbon"])
         self.assertEqual(card["workout_summary"], "30 min Run · 5.00 km · 300 kcal")
+
+    def test_activity_message_points_ignore_other_competitions(self):
+        """Feed badges must match the Board: only this competition's
+        goals/awards. A workout scored in two challenges used to sum
+        every Points row, so deleting A's goals left B's points on A's
+        feed while the Board correctly dropped to 0."""
+        from django.db.models import Sum
+        from competition.models import ActivityGoal, Points
+        root = self._activity_root(self.athlete)
+        # Creating the goal scores the workout for THIS competition only.
+        own_goal = ActivityGoal.objects.create(
+            competition=self.competition, name="Minutes", metric="min", goal=30, period="day",
+        )
+        other = Competition.objects.create(
+            owner=self.owner,
+            name="Other Cup",
+            start_date=self.competition.start_date,
+            end_date=self.competition.end_date,
+        )
+        # Joining scores the same workout against Other Cup's default goals.
+        self.athlete.my_competitions.add(other)
+        ActivityGoal.objects.create(
+            competition=other, name="Other Minutes", metric="min", goal=30, period="day",
+        )
+
+        own_totals = Points.objects.filter(
+            workout=root.workout, goal__competition=self.competition,
+        ).aggregate(capped=Sum("points_capped"), raw=Sum("points_raw"))
+        other_totals = Points.objects.filter(
+            workout=root.workout, goal__competition=other,
+        ).aggregate(capped=Sum("points_capped"), raw=Sum("points_raw"))
+        self.assertGreater(float(own_totals["capped"] or 0), 0)
+        self.assertGreater(float(other_totals["capped"] or 0), 0)
+
+        self.client.force_authenticate(self.athlete)
+        card = self.client.get(
+            f"/api/drill-instructor/message/?competition={self.competition.id}"
+        ).json()[0]
+        self.assertEqual(card["id"], root.id)
+        self.assertEqual(card["points_capped"], float(own_totals["capped"]))
+        self.assertEqual(card["points_raw"], float(own_totals["raw"]))
+        self.assertNotEqual(card["points_capped"], float(own_totals["capped"]) + float(other_totals["capped"]))
+
+        own_goal.delete()
+        card = self.client.get(
+            f"/api/drill-instructor/message/?competition={self.competition.id}"
+        ).json()[0]
+        self.assertEqual(card["points_capped"], 0.0)
+        self.assertEqual(card["points_raw"], 0.0)
+        self.assertGreater(
+            float(Points.objects.filter(workout=root.workout, goal__competition=other)
+                  .aggregate(capped=Sum("points_capped"))["capped"] or 0),
+            0,
+        )
 
     def test_photo_post_hangs_under_the_workout_in_the_feed(self):
         root = self._activity_root(self.athlete)

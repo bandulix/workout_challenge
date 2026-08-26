@@ -69,6 +69,16 @@ export function Modal({setShowModal, title = null, landscape = false, isLoading 
 }
 
 
+// DecimalField values arrive as "130.00". A type=number input with the
+// default step of 1 treats that as invalid ("Please enter a valid value");
+// coercing to a Number drops trailing zeros so 130.00 displays as 130.
+function numberFieldValue(value) {
+    if (value === null || value === undefined || value === "") return "";
+    const n = Number(value);
+    return Number.isFinite(n) ? n : value;
+}
+
+
 export function FormInput({
                               name,
                               value = "",
@@ -85,6 +95,7 @@ export function FormInput({
                               autoFocus = false,
                               autoComplete = "off",
                               pattern = null,
+                              step = null,
                               width = "w-full",
                               highlight = false,
                               errorMsg = null,
@@ -198,9 +209,10 @@ export function FormInput({
                                 autoFocus={!isMobile && autoFocus}
                                 autoComplete={autoComplete}
                                 pattern={pattern}
+                                step={step ?? (type === "number" ? "any" : undefined)}
                                 inputMode={inputMode || (type === "number" ? "decimal" : type === "email" ? "email" : undefined)}
                                 enterKeyHint={type === "number" ? "next" : type === "email" ? "next" : "done"}
-                                value={(value === null) ? '' : value}
+                                value={type === "number" ? numberFieldValue(value) : ((value === null) ? '' : value)}
                                 list={name + "-suggestions"}
                                 onChange={(e) => setValue(e.target.value)}
                             />

@@ -7,6 +7,30 @@
 // instead of locking the page to light or dark.
 (function () {
     try {
+        // APK/PWA cold start is always "/". If a session exists, jump to
+        // the last in-app screen BEFORE React mounts so the first paint
+        // is Coach/Home (with rehydrated cache) instead of the landing
+        // page plus a multi-second loader. Keep in sync with lastPath.js.
+        var token = localStorage.getItem("refresh_token");
+        if (token) {
+            var here = (window.location.pathname || "/").replace(/\/+$/, "") || "/";
+            var params = new URLSearchParams(window.location.search || "");
+            if (here === "/" && !params.get("join") && !params.get("action")) {
+                var next = "/coach";
+                try {
+                    var last = localStorage.getItem("wc_last_path") || "/coach";
+                    var u = new URL(last, window.location.origin);
+                    var p = (u.pathname || "/").replace(/\/+$/, "") || "/";
+                    var ok = u.origin === window.location.origin && (
+                        p === "/dashboard" || p === "/coach" || p === "/admin/site-settings"
+                        || /^\/competition\/\d+$/.test(p)
+                    );
+                    if (ok) next = p + u.search;
+                } catch (e) { /* fall through to /coach */ }
+                history.replaceState(null, "", next);
+            }
+        }
+
         var t = localStorage.getItem("wc-theme");
         if (t !== "light" && t !== "dark") t = "system";
         var systemDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;

@@ -37,12 +37,51 @@ const rootReducer = (state, action) => {
     return appReducer(state, action);
 };
 
-// Snapshots written by older builds still contain RTK API caches (the
-// fossil this persistence removal targets) - drop those keys on READ as
-// well, or affected installs keep the stale data forever.
+// Rehydrate fulfilled RTK Query entries so the APK paints last session's
+// Coach/Home immediately, then refetchOnMount refreshes in the background.
+// Only `fulfilled` rows with `data` are kept: a persisted `pending` entry
+// can never resolve (its promise is gone) and used to freeze the UI.
+function sanitizeApiSlice(slice) {
+    if (!slice || typeof slice !== 'object') return undefined;
+    const queries = {};
+    for (const [key, entry] of Object.entries(slice.queries || {})) {
+        if (entry?.status !== 'fulfilled' || entry.data === undefined) continue;
+        queries[key] = {
+            status: 'fulfilled',
+            endpointName: entry.endpointName,
+            originalArgs: entry.originalArgs,
+            startedTimeStamp: entry.startedTimeStamp,
+            fulfilledTimeStamp: entry.fulfilledTimeStamp,
+            data: entry.data,
+        };
+    }
+    if (Object.keys(queries).length === 0) return undefined;
+    return {
+        queries,
+        mutations: {},
+        provided: slice.provided || {},
+        subscriptions: {},
+        // Do not persist `config` (especially middlewareRegistered) -
+        // rehydrating it makes the middleware skip setup on the next boot.
+    };
+}
+
+function persistableState(state) {
+    const persisted = {};
+    for (const key of Object.keys(state)) {
+        if (key.endsWith('Api')) {
+            const clean = sanitizeApiSlice(state[key]);
+            if (clean) persisted[key] = clean;
+        } else {
+            persisted[key] = state[key];
+        }
+    }
+    return persisted;
+}
+
 const _persisted = loadState();
 const preloadedState = _persisted
-    ? Object.fromEntries(Object.entries(_persisted).filter(([key]) => !key.endsWith('Api')))
+    ? persistableState(_persisted)
     : undefined;
 
 const store = configureStore({
@@ -67,24 +106,21 @@ const store = configureStore({
 // Persisted-state writes are throttled: saveState serializes on EVERY
 // dispatched action - with several polling loops that's many full
 // JSON.stringify+setItem per minute on the main thread. 2s is plenty.
-//
-// RTK Query caches are deliberately NOT persisted: a rehydrated cache
-// served days-old data in the long-lived Android WebView (including
-// fossilized "pending" entries whose promise never resolved) - e.g. the
-// coach config arrived without the capability flags and the roast box
-// stayed hidden. Every query refetches on mount anyway; correctness
-// beats the warm-start illusion. Only future non-API state is kept.
 let saveStateTimer = null;
 store.subscribe(() => {
     if (saveStateTimer !== null) return;
     saveStateTimer = setTimeout(() => {
         saveStateTimer = null;
-        const state = store.getState();
-        const persisted = {};
-        for (const key of Object.keys(state)) {
-            if (!key.endsWith('Api')) persisted[key] = state[key];
+        // Logout clears the refresh token then RESET_STORE; a pending
+        // timer must not write the previous user's API cache back.
+        if (!localStorage.getItem('refresh_token')) return;
+        const full = persistableState(store.getState());
+        if (!saveState(full)) {
+            const slim = {...full};
+            delete slim.feedApi;
+            delete slim.statsApi;
+            saveState(slim);
         }
-        saveState(persisted);
     }, 2000);
 });
 
