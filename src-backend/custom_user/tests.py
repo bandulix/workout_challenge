@@ -837,6 +837,39 @@ class HealthWorkoutMappingTests(TestCase):
         self.assertEqual(props["duration"], datetime.timedelta(seconds=1800))
         self.assertEqual(props["start_datetime"].isoformat(), "2026-08-01T06:00:00+00:00")
 
+    def test_distance_from_values_array_metres(self):
+        # Health Connect unified dump puts distance in values[] like duration,
+        # not as a top-level distance_meters field.
+        from .health import workout_to_props
+        payload = {
+            "id": "9f1c2a34-0000-4aaa-bbbb-111122223333",
+            "type": "CYCLING",
+            "startDate": "2026-08-01T06:00:00Z",
+            "endDate": "2026-08-01T07:00:00Z",
+            "values": [
+                {"type": "duration", "value": 3600, "unit": "s"},
+                {"type": "distance", "value": 28000, "unit": "m"},
+            ],
+        }
+        props = workout_to_props(self.user, payload)
+        self.assertEqual(props["sport_type"], "Ride")
+        self.assertEqual(props["distance"], 28.0)
+
+    def test_distance_from_values_array_kilometres(self):
+        from .health import workout_to_props
+        payload = {
+            "id": "9f1c2a34-0000-4aaa-bbbb-111122223333",
+            "type": "RUNNING",
+            "startDate": "2026-08-01T06:00:00Z",
+            "endDate": "2026-08-01T06:30:00Z",
+            "values": [
+                {"type": "duration", "value": 1800, "unit": "s"},
+                {"type": "distance", "value": 5.0, "unit": "km"},
+            ],
+        }
+        props = workout_to_props(self.user, payload)
+        self.assertEqual(props["distance"], 5.0)
+
     def test_malformed_duration_does_not_abort_the_user_sync(self):
         from .health import _sync_user_workouts
         good = self._payload()

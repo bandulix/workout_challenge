@@ -304,11 +304,24 @@ def _as_float(value):
     return number
 
 
+def _values_entry(ow_workout: dict, type_names):
+    """First ``values[]`` row whose type matches one of ``type_names``."""
+    values = ow_workout.get("values")
+    if not isinstance(values, list):
+        return None
+    want = {name.lower() for name in type_names}
+    for item in values:
+        if isinstance(item, dict) and str(item.get("type") or "").lower() in want:
+            return item
+    return None
+
+
 def distance_km_from_ow(ow_workout: dict, duration_s) -> float | None:
     """OW workout payload -> kilometres.
 
     Canonical unit is metres (``distance_meters``). Health Connect
-    sometimes omits it, sends a generic ``distance``, or (rarely) already
+    sometimes omits it, sends a generic ``distance``, puts the figure
+    in ``values[]`` (same shape as duration), or (rarely) already
     ships kilometres as a small number. Prefer explicit metres, then
     derive from average pace, then treat a small value as km only when
     the implied pace is athletic.
@@ -318,13 +331,24 @@ def distance_km_from_ow(ow_workout: dict, duration_s) -> float | None:
         if ow_workout.get("distance_meters") not in (None, "", 0)
         else None
     )
+    unit = None
     if raw is None:
-        for key in ("distance_m", "distance", "total_distance"):
+        for key in ("distance_m", "distance", "total_distance", "totalDistance"):
             if ow_workout.get(key) not in (None, "", 0):
                 raw = ow_workout.get(key)
                 break
+    if raw is None:
+        entry = _values_entry(ow_workout, ("distance", "distance_meters", "total_distance"))
+        if entry is not None:
+            raw = entry.get("value")
+            unit = entry.get("unit")
     metres = _as_float(raw)
     if metres is not None and metres > 0:
+        u = str(unit or "").lower()
+        if u in ("km", "kilometer", "kilometers"):
+            return round(metres, 2)
+        if u in ("mi", "mile", "miles"):
+            return round(metres * 1.60934, 2)
         if metres >= 200:
             return round(metres / 1000, 2)
         duration_min = (duration_s or 0) / 60

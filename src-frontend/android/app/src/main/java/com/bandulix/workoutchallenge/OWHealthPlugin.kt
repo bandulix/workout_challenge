@@ -25,9 +25,13 @@ class OWHealthPlugin : Plugin() {
 
     private val pluginScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    // Data types we ask Health Connect for - covers every metric the
-    // workout sync consumes (sessions, plus steps/energy for dailies).
-    private val healthTypes = listOf("steps", "heartRate", "workout", "activeEnergy", "sleep")
+    // Data types we ask Health Connect for. `workout` is the session
+    // itself; walking/running and cycling distances are SEPARATE types
+    // in the OW SDK and Health Connect will omit km without them.
+    private val healthTypes = listOf(
+        "steps", "heartRate", "workout", "activeEnergy", "sleep",
+        "distanceWalkingRunning", "distanceCycling",
+    )
 
     override fun load() {
         // One-time init against the application context.

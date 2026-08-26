@@ -109,6 +109,14 @@ export async function nativeHealthSetSource(source, publicUrl) {
         const status = await OWHealth.getStatus();
         if (!status.sessionValid) return; // never linked natively
         if (source === "health") {
+            // Re-ask every launch so newly added types (distance) get a
+            // Health Connect dialog for already-linked installs. Already
+            // granted types resolve silently.
+            try {
+                await OWHealth.requestHealthAuthorization();
+            } catch (e) {
+                console.warn("Health Connect authorization refresh failed", e);
+            }
             // isSyncActive can stay true after a process kill even
             // though WorkManager is gone. Catch up once per JS session
             // (covers that stale flag); later refetches only re-arm
