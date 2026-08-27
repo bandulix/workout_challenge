@@ -2,6 +2,7 @@ import {useUpdateUserMutation} from "../utils/reducers/usersSlice";
 import React, {useEffect, useState} from "react";
 import {Modal, SaveButton, SingleForm} from "./basicComponents";
 import {confirmAction, notice} from "../utils/dialogs";
+import {clearBodyScrollLock} from "../utils/overlay";
 
 
 const fields = {
@@ -178,7 +179,7 @@ export default function GoalEqualizerForm({user, setModalState}) {
         try {
             await updateEntry({id: 'me', scaling_kcal: Math.round(values.scaling_kcal * 100) / 10000, scaling_distance: Math.round(values.scaling_distance * 100) / 10000}).unwrap();
             setModalState(false);
-            document.body.classList.remove('body-no-scroll');
+            clearBodyScrollLock();
             await notice('Saved. The re-calculation of your competition points might take a few minutes.');
         } catch (err) {
             console.error('Update Personal Scaling Factors failed', err);

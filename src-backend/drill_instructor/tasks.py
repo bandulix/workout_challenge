@@ -343,7 +343,8 @@ def post_reply_reaction(self, reply_id):
     replier_first_name = reply.user.first_name or reply.user.username or "Athlete"
 
     # A photo on a workout is not a chat turn. No in-feed coach reply:
-    # the remix is the activity backdrop and the hot-or-not card.
+    # the original stays the feed answer, the remix is the activity
+    # backdrop and the hot-or-not card.
     if reply.kind == DrillInstructorMessage.KIND_PHOTO:
         roast_id = None
         if reply.image:
@@ -711,8 +712,9 @@ def remix_echo_art(self, echo_id, uploaded_by_id=None):
 
     persona = echo.config.persona
     portrait_path = _persona_portrait_path(persona)
+    from .echoes import echo_sport_label
     unit = "km" if echo.metric == "distance" else "min"
-    metric_label = f"{echo.metric_value:g} {unit} {echo.sport_type}"
+    metric_label = f"{echo.metric_value:g} {unit} {echo_sport_label(echo.sport_type)}"
     if echo.holder_workout_id:
         richer, _ = format_workout_summary(echo.holder_workout)
         if richer:

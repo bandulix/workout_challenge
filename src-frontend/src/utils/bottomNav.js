@@ -20,6 +20,7 @@ import {useGetDrillConfigsQuery} from "./reducers/drillInstructorSlice";
 import {ensureFreshAccessToken} from "./authTokens";
 import {primaryChallenge} from "./challenge";
 import {isPublicPath} from "./publicPath";
+import {onAppResume} from "./appLifecycle";
 
 
 const COACH_FALLBACK = {name: "Coach", avatar: "megaphone", theme_color: "#d7ff3e"};
@@ -191,11 +192,10 @@ export default function BottomNav() {
         const tick = () => { ensureFreshAccessToken(); };
         tick();
         const id = setInterval(tick, 30000);
-        const onVis = () => { if (document.visibilityState === "visible") tick(); };
-        document.addEventListener("visibilitychange", onVis);
+        const stopResume = onAppResume(tick);
         return () => {
             clearInterval(id);
-            document.removeEventListener("visibilitychange", onVis);
+            stopResume();
         };
     }, [user?.id]);
     const onDashboard = location.pathname === "/dashboard" || location.pathname === "/dashboard/";

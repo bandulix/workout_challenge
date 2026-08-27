@@ -24,10 +24,13 @@ export const FIELD_INPUT_CLASS =
 export const PANEL_MAX_CLASS = "max-w-2xl";
 
 const SHEET_BACKDROP =
-    "modal-background fixed inset-0 flex items-stretch sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:p-4";
+    "modal-background fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm " +
+    "px-3 sm:px-4 " +
+    "pt-[max(0.85rem,calc(var(--safe-top)+0.7rem))] " +
+    "pb-[max(0.85rem,calc(var(--safe-bottom)+0.7rem))]";
 const SHEET_PANEL =
-    "relative flex max-h-[100dvh] w-full flex-col overflow-hidden glass-card animate-pop-in " +
-    PANEL_MAX_CLASS + " sm:max-h-[90vh] sm:rounded-3xl max-sm:min-h-[100dvh] max-sm:rounded-none";
+    "relative flex max-h-full w-full flex-col overflow-hidden glass-sheet rounded-[1.75rem] animate-pop-in " +
+    PANEL_MAX_CLASS;
 
 
 export function OverlaySheet({title = null, onClose, children, isLoading = false, zClass = "z-50", labelledBy}) {
@@ -37,7 +40,8 @@ export function OverlaySheet({title = null, onClose, children, isLoading = false
             <div className={SHEET_BACKDROP + " " + zClass} onClick={onClose}
                  role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
                 <div className={SHEET_PANEL} onClick={(e) => e.stopPropagation()}>
-                    <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-2 sm:px-8 sm:pt-6">
+                    <span className="glass-sheen rounded-[inherit]" aria-hidden="true"/>
+                    <div className="relative flex shrink-0 items-center justify-between gap-3 px-4 pt-4 pb-2 sm:px-8 sm:pt-5">
                         <h2 id={labelledBy} className="font-display text-sm uppercase tracking-wider">{title}</h2>
                         <button type="button"
                                 className="text-gray-400 hover:text-gray-600 dark:hover:text-volt-300 min-h-[44px] min-w-[44px] flex items-center justify-center"
@@ -46,7 +50,7 @@ export function OverlaySheet({title = null, onClose, children, isLoading = false
                             <X className="h-5 w-5"/>
                         </button>
                     </div>
-                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 sm:pb-8 space-y-4">
+                    <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6 sm:px-8 sm:pb-8 space-y-4">
                         {isLoading ? (
                             <div className="w-full h-64 flex items-center justify-center">
                                 <BeatLoader color="#d7ff3e"/>

@@ -18,6 +18,7 @@ import {EmptyState, PaneHead, paneCardClass} from "../components/uiBits";
 import {useDispatch} from "react-redux";
 import {teamsApi} from "../utils/reducers/teamsSlice";
 import {drillInstructorApi, useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
+import {clearBodyScrollLock} from "../utils/overlay";
 import ProfileAvatar from "../components/ProfileAvatar";
 import AthleteCard from "../components/AthleteCard";
 import usePollingInterval from "../utils/usePollingInterval";
@@ -340,7 +341,7 @@ export default function Competition() {
     const navType = useNavigationType();
     useEffect(() => {
         if (navType === "POP") {
-            document.body.classList.remove("body-no-scroll");
+            clearBodyScrollLock();
         }
     }, [navType]);
 

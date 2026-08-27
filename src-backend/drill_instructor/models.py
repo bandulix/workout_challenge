@@ -296,6 +296,62 @@ class DrillInstructorPhotoVote(models.Model):
         return f"{'hot' if self.hot else 'not'} by {self.user_id} on roast {self.message_id}"
 
 
+# Emoji reactions on activity cards. Slugs are stable; glyphs live in the
+# frontend so we can restyle without a migration.
+ACTIVITY_REACT_EMOJIS = (
+    "fire",
+    "beast",
+    "volt",
+    "goat",
+    "podium",
+    "rocket",
+    "ice",
+    "how",
+    "menace",
+    "dead",
+    "melted",
+    "heavy",
+    "salute",
+    "love",
+)
+
+
+class DrillInstructorActivityReact(models.Model):
+    """One emoji reaction from one user on an activity card.
+
+    One stamp per person: posting a different slug replaces the old one;
+    posting the same slug again removes it. Only activity roots are valid.
+    """
+
+    message = models.ForeignKey(
+        DrillInstructorMessage,
+        on_delete=models.CASCADE,
+        related_name="activity_reacts",
+    )
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="drill_activity_reacts",
+    )
+    emoji = models.CharField(max_length=16)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "user"],
+                name="one_react_per_user",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["message", "emoji"], name="activity_react_tally"),
+        ]
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.emoji} by {self.user_id} on activity {self.message_id}"
+
+
 class DrillInstructorPersonaVote(models.Model):
     """One participant's vote for next week's coach in a challenge.
 

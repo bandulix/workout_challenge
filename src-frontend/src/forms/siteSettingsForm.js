@@ -6,6 +6,7 @@ import {
 import {useGetPushStatusQuery, useSubscribePushMutation, useUnsubscribePushMutation} from "../utils/reducers/pushSlice";
 import {subscribeToPush, unsubscribeFromPush} from "../index";
 import {FIELD_INPUT_CLASS, Modal, SaveButton} from "./basicComponents";
+import {clearBodyScrollLock} from "../utils/overlay";
 
 
 function Field({label, error, hint, children}) {
@@ -200,7 +201,7 @@ export default function SiteSettingsForm({setModalState}) {
             await updateSettings(payload).unwrap();
             await refetch();
             setModalState(false);
-            document.body.classList.remove("body-no-scroll");
+            clearBodyScrollLock();
         } catch (err) {
             console.error("Site settings save failed", err);
             setFieldErrors(err?.data || {});

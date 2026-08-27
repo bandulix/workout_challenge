@@ -11,6 +11,7 @@ import {BeatLoader} from "react-spinners";
 import {FIELD_INPUT_CLASS, Modal, SaveButton} from "./basicComponents";
 import PersonaAvatar from "../components/PersonaAvatar";
 import {confirmAction, notice} from "../utils/dialogs";
+import {clearBodyScrollLock} from "../utils/overlay";
 
 const PLACEHOLDER_BODY = "AI Drill Instructor standing by. Drop a workout to see me in action.";
 
@@ -109,7 +110,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             }
             await refetchConfigs();
             setModalState(false);
-            document.body.classList.remove("body-no-scroll");
+            clearBodyScrollLock();
             await notice(existing ? "Saved." : "Drill Instructor created.");
         } catch (err) {
             console.error("Config save failed", err);
@@ -129,7 +130,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             await deleteDrillConfig(existing.id).unwrap();
             await refetchConfigs();
             setModalState(false);
-            document.body.classList.remove("body-no-scroll");
+            clearBodyScrollLock();
         } catch (err) {
             await notice("Could not delete: " + JSON.stringify(err?.data || err?.message));
         }

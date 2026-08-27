@@ -160,9 +160,21 @@ GARMIN_SPORT_MAP = {
     "tennis": "Tennis",
     "table_tennis": "TableTennis",
     "pickleball": "Pickleball",
+    "padel": "Padel",
     "racquetball": "Racquetball",
     "golf": "Golf",
     "wheelchair": "Wheelchair",
+    "boxing": "Boxing",
+    "kickboxing": "Kickboxing",
+    "muay_thai": "MuayThai",
+    "martial_arts": "MartialArts",
+    "mixed_martial_arts": "MartialArts",
+    "mma": "MartialArts",
+    "basketball": "Basketball",
+    "volleyball": "Volleyball",
+    "cricket": "Cricket",
+    "dance": "Dance",
+    "dancing": "Dance",
 }
 
 

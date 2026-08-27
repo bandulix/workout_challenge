@@ -395,11 +395,13 @@ class MapStravaSportTypeTests(TestCase):
         from .strava import _map_sport_type
         self.assertEqual(_map_sport_type("Run"), "Run")
         self.assertEqual(_map_sport_type("Pickleball"), "Pickleball")
+        self.assertEqual(_map_sport_type("Basketball"), "Basketball")
+        self.assertEqual(_map_sport_type("MuayThai"), "MuayThai")
         self.assertEqual(_map_sport_type("Workout"), "Workout")
 
     def test_unknown_types_fall_back_to_workout(self):
         from .strava import _map_sport_type
-        for unknown in ("Basketball", "Cricket", "Dance", "Padel", "Volleyball", "PhysicalTherapy", "", None):
+        for unknown in ("Quidditch", "UnderwaterHockey", "", None):
             with self.subTest(unknown=unknown):
                 self.assertEqual(_map_sport_type(unknown), "Workout")
 
@@ -748,10 +750,14 @@ class MapHealthSportTypeTests(TestCase):
         self.assertEqual(map_health_sport_type("hiit"), "HighIntensityIntervalTraining")
         self.assertEqual(map_health_sport_type("RUNNING_TREADMILL"), "VirtualRun")
         self.assertEqual(map_health_sport_type("CYCLING_STATIONARY"), "VirtualRide")
+        self.assertEqual(map_health_sport_type("boxing"), "Boxing")
+        self.assertEqual(map_health_sport_type("MARTIAL_ARTS"), "MartialArts")
+        self.assertEqual(map_health_sport_type("muayThai"), "MuayThai")
+        self.assertEqual(map_health_sport_type("EXERCISE_TYPE_BASKETBALL"), "Basketball")
 
     def test_unknown_types_fall_back_to_workout(self):
         from .health import map_health_sport_type
-        for unknown in ("underwater_hockey", "Basketball", "", None, "not-a-real-sport"):
+        for unknown in ("underwater_hockey", "Quidditch", "", None, "not-a-real-sport"):
             with self.subTest(unknown=unknown):
                 self.assertEqual(map_health_sport_type(unknown), "Workout")
 

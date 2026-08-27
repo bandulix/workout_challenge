@@ -188,8 +188,8 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
             // The coach's reaction is generated asynchronously (usually a
             // few seconds) - two delayed re-fetches pick it up quickly,
             // the regular 60s poll is the backstop.
-            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(['DrillMessage'])), 8000);
-            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(['DrillMessage'])), 20000);
+            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(['DrillMessage', 'DrillRoast'])), 8000);
+            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(['DrillMessage', 'DrillRoast'])), 20000);
             onPosted?.(posted);
         } catch (err) {
             const data = err?.data || {};

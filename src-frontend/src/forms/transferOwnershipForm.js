@@ -6,6 +6,7 @@ import {
 import {Modal, SaveButton, SingleForm} from "./basicComponents";
 import {useGetUsersQuery} from "../utils/reducers/usersSlice";
 import {useDispatch} from "react-redux";
+import {clearBodyScrollLock} from "../utils/overlay";
 
 
 const fields = {
@@ -67,7 +68,7 @@ export default function TransferOwnershipForm({competition, setModalState}) {
         try {
             await updateEntry({id: competition.id, owner: parseInt(values['owner'])}).unwrap();
             setModalState(false);
-            document.body.classList.remove('body-no-scroll');
+            clearBodyScrollLock();
             dispatch(competitionsApi.util.invalidateTags(['Competition']));
         } catch (err) {
             console.error('Update Competition Ownership failed', err);

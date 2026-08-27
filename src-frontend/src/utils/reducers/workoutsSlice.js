@@ -1,5 +1,6 @@
 import {createApi} from '@reduxjs/toolkit/query/react';
 import {baseQueryWithReauth} from './baseQueryWithReauth';
+import {liveQueryDefaults} from './rtkDefaults';
 
 
 /**
@@ -97,8 +98,7 @@ export const workoutsApi = createApi({
     reducerPath: 'workoutsApi',
     baseQuery: baseQueryWithReauth,
     tagTypes: ['Workout'],
-    keepUnusedDataFor: 60 * 60 * 12, // 12 hours cache (default is 60)
-    refetchOnMountOrArgChange: 60, // Refetch if older than 60 seconds (multi-device sync)
+    ...liveQueryDefaults,
     endpoints: (builder) => ({
         getWorkouts: builder.query({
             query: (params = {}) => ({

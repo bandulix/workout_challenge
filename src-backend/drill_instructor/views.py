@@ -18,6 +18,8 @@ from workout_challenge.images import ProtectedMediaRenderer
 from .llm_client import check_vision_capability
 from competition.models import Points
 from .models import (
+    ACTIVITY_REACT_EMOJIS,
+    DrillInstructorActivityReact,
     DrillInstructorConfig,
     DrillInstructorMessage,
     DrillInstructorPersona,
@@ -33,6 +35,7 @@ from .serializers import (
     DrillInstructorReplySerializer,
     LegendEchoSerializer,
     RoastCardSerializer,
+    activity_reacts_payload,
 )
 
 
@@ -239,6 +242,10 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
                     queryset=DrillInstructorMessage.objects.select_related("user").order_by("posted_at"),
                 ),
                 Prefetch(
+                    "activity_reacts",
+                    queryset=DrillInstructorActivityReact.objects.select_related("user").order_by("created_at"),
+                ),
+                Prefetch(
                     "workout__points_set",
                     # Goal/award (and their competition) must be present
                     # so the serializer can drop other challenges' points
@@ -303,6 +310,58 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             DrillInstructorReplySerializer(reply, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["post"])
+    def react(self, request, pk=None):
+        """Toggle an emoji stamp on an activity card.
+
+        One stamp per person: the same emoji again removes it; a
+        different emoji replaces the previous one. Only activity roots.
+        """
+        root = self.get_object()
+        if root.kind != DrillInstructorMessage.KIND_ACTIVITY:
+            return Response(
+                {"emoji": "Reactions are only for workout activities."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        raw = request.data.get("emoji") or ""
+        emoji = raw.strip() if isinstance(raw, str) else ""
+        if emoji not in ACTIVITY_REACT_EMOJIS:
+            return Response({"emoji": "Unknown reaction."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            existing = (
+                DrillInstructorActivityReact.objects
+                .select_for_update()
+                .filter(message=root, user=request.user)
+                .first()
+            )
+            if existing is None:
+                DrillInstructorActivityReact.objects.create(
+                    message=root, user=request.user, emoji=emoji,
+                )
+                on = True
+            elif existing.emoji == emoji:
+                existing.delete()
+                on = False
+            else:
+                existing.emoji = emoji
+                existing.save(update_fields=["emoji"])
+                on = True
+
+        # Re-read with user so the payload matches the feed serializer.
+        root = (
+            DrillInstructorMessage.objects
+            .prefetch_related(Prefetch(
+                "activity_reacts",
+                queryset=DrillInstructorActivityReact.objects.select_related("user").order_by("created_at"),
+            ))
+            .get(pk=root.pk)
+        )
+        return Response(
+            {"id": root.id, "on": on, "emoji": emoji, "reacts": activity_reacts_payload(root, request)},
+            status=status.HTTP_200_OK,
         )
 
     def _visible_thread_roots(self, user):
@@ -493,11 +552,19 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             .exclude(image__isnull=True)
             .exclude(pk__in=already_voted)
             .select_related("config", "config__competition", "config__persona", "persona", "parent", "parent__user")
-            .prefetch_related(Prefetch(
-                "photo_votes",
-                queryset=DrillInstructorPhotoVote.objects.filter(user=request.user),
-                to_attr="my_votes",
-            ))
+            .prefetch_related(
+                Prefetch(
+                    "photo_votes",
+                    queryset=DrillInstructorPhotoVote.objects.filter(user=request.user),
+                    to_attr="my_votes",
+                ),
+                Prefetch(
+                    "parent__replies",
+                    queryset=DrillInstructorMessage.objects.filter(
+                        kind=DrillInstructorMessage.KIND_PHOTO,
+                    ).select_related("user"),
+                ),
+            )
             .annotate(
                 hot_votes=Count("photo_votes", filter=Q(photo_votes__hot=True), distinct=True),
                 not_votes=Count("photo_votes", filter=Q(photo_votes__hot=False), distinct=True),
@@ -531,11 +598,19 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(config__competition_id=competition_id)
         qs = (
             qs.select_related("config", "config__competition", "config__persona", "persona", "parent", "parent__user")
-            .prefetch_related(Prefetch(
-                "photo_votes",
-                queryset=DrillInstructorPhotoVote.objects.filter(user=request.user),
-                to_attr="my_votes",
-            ))
+            .prefetch_related(
+                Prefetch(
+                    "photo_votes",
+                    queryset=DrillInstructorPhotoVote.objects.filter(user=request.user),
+                    to_attr="my_votes",
+                ),
+                Prefetch(
+                    "parent__replies",
+                    queryset=DrillInstructorMessage.objects.filter(
+                        kind=DrillInstructorMessage.KIND_PHOTO,
+                    ).select_related("user"),
+                ),
+            )
             .annotate(
                 hot_votes=Count("photo_votes", filter=Q(photo_votes__hot=True), distinct=True),
                 not_votes=Count("photo_votes", filter=Q(photo_votes__hot=False), distinct=True),

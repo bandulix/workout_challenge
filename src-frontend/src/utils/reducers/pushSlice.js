@@ -1,11 +1,12 @@
 import {createApi} from '@reduxjs/toolkit/query/react';
 import {baseQueryWithReauth} from './baseQueryWithReauth';
+import {liveQueryDefaults} from './rtkDefaults';
 
 export const pushApi = createApi({
     reducerPath: 'pushApi',
     baseQuery: baseQueryWithReauth,
     tagTypes: ['PushStatus'],
-    keepUnusedDataFor: 60 * 5,
+    ...liveQueryDefaults,
     endpoints: (builder) => ({
         getPushStatus: builder.query({
             query: () => ({url: 'push/status/', method: 'GET'}),

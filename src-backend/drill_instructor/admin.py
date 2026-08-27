@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     DailyOrder,
     DogTag,
+    DrillInstructorActivityReact,
     DrillInstructorConfig,
     DrillInstructorMessage,
     DrillInstructorPersona,
@@ -55,6 +56,13 @@ class LegendEchoAdmin(admin.ModelAdmin):
     list_filter = ("status",)
     search_fields = ("title", "narrative", "holder__email", "origin_user__email")
     readonly_fields = ("created_at", "last_claimed_at", "immortalized_at")
+
+
+@admin.register(DrillInstructorActivityReact)
+class DrillInstructorActivityReactAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "emoji", "user", "message")
+    list_filter = ("emoji",)
+    search_fields = ("user__email", "user__first_name", "message__body")
 
 
 @admin.register(EchoChallenge)

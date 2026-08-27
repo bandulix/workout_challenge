@@ -9,6 +9,7 @@ import {BeatLoader} from "react-spinners";
 import {isNativeHealthAvailable, nativeHealthConnect, nativeHealthDisconnect, nativeHealthSetSource} from "../utils/nativeHealth";
 import {confirmAction, notice} from "../utils/dialogs";
 import {assetUrl} from "../utils/platform";
+import {clearBodyScrollLock} from "../utils/overlay";
 
 
 const PROVIDER_LABELS = {strava: "Strava", garmin: "Garmin", health: "Apple/Google Health"};
@@ -100,7 +101,7 @@ function HealthSection({user, onChanged}) {
     const [apkAvailable, setApkAvailable] = useState(false);
     useEffect(() => {
         if (!isAndroidBrowser) return;
-        fetch(assetUrl("/download/workout-challenge.apk"), {method: "HEAD"})
+        fetch(assetUrl("/download/workout-challenge.apk"), {method: "HEAD", cache: "no-store"})
             .then((r) => setApkAvailable(r.ok))
             .catch(() => setApkAvailable(false));
     }, [isAndroidBrowser]);
@@ -398,7 +399,7 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
             if (confirmation) {
                 await deleteEntry(user.id).unwrap();
                 setModalState(false);
-                document.body.classList.remove('body-no-scroll');
+                clearBodyScrollLock();
                 navigate('/logout');
             }
         } catch (err) {
@@ -421,7 +422,7 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
                 email: values.email.toLowerCase()
             }).unwrap();
             setModalState(false);
-            document.body.classList.remove('body-no-scroll');
+            clearBodyScrollLock();
             await notice('Saved. Strava and username changes might take up to 10 minutes to reflect on the competition page for all users.');
         } catch (err) {
             console.error('Update Personal Settings failed', err);
@@ -438,7 +439,7 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
             await resetStrava().unwrap();
             dispatch(usersApi.util.invalidateTags(['User']));
             setModalState(false);
-            document.body.classList.remove('body-no-scroll');
+            clearBodyScrollLock();
             await notice('Strava connection reset. Open the settings again and use "Link Strava Account" to connect from scratch.');
         } catch (err) {
             console.error('Reset Strava failed', err);
@@ -454,7 +455,7 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
                 await unlinkStrava().unwrap();
                 setModalState(false);
                 dispatch(usersApi.util.invalidateTags(['User']));
-                document.body.classList.remove('body-no-scroll');
+                clearBodyScrollLock();
             } catch (err) {
                 console.error('Unlink Strava failed', err);
                 setFieldErrors(err.data);
@@ -462,7 +463,7 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
         } else {
             // currently unlinked - link
             setModalState(false);
-            document.body.classList.remove('body-no-scroll');
+            clearBodyScrollLock();
             setLinkStrava(true);
         }
     }

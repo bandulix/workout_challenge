@@ -7,7 +7,12 @@ from competition.scorer import PHOTO_AWARD_NAME, sport_factor
 from custom_user.serializers import user_picture_url
 
 from .formatters import format_workout_summary
-from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona, LegendEcho
+from .models import (
+    DrillInstructorConfig,
+    DrillInstructorMessage,
+    DrillInstructorPersona,
+    LegendEcho,
+)
 
 
 def _persona_picture_url(persona):
@@ -291,6 +296,39 @@ def _message_image_url(obj):
     return reverse("drill-message-picture", kwargs={"pk": obj.pk})
 
 
+def activity_reacts_payload(obj, request=None):
+    """Group emoji stamps on an activity: count, whether the caller
+    stamped it, and who (first names + picture URLs)."""
+    if obj.kind != DrillInstructorMessage.KIND_ACTIVITY:
+        return []
+    rows = list(obj.activity_reacts.all())
+    if not rows:
+        return []
+    caller_id = getattr(getattr(request, "user", None), "id", None)
+    buckets = {}
+    order = []
+    for row in rows:
+        if row.emoji not in buckets:
+            buckets[row.emoji] = {
+                "emoji": row.emoji,
+                "count": 0,
+                "me": False,
+                "people": [],
+            }
+            order.append(row.emoji)
+        bucket = buckets[row.emoji]
+        bucket["count"] += 1
+        if row.user_id == caller_id:
+            bucket["me"] = True
+        person = row.user
+        bucket["people"].append({
+            "id": person.id,
+            "name": person.first_name or person.username or "Athlete",
+            "picture": user_picture_url(person),
+        })
+    return [buckets[key] for key in order]
+
+
 class DrillInstructorReplySerializer(serializers.ModelSerializer):
     """One entry inside a coach-message thread: a participant's reply
     (``is_coach=false``) or the coach's reaction to it (``is_coach=true``,
@@ -357,6 +395,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
     author_name = serializers.SerializerMethodField()
     author_profile_picture = serializers.SerializerMethodField()
+    reacts = serializers.SerializerMethodField()
 
     class Meta:
         model = DrillInstructorMessage
@@ -388,6 +427,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             "image",
             "author_name",
             "author_profile_picture",
+            "reacts",
         ]
         read_only_fields = fields
 
@@ -396,6 +436,9 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             return []  # replies themselves are never listed standalone
         # Uses the view's ordered Prefetch cache - no query per root.
         return DrillInstructorReplySerializer(obj.replies.all(), many=True, context=self.context).data
+
+    def get_reacts(self, obj):
+        return activity_reacts_payload(obj, self.context.get("request"))
 
     def get_persona_name(self, obj):
         persona = _persona_for_message(obj)
@@ -713,8 +756,18 @@ class RoastCardSerializer(serializers.ModelSerializer):
         return persona.name if persona else None
 
     def get_athlete_name(self, obj):
-        # The roast hangs under the photo post; its user is the athlete.
-        author = getattr(obj.parent, "user", None)
+        # Standalone photo posts parent the roast to the photo (user is
+        # the athlete). Activity-thread roasts hang under the workout
+        # comment, so the original upload is a sibling photo reply.
+        parent = obj.parent
+        author = getattr(parent, "user", None)
+        if author is None and parent is not None:
+            photo = next(
+                (m for m in parent.replies.all()
+                 if m.kind == DrillInstructorMessage.KIND_PHOTO and m.user_id),
+                None,
+            )
+            author = getattr(photo, "user", None) if photo else None
         if author is None:
             return None
         return author.first_name or author.username or None
@@ -773,8 +826,9 @@ class LegendEchoSerializer(serializers.ModelSerializer):
         return obj.holder_id == user.id
 
     def get_metric_label(self, obj):
+        from .echoes import echo_sport_label
         unit = "km" if obj.metric == "distance" else "min"
-        return f"{obj.metric_value:g} {unit} {obj.sport_type}"
+        return f"{obj.metric_value:g} {unit} {echo_sport_label(obj.sport_type)}"
 
     def get_active_challenge(self, obj):
         ch = getattr(obj, "open_challenge", None)

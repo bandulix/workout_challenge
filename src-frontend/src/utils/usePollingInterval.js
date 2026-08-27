@@ -1,14 +1,11 @@
 import {useEffect, useState} from "react";
+import {subscribeForeground} from "./appLifecycle";
 
-/** RTK Query pollingInterval that pauses while the tab is hidden. */
+/** RTK Query pollingInterval that pauses while the tab / app is hidden. */
 export default function usePollingInterval(ms) {
     const [hidden, setHidden] = useState(
         () => typeof document !== "undefined" && document.visibilityState === "hidden",
     );
-    useEffect(() => {
-        const onChange = () => setHidden(document.visibilityState === "hidden");
-        document.addEventListener("visibilitychange", onChange);
-        return () => document.removeEventListener("visibilitychange", onChange);
-    }, []);
+    useEffect(() => subscribeForeground((active) => setHidden(!active)), []);
     return hidden ? 0 : ms;
 }

@@ -1055,6 +1055,129 @@ class CoachThreadReplyTests(TestCase):
         self.assertIn(f"/competition/{self.competition.id}", push.call_args[1]["url"])
 
 
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class ActivityReactTests(TestCase):
+    """Emoji stamps on activity cards: one per person, toggle, grouped
+    on the feed, members only."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "drill_instructor.tasks.post_workout_comment.delay",
+            "custom_user.models.verify_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        self.persona = DrillInstructorPersona.objects.create(
+            name="React Sergeant", system_prompt="React.",
+        )
+        self.owner = _user("react-owner@example.com", "Olivia")
+        self.athlete = _user("react-athlete@example.com", "Alex")
+        self.mate = _user("react-mate@example.com", "Mia")
+        self.outsider = _user("react-out@example.com", "Nina")
+        today = timezone.localdate()
+        self.competition = Competition.objects.create(
+            owner=self.owner, name="React Cup",
+            start_date=today - datetime.timedelta(days=3),
+            end_date=today + datetime.timedelta(days=4),
+        )
+        self.athlete.my_competitions.add(self.competition)
+        self.mate.my_competitions.add(self.competition)
+        self.config = DrillInstructorConfig.objects.create(
+            competition=self.competition, enabled=True, persona=self.persona,
+        )
+        workout = Workout(
+            user=self.athlete, sport_type="Run",
+            start_datetime=timezone.now(), duration=datetime.timedelta(minutes=40),
+            intensity_category=2,
+        )
+        workout.save(score=False)
+        self.activity = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
+            workout=workout, body="Nice work!",
+        )
+        self.push = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PUSH, body="Move!",
+        )
+        self.client = APIClient()
+
+    def _react(self, user, emoji="fire", message=None):
+        self.client.force_authenticate(user)
+        target = message or self.activity
+        return self.client.post(
+            f"/api/drill-instructor/message/{target.id}/react/",
+            {"emoji": emoji}, format="json",
+        )
+
+    def test_member_stamps_and_feed_groups(self):
+        response = self._react(self.athlete, "fire")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertTrue(body["on"])
+        self.assertEqual(body["emoji"], "fire")
+        self.assertEqual(body["reacts"][0]["count"], 1)
+        self.assertTrue(body["reacts"][0]["me"])
+        self.assertEqual(body["reacts"][0]["people"][0]["name"], "Alex")
+
+        self._react(self.mate, "fire")
+        feed = self.client.get("/api/drill-instructor/message/").json()
+        activity = next(row for row in feed if row["id"] == self.activity.id)
+        by_emoji = {row["emoji"]: row for row in activity["reacts"]}
+        self.assertEqual(by_emoji["fire"]["count"], 2)
+        self.assertTrue(by_emoji["fire"]["me"])
+        names = {p["name"] for p in by_emoji["fire"]["people"]}
+        self.assertEqual(names, {"Alex", "Mia"})
+
+    def test_same_emoji_toggles_off(self):
+        self._react(self.athlete, "volt")
+        response = self._react(self.athlete, "volt")
+        self.assertFalse(response.json()["on"])
+        self.assertEqual(response.json()["reacts"], [])
+
+    def test_switching_stamp_replaces_the_old_one(self):
+        self._react(self.athlete, "fire")
+        response = self._react(self.athlete, "goat")
+        self.assertTrue(response.json()["on"])
+        self.assertEqual(response.json()["emoji"], "goat")
+        emojis = [row["emoji"] for row in response.json()["reacts"]]
+        self.assertEqual(emojis, ["goat"])
+        self.assertTrue(response.json()["reacts"][0]["me"])
+        self.client.force_authenticate(self.athlete)
+        feed = self.client.get("/api/drill-instructor/message/").json()
+        activity = next(row for row in feed if row["id"] == self.activity.id)
+        self.assertEqual([row["emoji"] for row in activity["reacts"]], ["goat"])
+
+    def test_push_feed_has_empty_reacts(self):
+        self.client.force_authenticate(self.athlete)
+        feed = self.client.get("/api/drill-instructor/message/").json()
+        push = next(row for row in feed if row["id"] == self.push.id)
+        self.assertEqual(push["reacts"], [])
+
+    def test_unknown_emoji_rejected(self):
+        response = self._react(self.athlete, "thumbs")
+        self.assertEqual(response.status_code, 400)
+
+    def test_not_on_push_messages(self):
+        response = self._react(self.athlete, "fire", message=self.push)
+        self.assertEqual(response.status_code, 400)
+
+    def test_outsider_gets_404(self):
+        response = self._react(self.outsider, "fire")
+        self.assertEqual(response.status_code, 404)
+
+    def test_anonymous_gets_401(self):
+        response = self.client.post(
+            f"/api/drill-instructor/message/{self.activity.id}/react/",
+            {"emoji": "fire"}, format="json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+
 class PhotoPostTests(TestCase):
     """Participants post pictures into the coach feed; the coach reacts
     asynchronously (post_photo_reaction task); the image itself is only
@@ -1482,6 +1605,42 @@ class PhotoPostTests(TestCase):
         photo_replies = [r for r in results[0]["replies"] if r["kind"] == DrillInstructorMessage.KIND_PHOTO]
         self.assertEqual(len(photo_replies), 1)
         self.assertEqual(photo_replies[0]["author_name"], "Alex")
+        self.assertTrue(photo_replies[0]["image"])
+        self.assertIn(f"/message/{photo_replies[0]['id']}/picture/", photo_replies[0]["image"])
+
+    def test_activity_remix_is_backdrop_and_hot_or_not_not_the_original(self):
+        # Original stays the feed answer; the coach's edited poster is a
+        # sibling reaction used as the activity backdrop and roast card.
+        root = self._activity_root(self.athlete)
+        self._post(self.athlete, parent=root)
+        photo = root.replies.get(kind=DrillInstructorMessage.KIND_PHOTO)
+        roast = DrillInstructorMessage(
+            config=self.config, kind=DrillInstructorMessage.KIND_REACTION,
+            parent=root, user=None, body="I made you a poster.",
+        )
+        roast.image.save("roast.png", SimpleUploadedFile("roast.png", PNG_1PX, content_type="image/png"))
+        roast.save()
+
+        self.client.force_authenticate(self.athlete)
+        card = self.client.get("/api/drill-instructor/message/").json()[0]
+        originals = [r for r in card["replies"] if r["kind"] == DrillInstructorMessage.KIND_PHOTO]
+        remixes = [r for r in card["replies"] if r["is_coach"] and r["image"]]
+        self.assertEqual(len(originals), 1)
+        self.assertEqual(len(remixes), 1)
+        self.assertIn(f"/message/{photo.id}/picture/", originals[0]["image"])
+        self.assertIn(f"/message/{roast.id}/picture/", remixes[0]["image"])
+        self.assertNotEqual(originals[0]["image"], remixes[0]["image"])
+
+        roasts = self.client.get("/api/drill-instructor/message/roasts/").json()
+        self.assertEqual([c["id"] for c in roasts], [roast.id])
+        self.assertIn(f"/message/{roast.id}/picture/", roasts[0]["image"])
+        self.assertNotIn(f"/message/{photo.id}/picture/", roasts[0]["image"])
+        self.assertEqual(roasts[0]["athlete_name"], "Alex")
+
+        hall = self.client.get("/api/drill-instructor/message/hall/").json()
+        self.assertEqual(hall[0]["id"], roast.id)
+        self.assertEqual(hall[0]["athlete_name"], "Alex")
+        self.assertIn(f"/message/{roast.id}/picture/", hall[0]["image"])
 
     def test_replies_under_photos_use_the_regular_thread(self):
         root = self._activity_root(self.athlete)
@@ -1622,7 +1781,7 @@ class PhotoPostTests(TestCase):
         self.assertIn("45 min Run", prompt)
         self.assertIn("5.00 km", prompt)
         self.assertIn("420 kcal", prompt)
-        self.assertIn("STATS OVERLAY", prompt)
+        self.assertIn("WORKOUT IN THE SCENE", prompt)
 
     def test_photo_reply_no_roast_without_edit_model(self):
         from .tasks import post_reply_reaction
@@ -2067,8 +2226,9 @@ class RoastImagePromptTests(TestCase):
         prompt = self._build()
         self.assertIn("Roast Master", prompt)
         self.assertIn("A smoky boxing gym at midnight.", prompt)
-        self.assertIn("SETTING:", prompt)
-        self.assertIn("together with their coach", prompt)
+        self.assertIn("COACH BRIEFING", prompt)
+        self.assertIn("INTERPRET their setting", prompt)
+        self.assertIn("world of coach", prompt)
 
     def test_face_lock_when_portrait_is_present(self):
         prompt = self._build(has_coach_portrait=True)
@@ -2083,12 +2243,13 @@ class RoastImagePromptTests(TestCase):
 
     def test_workout_stats_are_painted_on_the_picture(self):
         prompt = self._build(workout_summary="45 min Run · 5.00 km · 420 kcal")
-        self.assertIn("STATS OVERLAY", prompt)
+        self.assertIn("WORKOUT IN THE SCENE", prompt)
+        self.assertIn("tattoo", prompt)
         self.assertIn("45 min Run · 5.00 km · 420 kcal", prompt)
 
     def test_no_stats_omits_overlay(self):
         prompt = self._build()
-        self.assertNotIn("STATS OVERLAY", prompt)
+        self.assertNotIn("WORKOUT IN THE SCENE", prompt)
 
     def test_caption_is_optional_exact_text(self):
         with_caption = self._build(caption="leg day!")
@@ -3085,6 +3246,29 @@ class LegendEchoTests(TestCase):
         from .echoes import mint_echo
         echo = mint_echo(self._workout(self.alex, minutes=95), self.config)
         self.assertIsNotNone(echo)
+
+    def test_bike_variants_share_one_echo_family(self):
+        from .echoes import mint_echo, resolve_workout_challenges, start_challenge
+        echo = mint_echo(self._workout(self.alex, minutes=95, sport="GravelRide"), self.config)
+        self.assertIsNotNone(echo)
+        self.assertEqual(echo.sport_type, "Ride")
+        self.assertIn("Cycling", echo.title)
+        start_challenge(echo, self.nina)
+        claimed = resolve_workout_challenges(
+            self._workout(self.nina, minutes=120, sport="MountainBikeRide"), self.config,
+        )
+        self.assertEqual(len(claimed), 1)
+        echo.refresh_from_db()
+        self.assertEqual(echo.holder_id, self.nina.id)
+        self.assertEqual(echo.sport_type, "Ride")
+
+    def test_personal_best_counts_run_variants(self):
+        from .echoes import mint_echo
+        mint_echo(self._workout(self.nina, minutes=45, sport="Ride"), self.config)
+        self.assertIsNone(mint_echo(self._workout(self.alex, minutes=35, sport="Run"), self.config))
+        echo = mint_echo(self._workout(self.alex, minutes=50, sport="TrailRun"), self.config)
+        self.assertIsNotNone(echo)
+        self.assertEqual(echo.sport_type, "Run")
 
     def test_cooldown_blocks_a_second_flag(self):
         from .echoes import mint_echo

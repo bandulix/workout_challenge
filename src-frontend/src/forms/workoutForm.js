@@ -8,6 +8,7 @@ import {AddButton, DeleteButton, Modal, SaveButton, SingleForm} from "./basicCom
 import {statsApi} from "../utils/reducers/statsSlice";
 import {feedApi} from "../utils/reducers/feedSlice";
 import {useDispatch} from "react-redux";
+import {clearBodyScrollLock} from "../utils/overlay";
 
 // After a workout save the challenge page must catch up without a manual
 // refresh: feed/stats are invalidated immediately, and the server's
@@ -27,6 +28,8 @@ export function refreshChallengeSoon(dispatch) {
 export const workoutTypes = {
     "Steps": {"label": "Total Daily Steps", "label_short": "Steps"},
     "Badminton": {"label": "Badminton", "label_short": "Badminton"},
+    "Basketball": {"label": "Basketball", "label_short": "Basketball"},
+    "Boxing": {"label": "Boxing", "label_short": "Boxing"},
     "Ride": {"label": "Biking/Cycling", "label_short": "Cycling"},
     "EBikeRide": {"label": "Biking/Cycling (E-Bike)", "label_short": "Cycling"},
     "GravelRide": {"label": "Biking/Cycling (Gravel)", "label_short": "Cycling"},
@@ -34,7 +37,9 @@ export const workoutTypes = {
     "Velomobile": {"label": "Biking/Cycling (Velomobile)", "label_short": "Cycling"},
     "VirtualRide": {"label": "Biking/Cycling (Virtual)", "label_short": "Cycling"},
     "Canoeing": {"label": "Canoe", "label_short": "Canoe"},
+    "Cricket": {"label": "Cricket", "label_short": "Cricket"},
     "Crossfit": {"label": "Crossfit", "label_short": "Crossfit"},
+    "Dance": {"label": "Dance", "label_short": "Dance"},
     "Elliptical": {"label": "Elliptical", "label_short": "Elliptical"},
     "Golf": {"label": "Golf", "label_short": "Golf"},
     "HighIntensityIntervalTraining": {"label": "High Intensity Interval Training (HIIT)", "label_short": "HIIT"},
@@ -42,11 +47,16 @@ export const workoutTypes = {
     "IceSkate": {"label": "Ice Skate", "label_short": "Ice Skate"},
     "InlineSkate": {"label": "Inline Skate", "label_short": "Inline Skate"},
     "Kayaking": {"label": "Kayak", "label_short": "Kayak"},
+    "Kickboxing": {"label": "Kickboxing", "label_short": "Kickboxing"},
     "Kitesurf": {"label": "Kitesurf", "label_short": "Kitesurf"},
+    "MartialArts": {"label": "Martial Arts", "label_short": "Martial Arts"},
     "MountainBikeRide": {"label": "Mountain-Biking/Cycling", "label_short": "Mountain-Biking"},
     "EMountainBikeRide": {"label": "Mountain-Biking/Cycling (E-Bike)", "label_short": "Mountain-Biking"},
+    "MuayThai": {"label": "Muay Thai", "label_short": "Muay Thai"},
+    "Padel": {"label": "Padel", "label_short": "Padel"},
     "Pickleball": {"label": "Pickleball", "label_short": "Pickleball"},
     "Pilates": {"label": "Pilates", "label_short": "Pilates"},
+    "PhysicalTherapy": {"label": "Physical Therapy", "label_short": "Physio"},
     "Racquetball": {"label": "Racquetball", "label_short": "Racquetball"},
     "RockClimbing": {"label": "Rock Climbing", "label_short": "Climbing"},
     "Rowing": {"label": "Rowing (Outdoor)", "label_short": "Rowing"},
@@ -54,6 +64,7 @@ export const workoutTypes = {
     "Run": {"label": "Run", "label_short": "Run"},
     "TrailRun": {"label": "Run (Trail)", "label_short": "Run"},
     "VirtualRun": {"label": "Run (Treadmill / Vitual)", "label_short": "Run"},
+    "Volleyball": {"label": "Volleyball", "label_short": "Volleyball"},
     "Sail": {"label": "Sail", "label_short": "Sail"},
     "Skateboard": {"label": "Skateboard", "label_short": "Skateboard"},
     "AlpineSki": {"label": "Ski (Alpine)", "label_short": "Ski"},
@@ -79,11 +90,9 @@ export const workoutTypes = {
 }
 
 // Safe display label for ANY sport type. The DB can contain sport types
-// this map doesn't know (Strava adds new ones over time - e.g. Basketball,
-// Padel, Volleyball in 2026 - and the sync stores them verbatim), so a
-// direct `workoutTypes[type].label_short` lookup throws a TypeError that,
-// without an error boundary, unmounts the whole app (white screen).
-// Unknown types fall back to their raw name, then to "Other".
+// this map doesn't know (Strava still adds new ones) so a direct
+// `workoutTypes[type].label_short` lookup must not throw. Unknown types
+// fall back to their raw name, then to "Other".
 export function sportLabelShort(sportType) {
     return workoutTypes[sportType]?.label_short ?? sportType ?? "Other";
 }
@@ -259,7 +268,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
             try {
                 await deleteEntry(values.id).unwrap();
                 setModalState(false);
-                document.body.classList.remove('body-no-scroll');
+                clearBodyScrollLock();
             } catch (err) {
                 console.error('Delete Workout failed', err);
             }
@@ -303,7 +312,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
             try {
                 await updateEntry(tmpValues).unwrap();
                 setModalState(false);
-                document.body.classList.remove('body-no-scroll');
+                clearBodyScrollLock();
             } catch (err) {
                 console.error('Update Workout failed', err);
                 setFieldErrors(err.data);
@@ -313,7 +322,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
             try {
                 await createEntry(tmpValues).unwrap();
                 setModalState(false);
-                document.body.classList.remove('body-no-scroll');
+                clearBodyScrollLock();
             } catch (err) {
                 console.error('Create Workout failed', err);
                 setFieldErrors(err.data);

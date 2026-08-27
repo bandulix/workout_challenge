@@ -696,21 +696,26 @@ def build_roast_image_prompt(*, persona_name: str, persona_description: str = ""
 
     Image 1 is the posted photo. Image 2 (when ``has_coach_portrait``) is
     the persona's profile picture and is a face lock - the coach in the
-    result must match that face. The setting comes from the persona
-    description. Workout stats of the answered-to activity are painted
-    on the picture when present.
+    result must match that face. The scene is the coach's world, read
+    from the persona description (place, props, lighting, era). Workout
+    stats of the answered-to activity are baked into the picture as
+    objects in that world when present.
     """
-    setting = (persona_description or "").strip()[:500]
-    if not setting:
-        setting = f"a vivid training world that fits coach {persona_name}"
+    briefing = (persona_description or "").strip()[:500]
+    if not briefing:
+        briefing = f"a vivid training world that belongs to coach {persona_name}"
 
     parts = [
         "Edit IMAGE 1, the athlete's photo, into a new scene.",
-        f"Place the athlete together with their coach \"{persona_name}\" in this setting:",
-        f"SETTING: {setting}",
-        "The coach must be clearly visible in the picture with the athlete "
+        f"This scene MUST be the world of coach \"{persona_name}\" — not a generic gym, "
+        "not the original photo's background, not a poster collage. "
+        "Read the coach briefing below and INTERPRET their setting from it "
+        "(place, era, lighting, props, weather, architecture, clothing). "
+        "Build that world fully around the athlete and the coach.",
+        f"COACH BRIEFING (interpret the setting from this): {briefing}",
+        f"The coach \"{persona_name}\" must be clearly visible in THEIR world with the athlete "
         "(standing next to them, coaching them, or otherwise interacting). "
-        "Match the coach's clothing and vibe to the setting.",
+        "Match the coach's clothing and vibe to that world.",
         "Keep the athlete's face from IMAGE 1 clearly recognizable. Do not "
         "beautify, distort, swap, or replace the athlete. The edit is "
         "good-natured - never mock body, appearance, or identity.",
@@ -725,14 +730,17 @@ def build_roast_image_prompt(*, persona_name: str, persona_description: str = ""
     else:
         parts.append(
             f"There is no portrait reference. Invent a distinctive look for "
-            f"coach \"{persona_name}\" that fits the setting above, and still "
+            f"coach \"{persona_name}\" that fits their world above, and still "
             "include them in the scene."
         )
     if workout_summary:
         parts.append(
-            "STATS OVERLAY: paint these workout stats as clean, readable "
-            "on-image text (HUD, chalkboard, race bib, or scoreboard — pick "
-            "what fits the setting). Do not cover faces. Spell the numbers "
+            "WORKOUT IN THE SCENE: these stats must appear as something that "
+            "exists inside the coach's world — not a floating HUD or watermark. "
+            "Examples (pick one that fits this coach, or invent a better in-world "
+            "object): a TV or jumbotron in the room, a framed picture on the wall, "
+            "a tattoo on the coach or the athlete, a chalkboard, a race bib, a "
+            "newspaper, a trophy plaque. Readable, not covering faces. Spell "
             f"exactly: {workout_summary}"
         )
     if caption:
@@ -762,6 +770,9 @@ _ECHO_SPORT_SCENE = {
     "Rowing": "a river of liquid metal, oars cutting water like thunder",
     "Kayaking": "canyon walls and kayak spray frozen as crystal",
     "Soccer": "a floodlit pitch at night, the crowd a galaxy of volt ghosts",
+    "MartialArts": "a fight-night ring in monsoon neon, ropes like lightning, a roaring crowd of ghosts",
+    "MuayThai": "a fight-night ring in monsoon neon, ropes like lightning, a roaring crowd of ghosts",
+    "Boxing": "a floodlit boxing ring, hanging lights and chalk-dust stars",
     "Ski": "alpine snow on an impossible pitch, ice crystals as fireworks",
     "AlpineSki": "a steep alpine descent through a torn-open sky",
     "Snowboard": "a snow park in storm light, halfpipe like a cathedral",
@@ -837,6 +848,8 @@ def echo_sport_scene(sport_type: str) -> str:
         return _ECHO_SPORT_SCENE["AlpineSki"]
     if "swim" in lowered:
         return _ECHO_SPORT_SCENE["Swim"]
+    if any(word in lowered for word in ("thai", "box", "martial", "kick")):
+        return _ECHO_SPORT_SCENE.get("MartialArts") or _ECHO_SPORT_SCENE["Workout"]
     return _ECHO_SPORT_SCENE["Workout"]
 
 

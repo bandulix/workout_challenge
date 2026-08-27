@@ -9,19 +9,48 @@ import {createPortal} from "react-dom";
 
 let lockCount = 0;
 
+function applyLock() {
+    const y = window.scrollY || window.pageYOffset || 0;
+    document.body.dataset.wcScrollY = String(y);
+    document.body.style.top = `-${y}px`;
+    document.body.classList.add("body-no-scroll");
+    document.documentElement.style.overflow = "hidden";
+}
+
+function removeLock() {
+    const y = parseInt(document.body.dataset.wcScrollY || "0", 10) || 0;
+    document.body.classList.remove("body-no-scroll");
+    document.body.style.top = "";
+    delete document.body.dataset.wcScrollY;
+    document.documentElement.style.overflow = "";
+    window.scrollTo(0, y);
+}
+
 export function useBodyScrollLock(active = true) {
     useEffect(() => {
         if (!active) return undefined;
         lockCount += 1;
-        document.body.classList.add("body-no-scroll");
+        if (lockCount === 1) applyLock();
         return () => {
+            if (lockCount <= 0) return;
             lockCount -= 1;
             if (lockCount <= 0) {
                 lockCount = 0;
-                document.body.classList.remove("body-no-scroll");
+                removeLock();
             }
         };
     }, [active]);
+}
+
+export function clearBodyScrollLock() {
+    if (lockCount === 0 && !document.body.dataset.wcScrollY) {
+        document.body.classList.remove("body-no-scroll");
+        document.body.style.top = "";
+        document.documentElement.style.overflow = "";
+        return;
+    }
+    lockCount = 0;
+    removeLock();
 }
 
 export function OverlayPortal({children}) {

@@ -33,7 +33,7 @@ function ReplyImage({url, alt, elapsed}) {
 // Coach bubbles use the persona's avatar/accent, participant bubbles the
 // user's profile picture + first name, so it is always clear who spoke.
 
-function CoachThread({message, persona, canReply = true, defaultOpen = false, className = "mt-2.5"}) {
+function CoachThread({message, persona, canReply = true, defaultOpen = false, className = "mt-2.5", trailing = null}) {
     const [open, setOpen] = useState(defaultOpen);
     // Deep links pass defaultOpen; the messages query usually resolves
     // after the first render, so sync the prop in when it flips true.
@@ -44,8 +44,8 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
     const [error, setError] = useState(null);
     const [sendReply, {isLoading}] = useReplyToDrillMessageMutation();
     const dispatch = useDispatch();
-    // Photos and the coach remix are not chat: they hang on the activity
-    // card (backdrop) and the hot-or-not box, not in this thread.
+    // The original upload is the activity-card answer; the coach remix
+    // is the backdrop and the hot-or-not box. Neither belongs in chat.
     const replies = (message.replies || []).filter(
         (r) => r.kind !== "photo" && !(r.is_coach && r.image)
     );
@@ -81,12 +81,15 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
 
     return (
         <div className={"min-w-0 w-full " + className}>
-            <button onClick={() => setOpen((v) => !v)}
+            <div className="flex flex-wrap items-center gap-1.5">
+            <button type="button" onClick={() => setOpen((v) => !v)}
                     className="inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-volt-700 dark:hover:text-volt-300 transition min-h-[32px]">
                 <MessageCircle className="h-3.5 w-3.5"/>
                 {replies.length > 0 ? `${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : (canReply ? "Reply" : "")}
                 {(canReply || replies.length > 0) && (open ? <ChevronUp className="h-3 w-3"/> : <ChevronDown className="h-3 w-3"/>)}
             </button>
+            {trailing}
+            </div>
 
             {open && (
                 <div className="mt-2 space-y-2.5 min-w-0">

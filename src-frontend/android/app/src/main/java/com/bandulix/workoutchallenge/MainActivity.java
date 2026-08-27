@@ -44,6 +44,15 @@ public class MainActivity extends BridgeActivity {
         applySystemChrome();
     }
 
+    // API JSON must never come from Chromium's HTTP disk cache. Capacitor
+    // still serves the bundled app from the APK (not this cache). Without
+    // this, some WebView versions ignore fetch({cache:"no-store"}) and
+    // replay yesterday's GETs — which looked like "the server never answers".
+    private void applyWebViewCachePolicy(WebView webView) {
+        WebSettings settings = webView.getSettings();
+        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+    }
+
     private boolean systemNightMode() {
         int night = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
         return night == Configuration.UI_MODE_NIGHT_YES;
@@ -92,6 +101,7 @@ public class MainActivity extends BridgeActivity {
         if (getBridge() == null || getBridge().getWebView() == null) return;
         WebView webView = getBridge().getWebView();
         webView.setBackgroundColor(canvas);
+        applyWebViewCachePolicy(webView);
         View parent = (View) webView.getParent();
         if (parent != null) {
             parent.setBackgroundColor(canvas);

@@ -7,6 +7,7 @@ import {
 import {useNavigate} from "react-router-dom";
 import {ChangeOwnerButton, DeleteButton, Modal, SaveButton, SingleForm} from "./basicComponents";
 import {confirmAction, notice} from "../utils/dialogs";
+import {clearBodyScrollLock} from "../utils/overlay";
 
 
 const fields = {
@@ -106,7 +107,7 @@ export default function CompetitionForm({competition, setModalState, setShowTran
                 if (confirmation) {
                     await deleteEntry(values.id).unwrap();
                     setModalState(false);
-                    document.body.classList.remove('body-no-scroll');
+                    clearBodyScrollLock();
                     navigate('/dashboard/');
                 }
             } catch (err) {
@@ -116,7 +117,7 @@ export default function CompetitionForm({competition, setModalState, setShowTran
             // discard competition
             setValues({});
             setModalState(false);
-            document.body.classList.remove('body-no-scroll');
+            clearBodyScrollLock();
         }
     }
 
@@ -127,7 +128,7 @@ export default function CompetitionForm({competition, setModalState, setShowTran
             try {
                 await updateEntry(values).unwrap();
                 setModalState(false);
-                document.body.classList.remove('body-no-scroll');
+                clearBodyScrollLock();
                 await notice('Saved. Changes might take up to 10 minutes to reflect on the challenge page for all users.');
             } catch (err) {
                 console.error('Update Competition failed', err);
@@ -138,7 +139,7 @@ export default function CompetitionForm({competition, setModalState, setShowTran
             try {
                 await createEntry(values).unwrap();
                 setModalState(false);
-                document.body.classList.remove('body-no-scroll');
+                clearBodyScrollLock();
                 // The new challenge page is interesting for about one
                 // second - there is nothing on it yet. Land back on the
                 // dashboard instead, where the challenge now shows up in

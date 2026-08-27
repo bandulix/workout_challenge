@@ -1,6 +1,8 @@
 import {combineReducers, configureStore} from '@reduxjs/toolkit';
+import {setupListeners} from '@reduxjs/toolkit/query';
 import {loadState, saveState} from './localStorage';
-import {setupListeners} from "@reduxjs/toolkit/query";
+import {onAppResume} from './appLifecycle';
+import {isNativeApp} from './platform';
 import {workoutsApi} from './reducers/workoutsSlice';
 import {usersApi} from './reducers/usersSlice';
 import {competitionsApi} from "./reducers/competitionsSlice";
@@ -38,7 +40,7 @@ const rootReducer = (state, action) => {
 };
 
 // Rehydrate fulfilled RTK Query entries so the APK paints last session's
-// Coach/Home immediately, then refetchOnMount refreshes in the background.
+// Coach/Home immediately, then mount/focus/reconnect revalidate.
 // Only `fulfilled` rows with `data` are kept: a persisted `pending` entry
 // can never resolve (its promise is gone) and used to freeze the UI.
 function sanitizeApiSlice(slice) {
@@ -125,5 +127,16 @@ store.subscribe(() => {
 });
 
 setupListeners(store.dispatch);
+
+// Android WebView often skips visibilitychange / window focus, so RTK's
+// built-in refetchOnFocus never runs when the user comes back. Capacitor's
+// appStateChange is the native equivalent of "the app is in front again".
+if (isNativeApp()) {
+    onAppResume(() => {
+        // `onFocus` is not a public RTK Query export. The action lives
+        // on each API slice (`__rtkq/focused`) and every slice listens.
+        store.dispatch(usersApi.internalActions.onFocus());
+    });
+}
 
 export default store;

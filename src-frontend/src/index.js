@@ -6,6 +6,7 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import store from './utils/store';
 import {ErrorBoundary} from './utils/miscellaneous';
+import {isNativeApp} from './utils/platform';
 
 
 // Optional Sentry monitoring - dynamically imported so the (heavy)
@@ -58,9 +59,27 @@ reportWebVitals();
 
 
 // ---- Service worker registration --------------------------------------
-// Only attempt registration in production builds where /sw.js is served
-// from the build output. CRA dev server doesn't serve it.
-if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+// PWA only. Capacitor's Android WebView origin is https://localhost with
+// assets bundled in the APK — a service worker there fights APK updates
+// (it keeps serving the previous shell) and is unnecessary for offline.
+// Ionic/Capacitor guidance: skip SW on native; keep it for the browser PWA.
+if (isNativeApp() && 'serviceWorker' in navigator) {
+    const FLAG = 'wc-sw-cleared';
+    navigator.serviceWorker.getRegistrations().then(async (regs) => {
+        const hadWorker = regs.length > 0 || Boolean(navigator.serviceWorker.controller);
+        await Promise.all(regs.map((r) => r.unregister()));
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+        // One reload so this session is no longer controlled by the old
+        // worker (unregister does not drop the current controller).
+        if (hadWorker && !sessionStorage.getItem(FLAG)) {
+            sessionStorage.setItem(FLAG, '1');
+            window.location.reload();
+        }
+    }).catch(() => {});
+} else if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').then(
             (reg) => {

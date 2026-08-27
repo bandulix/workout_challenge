@@ -1,13 +1,13 @@
 import {createApi} from '@reduxjs/toolkit/query/react';
 import {baseQueryWithReauth} from './baseQueryWithReauth';
 import {convertToLocalTimezone, dateFormatter} from "./workoutsSlice";
+import {liveQueryDefaults} from './rtkDefaults';
 
 export const usersApi = createApi({
     reducerPath: 'usersApi',
     baseQuery: baseQueryWithReauth,
     tagTypes: ['User'],
-    keepUnusedDataFor: 60 * 60 * 12, // 12 hours cache (default is 60s)
-    refetchOnMountOrArgChange: 60 * 60 * 3, // Refetch if older than 3 hours
+    ...liveQueryDefaults,
     endpoints: (builder) => ({
         getUsers: builder.query({
             query: (params = {}) => ({

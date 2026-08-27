@@ -1,11 +1,12 @@
 import {createApi} from '@reduxjs/toolkit/query/react';
 import {baseQueryWithReauth} from './baseQueryWithReauth';
+import {liveQueryDefaults} from './rtkDefaults';
 
 export const siteSettingsApi = createApi({
     reducerPath: 'siteSettingsApi',
     baseQuery: baseQueryWithReauth,
     tagTypes: ['SiteSettings'],
-    keepUnusedDataFor: 60 * 5,
+    ...liveQueryDefaults,
     endpoints: (builder) => ({
         getSiteSettings: builder.query({
             query: () => ({url: 'site-settings/', method: 'GET'}),

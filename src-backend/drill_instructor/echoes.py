@@ -33,6 +33,54 @@ SKIP_SPORTS = {"Steps"}
 # Profile-pic crown: anyone currently holding a living or immortal Echo.
 LIVE_HOLDER_STATUSES = ("undefeated", "contested", "immortal")
 
+# Close variants share one Echo trophy. Road bike and gravel bike are
+# the same fight; a treadmill run can claim a trail Echo. E-bikes stay
+# off the human-powered cycling family. Unlisted sports stay themselves.
+_ECHO_FAMILY_MEMBERS = {
+    "Ride": (
+        "Ride", "GravelRide", "MountainBikeRide", "VirtualRide",
+        "Handcycle", "Velomobile",
+    ),
+    "EBikeRide": ("EBikeRide", "EMountainBikeRide"),
+    "Run": ("Run", "TrailRun", "VirtualRun"),
+    "Rowing": ("Rowing", "VirtualRow"),
+    "Walk": ("Walk", "Snowshoe"),
+    "MartialArts": ("MartialArts", "MuayThai", "Boxing", "Kickboxing"),
+    "Ski": ("AlpineSki", "BackcountrySki", "NordicSki", "RollerSki"),
+}
+_ECHO_FAMILY_LABEL = {
+    "Ride": "Cycling",
+    "EBikeRide": "E-Bike",
+    "Run": "Run",
+    "Rowing": "Rowing",
+    "Walk": "Walk",
+    "MartialArts": "Martial Arts",
+    "Ski": "Ski",
+}
+_SPORT_TO_FAMILY = {
+    sport: family
+    for family, sports in _ECHO_FAMILY_MEMBERS.items()
+    for sport in sports
+}
+
+
+def echo_sport_family(sport_type):
+    """Canonical Echo sport key for this workout type."""
+    sport = sport_type or ""
+    return _SPORT_TO_FAMILY.get(sport, sport)
+
+
+def echo_sport_types(sport_type):
+    """All workout types that share this Echo trophy."""
+    family = echo_sport_family(sport_type)
+    return _ECHO_FAMILY_MEMBERS.get(family) or ((sport_type,) if sport_type else ())
+
+
+def echo_sport_label(sport_type):
+    """Human name for titles and coach lines."""
+    family = echo_sport_family(sport_type)
+    return _ECHO_FAMILY_LABEL.get(family, family)
+
 
 def bump_echo_holder_stats(competition_id):
     """Leaderboard avatars read echoes_held from the stats snapshot."""
@@ -68,7 +116,7 @@ def _aware(dt):
 def _beats(workout, echo, committed_at=None):
     if workout.user_id == echo.holder_id:
         return False
-    if echo.sport_type and workout.sport_type != echo.sport_type:
+    if echo.sport_type and echo_sport_family(workout.sport_type) != echo_sport_family(echo.sport_type):
         return False
     start = _aware(workout.start_datetime)
     if committed_at is not None and start is not None and start < _aware(committed_at):
@@ -94,7 +142,7 @@ def _personal_best(workout, competition):
         user=workout.user,
         start_datetime__date__gte=competition.start_date,
         start_datetime__date__lte=competition.end_date,
-        sport_type=workout.sport_type,
+        sport_type__in=echo_sport_types(workout.sport_type),
     ).exclude(pk=workout.pk).aggregate(m=Max("duration"))["m"]
     if not best:
         return False
@@ -199,15 +247,16 @@ def mint_echo(workout, config, judgment=None):
         power = min(100, power + 5)
     athlete = _name(workout.user)
     unit = "km" if metric == "distance" else "min"
-    title = f"{athlete}'s {workout.sport_type} Echo"
+    sport = echo_sport_label(workout.sport_type)
+    title = f"{athlete}'s {sport} Echo"
     fallback = (
         f"{persona.name}: @{athlete} just planted a Legend Echo — "
-        f"{value:g} {unit} of {workout.sport_type}. Power {power}. "
+        f"{value:g} {unit} of {sport}. Power {power}. "
         f"It sits undefeated until someone silences it."
     )
     prompt = (
         f"Competition: {config.competition.name}. @{athlete} just earned a "
-        f"LEGEND ECHO for a {workout.sport_type} ({value:g} {unit}). "
+        f"LEGEND ECHO for a {sport} ({value:g} {unit}). "
         f"Reasons: {', '.join(judgment['reasons'])}. Power {power}. "
         "Write 2-4 sentences in your persona voice declaring this a living "
         "trophy. Taunt the rest of the group to come claim it. Name @{athlete}. "
@@ -233,7 +282,7 @@ def mint_echo(workout, config, judgment=None):
             power=power,
             metric=metric,
             metric_value=value,
-            sport_type=workout.sport_type,
+            sport_type=echo_sport_family(workout.sport_type),
             status=LegendEcho.STATUS_UNDEFEATED,
         )
     except IntegrityError:
@@ -338,7 +387,7 @@ def start_challenge(echo, user, now=None):
     challenger = _prompt_text(_name(user), 40)
     holder = _prompt_text(_name(echo.holder), 40)
     title = _prompt_text(echo.title, 80)
-    sport = _prompt_text(echo.sport_type, 40)
+    sport = _prompt_text(echo_sport_label(echo.sport_type), 40)
     unit = "km" if echo.metric == "distance" else "min"
     fallback = (
         f"@{challenger} just declared war on @{holder}'s {title}. "
@@ -386,9 +435,9 @@ def claim_echo(echo, winner, workout):
     echo.last_claimed_at = timezone.now()
     echo.metric = metric
     echo.metric_value = value
-    echo.sport_type = workout.sport_type or echo.sport_type
+    echo.sport_type = echo_sport_family(workout.sport_type) or echo.sport_type
     echo.power = min(100, power)
-    echo.title = f"{_name(winner)}'s {echo.sport_type} Echo"[:80]
+    echo.title = f"{_name(winner)}'s {echo_sport_label(echo.sport_type)} Echo"[:80]
     echo.save(update_fields=[
         "holder", "holder_workout", "chain_length", "status", "last_claimed_at",
         "metric", "metric_value", "sport_type", "power", "title",
@@ -398,7 +447,7 @@ def claim_echo(echo, winner, workout):
     persona = echo.config.persona
     body = (
         f"{persona.name}: @{_name(winner)} just silenced @{_name(previous)}'s "
-        f"Echo with {value:g} {unit} of {echo.sport_type}. "
+        f"Echo with {value:g} {unit} of {echo_sport_label(echo.sport_type)}. "
         f"The bar is now {value:g} {unit}. Chain {echo.chain_length}. "
         f"@{_name(previous)} — your feat started a war. That is Legacy."
     )

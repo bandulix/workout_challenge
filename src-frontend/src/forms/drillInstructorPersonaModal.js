@@ -17,6 +17,7 @@ import {
 import PersonaAvatar from "../components/PersonaAvatar";
 import {invalidateProtectedImage} from "../utils/protectedMedia";
 import {confirmAction, notice} from "../utils/dialogs";
+import {clearBodyScrollLock} from "../utils/overlay";
 
 // Anyone can create a roaster of their own; staff still manage the
 // built-in library. The API rejects edits of someone else's persona.
@@ -77,7 +78,7 @@ export function PersonaEditModal({persona, setModalState}) {
     useEffect(() => {
         if (addSuccess || updateSuccess) {
             setModalState(false);
-            document.body.classList.remove("body-no-scroll");
+            clearBodyScrollLock();
         }
     }, [addSuccess, updateSuccess]);
 

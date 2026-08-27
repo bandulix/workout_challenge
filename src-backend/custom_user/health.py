@@ -246,6 +246,19 @@ HEALTH_SPORT_MAP = {
     "wheelchair_walk_pace": "Wheelchair",
     "wheelchair_run_pace": "Wheelchair",
     "handcycle": "Handcycle",
+    "boxing": "Boxing",
+    "kickboxing": "Kickboxing",
+    "martial_arts": "MartialArts",
+    "muay_thai": "MuayThai",
+    "mixed_martial_arts": "MartialArts",
+    "mma": "MartialArts",
+    "basketball": "Basketball",
+    "volleyball": "Volleyball",
+    "cricket": "Cricket",
+    "padel": "Padel",
+    "dance": "Dance",
+    "dancing": "Dance",
+    "physical_therapy": "PhysicalTherapy",
 }
 
 

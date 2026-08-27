@@ -31,7 +31,7 @@ function WhatsNew() {
                 // getServerUrl(): inside the native app a relative URL
                 // resolves to the WebView origin (https://localhost) -
                 // the popup could never appear there.
-                const res = await fetch(apiUrl("/version/"));
+                const res = await fetch(apiUrl("/version/"), {cache: "no-store"});
                 if (!res.ok) return;
                 const data = await res.json();
                 const version = (data?.version || "").trim();

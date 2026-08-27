@@ -1,12 +1,12 @@
 import {createApi} from '@reduxjs/toolkit/query/react';
 import {baseQueryWithReauth} from './baseQueryWithReauth';
+import {liveQueryDefaults} from './rtkDefaults';
 
 export const goalsApi = createApi({
     reducerPath: 'goalsApi',
     baseQuery: baseQueryWithReauth,
     tagTypes: ['Goal'],
-    keepUnusedDataFor: 60 * 60 * 12, // 12 hours cache (default is 60)
-    refetchOnMountOrArgChange: 60 * 60 * 3, // Refetch if older than 3 hours
+    ...liveQueryDefaults,
     endpoints: (builder) => ({
         getGoals: builder.query({
             query: (params = {}) => ({

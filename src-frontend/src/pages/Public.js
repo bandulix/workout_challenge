@@ -17,12 +17,13 @@ import {
 } from "../utils/authClient";
 import {accessTokenNeedsRefresh, getAccessToken} from "../utils/authTokens";
 import {readLastPath} from "../utils/lastPath";
+import {clearBodyScrollLock} from "../utils/overlay";
 
 function BaseHome({children, tagline}) {
     const navType = useNavigationType();
     useEffect(() => {
         if (navType === "POP") {
-            document.body.classList.remove("body-no-scroll");
+            clearBodyScrollLock();
         }
     }, [navType]);
 

@@ -42,6 +42,7 @@ import {nativeHealthKickSync} from "../utils/nativeHealth";
 import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
 import {feedApi} from "../utils/reducers/feedSlice";
 import {BeatLoader} from "react-spinners";
+import {clearBodyScrollLock} from "../utils/overlay";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {DogTagRow} from "../components/gameBits";
 import {Chip, EmptyState, SectionHead, SyncChip, rowClass, VOLT} from "../components/uiBits";
@@ -774,7 +775,7 @@ export default function MySpace() {
     const navType = useNavigationType();
     useEffect(() => {
         if (navType === "POP") {
-            document.body.classList.remove("body-no-scroll");
+            clearBodyScrollLock();
         }
     }, [navType]);
 

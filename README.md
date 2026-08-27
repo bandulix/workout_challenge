@@ -9,7 +9,7 @@
 
 An **AI Drill Instructor** comments on every workout, remixes your photos, and pings your lock screen. Self-hosted fitness rivalries on the metrics you choose — kilometres, minutes, calories, steps — imported from **Strava, Garmin, or Health Connect**. Native **Android app** and installable **PWA**. Your data stays on your server.
 
-- **A coach, not a spreadsheet.** Personas roast, cheer, and nudge. Order of the Day, Hall of Roasts, Legend Echoes, weekly coach vote. Add a photo for +10P — the coach remixes it onto the card, not into the chat.
+- **A coach, not a spreadsheet.** Personas roast, cheer, and nudge. Stamp a workout (WTF!, GOAT, Oof, …). Order of the Day, Hall of Roasts, Legend Echoes, weekly coach vote. Add a photo for +10P — the coach remixes it into their world, stats on a TV or a tattoo, not a floating HUD.
 - **Any watch, no lock-in.** Strava, Garmin Connect, or Apple Health / Google Health Connect. One source per athlete so nothing is counted twice.
 - **Your rules.** Custom goals, teams, caps, and a live leaderboard — 1 point per 1% of a goal.
 - **Yours to host.** Docker Compose. PWA on any phone; sideload APK for one-tap Health Connect.
@@ -65,7 +65,7 @@ Phones reach it at `MAIN_HOST/health` by default. In the Android app, Health Con
 
 This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/workout_challenge) (base `main` @ `256e5b1`) under the same SSPL v1. Original copyright is untouched. Full list: [CHANGELOG.md](CHANGELOG.md).
 
-- **AI Drill Instructor** — persona-voiced comments, quiet-day nudges, Order of the Day, dunce, Hall of Roasts, Legend Echoes, weekly coach vote, photo posts, web push / native Android pings.
+- **AI Drill Instructor** — persona-voiced comments, activity stamps, quiet-day nudges, Order of the Day, dunce, Hall of Roasts, Legend Echoes, weekly coach vote, photo posts remixed into the coach’s world, web push / native Android pings.
 - **Coach-centred PWA** — volt accent, glass dock, Coach as home, daily action plates, dark theme, profile pictures. Uploaded photos stay private (login required; never a public `/media/` URL). Mail uses the same identity; new inboxes must confirm before welcome / weekly mail.
 - **Garmin Connect** and **Apple Health / Health Connect** (via Open Wearables) next to Strava; one activity source per user.
 - **Sideload Android app** with one-tap Health Connect.

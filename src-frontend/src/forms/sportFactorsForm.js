@@ -3,6 +3,7 @@ import {FIELD_INPUT_CLASS, Modal, SaveButton} from "./basicComponents";
 import {useGetSiteSettingsQuery, useUpdateSiteSettingsMutation} from "../utils/reducers/siteSettingsSlice";
 import {workoutTypes} from "./workoutForm";
 import {confirmAction, notice} from "../utils/dialogs";
+import {clearBodyScrollLock} from "../utils/overlay";
 
 // Admin editor for the site-wide per-activity-type point multipliers.
 // The map is stored sparsely (only factors != 1.0 are sent/saved); the
@@ -45,7 +46,7 @@ export default function SportFactorsForm({setModalState}) {
         try {
             await updateSettings({points_sport_factors: sparse}).unwrap();
             setModalState(false);
-            document.body.classList.remove('body-no-scroll');
+            clearBodyScrollLock();
             await notice('Saved. The re-calculation of all competition points runs in the background and might take a few minutes.');
         } catch (err) {
             setFormError('Save failed (' + (err?.status ?? '') + ') - please try again.');

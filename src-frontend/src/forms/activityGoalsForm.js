@@ -10,6 +10,7 @@ import {
 } from "../utils/reducers/goalsSlice";
 import {compareDictLists} from "../utils/miscellaneous";
 import {refreshChallengeSoon} from "./workoutForm";
+import {clearBodyScrollLock} from "../utils/overlay";
 import {confirmAction, notice} from "../utils/dialogs";
 
 const fields = {
@@ -253,7 +254,7 @@ export default function ActivityGoalsForm({competitionId, setModalState}) {
             // the server's async cap recalc lands, ~10-30s) instead of
             // waiting for the 90s poll - same pattern as workout edits.
             refreshChallengeSoon(dispatch);
-            document.body.classList.remove('body-no-scroll');
+            clearBodyScrollLock();
             setModalState(false);
             await notice('Saved. Points are being recalculated - the challenge page updates itself within a minute.');
         } else {

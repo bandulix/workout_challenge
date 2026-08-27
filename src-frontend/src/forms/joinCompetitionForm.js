@@ -5,6 +5,7 @@ import {JoinButton, Modal, SingleForm} from "./basicComponents";
 import {competitionsApi} from "../utils/reducers/competitionsSlice";
 import {usersApi} from "../utils/reducers/usersSlice";
 import {useDispatch} from "react-redux";
+import {clearBodyScrollLock} from "../utils/overlay";
 
 
 const fields = {
@@ -59,7 +60,7 @@ export default function JoinCompetitionForm({setModalState, join_code= null}) {
         try {
             const result = await updateEntry(joinCode).unwrap();
             setModalState(false);
-            document.body.classList.remove('body-no-scroll');
+            clearBodyScrollLock();
             if (redirect) {
                 navigate('/competition/' + result.competition);
             }

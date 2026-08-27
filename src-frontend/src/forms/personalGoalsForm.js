@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from "react";
 import {useUpdateUserMutation} from "../utils/reducers/usersSlice";
 import {Modal, SaveButton, SingleForm} from "./basicComponents";
+import {clearBodyScrollLock} from "../utils/overlay";
 
 const fields = {
 
@@ -67,7 +68,7 @@ export default function PersonalGoalsForm({user, setModalState}) {
             const cleanedValues = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value === "" ? null : value])); // replace empty strings with null
             await updateEntry({id: 'me', ...cleanedValues}).unwrap();
             setModalState(false);
-            document.body.classList.remove('body-no-scroll');
+            clearBodyScrollLock();
         } catch (err) {
             console.error('Update Personal Goals failed', err);
             setFieldErrors(err.data);

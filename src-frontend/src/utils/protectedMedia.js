@@ -69,6 +69,7 @@ async function doGet(url, token) {
 async function fetchBrowser(url, token) {
     const res = await fetch(getServerUrl() + url, {
         headers: authHeaders(token),
+        cache: "no-store",
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return URL.createObjectURL(await res.blob());

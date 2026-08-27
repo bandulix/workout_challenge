@@ -1,16 +1,12 @@
 import {createApi} from '@reduxjs/toolkit/query/react';
 import {baseQueryWithReauth} from './baseQueryWithReauth';
+import {liveQueryDefaults} from './rtkDefaults';
 
 export const drillInstructorApi = createApi({
     reducerPath: 'drillInstructorApi',
     baseQuery: baseQueryWithReauth,
     tagTypes: ['DrillPersona', 'DrillConfig', 'DrillMessage', 'DrillRoast', 'DrillBallot', 'DrillEcho'],
-    keepUnusedDataFor: 60 * 60 * 12,
-    // Always refetch on (re)mount: the Android WebView parks its renderer
-    // when hidden, so timed polls don't fire reliably in the app - and a
-    // stale config (e.g. vision_capable=false from before the admin fixed
-    // the model) then sticks for days. These endpoints are tiny.
-    refetchOnMountOrArgChange: true,
+    ...liveQueryDefaults,
     endpoints: (builder) => ({
         // ---- Personas ---------------------------------------------------
         getPersonas: builder.query({
@@ -115,6 +111,41 @@ export const drillInstructorApi = createApi({
             }),
             invalidatesTags: ['DrillMessage'],
         }),
+        reactToActivity: builder.mutation({
+            query: ({id, emoji}) => ({
+                url: `drill-instructor/message/${id}/react/`,
+                method: 'POST',
+                body: {emoji},
+            }),
+            // Patch every cached feed instead of invalidating — a refetch
+            // would fight the optimistic chip and the 60s poll already
+            // picks up everyone else's stamps.
+            async onQueryStarted({id}, {dispatch, queryFulfilled, getState}) {
+                try {
+                    const {data} = await queryFulfilled;
+                    if (!data?.reacts) return;
+                    const argsList = drillInstructorApi.util.selectCachedArgsForQuery(
+                        getState(),
+                        "getDrillMessages",
+                    );
+                    for (const arg of argsList) {
+                        dispatch(
+                            drillInstructorApi.util.updateQueryData(
+                                "getDrillMessages",
+                                arg,
+                                (draft) => {
+                                    if (!Array.isArray(draft)) return;
+                                    const row = draft.find((m) => m.id === id);
+                                    if (row) row.reacts = data.reacts;
+                                },
+                            ),
+                        );
+                    }
+                } catch {
+                    // Component rolls the chip back.
+                }
+            },
+        }),
         postDrillPhoto: builder.mutation({
             // Participant's photo post (multipart; image is compressed
             // before upload - see utils/imageCompress.js). `parent` or
@@ -133,7 +164,7 @@ export const drillInstructorApi = createApi({
                     headers: {'X-Skip-Content-Type': '1'},
                 };
             },
-            invalidatesTags: ['DrillMessage'],
+            invalidatesTags: ['DrillMessage', 'DrillRoast'],
         }),
 
         // ---- Roast swipe box (hot-or-not) ------------------------------
@@ -244,6 +275,7 @@ export const {
     useDeleteDrillConfigMutation,
     useGetDrillMessagesQuery,
     useReplyToDrillMessageMutation,
+    useReactToActivityMutation,
     usePostDrillPhotoMutation,
     useGetRoastsQuery,
     useGetHallOfRoastsQuery,

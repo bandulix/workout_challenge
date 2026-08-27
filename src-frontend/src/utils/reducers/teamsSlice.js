@@ -1,12 +1,12 @@
 import {createApi} from '@reduxjs/toolkit/query/react';
 import {baseQueryWithReauth} from './baseQueryWithReauth';
+import {liveQueryDefaults} from './rtkDefaults';
 
 export const teamsApi = createApi({
     reducerPath: 'teamsApi',
     baseQuery: baseQueryWithReauth,
     tagTypes: ['Team'],
-    keepUnusedDataFor: 60 * 60 * 12, // 12 hours cache (default is 60)
-    refetchOnMountOrArgChange: 60 * 60, // Refetch if older than 1 hour
+    ...liveQueryDefaults,
     endpoints: (builder) => ({
         getTeams: builder.query({
             query: (params = {}) => ({

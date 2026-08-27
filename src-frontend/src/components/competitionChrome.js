@@ -16,6 +16,7 @@ import {PaneHead, paneCardClass} from "./uiBits";
 import {topSportCounts} from "../utils/sportCounts";
 import CoachThread from "./CoachThread";
 import PhotoPost, {PhotoCamBonus} from "./PhotoPost";
+import {ActivityReactProvider, ActivityStampButton, ActivityStampIcons} from "./ActivityReacts";
 import {CoachHandover} from "./CoachVoteBox";
 import PersonaAvatar from "./PersonaAvatar";
 import ProfileAvatar from "./ProfileAvatar";
@@ -298,12 +299,21 @@ export function activityHasPhoto(message) {
     return (message.replies || []).some((r) => r.kind === "photo");
 }
 
+export function activityPhotoReply(message) {
+    return (message.replies || []).find((r) => r.kind === "photo" && r.image) || null;
+}
+
 export function activityBackdropUrl(message) {
-    const replies = message.replies || [];
-    const remix = replies.find((r) => r.is_coach && r.image);
-    if (remix) return remix.image;
-    const original = replies.find((r) => r.kind === "photo" && r.image);
-    return original ? original.image : null;
+    // Only the coach's remixed poster is the card backdrop (and the
+    // hot-or-not card). The original upload is the feed answer.
+    const remix = (message.replies || []).find((r) => r.is_coach && r.image);
+    return remix ? remix.image : null;
+}
+
+function activityTextReplies(message) {
+    return (message.replies || []).filter(
+        (r) => r.kind !== "photo" && !(r.is_coach && r.image),
+    );
 }
 
 function FeedCard({children}) {
@@ -626,19 +636,49 @@ export function PointsChip({capped, raw, hasPhoto = false, size = "md", message 
 }
 
 
+function ActivityPhotoAnswer({src, reply, athleteName, onOpen}) {
+    if (!src) return null;
+    const who = reply.author_name || athleteName || "Athlete";
+    return (
+        <>
+            <div className="flex justify-center">
+                <ProfileAvatar
+                    user={{profile_picture: reply.author_profile_picture, first_name: who}}
+                    size={28}/>
+            </div>
+            <div className="min-w-0">
+                <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(); }}
+                        className="block w-full overflow-hidden rounded-2xl text-left focus:outline-none focus:ring-2 focus:ring-volt-400">
+                    <img src={src} alt={reply.body || `${who}'s photo`}
+                         className="max-h-72 w-full object-cover"/>
+                </button>
+            </div>
+        </>
+    );
+}
+
+
 export function ActivityCoachPost({message, persona, canReply, defaultOpen, competitionId, visionCapable, lastOwnActivityId, hero = false}) {
     const ownLatest = Boolean(canReply && lastOwnActivityId === message.id);
     const hasPhoto = activityHasPhoto(message);
-    const {src: bgSrc} = useProtectedImage(activityBackdropUrl(message));
-    const [showPhoto, setShowPhoto] = useState(false);
-    const showThread = !hero && (canReply || (message.replies || []).length > 0);
+    const original = activityPhotoReply(message);
+    const remixUrl = activityBackdropUrl(message);
+    const {src: bgSrc} = useProtectedImage(remixUrl);
+    const {src: originalSrc} = useProtectedImage(original?.image);
+    const [lightbox, setLightbox] = useState(null);
+    const showThread = canReply || activityTextReplies(message).length > 0;
+    const points = (
+        <PointsChip capped={message.points_capped} raw={message.points_raw}
+                    hasPhoto={hasPhoto} size={hero ? "lg" : "md"} message={message}/>
+    );
     return (
+        <ActivityReactProvider message={message}>
         <article
             className={"relative min-w-0 rounded-3xl text-ink-950 dark:text-white " +
                 (bgSrc ? "border border-white/25 dark:border-white/10 cursor-pointer" : "glass-card")}
             onClick={bgSrc ? (e) => {
                 if (e.target.closest("button, a, input, textarea, label")) return;
-                setShowPhoto(true);
+                setLightbox("remix");
             } : undefined}>
             {bgSrc && (
                 <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl" aria-hidden="true">
@@ -648,9 +688,9 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                 </div>
             )}
             {hero && (
-                <div className="absolute -top-3.5 right-4 z-20">
-                    <PointsChip capped={message.points_capped} raw={message.points_raw}
-                                hasPhoto={hasPhoto} size="lg" message={message}/>
+                <div className="absolute -top-3.5 right-4 z-20 flex items-center gap-3">
+                    <ActivityStampIcons/>
+                    {points}
                 </div>
             )}
             <div className="relative p-3.5 sm:p-4">
@@ -660,7 +700,7 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                     size={40}/>
                 <div className="min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
-                        <div className={"flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 flex-1 " + (hero ? "pr-16" : "")}>
+                        <div className={"flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 flex-1 " + (hero ? "pr-28" : "")}>
                             <div className="min-w-0">
                                 <p className="font-semibold truncate leading-tight">{message.athlete_name || "Athlete"}</p>
                                 <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
@@ -678,8 +718,10 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                             )}
                         </div>
                         {!hero && (
-                            <PointsChip capped={message.points_capped} raw={message.points_raw}
-                                        hasPhoto={hasPhoto} message={message}/>
+                            <div className="flex items-center gap-3 shrink-0">
+                                <ActivityStampIcons/>
+                                {points}
+                            </div>
                         )}
                     </div>
                     {!!message.order_ribbon && (
@@ -698,22 +740,37 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                     </blockquote>
                 ) : <div/>}
 
-                {showThread && (
-                    <>
-                        <div aria-hidden="true"/>
-                        <CoachThread message={message} persona={persona} canReply={canReply}
-                                     defaultOpen={defaultOpen} className="mt-0"/>
-                    </>
+                {original && (
+                    <ActivityPhotoAnswer src={originalSrc} reply={original}
+                                         athleteName={message.athlete_name}
+                                         onOpen={() => setLightbox("original")}/>
                 )}
+
+                <>
+                    <div aria-hidden="true"/>
+                    {showThread ? (
+                        <CoachThread message={message} persona={persona} canReply={canReply}
+                                     defaultOpen={defaultOpen} className="mt-0"
+                                     trailing={<ActivityStampButton/>}/>
+                    ) : <ActivityStampButton/>}
+                </>
                 </div>
             </div>
-            {showPhoto && bgSrc && (
-                <OverlaySheet title="Roast" onClose={() => setShowPhoto(false)} zClass="z-[70]">
+            {lightbox === "remix" && bgSrc && (
+                <OverlaySheet title="Roast" onClose={() => setLightbox(null)} zClass="z-[70]">
                     <img src={bgSrc} alt=""
                          className="mx-auto max-h-[70vh] w-full rounded-2xl object-contain"/>
                 </OverlaySheet>
             )}
+            {lightbox === "original" && originalSrc && (
+                <OverlaySheet title={original?.author_name || message.athlete_name || "Photo"}
+                              onClose={() => setLightbox(null)} zClass="z-[70]">
+                    <img src={originalSrc} alt=""
+                         className="mx-auto max-h-[70vh] w-full rounded-2xl object-contain"/>
+                </OverlaySheet>
+            )}
         </article>
+        </ActivityReactProvider>
     );
 }
 
