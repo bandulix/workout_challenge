@@ -5,7 +5,7 @@ import {
 } from "../utils/reducers/siteSettingsSlice";
 import {useGetPushStatusQuery, useSubscribePushMutation, useUnsubscribePushMutation} from "../utils/reducers/pushSlice";
 import {subscribeToPush, unsubscribeFromPush} from "../index";
-import {FIELD_INPUT_CLASS, Modal, SaveButton} from "./basicComponents";
+import {FIELD_INPUT_CLASS, GlassSelect, Modal, SaveButton} from "./basicComponents";
 import {clearBodyScrollLock} from "../utils/overlay";
 
 
@@ -225,15 +225,17 @@ export default function SiteSettingsForm({setModalState}) {
                 <div className="px-4 w-full sm:w-1/2">
                     <Field label="Provider Preset" error={fieldErrors.llm_provider}
                            hint="Picking MiniMax auto-fills the base URL and model below. You can still override either. 'Deployment default' follows the .env values (LLM_PROVIDER/LLM_BASE_URL/LLM_MODEL) - a docker recreate applies them.">
-                        <select
-                            className={FIELD_INPUT_CLASS}
+                        <GlassSelect
                             value={values.llm_provider ?? ""}
-                            onChange={(e) => handleProviderChange(e.target.value)}>
-                            <option value="">Deployment default (.env)</option>
-                            <option value="custom">Custom (OpenAI-compatible)</option>
-                            <option value="MiniMax">MiniMax</option>
-                            <option value="openai">OpenAI</option>
-                        </select>
+                            onChange={handleProviderChange}
+                            includeBlank={false}
+                            options={[
+                                {value: "", label: "Deployment default (.env)"},
+                                {value: "custom", label: "Custom (OpenAI-compatible)"},
+                                {value: "MiniMax", label: "MiniMax"},
+                                {value: "openai", label: "OpenAI"},
+                            ]}
+                        />
                     </Field>
                 </div>
                 <Field label="API Key" error={fieldErrors.llm_api_key}

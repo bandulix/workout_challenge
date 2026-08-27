@@ -20,6 +20,31 @@ except ImportError:  # pragma: no cover - keeps the module importable for tests
 
 logger = logging.getLogger(__name__)
 
+# Two coach events in the same breath (workout comment + Echo mint,
+# catch-up pep talks, overlapping beat jobs) must not land as two lock
+# screen pings. Same tag so the OS replaces; short cooldown so we do
+# not even send the second.
+COACH_PING_COOLDOWN = 120
+
+
+def _ping_user(user, *, title, body, url, icon, competition_id, log_label="push"):
+    if send_push_to_user is None:
+        return
+    try:
+        send_push_to_user(
+            user,
+            title=title,
+            body=body,
+            url=url,
+            icon=icon,
+            badge="/icon-badge.png",
+            tag=f"drill-{competition_id}",
+            cooldown_seconds=COACH_PING_COOLDOWN,
+            cooldown_key=f"coach-ping:{user.pk}",
+        )
+    except Exception as exc:  # noqa: BLE001 - never block the caller
+        logger.warning("Drill Instructor: %s failed for user %s: %s", log_label, user.pk, exc)
+
 
 @app.task(bind=True, max_retries=0, time_limit=120)
 def probe_llm_capabilities(self):
@@ -160,25 +185,6 @@ def post_workout_comment(self, workout_id):
 
     summary, duration_min = format_workout_summary(workout)
 
-    # Arcade rules (dunce, daily order, dog tags) run even when the
-    # owner has workout comments switched off.
-    try:
-        from .game import evaluate_workout_game
-        arcade_configs = DrillInstructorConfig.objects.filter(
-            enabled=True,
-            competition__user=workout.user,
-            competition__start_date__lte=start_dt.date(),
-            competition__end_date__gte=start_dt.date(),
-        ).select_related("competition")
-        for arcade_config in arcade_configs:
-            try:
-                evaluate_workout_game(workout, arcade_config)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Drill Instructor: game eval failed for workout %s config %s: %s",
-                               workout_id, arcade_config.id, exc)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Drill Instructor: game eval setup failed for workout %s: %s", workout_id, exc)
-
     posted = 0
     for competition in competitions:
         config = competition.drill_instructor
@@ -254,20 +260,40 @@ def post_workout_comment(self, workout_id):
         posted += 1
         logger.info("Drill Instructor: stored message %s for competition %s", message.id, competition.id)
 
-        # Optional web push for the athlete.
-        if config.send_push_on_activity and send_push_to_user is not None:
+        # Optional web push for the athlete. Sent before arcade (Echo
+        # mint / claim) so the workout comment is the one ping that
+        # lands; the group still gets the Echo line, the athlete does not
+        # get a second buzz 2 seconds later.
+        if config.send_push_on_activity:
+            _ping_user(
+                workout.user,
+                title=f"{competition.name} - {persona.name}",
+                body=body,
+                url="/coach",
+                icon=_persona_icon(persona),
+                competition_id=competition.id,
+                log_label="push",
+            )
+
+    # Arcade rules (dunce, daily order, dog tags, Echo mint) run even
+    # when the owner has workout comments switched off. After comments
+    # so a same-workout Echo/claim ping does not double with the comment.
+    try:
+        from .game import evaluate_workout_game
+        arcade_configs = DrillInstructorConfig.objects.filter(
+            enabled=True,
+            competition__user=workout.user,
+            competition__start_date__lte=start_dt.date(),
+            competition__end_date__gte=start_dt.date(),
+        ).select_related("competition")
+        for arcade_config in arcade_configs:
             try:
-                send_push_to_user(
-                    workout.user,
-                    title=f"{competition.name} - {persona.name}",
-                    body=body,
-                    url=f"/coach",
-                    icon=_persona_icon(persona),
-                    badge="/icon-badge.png",
-                    tag=f"drill-{competition.id}",
-                )
-            except Exception as exc:  # noqa: BLE001 - never block workout saves
-                logger.warning("Drill Instructor: push failed for user %s: %s", workout.user_id, exc)
+                evaluate_workout_game(workout, arcade_config)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Drill Instructor: game eval failed for workout %s config %s: %s",
+                               workout_id, arcade_config.id, exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Drill Instructor: game eval setup failed for workout %s: %s", workout_id, exc)
 
     return {"workout_id": workout_id, "posted": posted, "competitions": competitions.count()}
 
@@ -438,19 +464,16 @@ def post_reply_reaction(self, reply_id):
 
     # Push ping to the replier only - it's a personal reaction, not a
     # group announcement.
-    if config.send_push_on_activity and send_push_to_user is not None:
-        try:
-            send_push_to_user(
-                reply.user,
-                title=f"{config.competition.name} - {persona.name}",
-                body=body,
-                url=f"/competition/{config.competition_id}",
-                icon=_persona_icon(persona),
-                badge="/icon-badge.png",
-                tag=f"drill-reply-{reply.id}",
-            )
-        except Exception as exc:  # noqa: BLE001 - never block the reaction
-            logger.warning("Drill Instructor: reaction push failed for user %s: %s", reply.user_id, exc)
+    if config.send_push_on_activity:
+        _ping_user(
+            reply.user,
+            title=f"{config.competition.name} - {persona.name}",
+            body=body,
+            url=f"/competition/{config.competition_id}",
+            icon=_persona_icon(persona),
+            competition_id=config.competition_id,
+            log_label="reaction push",
+        )
 
     return {"reply_id": reply_id, "reaction_id": message.id, "roast_id": None}
 
@@ -544,19 +567,16 @@ def post_photo_reaction(self, photo_id):
 
     # Push ping to the poster only - it's a personal reaction, not a
     # group announcement.
-    if config.send_push_on_activity and send_push_to_user is not None:
-        try:
-            send_push_to_user(
-                photo.user,
-                title=f"{config.competition.name} - {persona.name}",
-                body=body,
-                url=f"/competition/{config.competition_id}",
-                icon=_persona_icon(persona),
-                badge="/icon-badge.png",
-                tag=f"drill-photo-{photo.id}",
-            )
-        except Exception as exc:  # noqa: BLE001 - never block the reaction
-            logger.warning("Drill Instructor: photo reaction push failed for user %s: %s", photo.user_id, exc)
+    if config.send_push_on_activity:
+        _ping_user(
+            photo.user,
+            title=f"{config.competition.name} - {persona.name}",
+            body=body,
+            url=f"/competition/{config.competition_id}",
+            icon=_persona_icon(persona),
+            competition_id=config.competition_id,
+            log_label="photo reaction push",
+        )
 
     roast_id = None
     if roast_model and photo.image:
@@ -871,46 +891,37 @@ def post_inactivity_nudges(self):
 
         # Optional web push to every participant (the nudge targets the
         # whole group, not a single athlete).
-        if config.send_push_on_activity and send_push_to_user is not None:
+        if config.send_push_on_activity:
             for participant in participants:
-                try:
-                    send_push_to_user(
-                        participant,
-                        title=f"{competition.name} - {persona.name}",
-                        body=body,
-                        url=f"/coach",
-                        icon=_persona_icon(persona),
-                        badge="/icon-badge.png",
-                        tag=f"drill-nudge-{competition.id}",
-                    )
-                except Exception as exc:  # noqa: BLE001 - never block the sweep
-                    logger.warning("Drill Instructor: nudge push failed for user %s: %s", participant.id, exc)
+                _ping_user(
+                    participant,
+                    title=f"{competition.name} - {persona.name}",
+                    body=body,
+                    url="/coach",
+                    icon=_persona_icon(persona),
+                    competition_id=competition.id,
+                    log_label="nudge push",
+                )
 
     return {"date": str(today), "posted": posted, "skipped": skipped, "competitions": competitions.count()}
 
 
 # Random group pushes land in waking hours only - nobody wants the
-# sergeant yelling at 03:00.
+# sergeant yelling at 03:00. One pep talk per day: two in the same
+# breath (or a late beat catching up both slots) felt like spam.
 PUSH_WINDOW_START_HOUR = 7
 PUSH_WINDOW_END_HOUR = 22
-PUSH_MAX_PER_DAY = 2
+PUSH_MAX_PER_DAY = 1
 
 
 def _draw_push_plan():
-    """Draw today's random push slot(s): always exactly one, plus a 50%
-    chance of a second one (kept at least 90 minutes from the first so
-    they don't clump). Returns a sorted list of "HH:MM" strings."""
+    """Draw today's random push slot: exactly one, inside waking hours.
+    Returns a one-item list of "HH:MM" so the stored plan shape stays
+    a list (older days may still have two slots on disk)."""
     start = PUSH_WINDOW_START_HOUR * 60
     end = PUSH_WINDOW_END_HOUR * 60
-    first = random.randrange(start, end)
-    slots = [first]
-    if random.random() < 0.5:
-        for _ in range(10):
-            second = random.randrange(start, end)
-            if abs(second - first) >= 90:
-                slots.append(second)
-                break
-    return sorted(f"{m // 60:02d}:{m % 60:02d}" for m in slots)
+    slot = random.randrange(start, end)
+    return [f"{slot // 60:02d}:{slot % 60:02d}"]
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
@@ -919,13 +930,14 @@ def post_random_pushes(self):
     competition that has it enabled (``random_push``).
 
     Scheduled every 30 min via Celery beat. Each competition draws its
-    own random slot(s) once per day (stored on the config): always at
-    least one, at most two, inside waking hours (07:00-22:00). When a
-    drawn slot is due and not yet posted, generate one persona-voiced
-    message addressed at the whole group, store it in the audit log, and
-    (when the config's push toggle is on) push it to every subscribed
-    participant. Re-runs are idempotent: the plan is drawn only once per
-    day and already-posted slots are counted from the audit log.
+    own random slot once per day (stored on the config), inside waking
+    hours (07:00-22:00). When that slot is due and not yet posted,
+    generate one persona-voiced message addressed at the whole group,
+    store it in the audit log, and (when the config's push toggle is on)
+    push it to every subscribed participant. Re-runs are idempotent: the
+    plan is drawn only once per day and already-posted slots are counted
+    from the audit log. At most one pep talk is posted per beat tick, so
+    a late start never dumps two pings onto the lock screen together.
     """
     Workout = apps.get_model("workouts", "Workout")
     Competition = apps.get_model("competition", "Competition")
@@ -961,7 +973,7 @@ def post_random_pushes(self):
             skipped += 1
             continue
 
-        # Draw today's random slot(s) once, then reuse them all day.
+        # Draw today's random slot once, then reuse it all day.
         if config.push_plan_date != today:
             config.push_plan = _draw_push_plan()
             config.push_plan_date = today
@@ -969,9 +981,11 @@ def post_random_pushes(self):
         plan = config.push_plan if isinstance(config.push_plan, list) else []
 
         # Hard cap + idempotency: what already went out today stays counted.
+        # Cap at one per beat too, so an old two-slot plan (or a late
+        # first run of the day) cannot fire two pings at once.
         posted_today = config.messages.filter(kind=DrillInstructorMessage.KIND_PUSH, posted_at__date=today).count()
         due_slots = [slot for slot in plan if slot <= now_hhmm]
-        remaining = min(len(due_slots), PUSH_MAX_PER_DAY) - posted_today
+        remaining = min(len(due_slots), PUSH_MAX_PER_DAY, 1) - posted_today
         if remaining <= 0:
             skipped += 1
             continue
@@ -1025,51 +1039,58 @@ def post_random_pushes(self):
                 break
 
             # Optional web push to every participant (the pep talk targets
-            # the whole group, not a single athlete). The tag carries the
-            # date so the two daily pushes don't replace each other.
-            if config.send_push_on_activity and send_push_to_user is not None:
+            # the whole group, not a single athlete). Same tag as other
+            # coach pings so a second event replaces instead of stacking.
+            if config.send_push_on_activity:
                 for participant in participants:
-                    try:
-                        send_push_to_user(
-                            participant,
-                            title=f"{competition.name} - {persona.name}",
-                            body=body,
-                            url=f"/coach",
-                            icon=_persona_icon(persona),
-                            badge="/icon-badge.png",
-                            tag=f"drill-push-{competition.id}-{today}",
-                        )
-                    except Exception as exc:  # noqa: BLE001 - never block the sweep
-                        logger.warning("Drill Instructor: random push notification failed for user %s: %s", participant.id, exc)
+                    _ping_user(
+                        participant,
+                        title=f"{competition.name} - {persona.name}",
+                        body=body,
+                        url="/coach",
+                        icon=_persona_icon(persona),
+                        competition_id=competition.id,
+                        log_label="random push notification",
+                    )
 
     return {"date": str(today), "posted": posted, "skipped": skipped, "competitions": competitions.count()}
 
 
-def _post_coach_line(config, kind, body, llm_error=""):
+def _post_coach_line(config, kind, body, llm_error="", send_push=True, image_field=None):
     DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
     message = DrillInstructorMessage(
         config=config, kind=kind, workout=None, body=body, posted_at=timezone.now(),
     )
     message.save()
+    if image_field:
+        try:
+            from django.core.files.base import ContentFile
+            image_field.open("rb")
+            try:
+                data = image_field.read()
+            finally:
+                image_field.close()
+            raw_name = getattr(image_field, "name", "") or "echo.png"
+            base = raw_name.rsplit("/", 1)[-1] or "echo.png"
+            message.image.save(f"feed-{config.pk}-{base}", ContentFile(data), save=True)
+        except Exception as exc:  # noqa: BLE001 - the line still belongs in the feed
+            logger.info("Coach line image skipped: %s", exc)
     config.last_posted_at = timezone.now()
     config.messages_posted = (config.messages_posted or 0) + 1
     config.last_error = llm_error or ""
     config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
-    if config.send_push_on_activity and send_push_to_user is not None:
+    if send_push and config.send_push_on_activity:
         persona = config.persona
         for participant in config.competition.user.all():
-            try:
-                send_push_to_user(
-                    participant,
-                    title=f"{config.competition.name} - {persona.name}",
-                    body=body,
-                    url="/coach",
-                    icon=_persona_icon(persona),
-                    badge="/icon-badge.png",
-                    tag=f"drill-{kind}-{config.competition_id}-{timezone.localdate()}",
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Drill Instructor: %s push failed for user %s: %s", kind, participant.id, exc)
+            _ping_user(
+                participant,
+                title=f"{config.competition.name} - {persona.name}",
+                body=body,
+                url="/coach",
+                icon=_persona_icon(persona),
+                competition_id=config.competition_id,
+                log_label=f"{kind} push",
+            )
     return message
 
 

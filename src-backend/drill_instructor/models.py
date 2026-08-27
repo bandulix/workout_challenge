@@ -100,8 +100,8 @@ class DrillInstructorConfig(models.Model):
     random_push = models.BooleanField(
         default=True,
         help_text=(
-            "The instructor pushes the group 1-2 times per day at random "
-            "times (waking hours, 07:00-22:00) with a persona-voiced pep "
+            "The instructor pushes the group once per day at a random "
+            "time (waking hours, 07:00-22:00) with a persona-voiced pep "
             "talk - independent of whether anyone trained."
         ),
     )

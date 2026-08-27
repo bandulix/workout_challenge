@@ -55,7 +55,7 @@ function CoachQuote({message, empty}) {
         : null;
 
     return (
-        <blockquote className="coach-quote relative mt-6 rounded-2xl px-5 py-4 sm:px-6 sm:py-5 animate-pop-in">
+        <blockquote className="coach-quote relative rounded-2xl px-5 py-4 sm:px-6 sm:py-5 animate-pop-in">
             {body ? (
                 <>
                     <p className="relative flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -78,8 +78,35 @@ function CoachQuote({message, empty}) {
 }
 
 
-function CoachHero({persona, config, message: latest, ownedCompetitions, mood, lastOwnActivityId}) {
+function coachPersona(persona, message) {
+    return {
+        avatar: message?.persona_avatar || persona.avatar,
+        profile_picture: message?.persona_profile_picture || persona.profile_picture,
+        theme_color: message?.persona_theme_color || persona.theme_color,
+        name: message?.persona_name || persona.name,
+    };
+}
+
+
+function CoachHero({persona, config, message: latest, lastOwnActivity, ownedCompetitions, mood, lastOwnActivityId}) {
     const trained = trainedSummary(mood);
+    const latestIsOwn = Boolean(latest && lastOwnActivity && latest.id === lastOwnActivity.id);
+    const showOwn = Boolean(config && lastOwnActivity && !latestIsOwn);
+
+    function activityCard(message, hero) {
+        return (
+            <ActivityCoachPost
+                message={message}
+                persona={coachPersona(persona, message)}
+                canReply={Boolean(config?.enabled)}
+                competitionId={config.competition}
+                visionCapable={Boolean(config.vision_capable)}
+                lastOwnActivityId={lastOwnActivityId}
+                hero={hero}
+            />
+        );
+    }
+
     return (
         <div className="relative rounded-3xl glass-card text-ink-950 dark:text-white">
             <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl" aria-hidden="true">
@@ -108,7 +135,7 @@ function CoachHero({persona, config, message: latest, ownedCompetitions, mood, l
                 </div>
 
                 <div className="mt-4 flex items-center gap-3 sm:gap-5">
-                    <SquadOrbit mood={mood} showCaption={false}>
+                    <SquadOrbit mood={mood} accent={persona.theme_color} showCaption={false}>
                         <PersonaAvatar persona={persona} size={80} ring={false} glow={false}
                                        className="!w-full !h-full"/>
                     </SquadOrbit>
@@ -118,39 +145,34 @@ function CoachHero({persona, config, message: latest, ownedCompetitions, mood, l
                     </div>
                 </div>
 
-                {latest?.kind === "activity" ? (
-                    <div className="mt-8">
-                        <ActivityCoachPost
+                <div className="mt-8 space-y-4">
+                    {latest?.kind === "activity" && config ? (
+                        activityCard(latest, latestIsOwn)
+                    ) : (
+                        <CoachQuote
                             message={latest}
-                            persona={{
-                                avatar: latest.persona_avatar || persona.avatar,
-                                profile_picture: latest.persona_profile_picture || persona.profile_picture,
-                                theme_color: latest.persona_theme_color || persona.theme_color,
-                                name: latest.persona_name || persona.name,
-                            }}
-                            canReply={Boolean(config?.enabled)}
-                            competitionId={config.competition}
-                            visionCapable={Boolean(config.vision_capable)}
-                            lastOwnActivityId={lastOwnActivityId}
-                            hero
+                            empty={config ? (
+                                <p className="text-[15px] leading-relaxed text-gray-700 dark:text-gray-300">
+                                    Standing by. Log a workout in <b>{config.competition_name || "your challenge"}</b> and the coach will have words.
+                                </p>
+                            ) : (
+                                <p className="text-[15px] leading-relaxed text-gray-700 dark:text-gray-300">
+                                    No coach assigned yet. {ownedCompetitions.length > 0
+                                        ? "Pick a persona and unleash them on your challenge."
+                                        : "Once your challenge's organizer enables the Drill Instructor, the banter lands here."}
+                                </p>
+                            )}
                         />
-                    </div>
-                ) : (
-                    <CoachQuote
-                        message={latest}
-                        empty={config ? (
-                            <p className="text-[15px] leading-relaxed text-gray-700 dark:text-gray-300">
-                                Standing by. Log a workout in <b>{config.competition_name || "your challenge"}</b> and the coach will have words.
+                    )}
+                    {showOwn && (
+                        <div>
+                            <p className="mb-2 px-1 text-[10px] font-extrabold uppercase tracking-[0.18em] text-gray-400">
+                                Your last workout
                             </p>
-                        ) : (
-                            <p className="text-[15px] leading-relaxed text-gray-700 dark:text-gray-300">
-                                No coach assigned yet. {ownedCompetitions.length > 0
-                                    ? "Pick a persona and unleash them on your challenge."
-                                    : "Once your challenge's organizer enables the Drill Instructor, the banter lands here."}
-                            </p>
-                        )}
-                    />
-                )}
+                            {activityCard(lastOwnActivity, true)}
+                        </div>
+                    )}
+                </div>
 
                 {!config && ownedCompetitions.length > 0 && (
                     <Link to={`/competition/${ownedCompetitions[0].id}?tab=feed`}
@@ -175,7 +197,7 @@ function CoachPage() {
 
     const isLoading = userLoading || configsLoading || personasLoading;
 
-    const {heroPersona, heroConfig, latestMessage, lastOwnActivityId} = useMemo(() => {
+    const {heroPersona, heroConfig, latestMessage, lastOwnActivity, lastOwnActivityId} = useMemo(() => {
         const active = (configs || []).filter((c) => c.enabled);
         const sorted = [...active].sort((a, b) => new Date(b.last_posted_at || 0) - new Date(a.last_posted_at || 0));
         const cfg = sorted[0] || null;
@@ -195,6 +217,7 @@ function CoachPage() {
             heroPersona: persona,
             heroConfig: cfg,
             latestMessage: mine[0] || null,
+            lastOwnActivity: own,
             lastOwnActivityId: own?.id || null,
         };
     }, [configs, personas, messages, user?.id]);
@@ -212,6 +235,7 @@ function CoachPage() {
                 ) : (
                     <div className="flex flex-col gap-4">
                         <CoachHero persona={heroPersona} config={heroConfig} message={latestMessage}
+                                   lastOwnActivity={lastOwnActivity}
                                    ownedCompetitions={ownedCompetitions}
                                    mood={heroConfig?.mood}
                                    lastOwnActivityId={lastOwnActivityId}/>

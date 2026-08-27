@@ -18,6 +18,7 @@ import {
 import {accessTokenNeedsRefresh, getAccessToken} from "../utils/authTokens";
 import {readLastPath} from "../utils/lastPath";
 import {clearBodyScrollLock} from "../utils/overlay";
+import {GlassSelect} from "../forms/basicComponents";
 
 function BaseHome({children, tagline}) {
     const navType = useNavigationType();
@@ -272,9 +273,6 @@ function RegisterPage() {
     };
 
     const [gender, setGender] = useState('');
-    const handleDropDownChange = (e) => {
-        setGender(e.target.value);
-    }
 
     useEffect(() => {
         dispatch({type: 'RESET_STORE'});
@@ -328,15 +326,21 @@ function RegisterPage() {
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="gender">
                                     Gender
                                 </label>
-                                <select
-                                    className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="gender" value={gender} tabIndex="4" onChange={handleDropDownChange}>
-                                    <option value=''>--Please choose an option--</option>
-                                    <option value='M'>Male</option>
-                                    <option value='F'>Female</option>
-                                    <option value='O'>Other</option>
-                                    <option value=''>Don't want to tell</option>
-                                </select>
+                                <GlassSelect
+                                    id="gender"
+                                    name="gender"
+                                    value={gender}
+                                    tabIndex="4"
+                                    placeholder="--Please choose an option--"
+                                    onChange={setGender}
+                                    includeBlank={false}
+                                    options={[
+                                        {value: "", label: "--Please choose an option--"},
+                                        {value: "M", label: "Male"},
+                                        {value: "F", label: "Female"},
+                                        {value: "O", label: "Other"},
+                                    ]}
+                                />
                             </div>
                             <div className="mb-6">
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="password1">

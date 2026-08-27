@@ -18,6 +18,9 @@ import {onAppResume} from "./appLifecycle";
 const LAST_KEY = "wc_last_coach_msg_id";
 const POLL_MS = 90000;
 const NOTIFY_KINDS = new Set(["activity", "push", "nudge", "reaction", "order", "sigh", "dunce"]);
+// One Android notification slot so a overlapping poll replaces instead
+// of stacking two banners. Capacitor ids are int32.
+const NOTIFY_ID = 71001;
 
 async function fetchLatestCoachMessage() {
     const status = await ensureFreshAccessToken();
@@ -58,8 +61,11 @@ export function startNativeCoachPings() {
 
     let stopped = false;
     let timer = null;
+    let inflight = false;
 
     async function tick() {
+        if (stopped || inflight) return;
+        inflight = true;
         try {
             if (await ensurePermission()) {
                 const latest = await fetchLatestCoachMessage();
@@ -73,7 +79,7 @@ export function startNativeCoachPings() {
                         localStorage.setItem(LAST_KEY, String(latest.id));
                         await LocalNotifications.schedule({
                             notifications: [{
-                                id: latest.id,
+                                id: NOTIFY_ID,
                                 title: latest.persona_name
                                     ? `${latest.persona_name}${latest.competition_name ? " · " + latest.competition_name : ""}`
                                     : "Your coach",
@@ -85,8 +91,13 @@ export function startNativeCoachPings() {
             }
         } catch (e) {
             // Offline / logged out / plugin missing - next tick retries.
+        } finally {
+            inflight = false;
+            if (!stopped) {
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(tick, POLL_MS);
+            }
         }
-        if (!stopped) timer = setTimeout(tick, POLL_MS);
     }
 
     // Let the login settle before the first poll (and permission prompt).

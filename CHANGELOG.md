@@ -7,21 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-08-28
+
 ### Added
 - **Confirm your email before any other mail.** Signup sends a short confirmation link, not the welcome. Welcome, weekly, board, and “log your workouts” wait until that link is clicked. Existing accounts stay confirmed. Changing your address sends a new link. Resend is on the yellow bar (own inbox, 10-minute cooldown).
 - **Photo on an activity is +10P** — one picture per workout. The original lands as a feed answer on the activity; the coach's remixed poster is the activity-card backdrop and the hot-or-not card. The Photo button advertises +10P and disappears after upload.
-- **Tap the points chip** for how that score was made: real minutes / kcal / km, the activity-type factor from Site Settings, each challenge goal (target, period, caps), and Photo +10P. Several goals add up (`25 + 10 = 35P`). If a cap fired: “Capped at 40P. You hit the daily limit of 60 active minutes.”
+- **Tap the points chip** for how that score was made: real minutes / kcal / km, the activity-type factor from Site Settings, each challenge goal (target, period, caps), Photo +10P, and Order +5P. Several goals add up (`25 + 10 + 5 = 40P`). If a cap fired: “Capped at 40P. You hit the daily limit of 60 active minutes.”
 - **Leaderboard shows equalizer factors** for every athlete (`92% effort · 105% distance`), including team rows and the athlete card.
+- **Your stamp comes off only on the profile-pic button** — tapping the emoji itself no longer unstamps you (hover / long-press still shows who voted).
+- **Challenge owners can delete an Echo** — small trash on the card. Wars and art files go with it; holder counts refresh.
+- **Daily order is +5P** — completing it credits five points on that workout. The green Order tag reads `+5P`. The points-chip popup lists Order next to the goals and Photo +10P.
 - **Stamps on activities** — 14 cartoon locker-room stickers (WTF!, GOAT, Oof, Too cool, Lit, …). Icons sit next to the points chip. Stamp (next to Reply) becomes your photo after you pick one; tap the photo to take it off. One stamp per person. Hover or long-press an icon for names.
+- **Echo Chamber events in the feed** — planting, war, claim, and immortal already posted a coach line. Adding art and a held defense now do too; pictured Echoes show the art on that card.
 
 ### Changed
+- **Feed keeps the last 10 posts**, then only workouts that have a picture. The old 48-hour dump and “N older” toggle are gone.
+- **Coach portrait ring matches the roaster** — the neon ring, activity ticks, and orbiting pips use that coach’s accent colour instead of always volt.
+- **Pulldowns match the glass UI** — sport type, intensity, gender, teams, goals, and site-settings provider use a frost list with volt for the current choice instead of the OS-native menu.
+- **Echo Chamber art first** — trophies with a picture sit above crown placeholders (power still ranks inside each group).
+- **Coach pings are quieter** — one random pep talk per day (was 1–2), and two events a few seconds apart (workout comment + Echo, overlapping beat jobs, a late catch-up) collapse to a single lock-screen ping instead of buzzing twice.
 - **Photo remix lives in the coach’s world** — the edit prompt reads the persona description as the setting (place, props, lighting), not a generic gym. Workout stats are baked into that world (TV, wall picture, tattoo, chalkboard, …), not a floating HUD.
 - **More sport types** — Muay Thai, Boxing, Kickboxing, Martial Arts, plus Strava’s newer ones (Basketball, Volleyball, Cricket, Padel, Dance, Physical Therapy). Garmin and Health Connect map onto the same list; unknown types still become Other Workout.
 - **Echo Chamber groups close sports** — road / gravel / mountain / indoor bikes share one Cycling trophy (e-bikes stay separate). Same idea for run variants, rowing, walk/snowshoe, combat, and ski. A gravel ride can claim a road-bike Echo.
 - **Popups are glass sheets** — same frost as the dock, rounded and inset so the gym plate shows around them. The close X sits below the iOS PWA status menu (`safe-area` plus a little extra). Closing a popup restores the scroll position instead of jumping to the top.
 - **All outbound mail matches the app** — ink canvas, volt buttons, “Your AI Drill Instructor” wordmark, fork source link. No leftover teal hero or upstream GitHub URL.
 - **Dark theme only** — light mode, Match device, and the Settings theme cycle are gone. Night backdrops only; limestone (`-light`) plates removed.
-- **Coach shows the latest message**, not a wheel or card stack. Same activity card as the feed (points chip, photo, backdrop).
+- **Coach On duty shows the latest line and your last workout.** If the newest post is already yours, it is not duplicated. Same activity card as the feed (points chip, photo, backdrop).
 - **Feed cards** — on-duty strip, one glass card per event, coach quote under the athlete, day hairlines. Board and Trophies use the same cards (no wrapping pane).
 - **“How Points Work”** in the challenge header is gone; the chip popup replaced it.
 

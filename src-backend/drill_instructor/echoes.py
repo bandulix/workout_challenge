@@ -11,7 +11,7 @@ import logging
 
 from django.apps import apps
 from django.db import IntegrityError, transaction
-from django.db.models import Max, Prefetch, Sum
+from django.db.models import Case, IntegerField, Max, Prefetch, Sum, Value, When
 from django.utils import timezone
 
 from .game import _minutes, award_tag
@@ -93,8 +93,39 @@ def bump_echo_holder_stats(competition_id):
         pass
 
 
+def delete_echo(echo):
+    """Erase an Echo: wars, art file, then the row. Holder counts refresh.
+
+    Coach feed lines stay (they are the chronicle, not the trophy). Dog
+    tags earned from this Echo stay too.
+    """
+    competition_id = echo.config.competition_id
+    EchoChallenge = apps.get_model("drill_instructor", "EchoChallenge")
+    EchoChallenge.objects.filter(echo=echo).delete()
+    if echo.image:
+        name = echo.image.name
+        try:
+            echo.image.delete(save=False)
+        except Exception as exc:  # noqa: BLE001 - row must still go
+            logger.info("Echo art file %s not removed: %s", name, exc)
+    echo.delete()
+    bump_echo_holder_stats(competition_id)
+
+
 def _name(user):
     return (user.first_name or user.username or "Athlete").strip() or "Athlete"
+
+
+def pictured_first(qs):
+    """Echoes with art float above crown placeholders; power still ranks inside each group."""
+    return qs.annotate(
+        has_art=Case(
+            When(image="", then=Value(0)),
+            When(image__isnull=True, then=Value(0)),
+            default=Value(1),
+            output_field=IntegerField(),
+        ),
+    ).order_by("-has_art", "-power", "-created_at")
 
 
 def _metric_for(workout):
@@ -291,7 +322,7 @@ def mint_echo(workout, config, judgment=None):
     body = echo.narrative
     try:
         from .tasks import _post_coach_line
-        _post_coach_line(config, DrillInstructorMessage.KIND_ECHO, body)
+        _post_coach_line(config, DrillInstructorMessage.KIND_ECHO, body, image_field=echo.image)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Echo mint post failed for workout %s: %s", workout.pk, exc)
     logger.info("Minted Legend Echo %s for workout %s in config %s", echo.pk, workout.pk, config.pk)
@@ -415,7 +446,7 @@ def start_challenge(echo, user, now=None):
         logger.info("Echo war comment fell back: %s", exc)
     try:
         from .tasks import _post_coach_line
-        _post_coach_line(echo.config, DrillInstructorMessage.KIND_WAR, body)
+        _post_coach_line(echo.config, DrillInstructorMessage.KIND_WAR, body, image_field=echo.image)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Echo challenge post failed: %s", exc)
     return challenge
@@ -453,7 +484,7 @@ def claim_echo(echo, winner, workout):
     )
     try:
         from .tasks import _post_coach_line
-        _post_coach_line(echo.config, DrillInstructorMessage.KIND_CLAIM, body)
+        _post_coach_line(echo.config, DrillInstructorMessage.KIND_CLAIM, body, image_field=echo.image)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Echo claim post failed: %s", exc)
     return echo
@@ -479,7 +510,7 @@ def immortalize(echo):
     )
     try:
         from .tasks import _post_coach_line
-        _post_coach_line(echo.config, DrillInstructorMessage.KIND_ECHO, body)
+        _post_coach_line(echo.config, DrillInstructorMessage.KIND_ECHO, body, image_field=echo.image)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Echo immortal post failed: %s", exc)
     return echo
@@ -525,11 +556,15 @@ def expire_challenges(now=None):
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
     expired = 0
     immortal = 0
+    held = []
     with transaction.atomic():
         due_rows = list(
             EchoChallenge.objects.select_for_update()
             .filter(status=EchoChallenge.STATUS_ACTIVE, window_end__lt=now)
-            .select_related("echo", "echo__config", "echo__config__persona", "echo__origin_user")
+            .select_related(
+                "echo", "echo__config", "echo__config__persona",
+                "echo__origin_user", "echo__holder", "challenger",
+            )
         )
         for challenge in due_rows:
             challenge.status = EchoChallenge.STATUS_EXPIRED
@@ -542,6 +577,7 @@ def expire_challenges(now=None):
             else:
                 echo.status = LegendEcho.STATUS_UNDEFEATED
                 echo.save(update_fields=["defenses", "status"])
+                held.append((echo, challenge))
             expired += 1
 
         today = timezone.localdate()
@@ -552,6 +588,22 @@ def expire_challenges(now=None):
         for echo in finished:
             immortalize(echo)
             immortal += 1
+    for echo, challenge in held:
+        try:
+            from .tasks import _post_coach_line
+            DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+            challenger = _name(challenge.challenger) if challenge.challenger_id else "Someone"
+            holder = _name(echo.holder) if echo.holder_id else "the holder"
+            body = (
+                f"{echo.config.persona.name}: @{challenger} ran out of time. "
+                f"@{holder} still holds {echo.title}. The Echo stands."
+            )
+            _post_coach_line(
+                echo.config, DrillInstructorMessage.KIND_ECHO, body,
+                send_push=False, image_field=echo.image,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Echo defense post failed for %s: %s", echo.pk, exc)
     return {"expired": expired, "immortal": immortal}
 
 

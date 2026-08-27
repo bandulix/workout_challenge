@@ -236,6 +236,17 @@ export const drillInstructorApi = createApi({
                 "DrillMessage",
             ],
         }),
+        deleteEcho: builder.mutation({
+            query: (id) => ({
+                url: `drill-instructor/echoes/${id}/`,
+                method: "DELETE",
+            }),
+            invalidatesTags: (result, error, id) => [
+                {type: "DrillEcho", id},
+                "DrillEcho",
+                "DrillMessage",
+            ],
+        }),
         uploadEchoArt: builder.mutation({
             query: ({id, image}) => {
                 const form = new FormData();
@@ -250,6 +261,7 @@ export const drillInstructorApi = createApi({
             invalidatesTags: (result, error, {id}) => [
                 {type: "DrillEcho", id},
                 "DrillEcho",
+                "DrillMessage",
             ],
         }),
 
@@ -285,6 +297,7 @@ export const {
     useGetEchoesQuery,
     useGetEchoBookQuery,
     useChallengeEchoMutation,
+    useDeleteEchoMutation,
     useUploadEchoArtMutation,
     useRunTestMessageMutation,
 } = drillInstructorApi;

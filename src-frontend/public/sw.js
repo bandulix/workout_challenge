@@ -184,26 +184,37 @@ async function trimCache(cacheName, maxItems) {
 // button on the Site Settings page.
 
 self.addEventListener("push", (event) => {
-    let payload = {title: "Workout Challenge", body: "You have a new update.", url: "/", icon: null, badge: null, tag: null};
-    if (event.data) {
-        try {
-            payload = {...payload, ...event.data.json()};
-        } catch (e) {
-            payload.body = event.data.text();
+    event.waitUntil((async () => {
+        let payload = {title: "Workout Challenge", body: "You have a new update.", url: "/", icon: null, badge: null, tag: null};
+        if (event.data) {
+            try {
+                payload = {...payload, ...event.data.json()};
+            } catch (e) {
+                payload.body = event.data.text();
+            }
         }
-    }
-    event.waitUntil(
-        self.registration.showNotification(payload.title, {
+        const tag = payload.tag || "workout-challenge";
+        // Same tag + an already-visible banner: replace the text, don't
+        // buzz a second time. Two coach events a few seconds apart used
+        // to stack as two lock-screen pings.
+        let alreadyShowing = false;
+        try {
+            const existing = await self.registration.getNotifications({tag});
+            alreadyShowing = existing.length > 0;
+        } catch (err) {
+            alreadyShowing = false;
+        }
+        await self.registration.showNotification(payload.title, {
             body: payload.body,
             // The coach's face (persona artwork) when provided; app bolt otherwise.
             icon: payload.icon || "/icon-192.png",
             badge: payload.badge || "/icon-badge.png",
-            tag: payload.tag || "workout-challenge",
-            renotify: Boolean(payload.tag),
+            tag,
+            renotify: Boolean(payload.tag) && !alreadyShowing,
             data: {url: payload.url || "/"},
-            vibrate: [100, 50, 100],
-        })
-    );
+            vibrate: alreadyShowing ? [] : [100, 50, 100],
+        });
+    })());
 });
 
 self.addEventListener("notificationclick", (event) => {

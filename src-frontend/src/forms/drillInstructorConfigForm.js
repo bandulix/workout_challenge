@@ -230,7 +230,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                     on={randomPush}
                     onChange={setRandomPush}
                     label="Pep talks at random times"
-                    hint="1–2 persona-voiced pings per day between 07:00 and 22:00, whether anyone trained or not."
+                    hint="One persona-voiced ping per day between 07:00 and 22:00, whether anyone trained or not."
                     error={fieldErrors.random_push}
                 />
                 <ToggleRow

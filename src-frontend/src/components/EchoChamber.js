@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from "react";
-import {Camera, Crown, ScrollText, Share2, Swords} from "lucide-react";
+import {Camera, Crown, ScrollText, Share2, Swords, Trash2} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {useDispatch} from "react-redux";
 import {PaneHead, paneCardClass} from "./uiBits";
@@ -9,12 +9,14 @@ import {isAcceptablePhoto, isPhotoPickCancel, pickNativePhoto} from "../utils/na
 import {
     drillInstructorApi,
     useChallengeEchoMutation,
+    useDeleteEchoMutation,
     useGetEchoBookQuery,
     useGetEchoesQuery,
     useUploadEchoArtMutation,
 } from "../utils/reducers/drillInstructorSlice";
 import usePollingInterval from "../utils/usePollingInterval";
 import {confirmAction, notice} from "../utils/dialogs";
+import {OverlaySheet} from "../forms/basicComponents";
 
 function formatCountdown(iso, now) {
     if (!iso) return "";
@@ -52,9 +54,10 @@ function EchoArt({url, title, canUpload, echoId}) {
     const dispatch = useDispatch();
     const fileInput = useRef(null);
     const [busy, setBusy] = useState(false);
+    const [lightbox, setLightbox] = useState(false);
 
     const frame = src ? (
-        <img src={src} alt={title || ""} className="h-40 w-full object-cover"/>
+        <img src={src} alt="" className="h-40 w-full object-cover"/>
     ) : (
         <div className="h-40 w-full bg-gradient-to-br from-ink-800 via-ink-900 to-black flex items-center justify-center">
             <Crown className="h-8 w-8 text-volt-400/70"/>
@@ -94,32 +97,52 @@ function EchoArt({url, title, canUpload, echoId}) {
         fileInput.current?.click();
     }
 
-    if (!canUpload) {
-        return <div className="overflow-hidden rounded-xl">{frame}</div>;
-    }
-
     return (
-        <div className="relative">
-            <button type="button" onClick={openPicker} disabled={busy}
-                    aria-label={src ? "Change Echo art" : "Add Echo art"}
-                    className="group relative block w-full overflow-hidden rounded-xl focus:outline-none focus:ring-2 focus:ring-volt-400 disabled:opacity-80">
-                {frame}
-                <span className="absolute inset-0 bg-ink-950/45 opacity-0 group-hover:opacity-100 group-active:opacity-100 transition flex flex-col items-center justify-center gap-1.5">
-                    {busy
-                        ? <BeatLoader size={6} color="#d7ff3e"/>
-                        : (
-                            <>
-                                <Camera className="h-7 w-7 text-volt-400"/>
-                                <span className="text-[11px] font-extrabold uppercase tracking-wide text-volt-400">
-                                    {src ? "Change art" : "Add art"}
-                                </span>
-                            </>
-                        )}
-                </span>
-            </button>
-            <input ref={fileInput} type="file" accept="image/*,image/heic,image/heif" className="hidden"
-                   onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; send(f); }}/>
-        </div>
+        <>
+            <div className="relative overflow-hidden rounded-xl">
+                {src ? (
+                    <button type="button" onClick={() => setLightbox(true)}
+                            aria-label={title ? `View ${title}` : "View Echo art"}
+                            className="block w-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-volt-400">
+                        {frame}
+                    </button>
+                ) : canUpload ? (
+                    <button type="button" onClick={openPicker} disabled={busy}
+                            aria-label="Add Echo art"
+                            className="group relative block w-full focus:outline-none focus:ring-2 focus:ring-volt-400 disabled:opacity-80">
+                        {frame}
+                        <span className="absolute inset-0 bg-ink-950/45 flex flex-col items-center justify-center gap-1.5">
+                            {busy
+                                ? <BeatLoader size={6} color="#d7ff3e"/>
+                                : (
+                                    <>
+                                        <Camera className="h-7 w-7 text-volt-400"/>
+                                        <span className="text-[11px] font-extrabold uppercase tracking-wide text-volt-400">
+                                            Add art
+                                        </span>
+                                    </>
+                                )}
+                        </span>
+                    </button>
+                ) : frame}
+                {canUpload && src && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); openPicker(); }}
+                            disabled={busy}
+                            aria-label="Change Echo art"
+                            className="absolute bottom-2 right-2 z-10 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-ink-950/70 text-volt-400 hover:bg-ink-950/90 transition disabled:opacity-60">
+                        {busy ? <BeatLoader size={5} color="#d7ff3e"/> : <Camera className="h-5 w-5"/>}
+                    </button>
+                )}
+                <input ref={fileInput} type="file" accept="image/*,image/heic,image/heif" className="hidden"
+                       onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; send(f); }}/>
+            </div>
+            {lightbox && src && (
+                <OverlaySheet title={title || "Echo"} onClose={() => setLightbox(false)} zClass="z-[70]">
+                    <img src={src} alt={title || "Echo art"}
+                         className="mx-auto max-h-[70vh] w-full rounded-2xl object-contain"/>
+                </OverlaySheet>
+            )}
+        </>
     );
 }
 
@@ -138,7 +161,7 @@ async function shareEcho(echo) {
     }
 }
 
-function EchoCard({echo, userId, onChallenge, busy, now}) {
+function EchoCard({echo, userId, onChallenge, onDelete, busy, now}) {
     const mine = echo.holder_id === userId;
     const planted = echo.origin_id === userId;
     const war = echo.active_challenge;
@@ -188,6 +211,13 @@ function EchoCard({echo, userId, onChallenge, busy, now}) {
                         className="inline-flex items-center gap-1.5 rounded-full btn-glass px-3 py-2 text-[11px] font-bold uppercase tracking-wide transition">
                     <Share2 className="h-3.5 w-3.5"/> Share
                 </button>
+                {echo.can_delete && (
+                    <button type="button" onClick={() => onDelete(echo)} disabled={busy}
+                            aria-label={`Delete ${echo.title}`}
+                            className="ml-auto inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full btn-glass text-gray-400 hover:text-red-500 transition disabled:opacity-50">
+                        <Trash2 className="h-3.5 w-3.5"/>
+                    </button>
+                )}
             </div>
         </article>
     );
@@ -235,11 +265,18 @@ export default function EchoChamber({competitionId, userId}) {
         {competition: competitionId},
         {pollingInterval: poll, skip: !competitionId},
     );
-    const [challenge, {isLoading}] = useChallengeEchoMutation();
+    const [challenge, {isLoading: challengeBusy}] = useChallengeEchoMutation();
+    const [removeEcho, {isLoading: deleteBusy}] = useDeleteEchoMutation();
+    const busy = challengeBusy || deleteBusy;
     const [bookOpen, setBookOpen] = useState(false);
     const rows = echoes || [];
-    const live = rows.filter((e) => e.status === "undefeated" || e.status === "contested");
-    const immortal = rows.filter((e) => e.status === "immortal");
+    const artFirst = (a, b) => {
+        const art = Number(Boolean(b.image)) - Number(Boolean(a.image));
+        if (art) return art;
+        return (b.power || 0) - (a.power || 0);
+    };
+    const live = rows.filter((e) => e.status === "undefeated" || e.status === "contested").slice().sort(artFirst);
+    const immortal = rows.filter((e) => e.status === "immortal").slice().sort(artFirst);
     const ticking = live.some((e) => e.active_challenge?.window_end);
     const now = useNowTick(ticking);
     if (rows.length === 0) {
@@ -269,6 +306,18 @@ export default function EchoChamber({competitionId, userId}) {
         }
     }
 
+    async function onDelete(echo) {
+        const ok = await confirmAction(
+            `Delete ${echo.title}? The trophy, its wars, and its art are gone for good.`,
+        );
+        if (!ok) return;
+        try {
+            await removeEcho(echo.id).unwrap();
+        } catch (err) {
+            notice(err?.data?.detail || "Could not delete that Echo.");
+        }
+    }
+
     return (
         <div>
             <PaneHead title="Echo Chamber" hint="Living trophies. Undefeated ones taunt the group until someone claims them.">
@@ -287,7 +336,7 @@ export default function EchoChamber({competitionId, userId}) {
                 <div className="grid gap-3 sm:grid-cols-2">
                     {live.map((echo) => (
                         <EchoCard key={echo.id} echo={echo} userId={userId} now={now}
-                                  onChallenge={onChallenge} busy={isLoading}/>
+                                  onChallenge={onChallenge} onDelete={onDelete} busy={busy}/>
                     ))}
                 </div>
             )}
@@ -297,7 +346,7 @@ export default function EchoChamber({competitionId, userId}) {
                     <div className="grid gap-3 sm:grid-cols-2">
                         {immortal.map((echo) => (
                             <EchoCard key={echo.id} echo={echo} userId={userId} now={now}
-                                      onChallenge={onChallenge} busy={isLoading}/>
+                                      onChallenge={onChallenge} onDelete={onDelete} busy={busy}/>
                         ))}
                     </div>
                 </div>

@@ -218,10 +218,12 @@ function ReactChip({row, onToggle, onWho, delay, bursting, showWho}) {
                 onClick={(e) => {
                     e.stopPropagation();
                     if (held.current) return;
+                    // Own stamp comes off only via the profile-pic button.
+                    if (row.me) return;
                     onToggle();
                 }}
-                className={"react-chip relative inline-flex items-center gap-0.5 rounded-full pl-1 pr-1.5 py-0.5 min-h-[32px] text-[12px] font-bold tabular-nums transition active:scale-95 " +
-                    (row.me ? "react-chip-mine" : "btn-glass") +
+                className={"react-chip relative inline-flex items-center gap-0.5 rounded-full pl-1 pr-1.5 py-0.5 min-h-[32px] text-[12px] font-bold tabular-nums transition " +
+                    (row.me ? "react-chip-mine" : "btn-glass active:scale-95") +
                     (bursting ? " react-chip-burst" : "")}
                 style={{"--react-glow": spec.glow, animationDelay: `${delay}s`}}>
                 <StampGlyph id={row.emoji} size={22} glow={spec.glow}/>

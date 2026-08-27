@@ -90,3 +90,45 @@ class VapidPublicKeyTests(TestCase):
             healed = json.loads(path.read_text())
             self.assertEqual(healed["public"], key)
             self.assertEqual(healed["private"], priv_pem)  # private untouched
+
+
+class SendPushCooldownTests(TestCase):
+    """Two coach events a few seconds apart must not both buzz the phone."""
+
+    def test_second_send_within_cooldown_is_skipped(self):
+        from django.core.cache import cache
+        from .sender import send_push_to_user
+
+        cache.delete("test-coach-ping")
+        user = mock.Mock()
+        user.pk = 7
+        user.push_subscriptions.all.return_value = [mock.Mock()]
+
+        with mock.patch("push_notifications.sender._send_one") as send:
+            first = send_push_to_user(
+                user, title="t", body="b",
+                cooldown_seconds=120, cooldown_key="test-coach-ping",
+            )
+            second = send_push_to_user(
+                user, title="t", body="b",
+                cooldown_seconds=120, cooldown_key="test-coach-ping",
+            )
+
+        self.assertEqual(first, 1)
+        self.assertEqual(second, 0)
+        self.assertEqual(send.call_count, 1)
+
+    def test_no_cooldown_always_sends(self):
+        from .sender import send_push_to_user
+
+        user = mock.Mock()
+        user.pk = 8
+        user.push_subscriptions.all.return_value = [mock.Mock()]
+
+        with mock.patch("push_notifications.sender._send_one") as send:
+            first = send_push_to_user(user, title="t", body="b")
+            second = send_push_to_user(user, title="t", body="b")
+
+        self.assertEqual(first, 1)
+        self.assertEqual(second, 1)
+        self.assertEqual(send.call_count, 2)

@@ -268,6 +268,19 @@
   .dark .coach-quote { background: rgba(22, 22, 26, 0.96); }
 }
 
+/* Custom select menu (native <select> lists ignore app chrome). */
+.glass-select-menu {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(215, 255, 62, 0.45) transparent;
+}
+.glass-select-menu::-webkit-scrollbar {
+  width: 8px;
+}
+.glass-select-menu::-webkit-scrollbar-thumb {
+  background: rgba(215, 255, 62, 0.35);
+  border-radius: 99px;
+}
+
 /* Recessed wells for stats / settings blocks (not paper-grey slabs). */
 .glass-well {
   background: rgba(28, 24, 18, 0.05);
@@ -346,43 +359,43 @@
   opacity: 0.55;
 }
 
-/* Neon volt border of the coach pic. Activity ticks overlay this ring.
-   Light adds a thin ink hairline so the ring doesn't vanish into the
-   gym's yellow tube. */
+/* Neon border of the coach pic, tinted with the roaster accent
+   (--coach-accent). Activity ticks overlay this ring. Light adds a
+   thin ink hairline so the ring doesn't vanish into the gym plate. */
 .coach-pic-ring {
-  border: 3px solid #d7ff3e;
+  border: 3px solid var(--coach-accent, #d7ff3e);
   box-shadow:
     0 0 0 1px rgba(11, 11, 12, 0.18),
-    0 0 12px rgba(215, 255, 62, 0.5);
+    0 0 12px var(--coach-accent-glow, rgba(215, 255, 62, 0.5));
 }
 .dark .coach-pic-ring {
-  box-shadow: 0 0 12px rgba(215, 255, 62, 0.5);
+  box-shadow: 0 0 12px var(--coach-accent-glow, rgba(215, 255, 62, 0.5));
 }
 .coach-pic-ring-full {
   border-width: 3.5px;
   box-shadow:
     0 0 0 1px rgba(11, 11, 12, 0.18),
-    0 0 10px rgba(215, 255, 62, 0.95),
-    0 0 22px rgba(215, 255, 62, 0.55);
+    0 0 10px var(--coach-accent-glow-strong, rgba(215, 255, 62, 0.95)),
+    0 0 22px var(--coach-accent-glow, rgba(215, 255, 62, 0.55));
 }
 .dark .coach-pic-ring-full {
   box-shadow:
-    0 0 10px rgba(215, 255, 62, 0.95),
-    0 0 22px rgba(215, 255, 62, 0.55);
+    0 0 10px var(--coach-accent-glow-strong, rgba(215, 255, 62, 0.95)),
+    0 0 22px var(--coach-accent-glow, rgba(215, 255, 62, 0.55));
 }
 .coach-pic-ring-sparse {
   border-width: 2px;
   box-shadow:
     0 0 0 1px rgba(11, 11, 12, 0.16),
-    0 0 8px rgba(215, 255, 62, 0.35);
+    0 0 8px var(--coach-accent-glow, rgba(215, 255, 62, 0.35));
 }
 .dark .coach-pic-ring-sparse {
-  box-shadow: 0 0 8px rgba(215, 255, 62, 0.35);
+  box-shadow: 0 0 8px var(--coach-accent-glow, rgba(215, 255, 62, 0.35));
 }
 .activity-ring-full {
   filter:
-    drop-shadow(0 0 6px rgba(215, 255, 62, 0.95))
-    drop-shadow(0 0 16px rgba(215, 255, 62, 0.55));
+    drop-shadow(0 0 6px var(--coach-accent-glow-strong, rgba(215, 255, 62, 0.95)))
+    drop-shadow(0 0 16px var(--coach-accent-glow, rgba(215, 255, 62, 0.55)));
 }
 @keyframes glass-sheen {
   0%, 18% { background-position: 120% 0; }

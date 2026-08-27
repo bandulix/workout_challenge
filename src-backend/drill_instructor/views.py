@@ -1,4 +1,5 @@
 import datetime
+import logging
 import mimetypes
 
 from django.conf import settings
@@ -37,6 +38,8 @@ from .serializers import (
     RoastCardSerializer,
     activity_reacts_payload,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
@@ -694,13 +697,17 @@ class DrillInstructorTestMessageView(APIView):
 
 
 class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
-    """The Echo Chamber: list living trophies, challenge one, read the Book."""
+    """The Echo Chamber: list living trophies, challenge one, read the Book.
+
+    DELETE is owner-only (the challenge owner). Members can still list,
+    challenge, and (holders) upload art.
+    """
 
     serializer_class = LegendEchoSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        from .echoes import expire_challenges
+        from .echoes import expire_challenges, pictured_first
         try:
             expire_challenges()
         except Exception:  # noqa: BLE001
@@ -719,7 +726,6 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
                 to_attr="active_challenges",
             ))
             .distinct()
-            .order_by("-power", "-created_at")
         )
         try:
             competition_id = int(self.request.query_params.get("competition") or 0)
@@ -727,7 +733,7 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
             competition_id = 0
         if competition_id:
             qs = qs.filter(config__competition_id=competition_id)
-        return qs
+        return pictured_first(qs)
 
     @action(detail=False, methods=["get"])
     def book(self, request):
@@ -774,6 +780,15 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
             raise ValidationError({"detail": "Someone is already coming for this Echo."})
         echo = self.get_object()
         return Response(LegendEchoSerializer(echo, context={"request": request}).data)
+
+    def destroy(self, request, *args, **kwargs):
+        echo = self.get_object()
+        competition = echo.config.competition
+        if competition.owner_id != request.user.id:
+            raise PermissionDenied("Only the challenge owner can delete an Echo.")
+        from .echoes import delete_echo
+        delete_echo(echo)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get"], renderer_classes=[ProtectedMediaRenderer])
     def picture(self, request, pk=None):
@@ -831,6 +846,21 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         echo.image.save(f"echo-{echo.pk}.jpg", image, save=True)
+        try:
+            from .echoes import _name
+            from .tasks import _post_coach_line
+            persona = echo.config.persona
+            who = _name(echo.holder or user)
+            body = (
+                f"{persona.name}: @{who} just hung a picture on {echo.title}. "
+                "It's in the Echo Chamber."
+            )
+            _post_coach_line(
+                echo.config, DrillInstructorMessage.KIND_ECHO, body,
+                send_push=False, image_field=echo.image,
+            )
+        except Exception as exc:  # noqa: BLE001 - upload still succeeded
+            logger.warning("Echo art feed post failed for %s: %s", echo.pk, exc)
         from .tasks import remix_echo_art
         remix_echo_art.delay(echo.id, uploaded_by_id=user.id)
         echo.refresh_from_db()

@@ -55,6 +55,23 @@ const RING_CY = 50;
 const RING_R = 48.2;
 const VOLT = "#d7ff3e";
 
+function accentHex(color) {
+    const raw = String(color || "").trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw;
+    if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
+        return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`;
+    }
+    return VOLT;
+}
+
+function accentRgba(color, alpha) {
+    const hex = accentHex(color).slice(1);
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function polar(cx, cy, r, deg) {
     const rad = (deg * Math.PI) / 180;
     return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
@@ -68,19 +85,20 @@ function arcPath(startDeg, endDeg) {
 }
 
 // 24h activity ticks sit ON the neon photo border. The border itself is
-// a CSS volt ring on the portrait; this SVG only lights trained segments.
-function ActivityTicks({total, filled}) {
+// a CSS accent ring on the portrait; this SVG only lights trained segments.
+function ActivityTicks({total, filled, color}) {
     const n = Math.max(1, Math.min(total, RING_SEGMENTS_MAX));
     const lit = Math.max(0, Math.min(filled, n));
     if (lit <= 0) return null;
     const full = lit >= n;
     const stroke = full ? 5.4 : 4.2;
+    const accent = accentHex(color);
 
     const ticks = [];
     if (n === 1) {
         ticks.push(
             <circle key="one" cx={RING_CX} cy={RING_CY} r={RING_R} fill="none"
-                    stroke={VOLT} strokeWidth={stroke}/>
+                    stroke={accent} strokeWidth={stroke}/>
         );
     } else {
         const gap = Math.min(7, 48 / n);
@@ -90,7 +108,7 @@ function ActivityTicks({total, filled}) {
             const start = -90 + i * step + gap / 2;
             ticks.push(
                 <path key={i} d={arcPath(start, start + sweep)} fill="none"
-                      stroke={VOLT} strokeWidth={stroke} strokeLinecap="round"/>
+                      stroke={accent} strokeWidth={stroke} strokeLinecap="round"/>
             );
         }
     }
@@ -105,7 +123,7 @@ function ActivityTicks({total, filled}) {
     );
 }
 
-export function SquadOrbit({mood, children, showCaption = true}) {
+export function SquadOrbit({mood, children, showCaption = true, accent}) {
     const trained = trainedSummary(mood) || {active: 0, total: 8, hint: "Coach orbit"};
     const total = trained.total;
     const active = trained.active;
@@ -117,11 +135,8 @@ export function SquadOrbit({mood, children, showCaption = true}) {
     const ratio = active / Math.max(total, 1);
     const full = ringLit >= ringCount && ringCount > 0;
     const sparse = ringLit <= 1 && ringCount > 1;
-    const countTone = ratio >= 0.8
-        ? "text-volt-700 dark:text-volt-300"
-        : ratio > 0
-            ? "text-ink-950 dark:text-white"
-            : "text-gray-400";
+    const color = accentHex(accent);
+    const countTone = ratio > 0 ? "text-ink-950 dark:text-white" : "text-gray-400";
     const pips = [];
     for (let i = 0; i < pipCount; i += 1) {
         const deg = (360 / pipCount) * i - 90;
@@ -132,15 +147,23 @@ export function SquadOrbit({mood, children, showCaption = true}) {
                   style={{transform: `rotate(${deg}deg) translateY(calc(-1 * var(--orbit)))`}}>
                 <span className={"block rounded-full " +
                     (isLit
-                        ? "h-2.5 w-2.5 bg-volt-400 shadow-glow-volt " + (motion.wave ? "animate-squad-pip-wave" : "animate-squad-hop")
+                        ? "h-2.5 w-2.5 " + (motion.wave ? "animate-squad-pip-wave" : "animate-squad-hop")
                         : "h-2 w-2 bg-gray-300 dark:bg-ink-600 " + (motion.wave ? "animate-squad-pip-wave" : ""))}
-                      style={(isLit || motion.wave) ? {animationDelay: `${i * (motion.wave ? 0.18 : 0.14)}s`} : undefined}/>
+                      style={{
+                          ...(isLit ? {backgroundColor: color, boxShadow: `0 0 10px ${accentRgba(color, 0.75)}`} : {}),
+                          ...((isLit || motion.wave) ? {animationDelay: `${i * (motion.wave ? 0.18 : 0.14)}s`} : {}),
+                      }}/>
             </span>
         );
     }
     const ring = (
         <div className={"relative h-[8.5rem] w-[8.5rem] [--orbit:3.45rem] sm:h-[9.6rem] sm:w-[9.6rem] sm:[--orbit:3.9rem] " +
             (motion.tilt ? "[perspective:520px]" : "")}
+             style={{
+                 "--coach-accent": color,
+                 "--coach-accent-glow": accentRgba(color, 0.5),
+                 "--coach-accent-glow-strong": accentRgba(color, 0.95),
+             }}
              title={trained.hint}
              aria-label={trained.hint}>
             <div className={"absolute inset-0 " + (motion.tilt ? "[transform-style:preserve-3d] " : "") + motion.ring}
@@ -150,7 +173,7 @@ export function SquadOrbit({mood, children, showCaption = true}) {
             <div className="absolute inset-0 flex items-center justify-center">
                 <div className={"relative h-[5.5rem] w-[5.5rem] sm:h-[6.25rem] sm:w-[6.25rem] rounded-full animate-float-slow coach-pic-ring " +
                     (full ? "coach-pic-ring-full" : sparse ? "coach-pic-ring-sparse" : "")}>
-                    <ActivityTicks total={ringCount} filled={ringLit}/>
+                    <ActivityTicks total={ringCount} filled={ringLit} color={color}/>
                     <div className="absolute inset-0 overflow-hidden rounded-full">
                         {children}
                     </div>
@@ -328,7 +351,7 @@ export function OrderRibbon({show}) {
     if (!show) return null;
     return (
         <span className="shrink-0 rounded-full bg-volt-400 text-ink-950 text-[10px] font-extrabold uppercase tracking-wide px-2 py-0.5 inline-flex items-center gap-1">
-            <Trophy className="h-3 w-3"/> Order
+            <Trophy className="h-3 w-3"/> Order <span className="tabular-nums">+5P</span>
         </span>
     );
 }

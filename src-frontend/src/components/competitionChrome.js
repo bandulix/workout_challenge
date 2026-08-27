@@ -250,7 +250,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
 
 // Challenge feed: independent glass cards on the gym plate. One visual
 // language for workouts, photos, and coach announcements.
-const FEED_WINDOW_MS = 48 * 60 * 60 * 1000;
+const FEED_RECENT = 10;
 
 const KIND_LABEL = {
     activity: "Workout",
@@ -454,6 +454,14 @@ function pointsRowExplain(row) {
             </p>
         );
     }
+    if (row.kind === "order") {
+        const earned = Math.round(Number(row.points) || 0) > 0;
+        return (
+            <p className="mt-1 text-[14px] leading-snug text-gray-500 dark:text-gray-400">
+                {earned ? "+5P for completing today's order. Caps do not apply." : "Complete today's order for +5P. Caps do not apply."}
+            </p>
+        );
+    }
     if (row.kind === "award") {
         return (
             <p className="mt-1 text-[14px] leading-snug text-gray-500 dark:text-gray-400">
@@ -574,7 +582,7 @@ export function PointsChip({capped, raw, hasPhoto = false, size = "md", message 
                         <p>
                             {summary ? <>{summary}</> : <>This workout</>}
                             {challenge ? <> · {challenge}</> : null}
-                            {breakdown.length > 1 ? ". Goals add up. Photo is +10P." : "."}
+                            {breakdown.length > 1 ? ". Goals add up. Photo is +10P. Today's order is +5P." : "."}
                         </p>
                         {breakdown.length > 0 && (
                             <div className="rounded-2xl glass-well px-3 py-3">
@@ -814,6 +822,8 @@ function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
 
 function AnnouncementPost({message, persona, canReply, defaultOpen}) {
     const kind = KIND_LABEL[message.kind] || "Coach";
+    const {src} = useProtectedImage(message.image);
+    const [lightbox, setLightbox] = useState(false);
     return (
         <FeedCard>
             <p className="mb-2 flex items-baseline justify-between gap-2">
@@ -823,10 +833,23 @@ function AnnouncementPost({message, persona, canReply, defaultOpen}) {
                 <span className="text-[11px] text-gray-400">{timeAgo(message.posted_at)}</span>
             </p>
             <CoachSpeech persona={persona}>{message.body}</CoachSpeech>
+            {src && (
+                <button type="button" onClick={() => setLightbox(true)}
+                        aria-label={kind === "Echo" ? "View Echo art" : `View ${kind}`}
+                        className="mt-3 block w-full cursor-pointer overflow-hidden rounded-2xl focus:outline-none focus:ring-2 focus:ring-volt-400">
+                    <img src={src} alt="" className="max-h-56 w-full object-cover"/>
+                </button>
+            )}
             {message.athlete_name && (
                 <p className="mt-2 pl-[36px] text-[11px] text-gray-400">→ {message.athlete_name}</p>
             )}
             <CoachThread message={message} persona={persona} canReply={canReply} defaultOpen={defaultOpen}/>
+            {lightbox && src && (
+                <OverlaySheet title={kind} onClose={() => setLightbox(false)} zClass="z-[70]">
+                    <img src={src} alt=""
+                         className="mx-auto max-h-[70vh] w-full rounded-2xl object-contain"/>
+                </OverlaySheet>
+            )}
         </FeedCard>
     );
 }
@@ -870,9 +893,6 @@ export function CoachCorner({competition, isOwner}) {
     );
     const {data: me} = useGetUserByIdQuery("me");
     const [showConfigModal, setShowConfigModal] = useState(false);
-    const [showOlder, setShowOlder] = useState(false);
-    const [now, setNow] = useState(Date.now());
-    const cutoff = Date.now() - FEED_WINDOW_MS;
 
     // Deep link from the Coach page's "Respond" button
     // (/competition/<id>?reply=<messageId>): scroll Coach's Corner into
@@ -885,19 +905,6 @@ export function CoachCorner({competition, isOwner}) {
             cornerRef.current.scrollIntoView({behavior: "smooth", block: "start"});
         }
     }, [replyTargetId, config]);
-    const picturedFeed = (messages || []).some((m) => m.image || (m.replies || []).some((r) => r.image));
-    useEffect(() => {
-        if (!picturedFeed) return undefined;
-        const id = setInterval(() => setNow(Date.now()), 1000);
-        return () => clearInterval(id);
-    }, [picturedFeed]);
-    useEffect(() => {
-        if (!replyTargetId || !messages) return;
-        const target = messages.find((m) => m.id === replyTargetId);
-        if (target && new Date(target.posted_at).getTime() < Date.now() - FEED_WINDOW_MS) {
-            setShowOlder(true);
-        }
-    }, [replyTargetId, messages]);
 
     if (!config) {
         if (!isOwner) return null;
@@ -922,10 +929,19 @@ export function CoachCorner({competition, isOwner}) {
 
     const persona = config.persona_detail || {};
     const all = messages || [];
-    const recent = all.filter((m) => new Date(m.posted_at).getTime() >= cutoff);
-    const older = all.filter((m) => new Date(m.posted_at).getTime() < cutoff);
-    const visible = showOlder ? all : recent;
-    const groups = groupByDay(visible);
+    const roots = all.filter((m) => m.kind !== "photo");
+    const recent = roots.slice(0, FEED_RECENT);
+    const recentIds = new Set(recent.map((m) => m.id));
+    if (replyTargetId && !recentIds.has(replyTargetId)) {
+        const target = roots.find((m) => m.id === replyTargetId);
+        if (target) {
+            recent.push(target);
+            recentIds.add(target.id);
+        }
+    }
+    const pictured = roots.filter((m) => m.kind === "activity" && activityHasPhoto(m) && !recentIds.has(m.id));
+    const groups = groupByDay(recent);
+    const picturedGroups = groupByDay(pictured);
     const lastOwnActivityId = all.find(
         (m) => m.kind === "activity" && m.workout_user_id === me?.id
     )?.id ?? null;
@@ -967,8 +983,8 @@ export function CoachCorner({competition, isOwner}) {
             <CoachHandover configId={config.id} enabled={config.enabled}/>
             {all.length > 0 ? (
                 <>
-                    {visible.length === 0 && (
-                        <p className="px-1 pb-3 text-sm text-gray-400">Quiet for 48 hours.</p>
+                    {recent.length === 0 && pictured.length === 0 && (
+                        <p className="px-1 pb-3 text-sm text-gray-400">No posts yet.</p>
                     )}
                     <div className="space-y-4">
                         {groups.map((g) => (
@@ -980,11 +996,18 @@ export function CoachCorner({competition, isOwner}) {
                             </section>
                         ))}
                     </div>
-                    {older.length > 0 && (
-                        <button type="button" onClick={() => setShowOlder((v) => !v)}
-                                className="mt-3 w-full min-h-[40px] text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 hover:text-volt-700 dark:hover:text-volt-300 transition">
-                            {showOlder ? "Show last 48 hours" : `${older.length} older`}
-                        </button>
+                    {picturedGroups.length > 0 && (
+                        <div className="mt-6 space-y-4">
+                            <PaneHead title="With photos"/>
+                            {picturedGroups.map((g) => (
+                                <section key={"pic-" + g.label}>
+                                    <DayRule label={g.label}/>
+                                    <ul className="space-y-3">
+                                        {g.items.map(renderMessage)}
+                                    </ul>
+                                </section>
+                            ))}
+                        </div>
                     )}
                 </>
             ) : (

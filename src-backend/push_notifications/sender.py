@@ -33,13 +33,27 @@ def send_push_to_user(
     # wakes. The previous 60s TTL meant FCM dropped most notifications
     # before delivery on battery-saving phones.
     ttl: int = 3600,
+    cooldown_seconds: int = 0,
+    cooldown_key: Optional[str] = None,
 ) -> int:
     """Send a push notification to every active subscription of ``user``.
 
     Returns the number of notifications successfully delivered.
     Sends in parallel via a small thread pool so multi-device users
     don't stall the Celery worker.
+
+    ``cooldown_seconds`` skips a second send to the same user (cache key
+    ``cooldown_key`` or ``push-cooldown:<user id>``) so two coach events
+    that fire together do not double-buzz the lock screen.
     """
+    if cooldown_seconds:
+        try:
+            from django.core.cache import cache
+            key = cooldown_key or f"push-cooldown:{user.pk}"
+            if not cache.add(key, 1, cooldown_seconds):
+                return 0
+        except Exception:  # noqa: BLE001 - never drop a ping because Redis hiccuped
+            logger.info("Push cooldown cache unavailable; sending anyway")
     payload = json.dumps({"title": title, "body": body, "url": url, "icon": icon, "badge": badge, "tag": tag})
     subscriptions = list(user.push_subscriptions.all())
     if not subscriptions:

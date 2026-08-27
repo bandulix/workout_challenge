@@ -280,12 +280,18 @@ def user_satisfies_order(order, user):
     return False
 
 
-def mark_order_complete(order, user):
+def mark_order_complete(order, user, workout=None):
     if order.completed_by.filter(pk=user.id).exists():
         return False
     if not user_satisfies_order(order, user):
         return False
     order.completed_by.add(user)
+    if workout is not None:
+        try:
+            from competition.scorer import grant_order_bonus
+            grant_order_bonus(workout, order.config.competition)
+        except Exception as exc:  # noqa: BLE001 - the ribbon still lands
+            logger.warning("Order bonus skipped for user %s: %s", user.pk, exc)
     return True
 
 
@@ -300,7 +306,7 @@ def evaluate_workout_game(workout, config):
     DailyOrder = apps.get_model("drill_instructor", "DailyOrder")
     order = DailyOrder.objects.filter(config=config, date=today).first()
     if order:
-        mark_order_complete(order, user)
+        mark_order_complete(order, user, workout=workout)
 
     # First Blood: first points-producing workout in this challenge.
     Points = apps.get_model("competition", "Points")
@@ -357,7 +363,11 @@ def evaluate_photo_game(photo_message):
     DailyOrder = apps.get_model("drill_instructor", "DailyOrder")
     order = DailyOrder.objects.filter(config=photo_message.config, date=today, kind="photo_proof").first()
     if order:
-        mark_order_complete(order, user)
+        workout = photo_message.workout
+        if workout is None and photo_message.parent_id:
+            parent = photo_message.parent
+            workout = getattr(parent, "workout", None) if parent is not None else None
+        mark_order_complete(order, user, workout=workout)
 
 
 def order_payload(order, request_user=None):

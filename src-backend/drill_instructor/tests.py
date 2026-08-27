@@ -1,5 +1,6 @@
 import base64
 import datetime
+import os
 import tempfile
 from unittest import mock
 
@@ -642,8 +643,8 @@ class PostInactivityNudgesTests(TestCase):
 
 
 class PostRandomPushesTests(TestCase):
-    """The random daily group push: 1-2 persona-voiced pep talks per day
-    at drawn random times, independent of activity."""
+    """The random daily group push: one persona-voiced pep talk per day
+    at a drawn random time, independent of activity."""
 
     def setUp(self):
         # Same plumbing stubs as the nudge tests: no Celery broker needed.
@@ -728,15 +729,16 @@ class PostRandomPushesTests(TestCase):
             self.config.refresh_from_db()
             self.assertEqual(self.config.push_plan, ["23:59"])
 
-    def test_max_two_per_day(self):
+    def test_max_one_per_day_even_if_two_slots_are_due(self):
         with mock.patch("drill_instructor.tasks._draw_push_plan", return_value=["00:00", "00:01"]):
             result = post_random_pushes()
-            self.assertEqual(result["posted"], 2)
+            self.assertEqual(result["posted"], 1)
 
-            # Even with both slots due, a re-run stays under the hard cap.
+            # A leftover two-slot plan (or a late first run) must not dump
+            # a second pep talk in the same breath, or later the same day.
             result = post_random_pushes()
             self.assertEqual(result["posted"], 0)
-            self.assertEqual(DrillInstructorMessage.objects.count(), 2)
+            self.assertEqual(DrillInstructorMessage.objects.count(), 1)
 
     def test_skips_when_toggle_disabled(self):
         self.config.random_push = False
@@ -782,14 +784,12 @@ class PostRandomPushesTests(TestCase):
 
 
 class DrawPushPlanTests(TestCase):
-    """The random slot draw itself: the min-1/max-2 guarantee and the
-    waking-hours window hold for every possible roll."""
+    """The random slot draw itself: exactly one waking-hours slot."""
 
-    def test_always_at_least_one_slot_max_two(self):
+    def test_always_exactly_one_slot(self):
         for _ in range(200):
             plan = _draw_push_plan()
-            self.assertGreaterEqual(len(plan), 1)
-            self.assertLessEqual(len(plan), 2)
+            self.assertEqual(len(plan), 1)
 
     def test_slots_within_waking_hours_and_sorted(self):
         for _ in range(200):
@@ -799,14 +799,6 @@ class DrawPushPlanTests(TestCase):
                 self.assertRegex(slot, r"^\d{2}:\d{2}$")
                 self.assertGreaterEqual(int(slot[:2]), 7)
                 self.assertLess(int(slot[:2]), 22)
-
-    def test_two_slots_kept_apart(self):
-        for _ in range(200):
-            plan = _draw_push_plan()
-            if len(plan) == 2:
-                first = int(plan[0][:2]) * 60 + int(plan[0][3:])
-                second = int(plan[1][:2]) * 60 + int(plan[1][3:])
-                self.assertGreaterEqual(second - first, 90)
 
 
 class RandomPushPeriodicTaskTests(TestCase):
@@ -2818,9 +2810,40 @@ class ArcadeGameTests(TestCase):
         w = self._workout(self.alex)
         evaluate_workout_game(w, self.config)
         self.assertTrue(order.completed_by.filter(pk=self.alex.id).exists())
+        from competition.models import Points
+        from competition.scorer import ORDER_AWARD_NAME, ORDER_BONUS_POINTS
+        bonus = Points.objects.get(workout=w, award__name=ORDER_AWARD_NAME)
+        self.assertEqual(float(bonus.points_capped), float(ORDER_BONUS_POINTS))
+        self.assertEqual(bonus.award.competition_id, self.competition.id)
         # idempotent
         evaluate_workout_game(w, self.config)
         self.assertEqual(order.completed_by.count(), 1)
+        self.assertEqual(
+            Points.objects.filter(workout=w, award__name=ORDER_AWARD_NAME).count(), 1,
+        )
+
+    def test_photo_proof_order_grants_bonus_on_the_activity(self):
+        from competition.models import Points
+        from competition.scorer import ORDER_AWARD_NAME, ORDER_BONUS_POINTS
+        from .game import evaluate_photo_game
+        from .models import DailyOrder
+        today = timezone.localdate()
+        order = DailyOrder.objects.create(
+            config=self.config, date=today, kind="photo_proof", spec={}, brief="Pic.",
+        )
+        w = self._workout(self.alex)
+        root = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
+            workout=w, body="Go.",
+        )
+        photo = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PHOTO,
+            user=self.alex, parent=root, workout=w, body="",
+        )
+        evaluate_photo_game(photo)
+        self.assertTrue(order.completed_by.filter(pk=self.alex.id).exists())
+        bonus = Points.objects.get(workout=w, award__name=ORDER_AWARD_NAME)
+        self.assertEqual(float(bonus.points_capped), float(ORDER_BONUS_POINTS))
 
     def test_close_order_sighs_at_slackers(self):
         from .models import DailyOrder
@@ -3401,6 +3424,23 @@ class LegendEchoTests(TestCase):
         war.refresh_from_db()
         self.assertEqual(war.status, EchoChallenge.STATUS_EXPIRED)
 
+    def test_expired_war_posts_to_the_feed(self):
+        from .echoes import expire_challenges, mint_echo, start_challenge
+        from .models import EchoChallenge
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        challenge = start_challenge(echo, self.nina)
+        EchoChallenge.objects.filter(pk=challenge.pk).update(
+            window_end=timezone.now() - datetime.timedelta(minutes=1),
+        )
+        expire_challenges()
+        held = [
+            m.body.lower()
+            for m in DrillInstructorMessage.objects.filter(
+                config=self.config, kind=DrillInstructorMessage.KIND_ECHO,
+            )
+        ]
+        self.assertTrue(any("still holds" in body or "echo stands" in body for body in held))
+
     def test_cannot_challenge_after_the_season(self):
         from .echoes import mint_echo, start_challenge
         echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
@@ -3444,6 +3484,63 @@ class LegendEchoTests(TestCase):
         no_book = self.client.get("/api/drill-instructor/echoes/book/", {"competition": self.competition.id})
         self.assertEqual(no_book.status_code, 404)
 
+    def test_owner_deletes_echo_wars_and_art(self):
+        from django.core.files.base import ContentFile
+        from .echoes import mint_echo, start_challenge
+        from .models import EchoChallenge, LegendEcho
+
+        media = tempfile.TemporaryDirectory()
+        self.addCleanup(media.cleanup)
+        media_override = override_settings(MEDIA_ROOT=media.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        echo.image.save("echo-art.png", ContentFile(PNG_1PX), save=True)
+        art_path = echo.image.path
+        start_challenge(echo, self.nina)
+        self.assertTrue(EchoChallenge.objects.filter(echo=echo).exists())
+
+        self.client.force_authenticate(self.nina)
+        denied = self.client.delete(f"/api/drill-instructor/echoes/{echo.id}/")
+        self.assertEqual(denied.status_code, 403)
+        self.assertTrue(LegendEcho.objects.filter(pk=echo.id).exists())
+
+        self.client.force_authenticate(self.outsider)
+        hidden = self.client.delete(f"/api/drill-instructor/echoes/{echo.id}/")
+        self.assertEqual(hidden.status_code, 404)
+
+        self.client.force_authenticate(self.owner)
+        listed = self.client.get("/api/drill-instructor/echoes/", {"competition": self.competition.id})
+        self.assertTrue(listed.json()[0]["can_delete"])
+        gone = self.client.delete(f"/api/drill-instructor/echoes/{echo.id}/")
+        self.assertEqual(gone.status_code, 204)
+        self.assertFalse(LegendEcho.objects.filter(pk=echo.id).exists())
+        self.assertFalse(EchoChallenge.objects.filter(echo_id=echo.id).exists())
+        self.assertFalse(os.path.exists(art_path))
+
+    def test_echoes_with_art_list_first(self):
+        from django.core.files.base import ContentFile
+        from .echoes import mint_echo
+
+        media = tempfile.TemporaryDirectory()
+        self.addCleanup(media.cleanup)
+        media_override = override_settings(MEDIA_ROOT=media.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+        weaker = mint_echo(self._workout(self.nina, minutes=45), self.config)
+        stronger = mint_echo(self._workout(self.alex, minutes=95), self.config)
+        self.assertGreater(stronger.power, weaker.power)
+        weaker.image.save("nina-echo.png", ContentFile(PNG_1PX), save=True)
+
+        self.client.force_authenticate(self.alex)
+        listed = self.client.get("/api/drill-instructor/echoes/", {"competition": self.competition.id})
+        self.assertEqual(listed.status_code, 200, listed.content)
+        ids = [row["id"] for row in listed.json()]
+        self.assertEqual(ids[0], weaker.id)
+        self.assertIn(stronger.id, ids)
+
     def test_echo_windows_periodic_task_seeded(self):
         from django_celery_beat.models import PeriodicTask
         task = PeriodicTask.objects.get(name="drill_instructor_echo_windows")
@@ -3478,6 +3575,11 @@ class LegendEchoTests(TestCase):
         self.assertTrue(body["can_upload_art"])
         self.assertTrue(body["image"])
         queued.assert_called_once_with(echo.id, uploaded_by_id=self.alex.id)
+        art_posts = DrillInstructorMessage.objects.filter(
+            config=self.config, kind=DrillInstructorMessage.KIND_ECHO,
+        ).exclude(image="")
+        self.assertTrue(art_posts.exists())
+        self.assertIn("picture", art_posts.latest("posted_at").body.lower())
         echo = LegendEcho.objects.get(pk=echo.id)
         self.assertTrue(echo.image)
 
