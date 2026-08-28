@@ -228,6 +228,16 @@ def get_competition_stats(competition, last_seven_days=False):
         row["workout__user__id"]: int(row["n"])
         for row in all_points.values("workout__user__id").annotate(n=Count("workout", distinct=True))
     }
+    sport_n = {}
+    for row in (
+        all_points.exclude(workout__sport_type="Steps")
+        .values("workout__user__id", "workout__sport_type")
+        .annotate(n=Count("workout", distinct=True))
+    ):
+        uid = row["workout__user__id"]
+        sport = row["workout__sport_type"]
+        if uid and sport:
+            sport_n.setdefault(uid, {})[sport] = int(row["n"])
 
     def _day_total(per_day, days_ago):
         cell = per_day.get(days_ago)
@@ -252,6 +262,8 @@ def get_competition_stats(competition, last_seven_days=False):
         value["workouts"] = int(workout_n.get(uid, 0))
         value["active_days"] = sum(1 for d in days if _day_total(days, d) > 0)
         value["streak"] = _streak(days)
+        counts = sport_n.get(uid, {})
+        value["sports"] = dict(sorted(counts.items(), key=lambda kv: -kv[1])[:4])
 
     # Get user rankings
     leaderboard_user = (
@@ -317,3 +329,61 @@ def get_competition_stats(competition, last_seven_days=False):
         }
     }
     return response_obj
+
+
+def get_competition_rank_summary(competition_id, user_id):
+    """Tiny Home payload: my rank / team rank, not the season snapshot."""
+    Competition = apps.get_model("competition", "Competition")
+    Points = apps.get_model("competition", "Points")
+    Team = apps.get_model("competition", "Team")
+    try:
+        comp = Competition.objects.only("start_date", "has_teams").get(pk=competition_id)
+    except Competition.DoesNotExist:
+        return None
+    totals = list(
+        Points.objects.filter(Q(award__competition_id=competition_id) | Q(goal__competition_id=competition_id))
+        .values("workout__user")
+        .annotate(total=Sum("points_capped"))
+        .order_by("-total")
+    )
+    my_rank = None
+    my_points = 0.0
+    rank = 0
+    last = None
+    for idx, row in enumerate(totals, start=1):
+        if row["total"] != last:
+            rank = idx
+            last = row["total"]
+        if row["workout__user"] == user_id:
+            my_rank = rank
+            my_points = float(row["total"] or 0)
+            break
+    team_rank = None
+    if comp.has_teams:
+        team = Team.objects.filter(competition_id=competition_id, user__id=user_id).first()
+        if team is not None:
+            team_totals = []
+            for t in Team.objects.filter(competition_id=competition_id).prefetch_related("user"):
+                member_ids = {u.id for u in t.user.all()}
+                pts = sum(float(r["total"] or 0) for r in totals if r["workout__user"] in member_ids)
+                active = sum(1 for r in totals if r["workout__user"] in member_ids and (r["total"] or 0) > 0)
+                team_totals.append((t.id, pts / max(1, active)))
+            team_totals.sort(key=lambda x: -x[1])
+            tr = 0
+            last_v = None
+            for idx, (tid, val) in enumerate(team_totals, start=1):
+                if val != last_v:
+                    tr = idx
+                    last_v = val
+                if tid == team.id:
+                    team_rank = tr
+                    break
+    start_count = (datetime.date.today() - comp.start_date).days
+    return {
+        "my_rank": my_rank,
+        "my_points": my_points,
+        "team_rank": team_rank,
+        "started": start_count >= 0,
+        "start_date_count": start_count,
+        "has_teams": comp.has_teams,
+    }

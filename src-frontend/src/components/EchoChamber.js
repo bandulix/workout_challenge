@@ -2,7 +2,7 @@ import React, {useEffect, useRef, useState} from "react";
 import {Camera, Crown, ScrollText, Share2, Swords, Trash2} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {useDispatch} from "react-redux";
-import {PaneHead, paneCardClass} from "./uiBits";
+import {FullImageSheet, PaneHead, paneCardClass} from "./uiBits";
 import {useProtectedImage} from "../utils/protectedMedia";
 import {compressImage} from "../utils/imageCompress";
 import {isAcceptablePhoto, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
@@ -16,7 +16,6 @@ import {
 } from "../utils/reducers/drillInstructorSlice";
 import usePollingInterval from "../utils/usePollingInterval";
 import {confirmAction, notice} from "../utils/dialogs";
-import {OverlaySheet} from "../forms/basicComponents";
 
 function formatCountdown(iso, now) {
     if (!iso) return "";
@@ -49,7 +48,7 @@ const STATUS_TONE = {
 };
 
 function EchoArt({url, title, canUpload, echoId}) {
-    const {src} = useProtectedImage(url);
+    const {src} = useProtectedImage(url, "card");
     const [uploadArt] = useUploadEchoArtMutation();
     const dispatch = useDispatch();
     const fileInput = useRef(null);
@@ -136,11 +135,9 @@ function EchoArt({url, title, canUpload, echoId}) {
                 <input ref={fileInput} type="file" accept="image/*,image/heic,image/heif" className="hidden"
                        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; send(f); }}/>
             </div>
-            {lightbox && src && (
-                <OverlaySheet title={title || "Echo"} onClose={() => setLightbox(false)} zClass="z-[70]">
-                    <img src={src} alt={title || "Echo art"}
-                         className="mx-auto max-h-[70vh] w-full rounded-2xl object-contain"/>
-                </OverlaySheet>
+            {lightbox && (
+                <FullImageSheet url={url} title={title || "Echo"} fallback={src}
+                                onClose={() => setLightbox(false)} zClass="z-[70]"/>
             )}
         </>
     );

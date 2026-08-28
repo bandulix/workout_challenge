@@ -132,3 +132,13 @@ class SendPushCooldownTests(TestCase):
         self.assertEqual(first, 1)
         self.assertEqual(second, 1)
         self.assertEqual(send.call_count, 2)
+
+
+class PushEndpointAllowlistTests(TestCase):
+    def test_known_hosts_and_ssrf_bypass(self):
+        from .views import _push_endpoint_allowed
+        self.assertTrue(_push_endpoint_allowed("https://fcm.googleapis.com/fcm/send/abc"))
+        self.assertTrue(_push_endpoint_allowed("https://web.push.apple.com/foo"))
+        self.assertFalse(_push_endpoint_allowed("https://attacker.example/.push.notifications.apple.com/hook"))
+        self.assertFalse(_push_endpoint_allowed("http://fcm.googleapis.com/x"))
+        self.assertFalse(_push_endpoint_allowed("https://user:pass@fcm.googleapis.com/x"))

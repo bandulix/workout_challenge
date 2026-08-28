@@ -1,5 +1,6 @@
 import base64
 import datetime
+import json
 import tempfile
 from unittest import mock
 
@@ -1623,4 +1624,77 @@ class EmailVerifyFlowTests(TestCase):
         self.assertEqual(user.email, "moved@example.com")
         self.assertFalse(user.is_verified)
         queued.assert_called()
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+    REGISTRATION_TOKEN="",
+)
+class SignupPrivacyAndAdminTests(TestCase):
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.verify_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.client = APIClient()
+
+    def test_duplicate_email_does_not_name_the_field(self):
+        CustomUser.objects.create_user(
+            email="taken@example.com", password="test-pw", first_name="Ann", last_name="",
+        )
+        response = self.client.post("/api/user/", {
+            "email": "Taken@example.com",
+            "first_name": "Bob",
+            "last_name": "",
+            "password": "Sup3r-Secret!Pass",
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertNotIn("already exists", json.dumps(body).lower())
+        self.assertIn("email", body)
+
+    def test_usernames_are_deduped(self):
+        a = CustomUser.objects.create_user(
+            email="one@example.com", password="test-pw", first_name="Alex", last_name="",
+        )
+        b = CustomUser.objects.create_user(
+            email="two@example.com", password="test-pw", first_name="Alex", last_name="",
+        )
+        self.assertEqual(a.username, "Alex")
+        self.assertEqual(b.username, "Alex 2")
+
+    @override_settings(REGISTRATION_TOKEN="secret-invite")
+    def test_closed_registration_does_not_auto_promote(self):
+        user = CustomUser.objects.create_user(
+            email="first@example.com", password="test-pw", first_name="Fay", last_name="",
+        )
+        self.assertFalse(user.is_staff)
+        self.assertFalse(user.is_superuser)
+
+
+class ClientIpThrottleTests(TestCase):
+    def test_loopback_uses_x_real_ip(self):
+        from custom_user.throttles import client_ip
+        req = mock.Mock()
+        req.META = {"REMOTE_ADDR": "127.0.0.1", "HTTP_X_REAL_IP": "203.0.113.9"}
+        self.assertEqual(client_ip(req), "203.0.113.9")
+
+    def test_direct_client_ignores_xff(self):
+        from custom_user.throttles import client_ip
+        req = mock.Mock()
+        req.META = {
+            "REMOTE_ADDR": "203.0.113.9",
+            "HTTP_X_FORWARDED_FOR": "198.51.100.1",
+        }
+        self.assertEqual(client_ip(req), "203.0.113.9")
+
+
+class TokenCryptoTests(TestCase):
+    def test_corrupt_fernet_does_not_fail_open(self):
+        from custom_user.token_crypto import decrypt_token
+        self.assertEqual(decrypt_token("gAAAA-not-a-real-token"), "")
+        self.assertEqual(decrypt_token("legacy-plaintext-token"), "legacy-plaintext-token")
 

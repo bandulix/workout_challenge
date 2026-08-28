@@ -982,6 +982,37 @@ class CoachThreadReplyTests(TestCase):
         self.assertTrue(replies[1]["is_coach"])
         self.assertEqual(replies[0]["author_name"], "Alex")
 
+    def test_list_limit_returns_a_page(self):
+        extra = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PUSH, body="later",
+        )
+        extra.posted_at = self.root.posted_at + datetime.timedelta(seconds=1)
+        extra.save(update_fields=["posted_at"])
+        self.client.force_authenticate(self.athlete)
+        page = self.client.get("/api/drill-instructor/message/?limit=1&offset=0").json()
+        self.assertEqual(page["count"], 2)
+        self.assertEqual(page["limit"], 1)
+        self.assertEqual(len(page["results"]), 1)
+        self.assertEqual(page["results"][0]["id"], extra.id)
+        self.assertEqual(page["results"][0]["points_breakdown"], [])
+        page2 = self.client.get("/api/drill-instructor/message/?limit=1&offset=1").json()
+        self.assertEqual(page2["results"][0]["id"], self.root.id)
+
+    def test_list_without_limit_stays_an_array(self):
+        self.client.force_authenticate(self.athlete)
+        payload = self.client.get("/api/drill-instructor/message/").json()
+        self.assertIsInstance(payload, list)
+
+    def test_reply_busts_paginated_list_cache(self):
+        self.client.force_authenticate(self.athlete)
+        url = f"/api/drill-instructor/message/?competition={self.competition.id}&limit=15&offset=0"
+        first = self.client.get(url).json()
+        self.assertEqual(first["results"][0]["replies"], [])
+        self._reply(self.athlete)
+        again = self.client.get(url).json()
+        bodies = [r["body"] for r in again["results"][0]["replies"]]
+        self.assertIn("Sarge, I already ran 10k today!", bodies)
+
     def test_switching_coach_does_not_rewrite_old_message_pictures(self):
         # Historical bubbles keep the persona that posted them.
         self.assertEqual(self.root.persona_id, self.persona.id)
@@ -1804,7 +1835,8 @@ class PhotoPostTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["X-Accel-Redirect"], f"/protected-media/{message.image.name}")
         self.assertIn("private", response["Cache-Control"])
-        self.assertIn("no-store", response["Cache-Control"])
+        self.assertIn("max-age", response["Cache-Control"])
+        self.assertTrue(response.has_header("ETag"))
         self.assertIn("noindex", response["X-Robots-Tag"])
         self.assertEqual(response["Cross-Origin-Resource-Policy"], "same-origin")
 
@@ -1818,6 +1850,25 @@ class PhotoPostTests(TestCase):
         message = self._photo_message()
         response = self.client.get(f"/api/drill-instructor/message/{message.id}/picture/")
         self.assertEqual(response.status_code, 401)
+
+    def test_picture_etag_304(self):
+        message = self._photo_message()
+        self.client.force_authenticate(self.owner)
+        first = self.client.get(f"/api/drill-instructor/message/{message.id}/picture/")
+        etag = first["ETag"]
+        again = self.client.get(
+            f"/api/drill-instructor/message/{message.id}/picture/",
+            HTTP_IF_NONE_MATCH=etag,
+        )
+        self.assertEqual(again.status_code, 304)
+
+    def test_picture_card_size_is_jpeg(self):
+        message = self._photo_message()
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(f"/api/drill-instructor/message/{message.id}/picture/?size=card")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/jpeg")
+        self.assertTrue(response["X-Accel-Redirect"].endswith(".jpg"))
 
     # ---- the coach's reaction task --------------------------------------
 

@@ -1,14 +1,16 @@
+import datetime
 import logging
 
 from django.db.models import Q
 from django.core.exceptions import PermissionDenied
+from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from django.core.cache import cache
-from rest_framework.throttling import ScopedRateThrottle
+from custom_user.throttles import ClientIPScopedThrottle
 from rest_framework.permissions import BasePermission
 
 from django.db.models import Sum
@@ -20,7 +22,7 @@ from custom_user.models import CustomUser
 from custom_user.point_recalc import recalc_points
 from .models import Competition, Team, ActivityGoal, Points
 from .serializers import CompetitionSerializer, TeamSerializer, ActivityGoalSerializer, PointsSerializer
-from .stats import get_competition_stats
+from .stats import get_competition_stats, get_competition_rank_summary
 
 from celery import current_app
 import json
@@ -34,7 +36,7 @@ class CompetitionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # return all competitions the user is owner of or a participant of
         #time.sleep(3)  # throttle for testing
-        return Competition.objects.filter(Q(owner=self.request.user) | Q(user=self.request.user)).distinct().prefetch_related('user').order_by('-end_date', '-start_date', '-id')
+        return Competition.objects.filter(Q(owner=self.request.user) | Q(user=self.request.user)).distinct().prefetch_related('user', 'activitygoal_set').order_by('-end_date', '-start_date', '-id')
 
     def perform_create(self, serializer):
         # when creating a new competition, set the owner to the request user
@@ -283,6 +285,22 @@ class CompetitionStatsQueryView(APIView):
         return Response(response_obj)
 
 
+class CompetitionStatsSummaryView(APIView):
+    permission_classes = [StatsPermissions]
+    STATS_CACHE_TTL = 30
+
+    def get(self, request, competition):
+        generation = cache.get(f"stats-generation:{competition}", 0)
+        cache_key = f"competition-summary:{competition}:{request.user.id}:gen{generation}"
+        payload = cache.get(cache_key)
+        if payload is None:
+            payload = get_competition_rank_summary(competition, request.user.id)
+            if payload is None:
+                return Response({"detail": "Competition not found."}, status=status.HTTP_404_NOT_FOUND)
+            cache.set(cache_key, payload, self.STATS_CACHE_TTL)
+        return Response(payload)
+
+
 class FeedPermissions(BasePermission):
     def has_permission(self, request, view):
         if not request.user.is_authenticated:
@@ -294,6 +312,121 @@ class FeedPermissions(BasePermission):
         ).exists()
 
 
+def _feed_index(competition):
+    """Ordered workout ids + sport counts. Cheap to cache vs full rows."""
+    from django.db.models import Max
+
+    generation = cache.get(f"stats-generation:{competition}", 0)
+    key = f"competition-feed-idx:{competition}:g{generation}"
+    idx = cache.get(key)
+    if idx is not None:
+        return idx
+    rows = (
+        Points.objects
+        .filter(Q(award__competition_id=competition) | Q(goal__competition_id=competition))
+        .exclude(workout_id=None)
+        .values("workout")
+        .annotate(
+            start=Max("workout__start_datetime"),
+            duration=Max("workout__duration"),
+            steps=Max("workout__steps"),
+            sport=Max("workout__sport_type"),
+        )
+        .order_by("-start", "-steps", "-duration", "-workout")
+    )
+    ids = []
+    sports = {}
+    workout_count = 0
+    for row in rows:
+        ids.append(row["workout"])
+        sport = row["sport"]
+        if sport and sport != "Steps":
+            workout_count += 1
+            sports[sport] = sports.get(sport, 0) + 1
+    idx = {
+        "ids": ids,
+        "workout_count": workout_count,
+        "sport_groups": dict(sorted(sports.items(), key=lambda kv: -kv[1])[:4]),
+    }
+    cache.set(key, idx, FeedQueryView.FEED_CACHE_TTL)
+    return idx
+
+
+def _feed_rows_for_ids(competition, workout_ids):
+    if not workout_ids:
+        return []
+    import hashlib
+    generation = cache.get(f"stats-generation:{competition}", 0)
+    sig = hashlib.sha1(",".join(str(w) for w in workout_ids).encode()).hexdigest()[:16]
+    page_key = f"competition-feed-page:{competition}:g{generation}:{sig}"
+    cached = cache.get(page_key)
+    if cached is not None:
+        return cached
+    all_points = Points.objects.filter(
+        Q(award__competition_id=competition) | Q(goal__competition_id=competition),
+        workout_id__in=workout_ids,
+    ).order_by("-workout__start_datetime", "-workout__steps", "-workout__duration", "-workout", "-workout__user")
+    grouped = {
+        i["workout"]: i
+        for i in all_points.values(
+            "workout__user", "workout__user__username", "workout__user__strava_allow_follow",
+            "workout__user__profile_picture", "workout", "workout__sport_type",
+            "workout__start_datetime", "workout__duration", "workout__steps",
+            "workout__strava_id", "award",
+        ).annotate(points_capped=Sum("points_capped"), points_raw=Sum("points_raw"))
+    }
+    for row in grouped.values():
+        pic = row.pop("workout__user__profile_picture", None)
+        uid = row.get("workout__user")
+        row["workout__user__profile_picture"] = f"/api/user/{uid}/picture/" if pic and uid else None
+    for i in all_points.values("workout", "id", "goal", "goal__name", "award", "award__name", "points_capped", "points_raw"):
+        grouped.setdefault(i["workout"], {}).setdefault("details", []).append(i)
+    try:
+        from drill_instructor.models import DailyOrder
+        today = timezone.localdate()
+        order = DailyOrder.objects.filter(config__competition_id=competition, date=today).prefetch_related("completed_by").first()
+        completers = set(order.completed_by.values_list("id", flat=True)) if order else set()
+        for row in grouped.values():
+            uid = row.get("workout__user")
+            start = row.get("workout__start_datetime")
+            on_today = False
+            if start is not None:
+                d = start.date() if hasattr(start, "date") else None
+                on_today = d == today
+            row["order_ribbon"] = bool(uid in completers and on_today)
+    except Exception:
+        for row in grouped.values():
+            row["order_ribbon"] = False
+    by_id = grouped
+    rows = [by_id[wid] for wid in workout_ids if wid in by_id]
+    cache.set(page_key, rows, FeedQueryView.FEED_CACHE_TTL)
+    return rows
+
+
+def _my_goal_points(competition, user):
+    now = timezone.localtime()
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today - datetime.timedelta(days=today.weekday())
+    month_start = today.replace(day=1)
+    year_start = today.replace(month=1, day=1)
+    period_q = (
+        Q(goal__period="day", workout__start_datetime__gte=today)
+        | Q(goal__period="week", workout__start_datetime__gte=week_start)
+        | Q(goal__period="month", workout__start_datetime__gte=month_start)
+        | Q(goal__period="year", workout__start_datetime__gte=year_start)
+        | Q(goal__period="competition")
+        | ~Q(goal__period__in=["day", "week", "month", "year", "competition"])
+    )
+    mine = (
+        Points.objects
+        .filter(goal__competition_id=competition, workout__user=user)
+        .filter(period_q)
+        .values("goal_id")
+        .annotate(total=Sum("points_capped"))
+    )
+    return {str(row["goal_id"]): float(row["total"] or 0) for row in mine if row["goal_id"]}
+
+
 class FeedQueryView(APIView):
     """ API view to get the activity/point feed for a competition. """
     permission_classes = [FeedPermissions]
@@ -301,56 +434,37 @@ class FeedQueryView(APIView):
     FEED_CACHE_TTL = 30  # seconds - burst absorption between changes
 
     def get(self, request, competition):
-        # Same generation key as the stats view: workout/point changes
-        # bump the generation, making old snapshots unreachable within
-        # seconds; between changes the short TTL absorbs poll bursts.
-        # (The feed rescans the competition's whole Points table twice -
-        # too expensive to run uncached on every 60-90s poll.)
-        generation = cache.get(f"stats-generation:{competition}", 0)
-        cache_key = f"competition-feed:{competition}:gen{generation}"
-        response_obj = cache.get(cache_key)
-        if response_obj is None:
-            all_points = Points.objects.filter(Q(award__competition__id=competition) | Q(goal__competition_id=competition)).order_by('-workout__start_datetime', '-workout__steps', '-workout__duration', '-workout', '-workout__user')
+        idx = _feed_index(competition)
+        ids = idx["ids"]
+        limit_raw = request.query_params.get("limit")
+        if limit_raw is None:
+            return Response(_feed_rows_for_ids(competition, ids))
 
-            grouped_points = {i['workout']: i for i in all_points.values('workout__user', 'workout__user__username', 'workout__user__strava_allow_follow', 'workout__user__profile_picture', 'workout', 'workout__sport_type', 'workout__start_datetime', 'workout__duration', 'workout__steps', 'workout__strava_id', 'award').annotate(points_capped=Sum('points_capped'), points_raw=Sum('points_raw')).order_by('-workout__start_datetime', '-workout__duration', '-workout', '-workout__user')}
-            for row in grouped_points.values():
-                pic = row.pop('workout__user__profile_picture', None)
-                uid = row.get('workout__user')
-                row['workout__user__profile_picture'] = f"/api/user/{uid}/picture/" if pic and uid else None
-
-            for i in all_points.values('workout', 'id', 'goal', 'goal__name', 'award', 'award__name', 'points_capped', 'points_raw'):
-                if 'details' not in grouped_points[i['workout']]:
-                    grouped_points[i['workout']]['details'] = []
-                grouped_points[i['workout']]['details'].append(i)
-
-            response_obj = list(grouped_points.values())
-            try:
-                from django.utils import timezone as dj_tz
-                from drill_instructor.models import DailyOrder
-                today = dj_tz.localdate()
-                order = DailyOrder.objects.filter(config__competition_id=competition, date=today).prefetch_related("completed_by").first()
-                completers = set(order.completed_by.values_list("id", flat=True)) if order else set()
-                for row in response_obj:
-                    uid = row.get("workout__user")
-                    start = row.get("workout__start_datetime")
-                    on_today = False
-                    if start is not None:
-                        d = start.date() if hasattr(start, "date") else None
-                        on_today = d == today
-                    row["order_ribbon"] = bool(uid in completers and on_today)
-            except Exception:
-                for row in response_obj:
-                    row["order_ribbon"] = False
-            cache.set(cache_key, response_obj, self.FEED_CACHE_TTL)
-
-        return Response(response_obj)
+        try:
+            limit = max(1, min(int(limit_raw), 50))
+        except (TypeError, ValueError):
+            limit = 15
+        try:
+            offset = max(0, int(request.query_params.get("offset") or 0))
+        except (TypeError, ValueError):
+            offset = 0
+        page_ids = ids[offset:offset + limit]
+        return Response({
+            "count": len(ids),
+            "offset": offset,
+            "limit": limit,
+            "results": _feed_rows_for_ids(competition, page_ids),
+            "my_goal_points": _my_goal_points(competition, request.user),
+            "workout_count": idx["workout_count"],
+            "sport_groups": idx["sport_groups"],
+        })
 
 
 
 class JoinCompetitionView(APIView):
     """ API post view for users to join a competition. """
     permission_classes = [IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIPScopedThrottle]
     throttle_scope = 'join'
 
     def post(self, request, join_code):
@@ -391,7 +505,7 @@ class JoinCompetitionView(APIView):
 class JoinTeamView(APIView):
     """ API post view for users to join a team and make sure they are only a member of one team per competition. """
     permission_classes = [IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIPScopedThrottle]
     throttle_scope = "join"
 
     def post(self, request):

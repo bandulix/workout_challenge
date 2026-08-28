@@ -1,9 +1,8 @@
 import React, {useState} from "react";
 import {Megaphone, ScrollText, Trophy} from "lucide-react";
-import {BoxSection} from "../utils/miscellaneous";
 import {useProtectedImage} from "../utils/protectedMedia";
-import {SectionHead} from "./uiBits";
-import {Modal, OverlaySheet} from "../forms/basicComponents";
+import {FullImageSheet, PaneHead, paneCardClass} from "./uiBits";
+import {OverlaySheet} from "../forms/basicComponents";
 
 const HALL_PREVIEW = 3;
 
@@ -200,9 +199,9 @@ export function SquadOrbit({mood, children, showCaption = true, accent}) {
 export function OrderCard({order}) {
     if (!order) return null;
     return (
-        <BoxSection>
-            <SectionHead title="Order of the day" hint={order.competition_name}/>
-            <div className="mt-3 rounded-2xl glass-inset border-volt-500/50 dark:border-volt-400/40 p-4">
+        <div>
+            <PaneHead title="Order of the day" hint={order.competition_name}/>
+            <article className={paneCardClass}>
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400 flex items-center gap-1.5">
                     <ScrollText className="h-3.5 w-3.5"/> Sealed order · {order.date}
                 </p>
@@ -223,33 +222,39 @@ export function OrderCard({order}) {
                         </span>
                     )}
                 </div>
-            </div>
-        </BoxSection>
+            </article>
+        </div>
     );
 }
 
 function HallFrame({card, place, onOpen, compact = false}) {
-    const {src} = useProtectedImage(card.image);
+    const {src} = useProtectedImage(card.image, "card");
+    const hot = card.hot_votes || 0;
     return (
-        <div className="min-w-0 flex-1">
-            <button type="button" onClick={() => src && onOpen(src)}
-                    className="block w-full text-left">
-                <div className="relative rounded-xl p-1 bg-gradient-to-br from-yellow-500 via-amber-200 to-yellow-700 shadow-card">
+        <article className="min-w-0 rounded-3xl glass-card overflow-hidden text-ink-950 dark:text-white">
+            <button type="button" onClick={() => src && onOpen(card.image)}
+                    className="block w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
+                <div className="relative">
                     {src ? (
-                        <img src={src} alt="" className={(compact ? "h-28" : "h-36") + " w-full object-cover rounded-lg"}/>
+                        <img src={src} alt=""
+                             className={(compact ? "h-28" : "h-36") + " w-full object-cover"}/>
                     ) : (
-                        <div className={(compact ? "h-28" : "h-36") + " rounded-lg bg-gray-200 dark:bg-ink-900"}/>
+                        <div className={(compact ? "h-28" : "h-36") + " bg-ink-950/40 dark:bg-ink-900 flex items-center justify-center"}>
+                            <Trophy className="h-7 w-7 text-volt-400/50"/>
+                        </div>
                     )}
-                    <span className="absolute top-2 left-2 rounded-full bg-ink-950/80 text-volt-400 text-[10px] font-extrabold px-2 py-0.5">
+                    <span className="absolute top-2 left-2 rounded-full bg-ink-950/75 text-volt-400 text-[10px] font-extrabold px-2 py-0.5">
                         #{place}
                     </span>
                 </div>
+                <div className="px-2.5 py-2">
+                    <p className="text-[12px] font-bold truncate">{card.athlete_name || "Athlete"}</p>
+                    <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                        {hot} hot
+                    </p>
+                </div>
             </button>
-            <p className="mt-1.5 text-xs text-gray-500 truncate">
-                {card.hot_votes || 0} hot
-                {card.athlete_name ? ` · ${card.athlete_name}` : ""}
-            </p>
-        </div>
+        </article>
     );
 }
 
@@ -262,19 +267,21 @@ export function HallOfRoasts({cards}) {
 
     if (list.length === 0) {
         return (
-            <BoxSection>
-                <SectionHead title="Hall of roasts" hint="Hottest remixed photos"/>
-                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                    Empty for now. Post a photo under a workout — the coach remixes it, and the hottest shots land here.
-                </p>
-            </BoxSection>
+            <div>
+                <PaneHead title="Hall of roasts" hint="Hottest remixed photos"/>
+                <article className={paneCardClass}>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                        Empty for now. Post a photo under a workout — the coach remixes it, and the hottest shots land here.
+                    </p>
+                </article>
+            </div>
         );
     }
     return (
-        <BoxSection>
-            <SectionHead title="Hall of roasts"
-                         hint={list.length > HALL_PREVIEW ? `Top ${HALL_PREVIEW} of ${list.length}` : "Hottest remixed photos"}/>
-            <div className="mt-3 flex gap-3">
+        <div>
+            <PaneHead title="Hall of roasts"
+                      hint={list.length > HALL_PREVIEW ? `Top ${HALL_PREVIEW} of ${list.length}` : "Hottest remixed photos"}/>
+            <div className="grid grid-cols-3 gap-3">
                 {preview.map((c, i) => (
                     <HallFrame key={c.id} card={c} place={i + 1} onOpen={setFullSrc}/>
                 ))}
@@ -286,21 +293,18 @@ export function HallOfRoasts({cards}) {
                 </button>
             )}
             {showAll && (
-                <Modal title="Hall of roasts" setShowModal={setShowAll}>
+                <OverlaySheet title="Hall of roasts" onClose={() => setShowAll(false)} zClass="z-[70]">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {list.map((c, i) => (
                             <HallFrame key={c.id} card={c} place={i + 1} onOpen={setFullSrc} compact/>
                         ))}
                     </div>
-                </Modal>
-            )}
-            {fullSrc && (
-                <OverlaySheet title="Roast" onClose={() => setFullSrc(null)} zClass="z-[70]">
-                    <img src={fullSrc} alt=""
-                         className="mx-auto max-h-[70vh] w-full rounded-2xl object-contain"/>
                 </OverlaySheet>
             )}
-        </BoxSection>
+            {fullSrc && (
+                <FullImageSheet url={fullSrc} title="Roast" onClose={() => setFullSrc(null)} zClass="z-[80]"/>
+            )}
+        </div>
     );
 }
 

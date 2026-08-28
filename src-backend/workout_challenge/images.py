@@ -1,5 +1,6 @@
 """Shared upload validation: trust pixels, not the client Content-Type."""
 
+import hashlib
 from io import BytesIO
 from pathlib import Path as _Path
 
@@ -121,36 +122,177 @@ class ProtectedMediaRenderer(BaseRenderer):
         return data if data is not None else b""
 
 
-def protected_media_response(file_field):
-    """Authenticated-picture response: stream in DEBUG, X-Accel otherwise.
+PICTURE_MAX_AGE = 86400
+CARD_MAX_SIDE = 800
+AVATAR_MAX_SIDE = 256
+CARD_JPEG_QUALITY = 70
+AVATAR_JPEG_QUALITY = 72
 
-    Rejects path-traversal in the stored name so a poisoned ImageField
-    cannot point nginx's internal alias outside MEDIA_ROOT.
-    """
-    from django.conf import settings
 
-    from urllib.parse import quote
-
-    name = (getattr(file_field, "name", "") or "").replace("\\", "/")
+def _safe_media_name(name):
+    name = (name or "").replace("\\", "/")
     parts = name.split("/")
     if not name or name.startswith("/") or any(p in ("", ".", "..") for p in parts):
         raise Http404("No file.")
+    return name
 
-    content_type = (
+
+def _content_type_for(name):
+    return (
         {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
         .get(_Path(name).suffix.lower())
         or "application/octet-stream"
     )
-    if settings.DEBUG:
-        response = FileResponse(file_field.open("rb"), content_type=content_type)
-    else:
-        response = HttpResponse(content_type=content_type)
-        response["X-Accel-Redirect"] = "/protected-media/" + quote(name, safe="/")
-    response["Cache-Control"] = "private, no-store"
+
+
+def _file_etag(file_field, variant="full"):
+    name = getattr(file_field, "name", "") or ""
+    try:
+        mtime = file_field.storage.get_modified_time(name).timestamp()
+    except Exception:
+        mtime = 0
+    return hashlib.md5(f"{name}:{mtime}:{variant}".encode()).hexdigest()
+
+
+def _etag_matches(header, etag):
+    if not header:
+        return False
+    want = etag.strip().strip('"')
+    for part in header.split(","):
+        token = part.strip()
+        if token.startswith("W/"):
+            token = token[2:].strip()
+        token = token.strip('"')
+        if token == want:
+            return True
+    return False
+
+
+THUMB_CAP = 200
+
+
+def _prune_thumbs(folder):
+    try:
+        files = [p for p in folder.glob("*.jpg") if p.is_file() and ".tmp." not in p.name]
+    except OSError:
+        return
+    extra = len(files) - THUMB_CAP
+    if extra <= 0:
+        return
+    files.sort(key=lambda p: p.stat().st_mtime)
+    for path in files[:extra]:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
+def _thumb_rel(file_field, variant, max_side, quality):
+    """JPEG derivative cached under MEDIA_ROOT/thumbs/."""
+    import os
+    import tempfile
+    from django.conf import settings
+    from PIL import Image, ImageOps
+
+    etag = _file_etag(file_field, variant)
+    rel = f"thumbs/{etag}.jpg"
+    dest = _Path(settings.MEDIA_ROOT) / rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists() and dest.stat().st_size > 0:
+        return rel
+    fd, tmp_name = tempfile.mkstemp(prefix=f"{etag}.", suffix=".jpg", dir=dest.parent)
+    os.close(fd)
+    tmp = _Path(tmp_name)
+    try:
+        file_field.open("rb")
+        with Image.open(file_field) as image:
+            image.load()
+            image = ImageOps.exif_transpose(image) or image
+            out = image.convert("RGB")
+            out.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+            out.save(tmp, format="JPEG", quality=quality, optimize=True)
+        if tmp.stat().st_size <= 0:
+            tmp.unlink(missing_ok=True)
+            return None
+        os.replace(tmp, dest)
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return None
+    _prune_thumbs(dest.parent)
+    return rel
+
+
+def _card_thumb_rel(file_field):
+    """JPEG ≤800px for feed cards."""
+    return _thumb_rel(file_field, "card", CARD_MAX_SIDE, CARD_JPEG_QUALITY)
+
+
+def _avatar_thumb_rel(file_field):
+    """JPEG ≤256px for dock / list avatars."""
+    return _thumb_rel(file_field, "avatar", AVATAR_MAX_SIDE, AVATAR_JPEG_QUALITY)
+
+
+def _privacy_headers(response, etag):
+    response["ETag"] = f'"{etag}"'
+    response["Cache-Control"] = f"private, max-age={PICTURE_MAX_AGE}"
     response["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet"
     response["Cross-Origin-Resource-Policy"] = "same-origin"
     response["X-Content-Type-Options"] = "nosniff"
     response["Referrer-Policy"] = "same-origin"
     response["X-Frame-Options"] = "SAMEORIGIN"
     return response
+
+
+def protected_media_response(file_field, *, request=None, size=None):
+    """Authenticated-picture response: stream in DEBUG, X-Accel otherwise.
+
+    Rejects path-traversal in the stored name so a poisoned ImageField
+    cannot point nginx's internal alias outside MEDIA_ROOT.
+
+    ``size="card"`` serves an 800px JPEG derivative (feed backdrops).
+    ``size="avatar"`` serves a 256px JPEG (profile / persona rings).
+    Private max-age + ETag let the APK disk-cache and WebView revalidate
+    without re-downloading bytes. JWT still gates the first GET.
+    """
+    from django.conf import settings
+    from urllib.parse import quote
+
+    name = _safe_media_name(getattr(file_field, "name", ""))
+    if size == "card":
+        variant = "card"
+    elif size == "avatar":
+        variant = "avatar"
+    else:
+        variant = "full"
+    etag = _file_etag(file_field, variant)
+    if request and _etag_matches(request.META.get("HTTP_IF_NONE_MATCH", ""), etag):
+        response = HttpResponse(status=304)
+        return _privacy_headers(response, etag)
+
+    serve_name = name
+    content_type = _content_type_for(name)
+    if variant == "card":
+        rel = _card_thumb_rel(file_field)
+        if rel:
+            serve_name = rel
+            content_type = "image/jpeg"
+    elif variant == "avatar":
+        rel = _avatar_thumb_rel(file_field)
+        if rel:
+            serve_name = rel
+            content_type = "image/jpeg"
+
+    if settings.DEBUG:
+        if serve_name != name:
+            path = _Path(settings.MEDIA_ROOT) / serve_name
+            response = FileResponse(path.open("rb"), content_type=content_type)
+        else:
+            response = FileResponse(file_field.open("rb"), content_type=content_type)
+    else:
+        response = HttpResponse(content_type=content_type)
+        response["X-Accel-Redirect"] = "/protected-media/" + quote(serve_name, safe="/")
+    return _privacy_headers(response, etag)
 

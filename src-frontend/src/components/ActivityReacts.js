@@ -153,7 +153,7 @@ function WhoList({people}) {
 }
 
 function FacePip({person, size = 14}) {
-    const {src} = useProtectedImage(person.picture || null);
+    const {src} = useProtectedImage(person.picture || null, "avatar");
     return (
         <img src={src || "/profile.png"} alt=""
              width={size} height={size}

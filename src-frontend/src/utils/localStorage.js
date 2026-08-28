@@ -32,7 +32,7 @@ function _scrub(value) {
 
 // Bump when persisted API query shapes change so old blobs are dropped
 // instead of rehydrating incompatible cache entries.
-export const PERSIST_VERSION = 2;
+export const PERSIST_VERSION = 3;
 
 export const loadState = () => {
   try {

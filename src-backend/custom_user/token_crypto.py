@@ -35,4 +35,9 @@ def decrypt_token(value: str) -> str:
     try:
         return _fernet().decrypt(value.encode()).decode()
     except Exception:  # noqa: BLE001 - InvalidToken or malformed value
+        # Fernet tokens start with gAAAA. A value that looks encrypted
+        # but will not decrypt is corrupt — do not treat it as a live
+        # OAuth secret (the old fail-open sent it upstream as plaintext).
+        if value.startswith("gAAAA"):
+            return ""
         return value

@@ -1,4 +1,4 @@
-import React, {useMemo} from "react";
+import React, {useEffect, useMemo, useState} from "react";
 import {Link} from "react-router-dom";
 import {Megaphone, ChevronRight, Radio} from "lucide-react";
 import {PageWrapper} from "../utils/miscellaneous";
@@ -9,7 +9,7 @@ import RoastSwipeBox from "../components/RoastSwipeBox";
 import CoachVoteBox from "../components/CoachVoteBox";
 import PushOptInCard from "../components/PushOptIn";
 import {ActivityCoachPost} from "../components/competitionChrome";
-import {useGetPersonasQuery, useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
+import {messageResults, useGetPersonasQuery, useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
 import {HallOfRoasts, MOOD_CHIP, OrderCard, SquadOrbit, trainedSummary} from "../components/gameBits";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
@@ -88,10 +88,8 @@ function coachPersona(persona, message) {
 }
 
 
-function CoachHero({persona, config, message: latest, lastOwnActivity, ownedCompetitions, mood, lastOwnActivityId}) {
+function CoachHero({persona, config, message: latest, ownedCompetitions, mood, lastOwnActivityId}) {
     const trained = trainedSummary(mood);
-    const latestIsOwn = Boolean(latest && lastOwnActivity && latest.id === lastOwnActivity.id);
-    const showOwn = Boolean(config && lastOwnActivity && !latestIsOwn);
 
     function activityCard(message, hero) {
         return (
@@ -147,7 +145,7 @@ function CoachHero({persona, config, message: latest, lastOwnActivity, ownedComp
 
                 <div className="mt-8 space-y-4">
                     {latest?.kind === "activity" && config ? (
-                        activityCard(latest, latestIsOwn)
+                        activityCard(latest, latest?.id === lastOwnActivityId)
                     ) : (
                         <CoachQuote
                             message={latest}
@@ -163,14 +161,6 @@ function CoachHero({persona, config, message: latest, lastOwnActivity, ownedComp
                                 </p>
                             )}
                         />
-                    )}
-                    {showOwn && (
-                        <div>
-                            <p className="mb-2 px-1 text-[10px] font-extrabold uppercase tracking-[0.18em] text-gray-400">
-                                Your last workout
-                            </p>
-                            {activityCard(lastOwnActivity, true)}
-                        </div>
                     )}
                 </div>
 
@@ -192,12 +182,29 @@ function CoachPage() {
     const {data: configs, isLoading: configsLoading} = useGetDrillConfigsQuery();
     const {data: personas, isLoading: personasLoading} = useGetPersonasQuery();
     const {data: competitions} = useGetCompetitionsQuery();
-    const {data: messages} = useGetDrillMessagesQuery(undefined, {pollingInterval: pollFast});
-    const {data: hall} = useGetHallOfRoastsQuery(undefined, {pollingInterval: pollFast});
+    const heroConfigId = useMemo(() => {
+        const active = (configs || []).filter((c) => c.enabled);
+        const sorted = [...active].sort((a, b) => new Date(b.last_posted_at || 0) - new Date(a.last_posted_at || 0));
+        return sorted[0]?.competition || null;
+    }, [configs]);
+    const {data: messagesPage} = useGetDrillMessagesQuery(
+        {competition: heroConfigId, limit: 15, offset: 0},
+        {pollingInterval: pollFast, skip: !heroConfigId},
+    );
+    const messages = messageResults(messagesPage);
+    const [mediaReady, setMediaReady] = useState(false);
+    useEffect(() => {
+        const id = window.setTimeout(() => setMediaReady(true), 0);
+        return () => window.clearTimeout(id);
+    }, []);
+    const {data: hall} = useGetHallOfRoastsQuery(undefined, {
+        pollingInterval: pollFast,
+        skip: !mediaReady,
+    });
 
     const isLoading = userLoading || configsLoading || personasLoading;
 
-    const {heroPersona, heroConfig, latestMessage, lastOwnActivity, lastOwnActivityId} = useMemo(() => {
+    const {heroPersona, heroConfig, latestMessage, lastOwnActivityId} = useMemo(() => {
         const active = (configs || []).filter((c) => c.enabled);
         const sorted = [...active].sort((a, b) => new Date(b.last_posted_at || 0) - new Date(a.last_posted_at || 0));
         const cfg = sorted[0] || null;
@@ -217,7 +224,6 @@ function CoachPage() {
             heroPersona: persona,
             heroConfig: cfg,
             latestMessage: mine[0] || null,
-            lastOwnActivity: own,
             lastOwnActivityId: own?.id || null,
         };
     }, [configs, personas, messages, user?.id]);
@@ -235,7 +241,6 @@ function CoachPage() {
                 ) : (
                     <div className="flex flex-col gap-4">
                         <CoachHero persona={heroPersona} config={heroConfig} message={latestMessage}
-                                   lastOwnActivity={lastOwnActivity}
                                    ownedCompetitions={ownedCompetitions}
                                    mood={heroConfig?.mood}
                                    lastOwnActivityId={lastOwnActivityId}/>
@@ -244,9 +249,9 @@ function CoachPage() {
 
                         {/* Hot-or-not over the coach's roasted photos.
                             Hidden when there is nothing left to vote on. */}
-                        <RoastSwipeBox/>
+                        {mediaReady && <RoastSwipeBox/>}
 
-                        <HallOfRoasts cards={hall}/>
+                        {mediaReady && <HallOfRoasts cards={hall}/>}
 
                         <CoachVoteBox configs={configs} preferredConfigId={heroConfig?.id}/>
 

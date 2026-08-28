@@ -240,7 +240,7 @@ REST_FRAMEWORK = {
     # 'join') are applied to the brute-force-sensitive endpoints
     # (token obtain/refresh, password reset, competition joins).
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
+        'custom_user.throttles.ClientIPAnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {

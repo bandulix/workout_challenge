@@ -3,8 +3,9 @@ import logging
 import mimetypes
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Prefetch, ProtectedError, Q
+from django.db.models import Count, Exists, OuterRef, Prefetch, ProtectedError, Q
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -17,7 +18,7 @@ from rest_framework.views import APIView
 
 from workout_challenge.images import ProtectedMediaRenderer
 from .llm_client import check_vision_capability
-from competition.models import Points
+from competition.models import Competition, Points
 from .models import (
     ACTIVITY_REACT_EMOJIS,
     DrillInstructorActivityReact,
@@ -40,6 +41,13 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _competition_member(user, fk="config__competition_id"):
+    """Exists() subquery: owner or M2M participant, no JOIN/distinct."""
+    return Exists(
+        Competition.objects.filter(pk=OuterRef(fk)).filter(Q(owner=user) | Q(user=user))
+    )
 
 
 class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
@@ -118,7 +126,8 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
         if not persona.profile_picture:
             raise Http404("No custom profile picture.")
         from workout_challenge.images import protected_media_response
-        return protected_media_response(persona.profile_picture)
+        size = request.query_params.get("size")
+        return protected_media_response(persona.profile_picture, request=request, size=size)
 
 
 class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
@@ -232,9 +241,8 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             return DrillInstructorMessage.objects.none()
         qs = (
             DrillInstructorMessage.objects
-            .filter(Q(config__competition__owner=user) | Q(config__competition__user=user))
+            .filter(_competition_member(user))
             .filter(parent__isnull=True)
-            .distinct()
             .select_related("config", "config__competition", "config__persona", "persona", "workout", "workout__user")
             # Ordered prefetch the serializer actually iterates - a plain
             # prefetch_related was defeated by get_replies' own order_by,
@@ -259,11 +267,65 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
                 ),
                 "config__competition__activitygoal_set",
             )
+            .order_by("-posted_at", "-pk")
         )
         competition = self.request.query_params.get("competition")
         if competition and competition.isdigit():
             qs = qs.filter(config__competition_id=int(competition))
         return qs
+
+    LIST_CACHE_TTL = 20
+    LIST_DEFAULT = 15
+    LIST_MAX = 50
+
+    def list(self, request, *args, **kwargs):
+        """Paginated when ``limit`` is set: ``{count, offset, limit, results}``.
+
+        Old clients that omit ``limit`` still get a bare array (full
+        history). The new APK always passes limit=15.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        limit_raw = request.query_params.get("limit")
+        if limit_raw is None:
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+
+        try:
+            limit = int(limit_raw)
+        except (TypeError, ValueError):
+            limit = self.LIST_DEFAULT
+        limit = max(1, min(limit, self.LIST_MAX))
+        try:
+            offset = int(request.query_params.get("offset") or 0)
+        except (TypeError, ValueError):
+            offset = 0
+        offset = max(0, offset)
+
+        competition = request.query_params.get("competition")
+        cache_key = None
+        if competition and str(competition).isdigit():
+            generation = cache.get(f"feed-generation:{competition}", 0)
+            cache_key = (
+                f"drill-msg:{request.user.id}:{int(competition)}"
+                f":g{generation}:o{offset}:l{limit}"
+            )
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
+
+        total = queryset.count()
+        page = list(queryset[offset:offset + limit])
+        context = self.get_serializer_context()
+        context["slim"] = True
+        payload = {
+            "count": total,
+            "offset": offset,
+            "limit": limit,
+            "results": DrillInstructorMessageSerializer(page, many=True, context=context).data,
+        }
+        if cache_key:
+            cache.set(cache_key, payload, self.LIST_CACHE_TTL)
+        return Response(payload)
 
     @action(detail=True, methods=["post"])
     def reply(self, request, pk=None):
@@ -362,6 +424,10 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             ))
             .get(pk=root.pk)
         )
+        cid = getattr(getattr(root, "config", None), "competition_id", None)
+        if cid:
+            from custom_user.point_recalc import bump_feed_generation
+            bump_feed_generation([cid])
         return Response(
             {"id": root.id, "on": on, "emoji": emoji, "reacts": activity_reacts_payload(root, request)},
             status=status.HTTP_200_OK,
@@ -370,10 +436,9 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
     def _visible_thread_roots(self, user):
         return (
             DrillInstructorMessage.objects
-            .filter(Q(config__competition__owner=user) | Q(config__competition__user=user))
+            .filter(_competition_member(user))
             .filter(parent__isnull=True)
             .select_related("config", "config__competition", "workout")
-            .distinct()
         )
 
     def _last_own_activity(self, user, competition_id):
@@ -521,15 +586,14 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         competition the user belongs to must resolve here.
         """
         message = get_object_or_404(
-            DrillInstructorMessage.objects
-            .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
-            .distinct(),
+            DrillInstructorMessage.objects.filter(_competition_member(request.user)),
             pk=pk,
         )
         if not message.image:
             raise Http404("No picture on this message.")
         from workout_challenge.images import protected_media_response
-        return protected_media_response(message.image)
+        size = request.query_params.get("size")
+        return protected_media_response(message.image, request=request, size=size)
 
     # The swipe box shows the newest roasts across the user's
     # competitions; older cards fall off the edge (they stay in the
@@ -549,7 +613,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         ).values("message_id")
         qs = (
             DrillInstructorMessage.objects
-            .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
+            .filter(_competition_member(request.user))
             .filter(kind=DrillInstructorMessage.KIND_REACTION, user__isnull=True)
             .exclude(image="")
             .exclude(image__isnull=True)
@@ -592,7 +656,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             competition_id = 0
         qs = (
             DrillInstructorMessage.objects
-            .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
+            .filter(_competition_member(request.user))
             .filter(kind=DrillInstructorMessage.KIND_REACTION, user__isnull=True)
             .exclude(image="")
             .exclude(image__isnull=True)
@@ -633,9 +697,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         # NOT the roots-only queryset: roasts are child messages - scope
         # by competition membership directly (same pattern as picture()).
         message = get_object_or_404(
-            DrillInstructorMessage.objects
-            .filter(Q(config__competition__owner=request.user) | Q(config__competition__user=request.user))
-            .distinct(),
+            DrillInstructorMessage.objects.filter(_competition_member(request.user)),
             pk=pk,
         )
         if not message.image or message.user_id is not None or message.kind != DrillInstructorMessage.KIND_REACTION:
@@ -714,9 +776,7 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
             pass
         user = self.request.user
         qs = (
-            LegendEcho.objects.filter(
-                Q(config__competition__owner=user) | Q(config__competition__user=user)
-            )
+            LegendEcho.objects.filter(_competition_member(user))
             .select_related(
                 "origin_user", "holder", "config", "config__competition", "config__persona",
             )
@@ -796,7 +856,8 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
         if not echo.image:
             raise Http404("No Echo art.")
         from workout_challenge.images import protected_media_response
-        return protected_media_response(echo.image)
+        size = request.query_params.get("size")
+        return protected_media_response(echo.image, request=request, size=size)
 
     MAX_ECHO_ART_BYTES = 5 * 1024 * 1024
     MAX_ECHO_ART_PER_DAY = 8

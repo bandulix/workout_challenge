@@ -5,6 +5,7 @@ import {DogTagRow} from "./gameBits";
 import {sportLabelShort} from "../forms/workoutForm";
 import {OverlaySheet} from "../forms/basicComponents";
 import {topSportCounts} from "../utils/sportCounts";
+import {pageResults} from "../utils/queryPage";
 
 function Kpi({icon: Icon, value, label}) {
     return (
@@ -16,8 +17,11 @@ function Kpi({icon: Icon, value, label}) {
     );
 }
 
-function sportsForUser(feed, userId) {
-    const mine = (feed || []).filter((entry) => entry.workout__user === userId);
+function sportsForUser(person, feed, userId) {
+    if (person?.sports && typeof person.sports === "object" && !Array.isArray(person.sports)) {
+        return Object.entries(person.sports);
+    }
+    const mine = pageResults(feed).filter((entry) => entry.workout__user === userId);
     return Object.entries(topSportCounts(mine, "workout__sport_type").groups);
 }
 
@@ -28,7 +32,7 @@ export default function AthleteCard({person, dunce, weekTotal, weekBars, trendSp
     const points = Math.round(person.total_capped ?? person.points ?? 0);
     const tags = person.dog_tags || [];
     const echoes = Number(person.echoes_held) || 0;
-    const sports = sportsForUser(feed, person.id);
+    const sports = sportsForUser(person, feed, person.id);
     const stravaId = person.strava_allow_follow ? person.strava_athlete_id : null;
 
     return (

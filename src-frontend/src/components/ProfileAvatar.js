@@ -41,7 +41,7 @@ function ProfileAvatar({user, size = 96, editable = false, className = "", dunce
     const [error, setError] = useState(null);
 
     const pictureUrl = user?.profile_picture;
-    const {src: fetchedSrc, failed: fetchFailed} = useProtectedImage(pictureUrl || null);
+    const {src: fetchedSrc, failed: fetchFailed} = useProtectedImage(pictureUrl || null, "avatar");
     const [imgFailed, setImgFailed] = useState(false);
     useEffect(() => { setImgFailed(false); }, [pictureUrl, fetchedSrc]);
     const src = (!fetchFailed && !imgFailed && fetchedSrc) || FALLBACK;

@@ -101,6 +101,24 @@ class WorkoutApiTests(TestCase):
         self.assertIn("duration", response.json())
         self.assertFalse(Workout.objects.filter(user=self.user).exists())
 
+    def test_unrealistic_kcal_and_distance_rejected(self):
+        self.client.force_authenticate(self.user)
+        too_hot = self.client.post("/api/workout/", self._payload(kcal=50_000), format="json")
+        self.assertEqual(too_hot.status_code, 400)
+        too_far = self.client.post("/api/workout/", self._payload(distance=999), format="json")
+        self.assertEqual(too_far.status_code, 400)
+
+    def test_list_limit_caps_payload(self):
+        self.client.force_authenticate(self.user)
+        for i in range(3):
+            Workout.objects.create(
+                user=self.user, sport_type="Run",
+                start_datetime=timezone.now() - datetime.timedelta(hours=i),
+                duration=datetime.timedelta(minutes=10), intensity_category=2,
+            )
+        page = self.client.get("/api/workout/?limit=2").json()
+        self.assertEqual(len(page), 2)
+
     def test_negative_duration_rejected(self):
         self.client.force_authenticate(self.user)
         response = self.client.post(

@@ -15,9 +15,17 @@ export const statsApi = createApi({
             }),
             providesTags: (result, error, id) => [{type: 'Stats', id}],
         }),
+        getStatsSummaryById: builder.query({
+            query: (id) => ({
+                url: `stats/${id}/summary/`,
+                method: 'GET',
+            }),
+            providesTags: (result, error, id) => [{type: 'Stats', id}],
+        }),
     }),
 });
 
 export const {
     useGetStatsByIdQuery,
+    useGetStatsSummaryByIdQuery,
 } = statsApi;

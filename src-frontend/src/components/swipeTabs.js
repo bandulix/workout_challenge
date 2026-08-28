@@ -89,7 +89,16 @@ export function SwipePages({tab, onChange, children}) {
     const [dx, setDx] = useState(0);
     const [dragging, setDragging] = useState(false);
     const [paneW, setPaneW] = useState(0);
+    const [seen, setSeen] = useState(() => new Set([idx]));
     const reduced = usePrefersReducedMotion();
+    useEffect(() => {
+        setSeen((prev) => {
+            if (prev.has(idx)) return prev;
+            const next = new Set(prev);
+            next.add(idx);
+            return next;
+        });
+    }, [idx]);
 
     useEffect(() => {
         const el = wrapRef.current;
@@ -169,6 +178,7 @@ export function SwipePages({tab, onChange, children}) {
                  }}>
                 {pages.map((page, i) => {
                     const near = i === idx || (dragging && Math.abs(i - idx) === 1);
+                    const mount = near || seen.has(i);
                     return (
                         <div key={CHALLENGE_TABS[i].id}
                              className="shrink-0"
@@ -180,7 +190,7 @@ export function SwipePages({tab, onChange, children}) {
                                  height: near ? "auto" : 0,
                                  overflow: near ? "visible" : "hidden",
                              }}>
-                            {page}
+                            {mount ? page : null}
                         </div>
                     );
                 })}

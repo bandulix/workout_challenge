@@ -16,13 +16,13 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from rest_framework.throttling import ScopedRateThrottle
+from custom_user.throttles import ClientIPScopedThrottle
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
 from rest_framework.routers import DefaultRouter
-from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView, PointsFactorsView
+from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, CompetitionStatsSummaryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView, PointsFactorsView
 from workouts.views import WorkoutViewSet
 from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, ResetStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, EmailVerifyConfirmView, EmailVerifyResendView, LinkGarminView, UnlinkGarminView, SyncGarminView, LinkHealthView, UnlinkHealthView, SyncHealthView
 
@@ -30,12 +30,12 @@ from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaVie
 # Token endpoints with a strict throttle bucket (online brute-force
 # protection for email/password pairs and refresh tokens).
 class ThrottledTokenObtainPairView(TokenObtainPairView):
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIPScopedThrottle]
     throttle_scope = 'auth'
 
 
 class ThrottledTokenRefreshView(TokenRefreshView):
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIPScopedThrottle]
     # Separate from 'auth' (password login): refresh traffic is
     # continuous (~4/hour/device at a 15-minute access token) and per-IP
     # budgets are shared behind carrier-grade NAT - see settings
@@ -73,6 +73,7 @@ urlpatterns = [
     path('api/', include([
         path('', include(router.urls)),
         path('stats/<int:competition>/', CompetitionStatsQueryView.as_view(), name='competition-stats'),
+        path('stats/<int:competition>/summary/', CompetitionStatsSummaryView.as_view(), name='competition-stats-summary'),
         path('feed/<int:competition>/', FeedQueryView.as_view(), name='competition-feed'),
         path('join/competition/<str:join_code>/', JoinCompetitionView.as_view(), name='join-competition'),
         path('join/team/', JoinTeamView.as_view(), name='join-team'),

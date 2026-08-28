@@ -1,7 +1,7 @@
 #!/bin/bash
 # Fetch the APK of a GitHub Release and publish it on this stack
 # (/download/workout-challenge.apk + apk-version.json), so the app and
-# the in-app update banner always match the deployed version.
+# the force-update screen always match the deployed version.
 #
 # The CI (prod-deploy.yml, "apk" job) builds a generic APK on every
 # release - this script is its server-side counterpart. Run it after

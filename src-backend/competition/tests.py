@@ -175,6 +175,54 @@ class StatsCacheTests(TestCase):
         response = self.client.get(f"/api/feed/{self.competition.id}/")
         self.assertEqual(response.status_code, 403)
 
+    def test_feed_limit_returns_a_page(self):
+        Workout.objects.create(
+            user=self.owner, sport_type="Run", start_datetime=timezone.now(),
+            duration=datetime.timedelta(minutes=30), intensity_category=2,
+        )
+        self.client.force_authenticate(self.owner)
+        page = self.client.get(f"/api/feed/{self.competition.id}/?limit=15&offset=0").json()
+        self.assertEqual(page["count"], 1)
+        self.assertEqual(len(page["results"]), 1)
+        self.assertEqual(page["workout_count"], 1)
+        self.assertEqual(page["sport_groups"].get("Run"), 1)
+        self.assertIn("my_goal_points", page)
+        full = self.client.get(f"/api/feed/{self.competition.id}/").json()
+        self.assertIsInstance(full, list)
+        summary = self.client.get(f"/api/stats/{self.competition.id}/summary/").json()
+        self.assertIn("my_rank", summary)
+        self.assertIn("started", summary)
+        listed = self.client.get("/api/competition/").json()
+        self.assertTrue(any(c.get("goals") for c in listed))
+
+    def test_feed_page_goal_points_use_the_goal_period(self):
+        """Weekly bars must not count last week's workouts just because
+        the paged feed only returns 15 rows."""
+        self.competition.start_date = timezone.localdate() - datetime.timedelta(days=21)
+        self.competition.save(update_fields=["start_date"])
+        goal = self.competition.activitygoal_set.get(metric="min")
+        self.assertEqual(goal.period, "week")
+        Workout.objects.create(
+            user=self.owner, sport_type="Run",
+            start_datetime=timezone.now() - datetime.timedelta(days=10),
+            duration=datetime.timedelta(minutes=60), intensity_category=2,
+        )
+        Workout.objects.create(
+            user=self.owner, sport_type="Run", start_datetime=timezone.now(),
+            duration=datetime.timedelta(minutes=30), intensity_category=2,
+        )
+        self.client.force_authenticate(self.owner)
+        page = self.client.get(f"/api/feed/{self.competition.id}/?limit=15&offset=0").json()
+        this_week = float(page["my_goal_points"].get(str(goal.id), 0))
+        all_time = sum(
+            float(d["points_capped"] or 0)
+            for row in page["results"]
+            for d in row.get("details") or []
+            if d.get("goal") == goal.id
+        )
+        self.assertGreater(this_week, 0)
+        self.assertLess(this_week, all_time)
+
     def test_recalc_points_caps_and_deletes_requests(self):
         """The capped-points task: caps applied, rows updated in bulk,
         and exactly the snapshotted requests are drained."""

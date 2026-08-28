@@ -13,16 +13,19 @@ export const feedApi = createApi({
             query: (id) => ({
                 url: `feed/${id}/`,
                 method: 'GET',
+                params: {limit: 15, offset: 0},
             }),
             transformResponse: (response) => {
-                // Convert timezone for all activites in the response
-                return response.map(activity => {
-                    return {
-                        ...activity,
-                        workout__start_datetime_fmt: dateFormatter(activity.workout__start_datetime, activity.workout__sport_type === 'Steps'), // format datetime
-                        workout__start_datetime: convertToLocalTimezone(activity.workout__start_datetime, activity.workout__sport_type === 'Steps'), // convert to local timezone
-                    };
+                const decorate = (activity) => ({
+                    ...activity,
+                    workout__start_datetime_fmt: dateFormatter(activity.workout__start_datetime, activity.workout__sport_type === 'Steps'),
+                    workout__start_datetime: convertToLocalTimezone(activity.workout__start_datetime, activity.workout__sport_type === 'Steps'),
                 });
+                if (Array.isArray(response)) return response.map(decorate);
+                return {
+                    ...response,
+                    results: (response.results || []).map(decorate),
+                };
             },
             providesTags: (result, error, id) => [{type: 'Feed', id}],
         }),

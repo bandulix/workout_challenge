@@ -92,14 +92,55 @@ export const drillInstructorApi = createApi({
 
         // ---- Messages ---------------------------------------------------
         getDrillMessages: builder.query({
-            query: (params = {}) => ({
+            query: ({competition, limit = 15, offset = 0} = {}) => ({
                 url: 'drill-instructor/message/',
                 method: 'GET',
-                params,
+                params: {
+                    ...(competition ? {competition} : {}),
+                    limit,
+                    offset,
+                },
             }),
-            providesTags: (result = []) => result.length
-                ? [...result.map(({id}) => ({type: 'DrillMessage', id})), {type: 'DrillMessage'}]
-                : [{type: 'DrillMessage'}],
+            transformResponse: (response) => {
+                if (Array.isArray(response)) {
+                    return {results: response, count: response.length, offset: 0, limit: response.length};
+                }
+                return response;
+            },
+            // One cache entry per competition; extra pages merge in.
+            serializeQueryArgs: ({queryArgs}) => {
+                const competition = queryArgs?.competition;
+                return competition == null ? "all" : String(competition);
+            },
+            merge: (current, incoming, {arg}) => {
+                const incomingRows = incoming?.results || [];
+                if (!arg?.offset) {
+                    const ids = new Set(incomingRows.map((m) => m.id));
+                    const pageSize = incoming.limit || incomingRows.length;
+                    const rest = (current?.results || []).slice(pageSize).filter((m) => !ids.has(m.id));
+                    return {...incoming, results: [...incomingRows, ...rest]};
+                }
+                const seen = new Set((current?.results || []).map((m) => m.id));
+                return {
+                    ...incoming,
+                    count: incoming.count ?? current?.count,
+                    results: [...(current?.results || []), ...incomingRows.filter((m) => !seen.has(m.id))],
+                };
+            },
+            forceRefetch({currentArg, previousArg}) {
+                return currentArg?.offset !== previousArg?.offset
+                    || currentArg?.competition !== previousArg?.competition;
+            },
+            providesTags: (result) => {
+                const list = result?.results || [];
+                return list.length
+                    ? [...list.map(({id}) => ({type: 'DrillMessage', id})), {type: 'DrillMessage'}]
+                    : [{type: 'DrillMessage'}];
+            },
+        }),
+        getDrillMessageById: builder.query({
+            query: (id) => ({url: `drill-instructor/message/${id}/`, method: 'GET'}),
+            providesTags: (result, error, id) => [{type: 'DrillMessage', id}],
         }),
         replyToDrillMessage: builder.mutation({
             // Participant's reply under a coach message; the coach's
@@ -134,8 +175,9 @@ export const drillInstructorApi = createApi({
                                 "getDrillMessages",
                                 arg,
                                 (draft) => {
-                                    if (!Array.isArray(draft)) return;
-                                    const row = draft.find((m) => m.id === id);
+                                    const rows = Array.isArray(draft) ? draft : draft?.results;
+                                    if (!rows) return;
+                                    const row = rows.find((m) => m.id === id);
                                     if (row) row.reacts = data.reacts;
                                 },
                             ),
@@ -276,6 +318,8 @@ export const drillInstructorApi = createApi({
     }),
 });
 
+export {pageResults as messageResults} from "../queryPage";
+
 export const {
     useGetPersonasQuery,
     useAddPersonaMutation,
@@ -286,6 +330,8 @@ export const {
     useUpdateDrillConfigMutation,
     useDeleteDrillConfigMutation,
     useGetDrillMessagesQuery,
+    useLazyGetDrillMessagesQuery,
+    useGetDrillMessageByIdQuery,
     useReplyToDrillMessageMutation,
     useReactToActivityMutation,
     usePostDrillPhotoMutation,

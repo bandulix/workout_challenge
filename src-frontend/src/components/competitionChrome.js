@@ -4,7 +4,7 @@ import {useDispatch} from "react-redux";
 import {ChevronDown, DoorOpen, Megaphone, Settings, UserRoundPlus} from "lucide-react";
 import {competitionsApi} from "../utils/reducers/competitionsSlice";
 import {useLeaveCompetitionMutation} from "../utils/reducers/joinSlice";
-import {useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
+import {messageResults, useGetDrillConfigsQuery, useGetDrillMessageByIdQuery, useGetDrillMessagesQuery, useLazyGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import CompetitionForm from "../forms/competitionForm";
 import CompetitionInviteModal from "../forms/shareModal";
@@ -12,7 +12,7 @@ import TransferOwnershipForm from "../forms/transferOwnershipForm";
 import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
 import ActivityGoalsForm from "../forms/activityGoalsForm";
 import {sportLabelShort} from "../forms/workoutForm";
-import {PaneHead, paneCardClass} from "./uiBits";
+import {FullImageSheet, PaneHead, paneCardClass} from "./uiBits";
 import {topSportCounts} from "../utils/sportCounts";
 import CoachThread from "./CoachThread";
 import PhotoPost, {PhotoCamBonus} from "./PhotoPost";
@@ -26,6 +26,7 @@ import {elapsedSince, timeAgo} from "../utils/time";
 import {useProtectedImage} from "../utils/protectedMedia";
 import usePollingInterval from "../utils/usePollingInterval";
 import {confirmAction, notice} from "../utils/dialogs";
+import {pageResults, scoreGoals} from "../utils/queryPage";
 
 export function HeaderIconButton({onClick, title, icon: Icon, danger = false, isLoading = false}) {
     return (
@@ -37,50 +38,6 @@ export function HeaderIconButton({onClick, title, icon: Icon, danger = false, is
         </button>
     );
 }
-
-
-function scoreGoals(goals, feed, userId, user) {
-    if (!goals?.length || !userId) return [];
-    const now = new Date();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const epochTimeToday = Math.floor(today.getTime() / 1000);
-    const day = now.getDay();
-    const lastMonday = new Date(now);
-    lastMonday.setDate(now.getDate() - ((day + 6) % 7));
-    lastMonday.setHours(0, 0, 0, 0);
-    const epochTimeMonday = Math.floor(lastMonday.getTime() / 1000);
-    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    firstOfMonth.setHours(0, 0, 0, 0);
-    const epochTimeMonth = Math.floor(firstOfMonth.getTime() / 1000);
-
-    const list = Array.isArray(feed) ? feed : Object.values(feed || {});
-    const mine = list.filter((item) => item.workout__user === userId);
-    const byPeriod = {
-        day: mine.filter((item) => (item.workout__start_datetime_fmt?.epoch || 0) >= epochTimeToday),
-        week: mine.filter((item) => (item.workout__start_datetime_fmt?.epoch || 0) >= epochTimeMonday),
-        month: mine.filter((item) => (item.workout__start_datetime_fmt?.epoch || 0) >= epochTimeMonth),
-    };
-
-    return goals.map((goal) => {
-        const filteredList = byPeriod[goal.period] || mine;
-        let scaling = 1;
-        if (["kcal", "kj"].includes(goal.metric)) scaling = user?.scaling_kcal ?? 1;
-        else if (goal.metric === "km") scaling = user?.scaling_distance ?? 1;
-        let points_capped = 0;
-        for (const item of filteredList) {
-            for (const detail of item.details || []) {
-                if (detail.goal === goal.id) points_capped += Number(detail.points_capped) || 0;
-            }
-        }
-        return {
-            ...goal,
-            goal: goal.goal * scaling,
-            points_capped,
-        };
-    });
-}
-
 
 export function CompetitionHead({competition, feed, isOwner, goals, user}) {
 
@@ -96,7 +53,10 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
         [goals, feed, user],
     );
     const {total: countTotal, groups: countGroups} = React.useMemo(() => {
-        const list = Object.values(feed || {}).filter((item) => item.workout !== null);
+        if (feed && !Array.isArray(feed) && typeof feed.workout_count === "number") {
+            return {total: feed.workout_count, groups: feed.sport_groups || {}};
+        }
+        const list = pageResults(feed).filter((item) => item.workout !== null);
         return topSportCounts(list, "workout__sport_type");
     }, [feed]);
 
@@ -250,7 +210,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
 
 // Challenge feed: independent glass cards on the gym plate. One visual
 // language for workouts, photos, and coach announcements.
-const FEED_RECENT = 10;
+const FEED_PAGE = 15;
 
 const KIND_LABEL = {
     activity: "Workout",
@@ -299,10 +259,6 @@ export function activityHasPhoto(message) {
     return (message.replies || []).some((r) => r.kind === "photo");
 }
 
-export function activityPhotoReply(message) {
-    return (message.replies || []).find((r) => r.kind === "photo" && r.image) || null;
-}
-
 export function activityBackdropUrl(message) {
     // Only the coach's remixed poster is the card backdrop (and the
     // hot-or-not card). The original upload is the feed answer.
@@ -310,10 +266,9 @@ export function activityBackdropUrl(message) {
     return remix ? remix.image : null;
 }
 
-function activityTextReplies(message) {
-    return (message.replies || []).filter(
-        (r) => r.kind !== "photo" && !(r.is_coach && r.image),
-    );
+function threadReplies(message) {
+    // Same filter as CoachThread: original photos count, coach remix does not.
+    return (message.replies || []).filter((r) => !(r.is_coach && r.image));
 }
 
 function FeedCard({children}) {
@@ -517,6 +472,8 @@ function pointsRowExplain(row) {
 
 export function PointsChip({capped, raw, hasPhoto = false, size = "md", message = null}) {
     const [open, setOpen] = useState(false);
+    const needDetail = open && message?.id && !(message.points_breakdown || []).length;
+    const {data: detail} = useGetDrillMessageByIdQuery(message?.id, {skip: !needDetail});
     if (capped == null) return null;
     const n = Math.max(0, Number(capped) || 0);
     const starred = raw != null && Number(capped) !== Number(raw);
@@ -543,7 +500,7 @@ export function PointsChip({capped, raw, hasPhoto = false, size = "md", message 
             </span>
         );
     }
-    const breakdown = message?.points_breakdown || [];
+    const breakdown = detail?.points_breakdown || message?.points_breakdown || [];
     const addends = breakdown.filter((row) => Math.round(Number(row.points) || 0) !== 0);
     const summary = message?.workout_summary;
     const challenge = message?.competition_name;
@@ -644,37 +601,13 @@ export function PointsChip({capped, raw, hasPhoto = false, size = "md", message 
 }
 
 
-function ActivityPhotoAnswer({src, reply, athleteName, onOpen}) {
-    if (!src) return null;
-    const who = reply.author_name || athleteName || "Athlete";
-    return (
-        <>
-            <div className="flex justify-center">
-                <ProfileAvatar
-                    user={{profile_picture: reply.author_profile_picture, first_name: who}}
-                    size={28}/>
-            </div>
-            <div className="min-w-0">
-                <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(); }}
-                        className="block w-full overflow-hidden rounded-2xl text-left focus:outline-none focus:ring-2 focus:ring-volt-400">
-                    <img src={src} alt={reply.body || `${who}'s photo`}
-                         className="max-h-72 w-full object-cover"/>
-                </button>
-            </div>
-        </>
-    );
-}
-
-
 export function ActivityCoachPost({message, persona, canReply, defaultOpen, competitionId, visionCapable, lastOwnActivityId, hero = false}) {
     const ownLatest = Boolean(canReply && lastOwnActivityId === message.id);
     const hasPhoto = activityHasPhoto(message);
-    const original = activityPhotoReply(message);
     const remixUrl = activityBackdropUrl(message);
-    const {src: bgSrc} = useProtectedImage(remixUrl);
-    const {src: originalSrc} = useProtectedImage(original?.image);
+    const {src: bgSrc} = useProtectedImage(remixUrl, "card");
     const [lightbox, setLightbox] = useState(null);
-    const showThread = canReply || activityTextReplies(message).length > 0;
+    const showThread = canReply || threadReplies(message).length > 0;
     const points = (
         <PointsChip capped={message.points_capped} raw={message.points_raw}
                     hasPhoto={hasPhoto} size={hero ? "lg" : "md"} message={message}/>
@@ -748,12 +681,6 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                     </blockquote>
                 ) : <div/>}
 
-                {original && (
-                    <ActivityPhotoAnswer src={originalSrc} reply={original}
-                                         athleteName={message.athlete_name}
-                                         onOpen={() => setLightbox("original")}/>
-                )}
-
                 <>
                     <div aria-hidden="true"/>
                     {showThread ? (
@@ -764,18 +691,9 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                 </>
                 </div>
             </div>
-            {lightbox === "remix" && bgSrc && (
-                <OverlaySheet title="Roast" onClose={() => setLightbox(null)} zClass="z-[70]">
-                    <img src={bgSrc} alt=""
-                         className="mx-auto max-h-[70vh] w-full rounded-2xl object-contain"/>
-                </OverlaySheet>
-            )}
-            {lightbox === "original" && originalSrc && (
-                <OverlaySheet title={original?.author_name || message.athlete_name || "Photo"}
-                              onClose={() => setLightbox(null)} zClass="z-[70]">
-                    <img src={originalSrc} alt=""
-                         className="mx-auto max-h-[70vh] w-full rounded-2xl object-contain"/>
-                </OverlaySheet>
+            {lightbox === "remix" && remixUrl && (
+                <FullImageSheet url={remixUrl} title="Roast" fallback={bgSrc}
+                                onClose={() => setLightbox(null)}/>
             )}
         </article>
         </ActivityReactProvider>
@@ -784,8 +702,9 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
 
 
 function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
-    const {src} = useProtectedImage(message.image);
+    const {src} = useProtectedImage(message.image, "card");
     const picturedReplies = (message.replies || []).some((r) => r.image);
+    const [lightbox, setLightbox] = useState(false);
     return (
         <article className="min-w-0 overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white">
             <div className="flex items-center gap-2.5 px-3.5 pt-3.5 pb-2.5">
@@ -801,13 +720,14 @@ function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
                 </div>
             </div>
             {src && (
-                <div className="relative bg-ink-950">
+                <button type="button" onClick={() => setLightbox(true)}
+                        className="relative block w-full bg-ink-950 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
                     <img src={src} alt={message.body || `Shared by ${message.author_name || "a participant"}`}
                          className="w-full max-h-80 object-cover"/>
                     <span className="absolute bottom-2 right-2 rounded-full bg-ink-950/75 text-volt-400 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 tabular-nums">
                         {elapsedSince(message.posted_at, now)}
                     </span>
-                </div>
+                </button>
             )}
             <div className="px-3.5 py-3">
                 {message.body && (
@@ -815,6 +735,10 @@ function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
                 )}
                 <CoachThread message={message} persona={persona} canReply={canReply} defaultOpen={defaultOpen}/>
             </div>
+            {lightbox && (
+                <FullImageSheet url={message.image} title={message.body || "Photo"} fallback={src}
+                                onClose={() => setLightbox(false)}/>
+            )}
         </article>
     );
 }
@@ -822,7 +746,7 @@ function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
 
 function AnnouncementPost({message, persona, canReply, defaultOpen}) {
     const kind = KIND_LABEL[message.kind] || "Coach";
-    const {src} = useProtectedImage(message.image);
+    const {src} = useProtectedImage(message.image, "card");
     const [lightbox, setLightbox] = useState(false);
     return (
         <FeedCard>
@@ -887,10 +811,11 @@ export function CoachCorner({competition, isOwner}) {
     const pollFast = usePollingInterval(60000);
     const {data: configs} = useGetDrillConfigsQuery();
     const config = (configs || []).find((c) => c.competition === competition.id) || null;
-    const {data: messages} = useGetDrillMessagesQuery(
-        {competition: competition.id},
+    const {data: page} = useGetDrillMessagesQuery(
+        {competition: competition.id, limit: FEED_PAGE, offset: 0},
         {pollingInterval: pollFast, skip: !config}
     );
+    const [fetchMore, {isFetching: moreBusy}] = useLazyGetDrillMessagesQuery();
     const {data: me} = useGetUserByIdQuery("me");
     const [showConfigModal, setShowConfigModal] = useState(false);
 
@@ -905,6 +830,13 @@ export function CoachCorner({competition, isOwner}) {
             cornerRef.current.scrollIntoView({behavior: "smooth", block: "start"});
         }
     }, [replyTargetId, config]);
+    const loaded = messageResults(page);
+    useEffect(() => {
+        if (!replyTargetId || !page) return;
+        if (loaded.some((m) => m.id === replyTargetId)) return;
+        if (loaded.length >= (page.count || 0)) return;
+        fetchMore({competition: competition.id, limit: FEED_PAGE, offset: loaded.length});
+    }, [replyTargetId, page, loaded, fetchMore, competition.id]);
 
     if (!config) {
         if (!isOwner) return null;
@@ -928,20 +860,10 @@ export function CoachCorner({competition, isOwner}) {
     }
 
     const persona = config.persona_detail || {};
-    const all = messages || [];
+    const all = loaded;
     const roots = all.filter((m) => m.kind !== "photo");
-    const recent = roots.slice(0, FEED_RECENT);
-    const recentIds = new Set(recent.map((m) => m.id));
-    if (replyTargetId && !recentIds.has(replyTargetId)) {
-        const target = roots.find((m) => m.id === replyTargetId);
-        if (target) {
-            recent.push(target);
-            recentIds.add(target.id);
-        }
-    }
-    const pictured = roots.filter((m) => m.kind === "activity" && activityHasPhoto(m) && !recentIds.has(m.id));
-    const groups = groupByDay(recent);
-    const picturedGroups = groupByDay(pictured);
+    const hidden = Math.max(0, (page?.count || all.length) - all.length);
+    const groups = groupByDay(roots);
     const lastOwnActivityId = all.find(
         (m) => m.kind === "activity" && m.workout_user_id === me?.id
     )?.id ?? null;
@@ -983,7 +905,7 @@ export function CoachCorner({competition, isOwner}) {
             <CoachHandover configId={config.id} enabled={config.enabled}/>
             {all.length > 0 ? (
                 <>
-                    {recent.length === 0 && pictured.length === 0 && (
+                    {roots.length === 0 && (
                         <p className="px-1 pb-3 text-sm text-gray-400">No posts yet.</p>
                     )}
                     <div className="space-y-4">
@@ -996,18 +918,17 @@ export function CoachCorner({competition, isOwner}) {
                             </section>
                         ))}
                     </div>
-                    {picturedGroups.length > 0 && (
-                        <div className="mt-6 space-y-4">
-                            <PaneHead title="With photos"/>
-                            {picturedGroups.map((g) => (
-                                <section key={"pic-" + g.label}>
-                                    <DayRule label={g.label}/>
-                                    <ul className="space-y-3">
-                                        {g.items.map(renderMessage)}
-                                    </ul>
-                                </section>
-                            ))}
-                        </div>
+                    {hidden > 0 && (
+                        <button type="button"
+                                disabled={moreBusy}
+                                onClick={() => fetchMore({
+                                    competition: competition.id,
+                                    limit: FEED_PAGE,
+                                    offset: all.length,
+                                })}
+                                className="mt-4 w-full min-h-[44px] rounded-2xl border border-volt-400/40 text-sm font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition disabled:opacity-50">
+                            Show {Math.min(hidden, FEED_PAGE)} more
+                        </button>
                     )}
                 </>
             ) : (

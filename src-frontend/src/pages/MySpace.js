@@ -6,8 +6,6 @@ import {
     Flame,
     Timer,
     Ruler,
-    Download,
-    X,
 } from 'lucide-react';
 import {useGetWorkoutsQuery, workoutsApi} from "../utils/reducers/workoutsSlice";
 import WorkoutForm, {sportLabelShort} from "../forms/workoutForm";
@@ -36,10 +34,9 @@ import {
 import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
 import {SectionLoader} from "../utils/loaders";
 import {useDispatch} from "react-redux";
-import {apkDownloadHref, useApkUpdateInfo} from "../utils/apkUpdate";
 import {useLazySyncGarminQuery, useLazySyncStravaQuery, useLazySyncHealthQuery} from "../utils/reducers/linkSlice";
 import {nativeHealthKickSync} from "../utils/nativeHealth";
-import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
+import {statsApi, useGetStatsSummaryByIdQuery} from "../utils/reducers/statsSlice";
 import {feedApi} from "../utils/reducers/feedSlice";
 import {BeatLoader} from "react-spinners";
 import {clearBodyScrollLock} from "../utils/overlay";
@@ -372,28 +369,20 @@ function CompetitionRow({competition, user}) {
     const pollSlow = usePollingInterval(90000);
 
     const {
-        data: stats,
+        data: summary,
         isLoading: statsLoading,
         error: statsError,
-    } = useGetStatsByIdQuery(competition.id, {
+    } = useGetStatsSummaryByIdQuery(competition.id, {
         pollingInterval: pollSlow,
     });
-
-    const [teamId, setTeamId] = useState(undefined);
-    useEffect(() => {
-        if (stats?.teams && user?.my_teams) {
-            const tmpTeamId = Object.keys(stats?.teams).find(item => user?.my_teams.includes(parseInt(item)));
-            setTeamId(tmpTeamId);
-        }
-    }, [stats, user])
 
     const navigate = useNavigate();
     const handleClick = (id) => {
         return navigate(`/competition/${id}`);
     }
 
-    const rank = stats?.users?.[user.id]?.rank;
-    const started = stats?.competition?.start_date_count >= 0;
+    const rank = summary?.my_rank;
+    const started = summary?.started;
 
     return (
         <li>
@@ -405,7 +394,7 @@ function CompetitionRow({competition, user}) {
                 <div className="shrink-0 text-right">
                     {statsLoading ? (
                         <BeatLoader color={VOLT} size={6}/>
-                    ) : (statsError || !stats?.competition) ? (
+                    ) : (statsError || !summary) ? (
                         <span className="text-gray-400 text-sm">—</span>
                     ) : !started ? (
                         <span className="text-xs text-gray-400">Not started</span>
@@ -414,8 +403,8 @@ function CompetitionRow({competition, user}) {
                     ) : (
                         <>
                             <p className="font-display text-xl text-volt-600 dark:text-volt-400 leading-none">#{rank}</p>
-                            {competition.has_teams && stats.teams[teamId]?.rank != null && (
-                                <Chip>Team #{stats.teams[teamId].rank}</Chip>
+                            {competition.has_teams && summary.team_rank != null && (
+                                <Chip>Team #{summary.team_rank}</Chip>
                             )}
                         </>
                     )}
@@ -743,32 +732,6 @@ function StatsBox({workouts, user}) {
 }
 
 
-// Sideload update banner (native app only): the server's published APK
-// is newer than the installed build - tap to download & install over
-// the top (data kept; same signing key required).
-function ApkUpdateBanner() {
-    const {update, dismiss} = useApkUpdateInfo();
-    if (!update) return null;
-    return (
-        <div className="mb-4 flex items-center gap-3 rounded-2xl glass-card text-ink-950 dark:text-white border-volt-500/50 dark:border-volt-500/40 p-4">
-            <Download className="h-5 w-5 text-volt-700 dark:text-volt-400 shrink-0"/>
-            <div className="flex-1 min-w-0">
-                <p className="font-display text-xs uppercase tracking-wider">App update available</p>
-                <p className="text-[11px] text-gray-600 dark:text-gray-400">Version {update.versionName} — installing over the top keeps everything.</p>
-            </div>
-            <a href={apkDownloadHref()}
-                   rel="noopener noreferrer"
-                   className="shrink-0 rounded-full bg-volt-400 text-ink-950 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
-                Get it
-            </a>
-            <button onClick={dismiss} aria-label="Dismiss" className="shrink-0 text-gray-500 hover:text-ink-950 dark:hover:text-gray-300 transition">
-                <X className="h-4 w-4"/>
-            </button>
-        </div>
-    );
-}
-
-
 export default function MySpace() {
     const pollSlow = usePollingInterval(90000);
     const pollFast = usePollingInterval(60000);
@@ -789,8 +752,8 @@ export default function MySpace() {
         data: workouts,
         error: workoutsError,
         isLoading: workoutsIsLoading,
-    } = useGetWorkoutsQuery(undefined, {
-        pollingInterval: pollFast,
+    } = useGetWorkoutsQuery({limit: 40}, {
+        pollingInterval: pollSlow,
     });
 
     const {
@@ -835,7 +798,6 @@ export default function MySpace() {
         <PageWrapper>
 
             <div className="container mx-auto p-4">
-                <ApkUpdateBanner/>
                 {user && (
                     <GettingStarted
                         user={user}

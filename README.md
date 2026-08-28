@@ -36,11 +36,13 @@ Update: `git pull && docker compose pull workoutchallenge && docker compose up -
 
 Releases are deliberate — **Actions → Production Deployment → Run workflow**. Merging to `main` does not tag or publish. Image: [`ghcr.io/bandulix/workout_challenge`](https://github.com/bandulix/workout_challenge/pkgs/container/workout_challenge). Upstream Docker Hub (`vanalmsick/workout_challenge`) is the original app, not this fork.
 
-Tests: `cd src-backend && DEBUG=true SECRET_KEY=ci-test-not-a-real-secret-32bytes-min python manage.py test --settings=workout_challenge.test_settings --top-level-directory=.`
+Tests: `cd src-backend && DEBUG=true SECRET_KEY=ci-test-not-a-real-secret-32bytes-min python manage.py test --settings=workout_challenge.test_settings --top-level-directory=.` Frontend: `cd src-frontend && npm test`.
 
 ## Optional setup
 
-**Admin** — the first registered user is staff. Runtime config (LLM, Strava, SMTP) is at `/admin/site-settings`. Promote someone: `docker compose exec workoutchallenge python manage.py promotetostaff user@example.com`.
+**Admin** — if registration is open (`REGISTRATION_TOKEN` empty in `.env`), the first signup is staff. If you set an invite token, that does not happen — run `docker compose exec workoutchallenge python manage.py createsuperuser` or `promotetostaff user@example.com`. Runtime config (LLM, Strava, SMTP) is at `/admin/site-settings`.
+
+**Invite token** — set `REGISTRATION_TOKEN` so new accounts need that token, or a challenge invite link (`?join=`). Unset = anyone can register.
 
 **Email** — SMTP in `.env` / Site Settings. New accounts get a confirmation link first; welcome, weekly, and board mail wait until the address is confirmed. Password reset still works on an unconfirmed account.
 
@@ -59,7 +61,7 @@ docker compose --profile health up -d
 
 Phones reach it at `MAIN_HOST/health` by default. In the Android app, Health Connect is one tap. In a browser, Settings shows a connection code for a health app on the phone.
 
-**Android APK** — `scripts/build_apk.sh` (or the APK on each GitHub Release). One APK works on every instance: enter the server address on first start. After pulling a new image: `scripts/update_apk_from_release.sh`.
+**Android APK** — `scripts/build_apk.sh` (or the APK on each GitHub Release). One APK works on every instance: enter the server address on first start. After pulling a new image: `scripts/update_apk_from_release.sh`. An installed APK older than the one the server is publishing opens only the download screen.
 
 ## Changes from the original
 

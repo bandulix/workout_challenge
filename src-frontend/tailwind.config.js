@@ -66,9 +66,9 @@ module.exports = {
           '100%': { transform: 'scale(1)', opacity: '1' },
         },
         'pulse-ring': {
-          '0%': { boxShadow: '0 0 0 0 rgba(215, 255, 62, 0.55)' },
-          '70%': { boxShadow: '0 0 0 14px rgba(215, 255, 62, 0)' },
-          '100%': { boxShadow: '0 0 0 0 rgba(215, 255, 62, 0)' },
+          '0%': { boxShadow: '0 0 0 0 var(--pulse-ring-color, rgba(215, 255, 62, 0.55))' },
+          '70%': { boxShadow: '0 0 0 14px transparent' },
+          '100%': { boxShadow: '0 0 0 0 transparent' },
         },
         'float-slow': {
           '0%, 100%': { transform: 'translateY(0)' },

@@ -1,7 +1,9 @@
 package com.bandulix.workoutchallenge;
 
+import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
@@ -25,6 +27,7 @@ public class MainActivity extends BridgeActivity {
         // registered afterwards never reaches the Bridge ("plugin is not
         // implemented on android").
         registerPlugin(OWHealthPlugin.class);
+        registerPlugin(CachedMediaPlugin.class);
         // Theme.SplashScreen only hands off to AppTheme.NoActionBar if the
         // SplashScreen API is installed; otherwise the dark splash window
         // stays and shows as a black strip above the WebView.
@@ -42,6 +45,23 @@ public class MainActivity extends BridgeActivity {
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         applySystemChrome();
+    }
+
+    // /download/*.apk is served with Content-Disposition: attachment, so
+    // Chromium fires the download listener instead of navigating. Hand
+    // http(s) APK URLs to the system (Chrome / Files) which can save and
+    // install; the WebView itself cannot.
+    private void attachApkDownloadListener(WebView webView) {
+        webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
+            if (!ApkDownload.isAllowed(url)) return;
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                startActivity(intent);
+            } catch (Exception ignored) {
+                // no browser
+            }
+        });
     }
 
     // API JSON must never come from Chromium's HTTP disk cache. Capacitor
@@ -102,6 +122,7 @@ public class MainActivity extends BridgeActivity {
         WebView webView = getBridge().getWebView();
         webView.setBackgroundColor(canvas);
         applyWebViewCachePolicy(webView);
+        attachApkDownloadListener(webView);
         View parent = (View) webView.getParent();
         if (parent != null) {
             parent.setBackgroundColor(canvas);

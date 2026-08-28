@@ -68,12 +68,42 @@ function sanitizeApiSlice(slice) {
     };
 }
 
+function trimDrillMessages(data) {
+    if (!data || Array.isArray(data)) return data;
+    const rows = data.results;
+    if (!Array.isArray(rows) || rows.length <= 15) return data;
+    return {...data, results: rows.slice(0, 15)};
+}
+
+function trimWorkouts(data) {
+    if (!Array.isArray(data) || data.length <= 40) return data;
+    return data.slice(0, 40);
+}
+
 function persistableState(state) {
     const persisted = {};
     for (const key of Object.keys(state)) {
+        // Feed/stats are the whole season - too big for localStorage and
+        // the coach feed does not wait on them.
+        if (key === "feedApi" || key === "statsApi") continue;
         if (key.endsWith('Api')) {
             const clean = sanitizeApiSlice(state[key]);
-            if (clean) persisted[key] = clean;
+            if (!clean) continue;
+            if (key === "drillInstructorApi") {
+                for (const entry of Object.values(clean.queries)) {
+                    if (entry.endpointName === "getDrillMessages") {
+                        entry.data = trimDrillMessages(entry.data);
+                    }
+                }
+            }
+            if (key === "workoutsApi") {
+                for (const entry of Object.values(clean.queries)) {
+                    if (entry.endpointName === "getWorkouts") {
+                        entry.data = trimWorkouts(entry.data);
+                    }
+                }
+            }
+            persisted[key] = clean;
         } else {
             persisted[key] = state[key];
         }

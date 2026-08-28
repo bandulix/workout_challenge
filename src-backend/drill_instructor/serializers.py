@@ -174,6 +174,19 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["created_at", "updated_at"]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        owner_id = None
+        try:
+            owner_id = instance.competition.owner_id
+        except Exception:
+            pass
+        if not (user and (getattr(user, "is_staff", False) or user.pk == owner_id)):
+            data.pop("last_error", None)
+        return data
+
     def validate_persona(self, persona):
         # Only a built-in or one you created - assigning someone else's
         # custom prompt to a challenge you own would let them write the
@@ -431,6 +444,19 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        owner_id = None
+        try:
+            owner_id = instance.config.competition.owner_id
+        except Exception:
+            pass
+        if not (user and (getattr(user, "is_staff", False) or user.pk == owner_id)):
+            data.pop("error", None)
+        return data
+
     def get_replies(self, obj):
         if obj.parent_id is not None:
             return []  # replies themselves are never listed standalone
@@ -522,10 +548,26 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
         cache[key] = result
         return result
 
+    def _slim_points(self, obj):
+        if obj.kind != DrillInstructorMessage.KIND_ACTIVITY or obj.workout_id is None:
+            return None, None
+        competition_id = getattr(getattr(obj.config, "competition", None), "id", None)
+        capped = raw = 0.0
+        for point in obj.workout.points_set.all():
+            if not self._point_in_competition(point, competition_id):
+                continue
+            capped += float(point.points_capped or 0)
+            raw += float(point.points_raw or 0)
+        return capped, raw
+
     def get_points_capped(self, obj):
+        if self.context.get("slim"):
+            return self._slim_points(obj)[0]
         return self._points_payload(obj)[0]
 
     def get_points_raw(self, obj):
+        if self.context.get("slim"):
+            return self._slim_points(obj)[1]
         return self._points_payload(obj)[1]
 
     @staticmethod
@@ -622,6 +664,10 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
         return row
 
     def get_points_breakdown(self, obj):
+        # List pages (slim) skip the chip popup payload; retrieve still
+        # returns it when the user taps the points chip.
+        if self.context.get("slim"):
+            return []
         return self._points_payload(obj)[2]
 
     def _build_points_payload(self, obj):

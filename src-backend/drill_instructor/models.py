@@ -259,6 +259,10 @@ class DrillInstructorMessage(models.Model):
         if not self.persona_id and self.config_id:
             self.persona_id = self.config.persona_id
         super().save(*args, **kwargs)
+        cid = getattr(getattr(self, "config", None), "competition_id", None)
+        if cid:
+            from custom_user.point_recalc import bump_feed_generation
+            bump_feed_generation([cid])
 
     def __str__(self):
         return f"[{self.posted_at:%Y-%m-%d %H:%M}] {self.config.competition.name}: {self.body[:60]}"

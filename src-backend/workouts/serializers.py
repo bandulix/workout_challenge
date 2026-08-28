@@ -23,6 +23,21 @@ class WorkoutSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'duration': 'Duration is unrealistically long (>24h).'})
         if duration is not None and duration < datetime.timedelta(0):
             raise serializers.ValidationError({'duration': 'Duration must be positive.'})
+        kcal = data.get("kcal")
+        if kcal is not None and float(kcal) > 20_000:
+            raise serializers.ValidationError({"kcal": "Calories value is unrealistically high."})
+        if kcal is not None and float(kcal) < 0:
+            raise serializers.ValidationError({"kcal": "Calories must be positive."})
+        distance = data.get("distance")
+        if distance is not None and float(distance) > 500:
+            raise serializers.ValidationError({"distance": "Distance is unrealistically long (>500 km)."})
+        if distance is not None and float(distance) < 0:
+            raise serializers.ValidationError({"distance": "Distance must be positive."})
+        steps = data.get("steps")
+        if steps is not None and int(steps) > 200_000:
+            raise serializers.ValidationError({"steps": "Steps value is unrealistically high."})
+        if steps is not None and int(steps) < 0:
+            raise serializers.ValidationError({"steps": "Steps must be positive."})
         return data
 
     def create(self, validated_data):

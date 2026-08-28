@@ -1,7 +1,7 @@
 import React, {useEffect, useState} from "react";
-import {Timer, Vote} from "lucide-react";
+import {Timer} from "lucide-react";
 import PersonaAvatar from "./PersonaAvatar";
-import {BoxSection} from "../utils/miscellaneous";
+import {PaneHead} from "./uiBits";
 import {useGetCoachBallotQuery, useVoteCoachPersonaMutation} from "../utils/reducers/drillInstructorSlice";
 import usePollingInterval from "../utils/usePollingInterval";
 
@@ -98,17 +98,18 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
     }
 
     return (
-        <BoxSection>
-            <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
-                    <Vote className="h-3.5 w-3.5 text-volt-500"/> Vote next week's coach
-                </p>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-volt-700 dark:text-volt-300 tabular-nums shrink-0">
+        <div>
+            <PaneHead title="Vote next week's coach"
+                      hint={ballot.vote_count === 0
+                          ? "Winner takes the megaphone Monday morning."
+                          : `${ballot.vote_count} ${ballot.vote_count === 1 ? "vote" : "votes"} in`}>
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-volt-700 dark:text-volt-300 tabular-nums">
+                    <Timer className="h-3.5 w-3.5"/>
                     {countdown}
-                </p>
-            </div>
+                </span>
+            </PaneHead>
             {votable.length > 1 && (
-                <div className="mt-2 flex gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1">
+                <div className="mb-3 flex gap-1.5 overflow-x-auto no-scrollbar">
                     {votable.map((c) => {
                         const on = c.id === configId;
                         return (
@@ -121,45 +122,43 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
                     })}
                 </div>
             )}
-            <p className="text-[11px] text-gray-400 mt-1">
+            <p className="px-1 mb-3 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
                 {ballot.vote_count === 0
-                    ? "No votes yet. Winner takes over Monday morning."
-                    : `${ballot.vote_count} ${ballot.vote_count === 1 ? "vote" : "votes"} in · switches ${countdown === "any moment" ? "now" : "in " + countdown}.`}
-                {" "}You can change your vote until the switch.
+                    ? "No votes yet. You can change your pick until the switch."
+                    : `Switches ${countdown === "any moment" ? "now" : "in " + countdown}. You can change your vote until then.`}
                 {tiedLeaders ? " Tied coaches are drawn at random." : ""}
             </p>
-            {ballot.my_vote && (
-                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                    Your pick is highlighted. Tap another coach to switch.
-                </p>
-            )}
 
-            <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 py-0.5">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                 {(ballot.candidates || []).map((c) => {
                     const selected = ballot.my_vote === c.persona.id;
                     const onDuty = ballot.current_persona === c.persona.id;
+                    const accent = c.persona.theme_color || "#d7ff3e";
                     return (
                         <button key={c.persona.id} type="button" onClick={() => pick(c.persona.id)}
                                 disabled={isLoading}
-                                className={"snap-start shrink-0 w-[6.5rem] rounded-2xl border p-2.5 text-center transition active:scale-[0.97] disabled:opacity-60 " +
-                                    (selected
-                                        ? "border-volt-500 bg-volt-400/15 dark:bg-volt-400/10 shadow-glow-volt"
-                                        : "border-gray-200 dark:border-ink-700/60 hover:border-volt-500/60")}>
-                            <PersonaAvatar persona={c.persona} size={44} glow={selected || onDuty} className="mx-auto"/>
-                            <p className="mt-1.5 text-[11px] font-bold leading-tight truncate">{c.persona.name}</p>
-                            <p className="text-[10px] text-gray-400 mt-0.5">
+                                className={"min-w-0 rounded-3xl glass-card p-3 text-center transition active:scale-[0.97] disabled:opacity-60 " +
+                                    (selected ? "" : "hover:bg-white/5")}
+                                style={selected
+                                    ? {boxShadow: `0 0 0 2px ${accent}, 0 0 18px ${accent}66`}
+                                    : undefined}>
+                            <PersonaAvatar persona={c.persona} size={56} glow={selected || onDuty} className="mx-auto"/>
+                            <p className="mt-2 text-[12px] font-bold leading-tight truncate">{c.persona.name}</p>
+                            <p className="mt-0.5 text-[10px] text-gray-400">
                                 {c.votes} {c.votes === 1 ? "vote" : "votes"}
                                 {c.leading && c.votes > 0 ? (tiedLeaders ? " · tie" : " · lead") : ""}
                             </p>
                             {selected ? (
-                                <p className="text-[9px] font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 mt-0.5">Your vote</p>
+                                <p className="mt-1 text-[9px] font-extrabold uppercase tracking-wide"
+                                   style={{color: accent}}>Your vote</p>
                             ) : onDuty ? (
-                                <p className="text-[9px] font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 mt-0.5">On duty</p>
+                                <p className="mt-1 text-[9px] font-extrabold uppercase tracking-wide"
+                                   style={{color: accent}}>On duty</p>
                             ) : null}
                         </button>
                     );
                 })}
             </div>
-        </BoxSection>
+        </div>
     );
 }

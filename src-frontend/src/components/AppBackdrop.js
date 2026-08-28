@@ -5,9 +5,9 @@ import {backdropUrls} from "../utils/dailyBackdrop";
 
 // One action plate behind the whole app, swapped once a local calendar
 // day. Slow Ken Burns zoom runs on every screen.
-export default function AppBackdrop() {
+export default function AppBackdrop({forceCinematic = false}) {
     const {pathname} = useLocation();
-    const cinematic = isPublicPath(pathname);
+    const cinematic = forceCinematic || isPublicPath(pathname);
     const {webp, jpg} = useMemo(() => backdropUrls(), []);
 
     return (

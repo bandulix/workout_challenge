@@ -17,7 +17,7 @@ import {ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
 import {EmptyState, PaneHead, paneCardClass} from "../components/uiBits";
 import {useDispatch} from "react-redux";
 import {teamsApi} from "../utils/reducers/teamsSlice";
-import {drillInstructorApi, useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
+import {drillInstructorApi, messageResults, useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
 import {clearBodyScrollLock} from "../utils/overlay";
 import ProfileAvatar from "../components/ProfileAvatar";
 import AthleteCard from "../components/AthleteCard";
@@ -374,7 +374,6 @@ export default function Competition() {
 
     const {
         data: feed,
-        isLoading: feedLoading,
         refetch: refreshFeed,
     } = useGetFeedByIdQuery(id, {
         pollingInterval: pollSlow,
@@ -386,7 +385,8 @@ export default function Competition() {
         isLoading: statsLoading,
         refetch: refreshStats,
     } = useGetStatsByIdQuery(id, {
-        pollingInterval: pollSlow,
+        skip: tab === "feed",
+        pollingInterval: tab === "board" ? pollSlow : 0,
     });
 
     const isOwner = (user !== undefined) && (user?.id === competition?.owner);
@@ -411,14 +411,14 @@ export default function Competition() {
     // feed/stats so the new activity shows up without a manual refresh.
     // Shares the messages cache with CoachCorner - no extra requests.
     const {data: drillMessages} = useGetDrillMessagesQuery(
-        {competition: competition?.id},
+        {competition: competition?.id, limit: 15, offset: 0},
         {pollingInterval: pollFast, skip: !competition?.id}
     );
     const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: !competition?.id});
     const dunceUserId = (drillConfigs || []).find((c) => c.competition === competition?.id)?.dunce?.user_id ?? null;
     const lastDrillMsgId = React.useRef(null);
     useEffect(() => {
-        const latest = drillMessages?.[0];
+        const latest = messageResults(drillMessages)[0];
         if (!latest) return;
         if (lastDrillMsgId.current === null) {
             lastDrillMsgId.current = latest.id; // baseline on first load
@@ -446,12 +446,12 @@ export default function Competition() {
             <div className="container mx-auto p-4">
 
                 {
-                    (competitionLoading || feedLoading) ? (
+                    (competitionLoading) ? (
                         <SectionLoader height={"h-48 mb-4"} />
-                    ) : (statsError) ? (
+                    ) : (tab !== "feed" && statsError) ? (
                         <ErrorBoxSection additionalClasses='mb-4' errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
                     ) : (
-                        <CompetitionHead competition={competition} feed={feed} isOwner={isOwner} goals={stats?.competition?.goals} user={user} />
+                        <CompetitionHead competition={competition} feed={feed} isOwner={isOwner} goals={competition?.goals || stats?.competition?.goals} user={user} />
                     )
                 }
 

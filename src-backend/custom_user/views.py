@@ -8,7 +8,8 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import BasePermission, SAFE_METHODS, AllowAny
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.throttling import BaseThrottle, ScopedRateThrottle
+from rest_framework.throttling import BaseThrottle
+from .throttles import client_ip, ClientIPScopedThrottle
 from django.db.models import Q
 from django.http import FileResponse, Http404, HttpResponse
 from rest_framework.views import APIView
@@ -125,8 +126,6 @@ class RegisterRateThrottle(BaseThrottle):
     RATE_LIMIT = 20
     RATE_WINDOW_SECONDS = 60 * 60
 
-    _TRUSTED_PROXIES = frozenset({"127.0.0.1", "::1", "localhost"})
-
     def get_cache_key(self, request, view):
         # Honour X-Forwarded-For only when the TCP peer is the loopback
         # nginx in this container. Otherwise a client talking to gunicorn
@@ -134,13 +133,7 @@ class RegisterRateThrottle(BaseThrottle):
         # LAST XFF hop: $proxy_add_x_forwarded_for appends $remote_addr,
         # so the trailing entry is the real client; leading ones can be
         # attacker-supplied.
-        remote = (request.META.get("REMOTE_ADDR") or "").strip() or "unknown"
-        if remote in self._TRUSTED_PROXIES:
-            xff = request.META.get("HTTP_X_FORWARDED_FOR", "")
-            ip = xff.split(",")[-1].strip() or remote
-        else:
-            ip = remote
-        return f"register-throttle:{ip}"
+        return f"register-throttle:{client_ip(request)}"
 
     def allow_request(self, request, view):
         if request.method != 'POST':
@@ -223,21 +216,31 @@ class CustomUserViewSet(viewsets.ModelViewSet):
 
         Profile pictures must not be publicly reachable: they are never
         served from the public /media/ path. Django checks the JWT and
-        the caller's visibility (self or co-participant, via the
-        viewset's queryset) and, in production, hands the actual file
-        delivery to nginx via X-Accel-Redirect (an internal, non-public
-        location). In bare Django dev (DEBUG) the file is streamed.
+        the caller's visibility (self or co-participant) and, in
+        production, hands the actual file delivery to nginx via
+        X-Accel-Redirect. In DEBUG the file is streamed.
         """
-        user = self.get_object()
+        lookup = pk
+        if str(lookup).lower() in ["me", "my", "myself", "i"]:
+            lookup = request.user.id
+        user = get_object_or_404(CustomUser.objects.only("id", "profile_picture"), pk=lookup)
+        if user.pk != request.user.pk:
+            from competition.models import Competition
+            shared = Competition.objects.filter(
+                Q(owner=request.user) | Q(user=request.user),
+            ).filter(Q(owner=user) | Q(user=user)).exists()
+            if not shared:
+                raise Http404("No profile picture.")
         if not user.profile_picture:
             raise Http404("No profile picture.")
         from workout_challenge.images import protected_media_response
-        return protected_media_response(user.profile_picture)
+        size = request.query_params.get("size")
+        return protected_media_response(user.profile_picture, request=request, size=size)
 
 
 class PasswordResetView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIPScopedThrottle]
     throttle_scope = 'auth'
     def post(self, request):
         serializer = PasswordResetSerializer(data=request.data)
@@ -249,7 +252,7 @@ class PasswordResetView(APIView):
 
 class PasswordResetConfirmView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIPScopedThrottle]
     throttle_scope = 'auth'
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)
@@ -261,7 +264,7 @@ class PasswordResetConfirmView(APIView):
 
 class EmailVerifyConfirmView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIPScopedThrottle]
     throttle_scope = 'auth'
 
     def post(self, request):
@@ -278,7 +281,7 @@ class EmailVerifyConfirmView(APIView):
 class EmailVerifyResendView(APIView):
     """Logged-in user, own inbox only. 10-minute cooldown."""
     permission_classes = [IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIPScopedThrottle]
     throttle_scope = 'auth'
     RESEND_COOLDOWN_SECONDS = 10 * 60
 

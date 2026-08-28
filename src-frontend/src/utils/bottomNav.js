@@ -25,6 +25,23 @@ import {onAppResume} from "./appLifecycle";
 
 const COACH_FALLBACK = {name: "Coach", avatar: "megaphone", theme_color: "#d7ff3e"};
 
+function coachAccent(persona) {
+    const raw = String(persona?.theme_color || COACH_FALLBACK.theme_color).trim();
+    if (/^#[0-9a-fA-F]{6}$/i.test(raw)) return raw;
+    if (/^#[0-9a-fA-F]{3}$/i.test(raw)) {
+        return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`;
+    }
+    return COACH_FALLBACK.theme_color;
+}
+
+function coachAccentRgba(persona, alpha) {
+    const hex = coachAccent(persona).slice(1);
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function NavLink({to, icon: Icon, label, isActive, onClick}) {
     const className =
         "relative flex flex-col items-center justify-center gap-1 py-2 px-2.5 min-w-[56px] min-h-[58px] transition-colors duration-200 " +
@@ -276,14 +293,19 @@ export default function BottomNav() {
                           aria-current={onCoach ? "page" : undefined}>
                         <span className="relative">
                             <span aria-hidden="true"
-                                  className="absolute -inset-2.5 rounded-full bg-volt-400/25 blur-md animate-volt-breathe"/>
-                            <span className={"relative block rounded-full ring-2 ring-volt-400 shadow-glow-volt transition active:scale-95 " +
-                                (onCoach ? "animate-pulse-ring" : "")}>
+                                  className="absolute -inset-2.5 rounded-full blur-md animate-volt-breathe"
+                                  style={{backgroundColor: coachAccentRgba(coachPersona, 0.28)}}/>
+                            <span className={"relative block rounded-full transition active:scale-95 " +
+                                (onCoach ? "animate-pulse-ring" : "")}
+                                  style={{
+                                      boxShadow: `0 0 0 2px ${coachAccent(coachPersona)}, 0 0 16px ${coachAccentRgba(coachPersona, 0.55)}`,
+                                      "--pulse-ring-color": coachAccentRgba(coachPersona, 0.55),
+                                  }}>
                                 <PersonaAvatar persona={coachPersona} size={58} glow/>
                             </span>
                         </span>
-                        <span className={"text-[10px] font-bold leading-none mt-1.5 tracking-widest uppercase md:hidden " +
-                            (onCoach ? "text-volt-700 dark:text-volt-400" : "text-ink-800 dark:text-gray-400")}>
+                        <span className="text-[10px] font-bold leading-none mt-1.5 tracking-widest uppercase md:hidden"
+                              style={{color: coachAccent(coachPersona), opacity: onCoach ? 1 : 0.75}}>
                             Coach
                         </span>
                     </Link>

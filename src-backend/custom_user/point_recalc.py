@@ -23,20 +23,29 @@ def trigger_recalc_points():
         logger.info('Recalc points task skipped because it was triggered less than 30 seconds ago')
 
 
-def bump_stats_generation(competition_ids):
-    """Invalidate the cached competition-stats snapshots.
+def _incr_generation(key):
+    try:
+        cache.incr(key)
+    except ValueError:
+        cache.add(key, 1, None)
 
-    The stats endpoint caches its response under a key that contains this
-    generation (see CompetitionStatsQueryView); bumping it makes every
-    old snapshot unreachable, so the next stats request recomputes
-    instead of serving up-to-30s-old data after a workout/point change.
+
+def bump_feed_generation(competition_ids):
+    """Invalidate coach message-list pages (not the points/stats snapshots)."""
+    for competition_id in set(cid for cid in competition_ids if cid):
+        _incr_generation(f"feed-generation:{competition_id}")
+
+
+def bump_stats_generation(competition_ids):
+    """Invalidate points feed + stats + coach list.
+
+    Stamps and chat use bump_feed_generation so they do not rebuild
+    the season points snapshot.
     """
-    for competition_id in set(competition_ids):
-        key = f"stats-generation:{competition_id}"
-        try:
-            cache.incr(key)
-        except ValueError:
-            cache.add(key, 1, None)
+    ids = set(cid for cid in competition_ids if cid)
+    for competition_id in ids:
+        _incr_generation(f"stats-generation:{competition_id}")
+    bump_feed_generation(ids)
 
 
 @app.task(bind=True, time_limit=60 * 30, max_retries=3)  # 30 min time limit

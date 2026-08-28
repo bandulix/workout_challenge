@@ -10,7 +10,7 @@ export default defineConfig(({mode}) => ({
     publicDir: "public",
     build: {
         outDir: "build",
-        sourcemap: true,
+        sourcemap: false,
         emptyOutDir: true,
     },
     server: {
@@ -34,5 +34,9 @@ export default defineConfig(({mode}) => ({
         alias: {
             src: path.resolve(__dirname, "src"),
         },
+    },
+    test: {
+        environment: "node",
+        include: ["src/**/*.test.js"],
     },
 }));

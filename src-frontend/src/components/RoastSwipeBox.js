@@ -121,7 +121,7 @@ function useProtectedImageState(url) {
             return;
         }
         let alive = true;
-        fetchProtectedImage(url).then((localUrl) => {
+        fetchProtectedImage(url, "card").then((localUrl) => {
             if (alive) setState({src: localUrl});
         });
         return () => { alive = false; };
@@ -146,7 +146,7 @@ export default function RoastSwipeBox() {
 
     // Preload the card behind the top one so the swipe feels instant.
     useEffect(() => {
-        if (next?.image) fetchProtectedImage(next.image);
+        if (next?.image) fetchProtectedImage(next.image, "card");
     }, [next?.image]);
 
     const handleVote = useCallback((hot) => {

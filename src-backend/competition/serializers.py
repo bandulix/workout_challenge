@@ -9,11 +9,21 @@ class CompetitionSerializer(serializers.ModelSerializer):
         required=False
     )
     user_info = serializers.SerializerMethodField()
+    goals = serializers.SerializerMethodField()
 
     class Meta:
         model = Competition
-        fields = ['id', 'owner', 'user', 'user_info', 'name', 'start_date', 'start_date_fmt', 'start_date_epoch', 'end_date', 'end_date_fmt', 'end_date_epoch', 'has_teams', 'organizer_assigns_teams', 'join_code']
-        read_only_fields = ['join_code', 'user', 'user_info']
+        fields = ['id', 'owner', 'user', 'user_info', 'name', 'start_date', 'start_date_fmt', 'start_date_epoch', 'end_date', 'end_date_fmt', 'end_date_epoch', 'has_teams', 'organizer_assigns_teams', 'join_code', 'goals']
+        read_only_fields = ['join_code', 'user', 'user_info', 'goals']
+
+    def validate_owner(self, owner):
+        if self.instance is None:
+            return owner
+        if owner.pk == self.instance.owner_id:
+            return owner
+        if not self.instance.user.filter(pk=owner.pk).exists():
+            raise serializers.ValidationError("New owner must be a participant.")
+        return owner
 
     def get_user_info(self, obj):
         # Iterates the prefetch cache (viewsets prefetch `user`); a DB
@@ -21,6 +31,9 @@ class CompetitionSerializer(serializers.ModelSerializer):
         # Python instead (identical output).
         users = sorted(obj.user.all(), key=lambda u: (u.username or "")) if hasattr(obj.user, 'all') else [obj.user]
         return [{'id': u.id, 'username': u.username} for u in users]
+
+    def get_goals(self, obj):
+        return ActivityGoalSerializer(obj.activitygoal_set.all(), many=True).data
 
 
 class TeamSerializer(serializers.ModelSerializer):

@@ -89,6 +89,28 @@ class CustomUserSerializer(serializers.ModelSerializer):
         except Exception:
             return 0
 
+    def validate_email(self, value):
+        value = (value or "").strip().lower()
+        qs = CustomUser.objects.filter(email__iexact=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "Could not create this account. Try logging in, or reset your password."
+            )
+        return value
+
+    def validate_username(self, value):
+        value = (value or "").strip()
+        if not value:
+            return value
+        qs = CustomUser.objects.filter(username__iexact=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("That display name is taken.")
+        return value
+
     def validate_profile_picture_upload(self, value):
         if value is None:
             return value
@@ -110,6 +132,9 @@ class CustomUserSerializer(serializers.ModelSerializer):
         read_only_fields = ['is_verified', 'strava_athlete_id', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'health_user_id', 'health_last_synced_at', 'is_staff', 'is_superuser', 'my_competitions', 'my_teams']
         extra_kwargs = {
             'password': {'write_only': True},
+            # UniqueValidator would say "already exists" and enumerate
+            # accounts. validate_email uses a generic message instead.
+            'email': {'validators': []},
         }
 
     def get_my(self, obj):

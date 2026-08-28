@@ -53,7 +53,7 @@ if [ -n "$JAVA_BIN" ]; then
     export JAVA_HOME="$(dirname "$(dirname "$JAVA_BIN")")"
 fi
 
-# --- version stamping (drives Android updates + the in-app banner) ----
+# --- version stamping (drives Android updates + the force-update screen) ----
 # versionName: latest git tag (e.g. 0.9.1) or "dev" outside a checkout.
 # versionCode: commit count - monotonic, so every later build updates.
 VERSION_NAME="$(git describe --tags --abbrev=0 2>/dev/null || echo dev)"
@@ -61,8 +61,8 @@ VERSION_CODE="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 echo "Stamping version: $VERSION_NAME ($VERSION_CODE)"
 
 # Uncommitted changes do NOT move the version code: the rebuilt APK would
-# carry the same stamp as the previous release and the in-app update
-# banner (latestCode > installedCode) would never fire.
+# carry the same stamp as the previous release and installed apps would
+# not see this build as an update (latestCode > installedCode).
 if ! git diff --quiet || ! git diff --cached --quiet; then
     echo "WARNING: working tree has uncommitted changes - versionCode stays"
     echo "         at $VERSION_CODE, so installed apps will NOT see this build"

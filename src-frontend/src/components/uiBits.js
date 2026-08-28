@@ -1,6 +1,8 @@
 import React from "react";
 import {RefreshCw} from "lucide-react";
 import PersonaAvatar from "./PersonaAvatar";
+import {OverlaySheet} from "../forms/basicComponents";
+import {useProtectedImage} from "../utils/protectedMedia";
 
 export const VOLT = "#d7ff3e";
 
@@ -32,6 +34,16 @@ export function PaneHead({title, hint, children}) {
 
 export const paneCardClass =
     "min-w-0 rounded-3xl glass-card p-3.5 sm:p-4 text-ink-950 dark:text-white";
+
+export function FullImageSheet({url, title, fallback, onClose, zClass = "z-[80]"}) {
+    const {src} = useProtectedImage(url);
+    return (
+        <OverlaySheet title={title} onClose={onClose} zClass={zClass}>
+            <img src={src || fallback} alt=""
+                 className="mx-auto max-h-[70vh] w-full rounded-2xl object-contain"/>
+        </OverlaySheet>
+    );
+}
 
 export function Chip({children}) {
     return (

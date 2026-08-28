@@ -34,7 +34,7 @@ class CustomUserManager(BaseUserManager):
         """
         if not email:
             raise ValueError(_("The Email must be set"))
-        email = self.normalize_email(email)
+        email = self.normalize_email(email).lower()
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save()
@@ -185,6 +185,18 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
             return self.activity_source
         return 'strava' if 'strava' in linked else linked[0]
 
+    def _dedupe_username(self):
+        base = (self.username or "Athlete").strip() or "Athlete"
+        qs = CustomUser.objects.all()
+        if self.pk:
+            qs = qs.exclude(pk=self.pk)
+        if not qs.filter(username__iexact=base).exists():
+            self.username = base
+            return
+        n = 2
+        while n < 100 and qs.filter(username__iexact=f"{base} {n}").exists():
+            n += 1
+        self.username = f"{base} {n}" if n < 100 else f"{base} {self.pk or 'x'}"
 
     def save(self, *args, **kwargs):
         """ trigger recalculation of points_capped if workout changes """
@@ -197,8 +209,11 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
                 self.username = self.first_name
             else:
                 self.username = f'{self.first_name} {".".join([i[0] for i in self.last_name.replace("-"," ").split(" ") if len(i) >= 1])}.'
+        self._dedupe_username()
 
         is_create = self.pk is None
+        if isinstance(self.email, str):
+            self.email = self.email.strip().lower()
         old_email = None if is_create else (self._original or {}).get("email")
         email_changed = (
             not is_create
@@ -208,20 +223,15 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         if email_changed:
             self.is_verified = False
 
-        # The very first user to register becomes the admin so they can
-        # access /admin/ and edit Site Settings without a separate
-        # `manage.py promotetostaff` step. Wrap in a transaction with
-        # SELECT ... FOR UPDATE on the user table to make sure two
-        # concurrent signups don't both get superuser.
-        if is_create and not self.is_superuser:
+        # First registrant becomes admin only when registration is open
+        # (no REGISTRATION_TOKEN). Closed signups are operator-run:
+        # `createsuperuser` / `promotetostaff`. Lock SiteSettings — a
+        # SELECT FOR UPDATE on zero user rows locks nothing on Postgres.
+        if is_create and not self.is_superuser and not getattr(settings, "REGISTRATION_TOKEN", ""):
+            from site_settings.models import SiteSettings
             with transaction.atomic():
-                has_superuser = (
-                    CustomUser.objects
-                    .select_for_update()
-                    .filter(is_superuser=True)
-                    .exists()
-                )
-                if not has_superuser:
+                SiteSettings.objects.select_for_update().get_or_create(pk=1)
+                if not CustomUser.objects.filter(is_superuser=True).exists():
                     self.is_staff = True
                     self.is_superuser = True
 

@@ -40,7 +40,8 @@ function PersonaAvatar({persona, size = 48, ring = true, glow = false, className
     // API URLs go through the authenticated fetch.
     const isLocalPreview = !!picture && picture.startsWith("blob:");
     const {src: fetchedSrc, failed: fetchFailed} = useProtectedImage(
-        picture && !isLocalPreview ? picture : null
+        picture && !isLocalPreview ? picture : null,
+        "avatar",
     );
 
     // The src is derived from the props on every render (a changed

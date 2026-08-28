@@ -7,21 +7,29 @@ import ProfileAvatar from "./ProfileAvatar";
 import {drillInstructorApi, useReplyToDrillMessageMutation} from "../utils/reducers/drillInstructorSlice";
 import {useProtectedImage} from "../utils/protectedMedia";
 import {elapsedSince, timeAgo} from "../utils/time";
+import {FullImageSheet} from "./uiBits";
 
-// A reply's image (the coach's roasted-photo remix) - authenticated
-// endpoint, so loaded through the protected-media cache like avatars.
 function ReplyImage({url, alt, elapsed}) {
-    const {src} = useProtectedImage(url);
+    // Card JPEG in the thread; FullImageSheet fetches the original.
+    const {src} = useProtectedImage(url, "card");
+    const [open, setOpen] = useState(false);
     if (!src) return null;
     return (
-        <div className="relative mt-1.5 overflow-hidden rounded-xl">
-            <img src={src} alt={alt} className="max-h-72 w-auto max-w-full"/>
-            {elapsed && (
-                <span className="absolute bottom-1.5 right-1.5 rounded-full bg-ink-950/75 text-volt-400 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 tabular-nums">
-                    {elapsed}
-                </span>
+        <>
+            <button type="button" onClick={() => setOpen(true)}
+                    className="relative mt-1.5 overflow-hidden rounded-xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
+                <img src={src} alt={alt} className="max-h-72 w-auto max-w-full"/>
+                {elapsed && (
+                    <span className="absolute bottom-1.5 right-1.5 rounded-full bg-ink-950/75 text-volt-400 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 tabular-nums">
+                        {elapsed}
+                    </span>
+                )}
+            </button>
+            {open && (
+                <FullImageSheet url={url} title={alt || "Photo"} fallback={src}
+                                onClose={() => setOpen(false)} zClass="z-[70]"/>
             )}
-        </div>
+        </>
     );
 }
 
@@ -44,10 +52,11 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
     const [error, setError] = useState(null);
     const [sendReply, {isLoading}] = useReplyToDrillMessageMutation();
     const dispatch = useDispatch();
-    // The original upload is the activity-card answer; the coach remix
-    // is the backdrop and the hot-or-not box. Neither belongs in chat.
+    // Coach remix is the activity-card backdrop (and hot-or-not) — not
+    // a chat bubble. Original photo uploads stay in the thread so they
+    // open only when the user taps replies.
     const replies = (message.replies || []).filter(
-        (r) => r.kind !== "photo" && !(r.is_coach && r.image)
+        (r) => !(r.is_coach && r.image)
     );
     const pictured = Boolean(message.image) || replies.some((r) => r.image);
     const [now, setNow] = useState(Date.now());
