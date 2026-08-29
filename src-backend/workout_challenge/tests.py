@@ -323,6 +323,68 @@ class BlockPublicMediaMiddlewareTests(TestCase):
         self.assertNotEqual(response.status_code, 404)
 
 
+class ThumbFilePermissionTests(TestCase):
+    """Avatar/card thumbs are served by nginx via X-Accel-Redirect.
+    mkstemp leaves 0600; nginx then 403s and CrowdSec http-probing bans
+    the client after a handful of distinct /picture/?size= URLs."""
+
+    def _jpeg_field(self):
+        from io import BytesIO
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new("RGB", (32, 32), (40, 80, 120)).save(buf, format="JPEG")
+        name = default_storage.save("perm_src.jpg", ContentFile(buf.getvalue()))
+
+        class Field:
+            def __init__(self, stored):
+                self.name = stored
+                self.storage = default_storage
+                self._fp = None
+
+            def open(self, mode="rb"):
+                self._fp = default_storage.open(self.name, mode)
+                return self
+
+            def read(self, *args, **kwargs):
+                return self._fp.read(*args, **kwargs)
+
+            def seek(self, *args, **kwargs):
+                return self._fp.seek(*args, **kwargs)
+
+            def tell(self, *args, **kwargs):
+                return self._fp.tell(*args, **kwargs)
+
+        return Field(name)
+
+    def test_new_thumb_is_world_readable(self):
+        from pathlib import Path
+        from django.conf import settings
+        from workout_challenge.images import _avatar_thumb_rel
+
+        rel = _avatar_thumb_rel(self._jpeg_field())
+        self.assertTrue(rel)
+        mode = (Path(settings.MEDIA_ROOT) / rel).stat().st_mode & 0o777
+        self.assertEqual(mode, 0o644, oct(mode))
+
+    def test_existing_0600_thumb_is_repaired(self):
+        import os
+        from pathlib import Path
+        from django.conf import settings
+        from workout_challenge.images import _avatar_thumb_rel
+
+        field = self._jpeg_field()
+        rel = _avatar_thumb_rel(field)
+        dest = Path(settings.MEDIA_ROOT) / rel
+        os.chmod(dest, 0o600)
+        again = _avatar_thumb_rel(field)
+        self.assertEqual(again, rel)
+        mode = dest.stat().st_mode & 0o777
+        self.assertEqual(mode, 0o644, oct(mode))
+
+
 class HeicUploadTests(TestCase):
     """iPhone and Galaxy camera rolls default to HEIC. Pillow alone cannot
     open that container; pillow-heif must be registered and the upload

@@ -42,7 +42,9 @@ RUN apk add --no-cache nginx supervisor redis postgresql-libs
 # Unprivileged user for the app processes (gunicorn / celery / flower).
 # supervisord itself stays root so nginx can bind :80 and it can spawn
 # children as other users; the worker processes no longer run as root.
-RUN adduser -D -H app
+# nginx is in group `app` so X-Accel-Redirect can read uploads (0600
+# thumbs 403 and CrowdSec http-probing bans the client).
+RUN adduser -D -H app && addgroup nginx app
 
 # Set workdir
 WORKDIR /workout_challenge

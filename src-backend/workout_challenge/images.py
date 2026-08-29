@@ -1,6 +1,7 @@
 """Shared upload validation: trust pixels, not the client Content-Type."""
 
 import hashlib
+import os
 from io import BytesIO
 from pathlib import Path as _Path
 
@@ -169,6 +170,18 @@ def _etag_matches(header, etag):
 
 
 THUMB_CAP = 200
+# mkstemp creates 0600. nginx (X-Accel-Redirect) runs as user `nginx`,
+# not `app`, so a 0600 thumb 403s every avatar/card GET. CrowdSec
+# http-probing treats those distinct /picture/?size=… 403s as a scan.
+_THUMB_MODE = 0o644
+
+
+def _ensure_world_readable(path):
+    try:
+        if path.stat().st_mode & 0o044 != 0o044:
+            os.chmod(path, _THUMB_MODE)
+    except OSError:
+        pass
 
 
 def _prune_thumbs(folder):
@@ -189,7 +202,6 @@ def _prune_thumbs(folder):
 
 def _thumb_rel(file_field, variant, max_side, quality):
     """JPEG derivative cached under MEDIA_ROOT/thumbs/."""
-    import os
     import tempfile
     from django.conf import settings
     from PIL import Image, ImageOps
@@ -199,6 +211,7 @@ def _thumb_rel(file_field, variant, max_side, quality):
     dest = _Path(settings.MEDIA_ROOT) / rel
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() and dest.stat().st_size > 0:
+        _ensure_world_readable(dest)
         return rel
     fd, tmp_name = tempfile.mkstemp(prefix=f"{etag}.", suffix=".jpg", dir=dest.parent)
     os.close(fd)
@@ -215,6 +228,7 @@ def _thumb_rel(file_field, variant, max_side, quality):
             tmp.unlink(missing_ok=True)
             return None
         os.replace(tmp, dest)
+        os.chmod(dest, _THUMB_MODE)
     except Exception:
         try:
             tmp.unlink(missing_ok=True)

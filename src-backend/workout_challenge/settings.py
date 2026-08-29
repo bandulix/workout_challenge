@@ -350,6 +350,10 @@ STATIC_ROOT = BASE_DIR / 'static'
 # the internal /protected-media/ location after a JWT check.
 MEDIA_URL = '/media/'
 MEDIA_ROOT = DATA_DIR / 'media'
+# nginx (user `nginx`) serves these via X-Accel-Redirect. Default umask
+# is usually fine; 0600 thumbs (mkstemp) are not - see images._thumb_rel.
+FILE_UPLOAD_PERMISSIONS = 0o644
+FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o755
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

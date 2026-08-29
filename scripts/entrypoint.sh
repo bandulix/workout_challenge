@@ -42,6 +42,12 @@ fi
 # writable by it - named volumes already inherit the image ownership,
 # but bind mounts arrive root-owned.
 chown -R app:app /workout_challenge/src-backend/data
+# nginx (X-Accel-Redirect) runs as user `nginx`, not `app`. Avatar/card
+# thumbs used to be 0600 from mkstemp; nginx then 403'd every
+# /api/.../picture/?size=… GET, which CrowdSec http-probing bans as a scan.
+if [ -d /workout_challenge/src-backend/data/media ]; then
+    chmod -R a+rX /workout_challenge/src-backend/data/media || true
+fi
 
 # Migrations (idempotent). Never run `makemigrations` here. Run as the
 # app user so a SQLite database file is created with the right owner.
