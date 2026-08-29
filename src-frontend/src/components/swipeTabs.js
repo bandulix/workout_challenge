@@ -8,6 +8,12 @@ export const CHALLENGE_TABS = [
     {id: "trophies", label: "Trophies"},
 ];
 
+export function peekableTabIds(idx, dragging, seen) {
+    return CHALLENGE_TABS
+        .filter((_, i) => i === idx || seen?.has(i) || (dragging && Math.abs(i - idx) === 1))
+        .map((t) => t.id);
+}
+
 
 function usePrefersReducedMotion() {
     const [reduced, setReduced] = useState(false);
@@ -79,13 +85,15 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0}) {
 }
 
 
-export function SwipePages({tab, onChange, children}) {
+export function SwipePages({tab, onChange, onPeek, children}) {
     const pages = React.Children.toArray(children);
     const idx = Math.max(0, CHALLENGE_TABS.findIndex((t) => t.id === tab));
     const last = CHALLENGE_TABS.length - 1;
     const wrapRef = useRef(null);
     const startRef = useRef(null);
     const dxRef = useRef(0);
+    const peekRef = useRef(onPeek);
+    peekRef.current = onPeek;
     const [dx, setDx] = useState(0);
     const [dragging, setDragging] = useState(false);
     const [paneW, setPaneW] = useState(0);
@@ -99,6 +107,13 @@ export function SwipePages({tab, onChange, children}) {
             return next;
         });
     }, [idx]);
+    // Adjacent panes mount during a drag (so the incoming page paints).
+    // Tell the parent now, before tab changes, so skipped queries can start.
+    useEffect(() => {
+        const peek = peekRef.current;
+        if (!peek) return;
+        peekableTabIds(idx, dragging, seen).forEach((id) => peek(id));
+    }, [idx, dragging, seen]);
 
     useEffect(() => {
         const el = wrapRef.current;

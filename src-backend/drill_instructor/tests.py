@@ -1804,7 +1804,8 @@ class PhotoPostTests(TestCase):
         self.assertIn("45 min Run", prompt)
         self.assertIn("5.00 km", prompt)
         self.assertIn("420 kcal", prompt)
-        self.assertIn("WORKOUT IN THE SCENE", prompt)
+        self.assertIn("THE JOKE", prompt)
+        self.assertIn("SPORT ACTION", prompt)
 
     def test_photo_reply_no_roast_without_edit_model(self):
         from .tasks import post_reply_reaction
@@ -1911,6 +1912,23 @@ class PhotoPostTests(TestCase):
         roast_args = roast.call_args[0]  # positional: (image_path, prompt, model)
         self.assertEqual(roast_args[0], photo.image.path)
         self.assertEqual(roast_args[2], "dall-e-2")  # probed model passed through
+
+    def test_roast_sends_coach_portrait_and_does_not_drop_it(self):
+        from .tasks import post_photo_reaction
+        self.persona.profile_picture.save(
+            "coach.png", SimpleUploadedFile("coach.png", PNG_1PX, content_type="image/png"),
+        )
+        photo = self._photo_message()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image"), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - framed it!", None)), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(PNG_1PX, None)) as roast:
+            result = post_photo_reaction(photo.id)
+        self.assertIsNotNone(result["roast_id"])
+        self.assertEqual(roast.call_count, 1)
+        self.assertEqual(roast.call_args.kwargs["extra_image_paths"], [self.persona.profile_picture.path])
+        self.assertIn("FACE LOCK", roast.call_args[0][1])
+        self.assertIn("<IMAGE_1>", roast.call_args[0][1])
 
     def test_roast_failure_still_posts_the_text_reaction(self):
         from .tasks import post_photo_reaction
@@ -2239,7 +2257,9 @@ class ImageEditCapabilityProbeTests(TestCase):
                 client, "xai", "grok-imagine-image", PNG_1PX, "face lock", 30,
                 extra_images=[PNG_1PX],
             )
-        image = post.call_args[1]["json"]["image"]
+        payload = post.call_args[1]["json"]
+        self.assertNotIn("image", payload)
+        image = payload["images"]
         self.assertIsInstance(image, list)
         self.assertEqual(len(image), 2)
         self.assertTrue(image[0]["url"].startswith("data:image/png;base64,"))
@@ -2256,27 +2276,43 @@ class ImageEditCapabilityProbeTests(TestCase):
 
 
 class RoastImagePromptTests(TestCase):
-    """build_roast_image_prompt: hardcoded coach-in-scene remix with
-    optional face lock and workout-stat overlay."""
+    """build_roast_image_prompt: cinematic coach world + stats as the joke."""
 
     def _build(self, **kwargs):
         from .llm_client import build_roast_image_prompt
-        defaults = {"persona_name": "Roast Master", "persona_description": "A smoky boxing gym at midnight."}
+        defaults = {"persona_name": "Roast Master"}
         defaults.update(kwargs)
         return build_roast_image_prompt(**defaults)
 
-    def test_setting_comes_from_persona_description(self):
+    def test_built_in_coach_gets_the_splashy_world(self):
         prompt = self._build()
         self.assertIn("Roast Master", prompt)
+        self.assertIn("COACH WORLD", prompt)
+        self.assertIn("jumbotron", prompt.lower())
+        self.assertIn("movie-poster", prompt)
+        self.assertIn("NOT a generic gym", prompt)
+
+    def test_custom_coach_world_uses_the_description(self):
+        prompt = self._build(
+            persona_name="Photo Sergeant",
+            persona_description="A smoky boxing gym at midnight.",
+            persona_avatar="sergeant",
+        )
         self.assertIn("A smoky boxing gym at midnight.", prompt)
-        self.assertIn("COACH BRIEFING", prompt)
-        self.assertIn("INTERPRET their setting", prompt)
-        self.assertIn("world of coach", prompt)
+        self.assertIn("COACH WORLD", prompt)
+        self.assertNotIn("boot-camp parade", prompt)
+
+    def test_sport_action_is_in_the_scene(self):
+        prompt = self._build(sport_type="Run")
+        self.assertIn("SPORT ACTION", prompt)
+        self.assertIn("Run", prompt)
 
     def test_face_lock_when_portrait_is_present(self):
         prompt = self._build(has_coach_portrait=True)
         self.assertIn("FACE LOCK", prompt)
         self.assertIn("IMAGE 2", prompt)
+        self.assertIn("<IMAGE_1>", prompt)
+        self.assertIn("exact face", prompt)
         self.assertNotIn("no portrait reference", prompt)
 
     def test_invents_look_when_no_portrait(self):
@@ -2284,15 +2320,16 @@ class RoastImagePromptTests(TestCase):
         self.assertIn("no portrait reference", prompt)
         self.assertNotIn("FACE LOCK", prompt)
 
-    def test_workout_stats_are_painted_on_the_picture(self):
+    def test_workout_stats_are_the_punchline_prop(self):
         prompt = self._build(workout_summary="45 min Run · 5.00 km · 420 kcal")
-        self.assertIn("WORKOUT IN THE SCENE", prompt)
+        self.assertIn("THE JOKE", prompt)
         self.assertIn("tattoo", prompt)
         self.assertIn("45 min Run · 5.00 km · 420 kcal", prompt)
+        self.assertIn("Not a floating HUD", prompt)
 
-    def test_no_stats_omits_overlay(self):
+    def test_no_stats_omits_the_joke(self):
         prompt = self._build()
-        self.assertNotIn("WORKOUT IN THE SCENE", prompt)
+        self.assertNotIn("THE JOKE", prompt)
 
     def test_caption_is_optional_exact_text(self):
         with_caption = self._build(caption="leg day!")
@@ -3762,13 +3799,18 @@ class EchoArtPromptTests(TestCase):
         self.assertIn("no portrait reference", free)
         self.assertNotIn("FACE LOCK", free)
 
-    def test_custom_coach_world_uses_avatar_or_description(self):
+    def test_custom_coach_world_uses_description_not_stock_art(self):
         from .llm_client import coach_echo_world
-        from_avatar = coach_echo_world(persona_name="Captain Nova", persona_avatar="captain")
-        self.assertIn("sky-ship", from_avatar.lower())
-        from_desc = coach_echo_world(
+        # Stock artwork is a UI fallback icon, not the stage — a homemade
+        # sergeant-icon coach with a bio must not land in Drill Sergeant's camp.
+        homemade = coach_echo_world(
             persona_name="Moon Goat",
             persona_description="A disco goat who coaches from a glitter ball.",
+            persona_avatar="sergeant",
         )
-        self.assertIn("disco goat", from_desc.lower())
+        self.assertIn("disco goat", homemade.lower())
+        self.assertNotIn("boot-camp", homemade.lower())
+        # Only when there is no bio does artwork still pick a distinctive stage.
+        art_only = coach_echo_world(persona_name="Captain Nova", persona_avatar="captain")
+        self.assertIn("sky-ship", art_only.lower())
 

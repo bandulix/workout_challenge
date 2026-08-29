@@ -38,6 +38,9 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
         setShowChangeTeamModal(state);
     }
 
+    const teams = stats?.leaderboard?.team;
+    if (!teams) return <SectionLoader/>;
+
     return (
         <>
             <div>
@@ -47,7 +50,7 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
                     )}
                 </PaneHead>
 
-                {stats.leaderboard.team.length === 0 ? (
+                {teams.length === 0 ? (
                     <article className={paneCardClass}>
                         <EmptyState title="No teams yet" body="Create the first team and start scoring together."
                                     actionLabel={(!competition.organizer_assigns_teams || isOwner) ? "Add a team" : null}
@@ -55,7 +58,7 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
                     </article>
                 ) : (
                     <ul className="space-y-3">
-                        {stats.leaderboard.team.map((team) => {
+                        {teams.map((team) => {
                             const id = team.workout__user__my_teams__id;
                             const mine = parseInt(teamId) === id;
                             const open = openTeam === id;
@@ -185,7 +188,7 @@ function IndividualLeaderboardBox({stats, userId, dunceUserId, feed}) {
         () => getDateRange(stats?.competition?.start_date, stats?.competition?.end_date),
         [stats?.competition?.start_date, stats?.competition?.end_date],
     );
-    const fieldN = Math.max(1, stats.competition?.active_member_count || 1);
+    const fieldN = Math.max(1, stats?.competition?.active_member_count || 1);
 
     function weekValues(id) {
         return weekDays.map((d) => dayTotal(stats?.timeseries?.user, id, d.offset));
@@ -208,17 +211,20 @@ function IndividualLeaderboardBox({stats, userId, dunceUserId, feed}) {
         });
     }, [range, stats?.timeseries?.all, fieldN]);
 
+    const people = stats?.leaderboard?.individual;
+    if (!people) return <SectionLoader/>;
+
     return (
         <div>
             <PaneHead title="Leaderboard" hint="Week bars · trend vs the field"/>
 
-            {(stats.leaderboard.individual.length === 0) ? (
+            {(people.length === 0) ? (
                 <article className={paneCardClass}>
                     <EmptyState title="Waiting for the field" body="The first logged workout puts someone on the board."/>
                 </article>
             ) : (
                 <ul className="space-y-3">
-                    {stats.leaderboard.individual.map((person, index) => {
+                    {people.map((person, index) => {
                         const personId = person.id ?? person.workout__user__id;
                         const mine = userId === personId;
                         const week = weekValues(personId);
@@ -354,11 +360,17 @@ export default function Competition() {
     const tab = (tabParam === "feed" || tabParam === "trophies" || tabParam === "board")
         ? tabParam
         : "feed";
+    // Stats stay skipped on Feed for first paint. A swipe mounts Board
+    // before ?tab= changes, so peek starts the query during the gesture.
+    const [statsPeeked, setStatsPeeked] = useState(false);
     function setTab(next) {
         const nextParams = new URLSearchParams(searchParams);
         nextParams.set("tab", next);
         if (next !== "feed") nextParams.delete("reply");
         setSearchParams(nextParams, {replace: true});
+    }
+    function peekTab(next) {
+        if (next === "board" || next === "trophies") setStatsPeeked(true);
     }
 
     const {
@@ -385,7 +397,7 @@ export default function Competition() {
         isLoading: statsLoading,
         refetch: refreshStats,
     } = useGetStatsByIdQuery(id, {
-        skip: tab === "feed",
+        skip: tab === "feed" && !statsPeeked,
         pollingInterval: tab === "board" ? pollSlow : 0,
     });
 
@@ -455,7 +467,7 @@ export default function Competition() {
                     )
                 }
 
-                <SwipePages tab={tab} onChange={setTab}>
+                <SwipePages tab={tab} onChange={setTab} onPeek={peekTab}>
                 <div>
                 {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
                 </div>
@@ -464,11 +476,11 @@ export default function Competition() {
                 <div className="flex flex-col md:flex-row mb-4">
                     <div className={"w-full mb-4 md:mb-0 " + (competition?.has_teams === false ? "" : "md:w-1/2 md:pr-2")}>
                         {
-                            (statsLoading) ? (
-                                <SectionLoader/>
-                            ) : (statsError) ? (
+                            (statsError) ? (
                                 <ErrorBoxSection
                                     errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
+                            ) : (statsLoading || !stats) ? (
+                                <SectionLoader/>
                             ) : (
                                 <IndividualLeaderboardBox stats={stats} userId={user?.id} dunceUserId={dunceUserId} feed={feed}/>
                             )
@@ -477,11 +489,11 @@ export default function Competition() {
                     {(competition?.has_teams === false) ? null : (
                     <div className="w-full md:w-1/2 md:pl-2">
                         {
-                            (statsLoading || competitionLoading) ? (
-                                <SectionLoader/>
-                            ) : (statsError) ? (
+                            (statsError) ? (
                                 <ErrorBoxSection
                                     errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
+                            ) : (statsLoading || competitionLoading || !stats) ? (
+                                <SectionLoader/>
                             ) : (
                                 <TeamLeaderboardBox stats={stats} competition={competition} user={user} teamId={teamId} isOwner={isOwner}/>
                             )

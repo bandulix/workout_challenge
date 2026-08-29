@@ -633,23 +633,25 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
     portrait_path = _persona_portrait_path(persona)
     workout = _workout_answered_to(photo, parent)
     workout_summary = format_workout_summary(workout)[0] if workout is not None else ""
+    sport_type = getattr(workout, "sport_type", "") if workout is not None else ""
 
+    # dall-e-2 is single-image only; claiming a face lock without sending
+    # the portrait would invent a different coach.
+    lock_portrait = bool(portrait_path) and roast_model != "dall-e-2"
     roast_prompt = build_roast_image_prompt(
         persona_name=persona.name,
         persona_description=persona.description or "",
+        persona_tagline=persona.tagline or "",
+        persona_avatar=persona.avatar or "",
         caption=photo.body or "",
         workout_summary=workout_summary,
-        has_coach_portrait=bool(portrait_path),
+        sport_type=sport_type,
+        has_coach_portrait=lock_portrait,
     )
     png_bytes, roast_error = generate_roast_image(
         image_path, roast_prompt, roast_model,
-        extra_image_paths=[portrait_path] if portrait_path else None,
+        extra_image_paths=[portrait_path] if lock_portrait else None,
     )
-    if not png_bytes and portrait_path:
-        # Face-lock extras make some providers 400; retry on the photo alone.
-        png_bytes, roast_error = generate_roast_image(
-            image_path, roast_prompt, roast_model, extra_image_paths=None,
-        )
     if not png_bytes:
         config.last_error = f"photo roast skipped: {roast_error}"
         config.save(update_fields=["last_error", "updated_at"])
@@ -739,6 +741,7 @@ def remix_echo_art(self, echo_id, uploaded_by_id=None):
         richer, _ = format_workout_summary(echo.holder_workout)
         if richer:
             metric_label = richer
+    lock_portrait = bool(portrait_path) and roast_model != "dall-e-2"
     prompt = build_echo_art_prompt(
         title=echo.title,
         narrative=echo.narrative or "",
@@ -749,16 +752,12 @@ def remix_echo_art(self, echo_id, uploaded_by_id=None):
         persona_description=(persona.description or "") if persona else "",
         persona_tagline=(persona.tagline or "") if persona else "",
         persona_avatar=(persona.avatar or "") if persona else "",
-        has_coach_portrait=bool(portrait_path),
+        has_coach_portrait=lock_portrait,
     )
     png_bytes, error = generate_roast_image(
         image_path, prompt, roast_model,
-        extra_image_paths=[portrait_path] if portrait_path else None,
+        extra_image_paths=[portrait_path] if lock_portrait else None,
     )
-    if not png_bytes and portrait_path:
-        png_bytes, error = generate_roast_image(
-            image_path, prompt, roast_model, extra_image_paths=None,
-        )
     if not png_bytes:
         logger.info("Echo art remix skipped for %s: %s", echo_id, error)
         return {"echo": echo_id, "skipped": error or "edit failed"}

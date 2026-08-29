@@ -17,16 +17,34 @@ export function personaAvatarSrc(avatar) {
     return null;
 }
 
-// Only browser-minted object URLs (blob:), image data URLs (the native
-// loader's rendering format) and same-origin relative paths may ever
-// reach <img src>. The persona payload is server data (and the editor
-// preview is a DOM-derived string), so anything else - e.g. a
-// protocol-relative //host or an exotic scheme - is refused outright.
+// Native disk-cache URLs from Capacitor.convertFileSrc
+// (https://localhost/_capacitor_file_/… or capacitor://localhost/…).
+function isCapacitorLocalSrc(url) {
+    try {
+        const parsed = new URL(url);
+        const host = (parsed.hostname || "").toLowerCase();
+        if (host !== "localhost" && host !== "127.0.0.1") return false;
+        const scheme = (parsed.protocol || "").toLowerCase();
+        if (scheme !== "https:" && scheme !== "http:" && scheme !== "capacitor:") return false;
+        return parsed.pathname.startsWith("/_capacitor_file_")
+            || parsed.pathname.startsWith("/_capacitor_content_");
+    } catch {
+        return false;
+    }
+}
+
+// Only browser-minted object URLs (blob:), image data URLs (CapacitorHttp
+// fallback), Capacitor local-file URLs (disk cache) and same-origin
+// relative paths may ever reach <img src>. The persona payload is server
+// data (and the editor preview is a DOM-derived string), so anything
+// else - e.g. a protocol-relative //host or an exotic scheme - is
+// refused outright.
 export function safeImageSrc(url) {
     if (typeof url !== "string") return null;
     if (url.startsWith("blob:")) return url;
     if (url.startsWith("data:image/")) return url;
     if (url.startsWith("/") && !url.startsWith("//")) return url;
+    if (isCapacitorLocalSrc(url)) return url;
     return null;
 }
 

@@ -505,19 +505,20 @@ def _images_edit(client, style: str, model: str, image_bytes: bytes, prompt: str
         import requests as _requests
 
         parts = [_xai_image_part(image_bytes)] + [_xai_image_part(b) for b in extras]
+        body = {"model": model, "prompt": prompt}
+        # One source uses `image`; two or three must use `images`. Sending
+        # an array as `image` 400s, which used to drop the coach portrait.
+        if len(parts) == 1:
+            body["image"] = parts[0]
+        else:
+            body["images"] = parts
         resp = _requests.post(
             f"{client.base_url}/images/edits",
             headers={
                 "Authorization": f"Bearer {client.api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": model,
-                "prompt": prompt,
-                # Single object when there's one image: that's the
-                # format the original integration was tested against.
-                "image": parts[0] if len(parts) == 1 else parts,
-            },
+            json=body,
             timeout=timeout,
         )
         if resp.status_code >= 400:
@@ -667,12 +668,14 @@ def generate_roast_image(image_path: str, roast_prompt: str, model: str, extra_i
         return None, f"image preparation failed ({type(exc).__name__})"
 
     extra_bytes = []
-    if model != "dall-e-2":
-        for path in extra_image_paths or []:
-            try:
-                extra_bytes.append(_prepare_edit_image(path, square_png=False))
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Drill Instructor: could not prepare extra image %s: %s", path, exc)
+    wanted_extras = [p for p in (extra_image_paths or []) if p] if model != "dall-e-2" else []
+    for path in wanted_extras:
+        try:
+            extra_bytes.append(_prepare_edit_image(path, square_png=False))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Drill Instructor: could not prepare extra image %s: %s", path, exc)
+    if wanted_extras and not extra_bytes:
+        return None, "coach portrait could not be prepared"
 
     try:
         result = _images_edit(
@@ -691,57 +694,73 @@ def generate_roast_image(image_path: str, roast_prompt: str, model: str, extra_i
 MAX_ROAST_IMAGE_BYTES = 8 * 1024 * 1024
 
 
-def build_roast_image_prompt(*, persona_name: str, persona_description: str = "", caption: str = "", workout_summary: str = "", has_coach_portrait: bool = False) -> str:
-    """Hardcoded edit instruction: put the athlete into the coach's world.
+def coach_face_lock_clause(coach: str, has_portrait: bool) -> str:
+    """How the coach's face is taken from the second source image."""
+    if has_portrait:
+        return (
+            f"FACE LOCK: two source images. <IMAGE_0> / IMAGE 1 is the athlete's photo. "
+            f"<IMAGE_1> / IMAGE 2 is the official profile picture of coach \"{coach}\". "
+            "The coach in the result MUST have that exact face — same person, same identity, "
+            "same eyes, nose, mouth, hair, and skin. Copy the likeness from <IMAGE_1>. "
+            "Do not genericize, age-shift, gender-shift, beautify, blend with the athlete, "
+            "or invent a different person. Never put the athlete's face on the coach."
+        )
+    return (
+        f"There is no portrait reference. Invent a distinctive look for "
+        f"coach \"{coach}\" that fits their world above, and still include them in the scene."
+    )
+
+
+def build_roast_image_prompt(*, persona_name: str, persona_description: str = "",
+                             persona_tagline: str = "", persona_avatar: str = "",
+                             caption: str = "", workout_summary: str = "",
+                             sport_type: str = "", has_coach_portrait: bool = False) -> str:
+    """Hardcoded edit: cinematic coach-world roast, stats as the punchline.
 
     Image 1 is the posted photo. Image 2 (when ``has_coach_portrait``) is
-    the persona's profile picture and is a face lock - the coach in the
-    result must match that face. The scene is the coach's world, read
-    from the persona description (place, props, lighting, era). Workout
-    stats of the answered-to activity are baked into the picture as
-    objects in that world when present.
+    a face lock. The stage is the same invented coach world as Echo art
+    (not a gym inferred from the bio). Workout stats are a physical
+    object the coach is showing off as the joke.
     """
-    briefing = (persona_description or "").strip()[:500]
-    if not briefing:
-        briefing = f"a vivid training world that belongs to coach {persona_name}"
-
+    coach = " ".join((persona_name or "the coach").split())[:60] or "the coach"
+    world = coach_echo_world(
+        persona_name=persona_name,
+        persona_description=persona_description,
+        persona_tagline=persona_tagline,
+        persona_avatar=persona_avatar,
+    )
     parts = [
-        "Edit IMAGE 1, the athlete's photo, into a new scene.",
-        f"This scene MUST be the world of coach \"{persona_name}\" — not a generic gym, "
-        "not the original photo's background, not a poster collage. "
-        "Read the coach briefing below and INTERPRET their setting from it "
-        "(place, era, lighting, props, weather, architecture, clothing). "
-        "Build that world fully around the athlete and the coach.",
-        f"COACH BRIEFING (interpret the setting from this): {briefing}",
-        f"The coach \"{persona_name}\" must be clearly visible in THEIR world with the athlete "
-        "(standing next to them, coaching them, or otherwise interacting). "
-        "Match the coach's clothing and vibe to that world.",
-        "Keep the athlete's face from IMAGE 1 clearly recognizable. Do not "
-        "beautify, distort, swap, or replace the athlete. The edit is "
-        "good-natured - never mock body, appearance, or identity.",
+        "Edit IMAGE 1, the athlete's photo, into a roast masterpiece.",
+        "This is NOT a snapshot, NOT a phone filter, NOT a generic gym, NOT a collage. "
+        "It is a movie-poster / comic splash page: loud, funny, and exciting.",
+        f"COACH WORLD (impossible stage for coach \"{coach}\" — invent freely, do not look real): {world}",
     ]
-    if has_coach_portrait:
+    if sport_type:
+        scene = echo_sport_scene(sport_type)
         parts.append(
-            f"FACE LOCK: IMAGE 2 is the official portrait of coach \"{persona_name}\". "
-            "The coach's face in the result MUST be an exact likeness of IMAGE 2 "
-            "(same face, same identity, same distinguishing features). "
-            "Do not genericize, age-shift, or invent a different person."
+            f"SPORT ACTION (what the athlete is doing): {scene}. "
+            f"It must clearly read as {sport_type}."
         )
-    else:
-        parts.append(
-            f"There is no portrait reference. Invent a distinctive look for "
-            f"coach \"{persona_name}\" that fits their world above, and still "
-            "include them in the scene."
-        )
+    parts.extend([
+        f"The coach \"{coach}\" MUST be clearly visible in that world with the athlete "
+        "(coaching them, pointing, holding a prop, mid-roast). "
+        "Match the coach's clothing and vibe to the world. The coach is the one landing the joke.",
+        "Keep the athlete's face from IMAGE 1 clearly recognizable. Do not "
+        "beautify, distort, swap, or replace the athlete. Roast the PERFORMANCE — "
+        "never mock body, appearance, or identity. The group laughs WITH them.",
+        "COMPOSITION: hero scale, low camera, rim light, particles, motion, saturated colour, "
+        "night-ink and volt-lime, oversized props. Make it worth staring at.",
+    ])
+    parts.append(coach_face_lock_clause(coach, has_coach_portrait))
     if workout_summary:
         parts.append(
-            "WORKOUT IN THE SCENE: these stats must appear as something that "
-            "exists inside the coach's world — not a floating HUD or watermark. "
-            "Examples (pick one that fits this coach, or invent a better in-world "
-            "object): a TV or jumbotron in the room, a framed picture on the wall, "
-            "a tattoo on the coach or the athlete, a chalkboard, a race bib, a "
-            "newspaper, a trophy plaque. Readable, not covering faces. Spell "
-            f"exactly: {workout_summary}"
+            "THE JOKE: these workout stats are a physical object in the coach's world, "
+            "and the coach is SHOWING THEM OFF as the punchline (pointing at it, holding it, "
+            "standing in front of it, serving it). Not a floating HUD, not a watermark, "
+            "not covering faces. Pick ONE in-world prop that fits this coach, or invent a "
+            "better one: jumbotron, fight-night scorebug, megaphone banner, chalkboard, "
+            "newspaper, tattoo, silver platter, race bib, trophy plaque, wall of fame. "
+            f"Readable. Spell exactly: {workout_summary}"
         )
     if caption:
         parts.append(
@@ -855,13 +874,16 @@ def echo_sport_scene(sport_type: str) -> str:
 
 def coach_echo_world(*, persona_name: str = "", persona_description: str = "",
                      persona_tagline: str = "", persona_avatar: str = "") -> str:
-    """Invented, splashy stage that matches this coach's vibe."""
+    """Invented, splashy stage that matches this coach's vibe.
+
+    Built-in names keep a known world. Everyone else (self-added coaches)
+    gets a world invented from their description/tagline — the stock
+    artwork key is only a UI fallback when there is no profile picture,
+    not a place.
+    """
     name = (persona_name or "").strip()
     if name in _COACH_ECHO_WORLD:
         return _COACH_ECHO_WORLD[name]
-    avatar = (persona_avatar or "").strip().lower()
-    if avatar in _COACH_ECHO_WORLD_BY_AVATAR:
-        return _COACH_ECHO_WORLD_BY_AVATAR[avatar]
     vibe = (persona_description or persona_tagline or "").strip()[:280]
     if vibe:
         return (
@@ -869,6 +891,9 @@ def coach_echo_world(*, persona_name: str = "", persona_description: str = "",
             "Treat it like a movie-poster world, not a real place — oversized props, "
             "impossible architecture, dramatic weather, volt-lime sparks."
         )
+    avatar = (persona_avatar or "").strip().lower()
+    if avatar in _COACH_ECHO_WORLD_BY_AVATAR:
+        return _COACH_ECHO_WORLD_BY_AVATAR[avatar]
     return (
         f"a vivid theatrical training universe that belongs to coach {name or 'the coach'}: "
         "movie-poster scale, impossible architecture, dramatic weather, volt-lime sparks"
@@ -908,18 +933,7 @@ def build_echo_art_prompt(*, title: str, narrative: str = "", sport_type: str = 
         "and good-natured - never mock body, appearance, or identity.",
         "Paint the Echo title as readable lettering on a banner, stone, race bib, or HUD if it fits.",
     ]
-    if has_coach_portrait:
-        parts.append(
-            f"FACE LOCK: IMAGE 2 is the official portrait of coach \"{coach}\". "
-            "The coach's face in the result MUST be an exact likeness of IMAGE 2 "
-            "(same face, same identity, same distinguishing features). "
-            "Do not genericize, age-shift, or invent a different person."
-        )
-    else:
-        parts.append(
-            f"There is no portrait reference. Invent a distinctive look for "
-            f"coach \"{coach}\" that fits the world above, and still include them in the scene."
-        )
+    parts.append(coach_face_lock_clause(coach, has_coach_portrait))
     story = " ".join((narrative or "").split())[:400]
     if story:
         parts.append(f"ECHO STORY (tone only, do not write a paragraph on the image): {story}")
