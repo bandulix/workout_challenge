@@ -615,7 +615,8 @@ def _persona_portrait_path(persona):
 
 def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
     """The entertainment payload: edit the posted photo into a persona-
-    styled roast poster and post it as a second coach reaction.
+    styled roast (coach world, coach face, stats; surprise look) and
+    post it as a second coach reaction.
 
     Strictly best-effort - image generation is slow and costs money per
     call, so a failure (quota, safety filter, provider outage) degrades

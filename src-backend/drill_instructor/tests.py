@@ -2297,21 +2297,45 @@ class ImageEditCapabilityProbeTests(TestCase):
 
 
 class RoastImagePromptTests(TestCase):
-    """build_roast_image_prompt: cinematic coach world + stats as the joke."""
+    """build_roast_image_prompt: coach world + face + stats, surprise look."""
 
     def _build(self, **kwargs):
         from .llm_client import build_roast_image_prompt
-        defaults = {"persona_name": "Roast Master"}
+        defaults = {
+            "persona_name": "Roast Master",
+            "look": "photoreal photograph",
+            "camera": "CAMERA: medium two-shot, coach presenting the stats prop to the athlete.",
+            "stat_prop": "tattoo",
+        }
         defaults.update(kwargs)
         return build_roast_image_prompt(**defaults)
 
-    def test_built_in_coach_gets_the_splashy_world(self):
+    def test_built_in_coach_keeps_the_world(self):
         prompt = self._build()
         self.assertIn("Roast Master", prompt)
         self.assertIn("COACH WORLD", prompt)
         self.assertIn("jumbotron", prompt.lower())
-        self.assertIn("movie-poster", prompt)
         self.assertIn("NOT a generic gym", prompt)
+        self.assertIn("photoreal photograph", prompt)
+
+    def test_look_is_a_surprise_not_always_a_poster(self):
+        photo = self._build(look="photoreal photograph")
+        movie = self._build(look="cinematic movie still")
+        comic = self._build(look="graphic-novel splash")
+        self.assertIn("photoreal", photo.lower())
+        self.assertNotIn("cinematic movie still", photo)
+        self.assertIn("cinematic movie still", movie)
+        self.assertIn("graphic-novel splash", comic)
+        self.assertNotEqual(photo, movie)
+        self.assertNotEqual(movie, comic)
+
+    def test_unpinned_prompt_still_picks_a_known_look(self):
+        from .llm_client import _ROAST_LOOKS, build_roast_image_prompt
+        prompt = build_roast_image_prompt(persona_name="Roast Master")
+        self.assertTrue(any(key in prompt for key, _line in _ROAST_LOOKS))
+        self.assertIn("LOOK:", prompt)
+        self.assertIn("CAMERA:", prompt)
+        self.assertIn("COACH WORLD", prompt)
 
     def test_custom_coach_world_uses_the_description(self):
         prompt = self._build(
@@ -2322,6 +2346,8 @@ class RoastImagePromptTests(TestCase):
         self.assertIn("A smoky boxing gym at midnight.", prompt)
         self.assertIn("COACH WORLD", prompt)
         self.assertNotIn("boot-camp parade", prompt)
+        # Roast may photograph the place; don't force poster rendering.
+        self.assertNotIn("movie-poster world", prompt)
 
     def test_sport_action_is_in_the_scene(self):
         prompt = self._build(sport_type="Run")
@@ -2357,6 +2383,22 @@ class RoastImagePromptTests(TestCase):
         self.assertIn('caption spelled EXACTLY: "leg day!"', with_caption)
         without = self._build()
         self.assertIn("Do not invent extra slogans", without)
+
+    def test_every_look_keeps_world_face_and_stats_and_fits_the_edit_cap(self):
+        from .llm_client import _ROAST_LOOKS
+        for key, _line in _ROAST_LOOKS:
+            prompt = self._build(
+                look=key,
+                has_coach_portrait=True,
+                workout_summary="45 min Run · 5.00 km · 420 kcal",
+                sport_type="Run",
+                caption="leg day!",
+            )
+            self.assertIn("COACH WORLD", prompt)
+            self.assertIn("FACE LOCK", prompt)
+            self.assertIn("THE JOKE", prompt)
+            self.assertIn("45 min Run · 5.00 km · 420 kcal", prompt)
+            self.assertLessEqual(len(prompt), 3900, key)
 
 
 class RoastImageGenerationTests(TestCase):
@@ -3831,6 +3873,14 @@ class EchoArtPromptTests(TestCase):
         )
         self.assertIn("disco goat", homemade.lower())
         self.assertNotIn("boot-camp", homemade.lower())
+        self.assertIn("movie-poster world", homemade)
+        roast_place = coach_echo_world(
+            persona_name="Moon Goat",
+            persona_description="A disco goat who coaches from a glitter ball.",
+            splashy=False,
+        )
+        self.assertIn("disco goat", roast_place.lower())
+        self.assertNotIn("movie-poster world", roast_place)
         # Only when there is no bio does artwork still pick a distinctive stage.
         art_only = coach_echo_world(persona_name="Captain Nova", persona_avatar="captain")
         self.assertIn("sky-ship", art_only.lower())

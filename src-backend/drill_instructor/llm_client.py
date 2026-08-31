@@ -21,6 +21,7 @@ import base64
 import hashlib
 import ipaddress
 import logging
+import random
 import re
 import socket
 from typing import Optional
@@ -711,16 +712,139 @@ def coach_face_lock_clause(coach: str, has_portrait: bool) -> str:
     )
 
 
+# Visual treatments for photo roasts. Coach world, coach face, and stats
+# stay fixed; the LOOK/CAMERA/prop are the surprise each time.
+_ROAST_LOOKS = (
+    (
+        "cinematic movie still",
+        "LOOK: a single frame from a big-budget sports movie. Anamorphic, "
+        "hero lighting, theatrical weather, colour grade. Photoreal faces, "
+        "cinema light — not a comic, not a phone snapshot.",
+    ),
+    (
+        "photoreal photograph",
+        "LOOK: a photoreal photograph as if a documentary photographer was "
+        "standing in this place. Real sweat, fabric, dirt, and depth of field. "
+        "Available or strobe light, camera grain. No illustration, no CGI sheen, "
+        "no poster layout.",
+    ),
+    (
+        "sports-magazine cover",
+        "LOOK: a photoreal sports-magazine cover. Tight, sweaty, print colour, "
+        "professional lighting. The stats prop belongs in the shot. Not illustrated.",
+    ),
+    (
+        "graphic-novel splash",
+        "LOOK: a graphic-novel splash page. Bold ink, dramatic blacks, "
+        "halftone or flat colour. Faces stay recognizable; lettering only "
+        "on the stats prop.",
+    ),
+    (
+        "oil painting",
+        "LOOK: a large classical oil painting of a sporting scene. Visible "
+        "brushwork, rich glaze, museum light. Faces stay likeness-accurate. "
+        "Stats are painted lettering on an in-world object.",
+    ),
+    (
+        "anime film keyframe",
+        "LOOK: a high-end animated-film keyframe. Painterly backgrounds, "
+        "dramatic sky, sharp acting. Keep both faces likeness-accurate — "
+        "do not genericize them into stock anime faces.",
+    ),
+    (
+        "night-rain neon photo",
+        "LOOK: a photoreal night photograph in rain and practical neon. "
+        "Wet ground, reflections, breath in cold air, flash mixed with streetlight. "
+        "No illustration.",
+    ),
+    (
+        "1970s colour film",
+        "LOOK: a photoreal 1970s colour-film photograph. Warm Kodachrome, "
+        "slight grain, period print. No modern UI, no CGI.",
+    ),
+    (
+        "black-and-white reportage",
+        "LOOK: a photoreal black-and-white reportage photograph. Hard light, "
+        "deep blacks, silver-gelatin texture. The stats prop stays fully readable.",
+    ),
+    (
+        "high-fashion campaign",
+        "LOOK: a photoreal high-fashion campaign still. Stylized posing, "
+        "wardrobe that still fits the coach's world, studio-quality light on location. "
+        "Faces real — do not airbrush them into strangers.",
+    ),
+    (
+        "IMAX landscape still",
+        "LOOK: a photoreal IMAX landscape with the figures in it. Vast coach "
+        "environment, crisp detail, natural spectacle. Not a collage.",
+    ),
+    (
+        "stop-motion miniature",
+        "LOOK: a tactile stop-motion / miniature-set photograph. Handmade "
+        "materials, practical lights, tilt-shift. Faces stay the real people, "
+        "sculpted-accurate.",
+    ),
+    (
+        "charcoal and gold print",
+        "LOOK: mixed-media art print — charcoal with gold-leaf and ink, "
+        "finished as a large piece. Faces likeness-accurate. Stats as drawn "
+        "lettering on an object.",
+    ),
+    (
+        "golden-hour documentary",
+        "LOOK: a photoreal late-day documentary portrait. Long shadows, warm sun, "
+        "unposed energy. No fake HUD.",
+    ),
+)
+_ROAST_CAMERAS = (
+    "CAMERA: wide environmental two-shot — both people small inside the coach's world.",
+    "CAMERA: medium two-shot, coach presenting the stats prop to the athlete.",
+    "CAMERA: low-angle hero; coach planted, athlete in the sport.",
+    "CAMERA: over-the-shoulder from the coach toward the athlete and the stats.",
+    "CAMERA: tight environmental portrait of both, stats prop in the midground.",
+    "CAMERA: dutch-angle action freeze; sport in motion, coach still.",
+)
+_ROAST_STAT_PROPS = (
+    "jumbotron",
+    "fight-night scorebug",
+    "megaphone banner",
+    "chalkboard",
+    "folded newspaper held up to camera",
+    "tattoo",
+    "silver platter",
+    "race bib",
+    "trophy plaque",
+    "wall of fame tile",
+    "locker-room whiteboard",
+    "steamed mirror writing",
+    "championship belt plate",
+    "old ticket stub blown huge",
+)
+
+
+def _pinned_or_choice(options, pinned):
+    """Return ``pinned`` when it matches an option (or option key), else random."""
+    if pinned:
+        for item in options:
+            if item == pinned or (isinstance(item, tuple) and item[0] == pinned):
+                return item
+    return random.choice(options)
+
+
 def build_roast_image_prompt(*, persona_name: str, persona_description: str = "",
                              persona_tagline: str = "", persona_avatar: str = "",
                              caption: str = "", workout_summary: str = "",
-                             sport_type: str = "", has_coach_portrait: bool = False) -> str:
-    """Hardcoded edit: cinematic coach-world roast, stats as the punchline.
+                             sport_type: str = "", has_coach_portrait: bool = False,
+                             look: str = "", camera: str = "",
+                             stat_prop: str = "") -> str:
+    """Edit: coach world + coach face + stats, with a surprise visual look.
 
     Image 1 is the posted photo. Image 2 (when ``has_coach_portrait``) is
-    a face lock. The stage is the same invented coach world as Echo art
-    (not a gym inferred from the bio). Workout stats are a physical
-    object the coach is showing off as the joke.
+    a face lock. The environment is the same invented coach world as Echo
+    art. Workout stats are a physical object the coach is showing off.
+    Everything else — medium, camera, lighting — is picked per roast so
+    the next picture is a surprise. Pass ``look`` / ``camera`` /
+    ``stat_prop`` to pin a treatment (tests); otherwise they are random.
     """
     coach = " ".join((persona_name or "the coach").split())[:60] or "the coach"
     world = coach_echo_world(
@@ -728,18 +852,33 @@ def build_roast_image_prompt(*, persona_name: str, persona_description: str = ""
         persona_description=persona_description,
         persona_tagline=persona_tagline,
         persona_avatar=persona_avatar,
+        splashy=False,
     )
+    look_key, look_line = _pinned_or_choice(_ROAST_LOOKS, look)
+    camera_line = _pinned_or_choice(_ROAST_CAMERAS, camera)
+    prop = _pinned_or_choice(_ROAST_STAT_PROPS, stat_prop)
     parts = [
         "Edit IMAGE 1, the athlete's photo, into a roast masterpiece.",
-        "This is NOT a snapshot, NOT a phone filter, NOT a generic gym, NOT a collage. "
-        "It is a movie-poster / comic splash page: loud, funny, and exciting.",
-        f"COACH WORLD (impossible stage for coach \"{coach}\" — invent freely, do not look real): {world}",
+        "This is NOT a phone filter, NOT a generic gym, NOT a collage, NOT a floating HUD.",
+        "Constants (never change these): the coach's environment, the coach's face, "
+        "and the workout stats as a real object in the shot. "
+        "Everything else is a SURPRISE — a different visual treatment each time.",
+        f"COACH WORLD (the environment for coach \"{coach}\" — keep this place, "
+        f"its architecture, weather, and signature props): {world}",
+        "Render that environment THROUGH the LOOK. A photoreal LOOK photographs "
+        "the place as if it exists; an illustrated LOOK paints the same place. "
+        "Do not default to a comic splash page or movie poster unless the LOOK says so.",
+        f"This roast's treatment is \"{look_key}\". Commit fully to that look — "
+        "do not mix it with another style.",
+        look_line,
+        camera_line,
     ]
     if sport_type:
         scene = echo_sport_scene(sport_type)
         parts.append(
-            f"SPORT ACTION (what the athlete is doing): {scene}. "
-            f"It must clearly read as {sport_type}."
+            f"SPORT ACTION (the activity, interpreted through the LOOK): {scene}. "
+            f"Photoreal LOOK = a real version of this sport in the coach's environment; "
+            f"illustrated LOOK = stylize it. It must still clearly read as {sport_type}."
         )
     parts.extend([
         f"The coach \"{coach}\" MUST be clearly visible in that world with the athlete "
@@ -748,8 +887,6 @@ def build_roast_image_prompt(*, persona_name: str, persona_description: str = ""
         "Keep the athlete's face from IMAGE 1 clearly recognizable. Do not "
         "beautify, distort, swap, or replace the athlete. Roast the PERFORMANCE — "
         "never mock body, appearance, or identity. The group laughs WITH them.",
-        "COMPOSITION: hero scale, low camera, rim light, particles, motion, saturated colour, "
-        "night-ink and volt-lime, oversized props. Make it worth staring at.",
     ])
     parts.append(coach_face_lock_clause(coach, has_coach_portrait))
     if workout_summary:
@@ -757,9 +894,9 @@ def build_roast_image_prompt(*, persona_name: str, persona_description: str = ""
             "THE JOKE: these workout stats are a physical object in the coach's world, "
             "and the coach is SHOWING THEM OFF as the punchline (pointing at it, holding it, "
             "standing in front of it, serving it). Not a floating HUD, not a watermark, "
-            "not covering faces. Pick ONE in-world prop that fits this coach, or invent a "
-            "better one: jumbotron, fight-night scorebug, megaphone banner, chalkboard, "
-            "newspaper, tattoo, silver platter, race bib, trophy plaque, wall of fame. "
+            "not covering faces. "
+            f"Prefer this in-world prop if it fits the LOOK and the coach: {prop}. "
+            "Or invent a better one that still belongs in this environment. "
             f"Readable. Spell exactly: {workout_summary}"
         )
     if caption:
@@ -873,30 +1010,45 @@ def echo_sport_scene(sport_type: str) -> str:
 
 
 def coach_echo_world(*, persona_name: str = "", persona_description: str = "",
-                     persona_tagline: str = "", persona_avatar: str = "") -> str:
-    """Invented, splashy stage that matches this coach's vibe.
+                     persona_tagline: str = "", persona_avatar: str = "",
+                     splashy: bool = True) -> str:
+    """Invented stage that matches this coach's vibe.
 
     Built-in names keep a known world. Everyone else (self-added coaches)
     gets a world invented from their description/tagline — the stock
     artwork key is only a UI fallback when there is no profile picture,
-    not a place.
+    not a place. Echo art (``splashy=True``) paints it as a movie-poster
+    world; photo roasts pass ``splashy=False`` so the LOOK can photograph
+    or illustrate the same place.
     """
     name = (persona_name or "").strip()
     if name in _COACH_ECHO_WORLD:
         return _COACH_ECHO_WORLD[name]
     vibe = (persona_description or persona_tagline or "").strip()[:280]
     if vibe:
+        invented = (
+            f"an original realm invented for coach {name or 'this coach'}: {vibe}."
+        )
+        if splashy:
+            return (
+                invented + " Treat it like a movie-poster world, not a real place — "
+                "oversized props, impossible architecture, dramatic weather, volt-lime sparks."
+            )
         return (
-            f"an original hyper-stylized realm invented for coach {name or 'this coach'}: {vibe}. "
-            "Treat it like a movie-poster world, not a real place — oversized props, "
-            "impossible architecture, dramatic weather, volt-lime sparks."
+            invented + " Keep the places, props, clothing, and atmosphere from that "
+            "description as the environment."
         )
     avatar = (persona_avatar or "").strip().lower()
     if avatar in _COACH_ECHO_WORLD_BY_AVATAR:
         return _COACH_ECHO_WORLD_BY_AVATAR[avatar]
+    if splashy:
+        return (
+            f"a vivid theatrical training universe that belongs to coach {name or 'the coach'}: "
+            "movie-poster scale, impossible architecture, dramatic weather, volt-lime sparks"
+        )
     return (
-        f"a vivid theatrical training universe that belongs to coach {name or 'the coach'}: "
-        "movie-poster scale, impossible architecture, dramatic weather, volt-lime sparks"
+        f"a vivid training universe that belongs to coach {name or 'the coach'}: "
+        "distinctive architecture, weather, and props that belong to this coach"
     )
 
 
@@ -953,7 +1105,7 @@ def build_roast_caption_prompt(*, competition_name: str, author_first_name: str,
     """One-liner the coach posts together with the roasted image."""
     parts = [
         f"Competition: {competition_name}",
-        f"Situation: you just posted a remixed propaganda-poster version of @{author_first_name}'s photo as a playful roast.",
+        f"Situation: you just posted a remixed picture of @{author_first_name}'s photo as a playful roast.",
     ]
     if caption:
         parts.append(f"Their original caption: \"{caption[:200]}\"")
