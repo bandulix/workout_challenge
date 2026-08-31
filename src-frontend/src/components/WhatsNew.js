@@ -1,7 +1,8 @@
 import React, {useEffect, useState} from "react";
-import {Camera, PartyPopper, RefreshCw, Sparkles} from "lucide-react";
+import {Camera, Download, PartyPopper, RefreshCw, Sparkles} from "lucide-react";
 import {Modal} from "../forms/basicComponents";
-import {apiUrl} from "../utils/platform";
+import {apiUrl, isNativeApp} from "../utils/platform";
+import {apkDownloadHref} from "../utils/apkUpdate";
 
 const HIGHLIGHTS = [
     {icon: Camera, title: "Photos on your workout", body: "Reply to your own session from the gallery — the coach remixes it."},
@@ -126,10 +127,20 @@ function WhatsNew() {
                         className="px-5 py-2.5 rounded-full btn-glass text-sm font-semibold transition">
                     Later
                 </button>
-                <button onClick={reload}
-                        className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt">
-                    Reload
-                </button>
+                {isNativeApp() ? (
+                    <a href={apkDownloadHref()}
+                       rel="noopener noreferrer"
+                       onClick={close}
+                       className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt">
+                        <Download className="h-4 w-4"/>
+                        Download update
+                    </a>
+                ) : (
+                    <button onClick={reload}
+                            className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt">
+                        Reload
+                    </button>
+                )}
             </div>
         </Modal>
     );

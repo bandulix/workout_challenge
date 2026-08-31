@@ -20,6 +20,11 @@ internal object CachedMedia {
     var allowedOrigin: String? = null
 
     @JvmStatic
+    fun isEmptyBody(code: Int): Boolean {
+        return code == HttpURLConnection.HTTP_NO_CONTENT || code >= 400
+    }
+
+    @JvmStatic
     fun isAllowed(url: String?, origin: String?): Boolean {
         if (url.isNullOrBlank() || origin.isNullOrBlank()) return false
         return try {
@@ -78,8 +83,11 @@ internal object CachedMedia {
                 file.setLastModified(now)
                 return file
             }
-            if (code !in 200..299) {
-                if (code == HttpURLConnection.HTTP_UNAUTHORIZED || code == HttpURLConnection.HTTP_FORBIDDEN) {
+            if (isEmptyBody(code) || code !in 200..299) {
+                if (code == HttpURLConnection.HTTP_UNAUTHORIZED
+                    || code == HttpURLConnection.HTTP_FORBIDDEN
+                    || code == HttpURLConnection.HTTP_NO_CONTENT
+                ) {
                     file.delete()
                     etagFile.delete()
                     throw IOException("HTTP $code")

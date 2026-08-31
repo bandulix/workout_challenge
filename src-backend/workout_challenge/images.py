@@ -171,9 +171,13 @@ def _etag_matches(header, etag):
 
 THUMB_CAP = 200
 # mkstemp creates 0600. nginx (X-Accel-Redirect) runs as user `nginx`,
-# not `app`, so a 0600 thumb 403s every avatar/card GET. CrowdSec
-# http-probing treats those distinct /picture/?size=… 403s as a scan.
+# not `app`, so a 0600 file 403s. CrowdSec http-probing treats a handful
+# of distinct /picture/?size=… 403/404s as a scan and 24h-bans the IP.
+# World-readable files + traversable dirs, and never 403/404 from nginx
+# on a legitimate picture GET (204 if missing, FileResponse if nginx
+# still could not read).
 _THUMB_MODE = 0o644
+_DIR_MODE = 0o755
 
 
 def _ensure_world_readable(path):
@@ -182,6 +186,66 @@ def _ensure_world_readable(path):
             os.chmod(path, _THUMB_MODE)
     except OSError:
         pass
+
+
+def _ensure_traversable(path):
+    try:
+        if path.stat().st_mode & 0o001 == 0:
+            os.chmod(path, _DIR_MODE)
+    except OSError:
+        pass
+
+
+def _prepare_media_for_nginx(path):
+    """Make ``path`` readable and every MEDIA_ROOT ancestor traversable.
+
+    nginx is not the ``app`` user. 0700 upload dirs and 0600 originals
+    (legacy uploads, mkstemp thumbs before chmod) 403 X-Accel-Redirect.
+    """
+    from django.conf import settings
+
+    try:
+        media_root = _Path(settings.MEDIA_ROOT).resolve()
+        resolved = path.resolve()
+        resolved.relative_to(media_root)
+    except (OSError, ValueError):
+        return
+    if resolved.is_file():
+        _ensure_world_readable(resolved)
+    current = resolved if resolved.is_dir() else resolved.parent
+    try:
+        while True:
+            _ensure_traversable(current)
+            if current == media_root:
+                break
+            parent = current.parent
+            if parent == current:
+                break
+            current = parent
+    except OSError:
+        return
+
+
+def _nginx_can_read(path):
+    """True when user ``nginx`` (other) can traverse to and read ``path``."""
+    from django.conf import settings
+
+    try:
+        if not path.is_file() or path.stat().st_mode & 0o004 == 0:
+            return False
+        media_root = _Path(settings.MEDIA_ROOT).resolve()
+        current = path.parent
+        while True:
+            if current.stat().st_mode & 0o001 == 0:
+                return False
+            if current.resolve() == media_root:
+                return True
+            parent = current.parent
+            if parent == current:
+                return True
+            current = parent
+    except OSError:
+        return False
 
 
 def _prune_thumbs(folder):
@@ -210,8 +274,9 @@ def _thumb_rel(file_field, variant, max_side, quality):
     rel = f"thumbs/{etag}.jpg"
     dest = _Path(settings.MEDIA_ROOT) / rel
     dest.parent.mkdir(parents=True, exist_ok=True)
+    _prepare_media_for_nginx(dest.parent)
     if dest.exists() and dest.stat().st_size > 0:
-        _ensure_world_readable(dest)
+        _prepare_media_for_nginx(dest)
         return rel
     fd, tmp_name = tempfile.mkstemp(prefix=f"{etag}.", suffix=".jpg", dir=dest.parent)
     os.close(fd)
@@ -227,8 +292,11 @@ def _thumb_rel(file_field, variant, max_side, quality):
         if tmp.stat().st_size <= 0:
             tmp.unlink(missing_ok=True)
             return None
+        # chmod the tmp *before* replace so dest is never visible as 0600
+        # (the previous window was enough for a parallel GET to 403).
+        os.chmod(tmp, _THUMB_MODE)
         os.replace(tmp, dest)
-        os.chmod(dest, _THUMB_MODE)
+        _prepare_media_for_nginx(dest)
     except Exception:
         try:
             tmp.unlink(missing_ok=True)
@@ -270,6 +338,10 @@ def protected_media_response(file_field, *, request=None, size=None):
     ``size="avatar"`` serves a 256px JPEG (profile / persona rings).
     Private max-age + ETag let the APK disk-cache and WebView revalidate
     without re-downloading bytes. JWT still gates the first GET.
+
+    CrowdSec http-probing counts distinct 400/403/404 on non-static
+    paths. A missing or unreadable file must not become one of those:
+    missing → 204, nginx cannot read → Django streams the bytes.
     """
     from django.conf import settings
     from urllib.parse import quote
@@ -282,9 +354,6 @@ def protected_media_response(file_field, *, request=None, size=None):
     else:
         variant = "full"
     etag = _file_etag(file_field, variant)
-    if request and _etag_matches(request.META.get("HTTP_IF_NONE_MATCH", ""), etag):
-        response = HttpResponse(status=304)
-        return _privacy_headers(response, etag)
 
     serve_name = name
     content_type = _content_type_for(name)
@@ -299,12 +368,21 @@ def protected_media_response(file_field, *, request=None, size=None):
             serve_name = rel
             content_type = "image/jpeg"
 
-    if settings.DEBUG:
-        if serve_name != name:
-            path = _Path(settings.MEDIA_ROOT) / serve_name
-            response = FileResponse(path.open("rb"), content_type=content_type)
-        else:
-            response = FileResponse(file_field.open("rb"), content_type=content_type)
+    path = _Path(settings.MEDIA_ROOT) / serve_name
+    if not path.is_file():
+        response = HttpResponse(status=204)
+        return _privacy_headers(response, etag)
+
+    _prepare_media_for_nginx(path)
+
+    if request and _etag_matches(request.META.get("HTTP_IF_NONE_MATCH", ""), etag):
+        response = HttpResponse(status=304)
+        return _privacy_headers(response, etag)
+
+    if settings.DEBUG or not _nginx_can_read(path):
+        # DEBUG, or nginx would 403 (legacy 0600 / 0700 that chmod could
+        # not fix): gunicorn runs as `app` and can still stream it.
+        response = FileResponse(path.open("rb"), content_type=content_type)
     else:
         response = HttpResponse(content_type=content_type)
         response["X-Accel-Redirect"] = "/protected-media/" + quote(serve_name, safe="/")

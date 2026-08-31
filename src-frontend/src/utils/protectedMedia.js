@@ -12,6 +12,17 @@ function withSize(url, size) {
     return url + (url.includes("?") ? "&" : "?") + "size=" + encodeURIComponent(size);
 }
 
+// 204 = "no file" (CrowdSec http-probing counts 400/403/404, not 204).
+// 4xx must not be retried on every remount: that is the burst the
+// scenario 24h-bans for.
+export function pictureResponseIsEmpty(status) {
+    return status === 204 || status >= 400;
+}
+
+export function pictureResponseIsBanRisk(status) {
+    return status === 400 || status === 403 || status === 404;
+}
+
 // Authenticated image loader for media that is NOT publicly reachable
 // (e.g. uploaded persona profile pictures - copyright-safe by design).
 // <img> tags can't send the JWT, so the file is fetched with the
@@ -19,6 +30,8 @@ function withSize(url, size) {
 // deduplicated module-wide so N avatar components share one request.
 
 const cache = new Map(); // url -> Promise<localURL | null>
+const failedAt = new Map(); // url -> timestamp of 4xx/204
+const FAIL_TTL_MS = 10 * 60 * 1000;
 
 // Cap concurrent picture fetches so a feed of avatars doesn't look like
 // an HTTP crawl (CrowdSec http-crawl-non_statics counts distinct paths).
@@ -80,7 +93,7 @@ async function fetchBrowser(url, token) {
         headers: authHeaders(token),
         cache: "no-cache",
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (pictureResponseIsEmpty(res.status)) throw new Error(`HTTP ${res.status}`);
     return URL.createObjectURL(await res.blob());
 }
 
@@ -101,7 +114,11 @@ async function fetchNativeCached(url, token) {
         const path = res?.src;
         if (!path) return null;
         return Capacitor.convertFileSrc(path);
-    } catch {
+    } catch (err) {
+        const msg = String(err?.message || err || "");
+        // Do not fall through to CapacitorHttp on the same 4xx — that
+        // doubled CrowdSec http-probing events (plugin + WebView).
+        if (/HTTP (204|400|403|404)\b/.test(msg)) throw err;
         return null;
     }
 }
@@ -114,7 +131,7 @@ async function fetchNative(url, token) {
         headers: authHeaders(token),
         responseType: "blob",
     });
-    if (resp.status >= 400) throw new Error(`HTTP ${resp.status}`);
+    if (pictureResponseIsEmpty(resp.status)) throw new Error(`HTTP ${resp.status}`);
     // The native bridge returns binary bodies as a base64 STRING
     // (HttpRequestHandler.readStreamAsBase64), not a Blob - feeding it to
     // FileReader.readAsDataURL throws a TypeError and the avatar silently
@@ -143,12 +160,21 @@ export function fetchProtectedImage(url, size) {
         return Promise.resolve(null);
     }
     const path = withSize(url, size);
+    const failed = failedAt.get(path);
+    if (failed && Date.now() - failed < FAIL_TTL_MS) {
+        return Promise.resolve(null);
+    }
     if (!cache.has(path)) {
         const promise = withSlot(() => authorizedGet(path))
-            .catch(() => {
+            .catch((err) => {
                 // Drop failed fetches so the next mount retries (e.g. once
                 // a fresh access token exists after a background refresh).
                 cache.delete(path);
+                const match = String(err?.message || "").match(/HTTP (\d{3})\b/);
+                const status = match ? parseInt(match[1], 10) : 0;
+                if (status === 204 || pictureResponseIsBanRisk(status)) {
+                    failedAt.set(path, Date.now());
+                }
                 return null;
             });
         cache.set(path, promise);
@@ -166,6 +192,7 @@ export function cacheKeysFor(url) {
 export function invalidateProtectedImage(url) {
     const keys = cacheKeysFor(url);
     for (const key of keys) {
+        failedAt.delete(key);
         const entry = cache.get(key);
         cache.delete(key);
         Promise.resolve(entry).then((localUrl) => {
@@ -189,6 +216,7 @@ export function clearProtectedImageCache() {
         invalidateProtectedImage(key);
     }
     cache.clear();
+    failedAt.clear();
     if (isNativeApp() && Capacitor.isPluginAvailable("CachedMedia")) {
         CachedMedia.clear().catch(() => {});
     }

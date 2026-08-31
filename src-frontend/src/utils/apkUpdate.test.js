@@ -1,12 +1,13 @@
 import {describe, expect, it} from "vitest";
 import {
     APK_GATE_TTL_MS,
+    apkGateCachedUpdate,
     apkGateNeedsCheck,
+    apkGateShouldSplash,
     parseApkGateCache,
 } from "./apkUpdate";
 
 const ORIGIN = "https://challenge.example.com";
-const HOUR = 60 * 60 * 1000;
 
 function cache(over = {}) {
     return parseApkGateCache({
@@ -29,17 +30,26 @@ describe("parseApkGateCache", () => {
     });
 });
 
-describe("apkGateNeedsCheck", () => {
-    it("skips the network when this origin said the build is current within 24h", () => {
-        expect(apkGateNeedsCheck(cache(), {origin: ORIGIN, now: 1_000_000 + 23 * HOUR})).toBe(false);
-        expect(apkGateNeedsCheck(cache(), {origin: ORIGIN, now: 1_000_000 + APK_GATE_TTL_MS - 1})).toBe(false);
+describe("apkGateShouldSplash", () => {
+    it("skips the splash when this origin last said the build is current", () => {
+        expect(apkGateShouldSplash(cache(), {origin: ORIGIN})).toBe(false);
+        expect(apkGateShouldSplash(cache(), {origin: ORIGIN, now: 1_000_000 + APK_GATE_TTL_MS})).toBe(false);
+        expect(apkGateNeedsCheck(cache(), {origin: ORIGIN})).toBe(false);
     });
 
-    it("rechecks after 24h, on another server, or when last seen behind", () => {
-        expect(apkGateNeedsCheck(cache(), {origin: ORIGIN, now: 1_000_000 + APK_GATE_TTL_MS})).toBe(true);
-        expect(apkGateNeedsCheck(cache(), {origin: "https://other.example", now: 1_000_000})).toBe(true);
-        expect(apkGateNeedsCheck(cache({latestCode: 11}), {origin: ORIGIN, now: 1_000_000})).toBe(true);
-        expect(apkGateNeedsCheck(null, {origin: ORIGIN, now: 1_000_000})).toBe(true);
-        expect(apkGateNeedsCheck(cache(), {origin: "", now: 1_000_000})).toBe(true);
+    it("splashes on first run, another server, or when last seen behind", () => {
+        expect(apkGateShouldSplash(cache(), {origin: "https://other.example"})).toBe(true);
+        expect(apkGateShouldSplash(cache({latestCode: 11}), {origin: ORIGIN})).toBe(true);
+        expect(apkGateShouldSplash(null, {origin: ORIGIN})).toBe(true);
+        expect(apkGateShouldSplash(cache(), {origin: ""})).toBe(true);
+    });
+});
+
+describe("apkGateCachedUpdate", () => {
+    it("hydrates the download screen from a known-outdated cache", () => {
+        const behind = cache({currentCode: 10, latestCode: 12});
+        expect(apkGateCachedUpdate(behind, ORIGIN)).toEqual(behind);
+        expect(apkGateCachedUpdate(cache(), ORIGIN)).toBeNull();
+        expect(apkGateCachedUpdate(behind, "https://other.example")).toBeNull();
     });
 });

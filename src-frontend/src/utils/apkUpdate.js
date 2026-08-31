@@ -7,6 +7,8 @@ import {isApkOutdated} from "./queryPage";
 
 export {isApkOutdated};
 
+// Kept for callers/tests that still import it. Splash no longer uses a
+// TTL — a current cache skips the spinner; the network always rechecks.
 export const APK_GATE_TTL_MS = 24 * 60 * 60 * 1000;
 export const APK_GATE_STORAGE_KEY = "wc_apk_gate";
 
@@ -37,14 +39,25 @@ export function parseApkGateCache(raw) {
     };
 }
 
-// Skip the blocking network check only when this origin recently said
-// the installed build is current. An outdated result, a different
-// server, or a stale stamp must check again.
-export function apkGateNeedsCheck(cache, {origin, now = Date.now(), ttl = APK_GATE_TTL_MS} = {}) {
+// Blocking "Checking for an update" splash: first run, unknown origin,
+// or we already know this install is behind. A *passing* cache must not
+// splash — and must not skip the network (a same-day APK used to stay
+// invisible for 24h when the cache skipped the fetch).
+export function apkGateShouldSplash(cache, {origin} = {}) {
     if (!cache || !origin || cache.origin !== origin) return true;
-    if (now - cache.checkedAt >= ttl) return true;
     if (isApkOutdated(cache.currentCode, cache.latestCode)) return true;
     return false;
+}
+
+// @deprecated use apkGateShouldSplash — kept so older tests/imports keep working.
+export function apkGateNeedsCheck(cache, opts) {
+    return apkGateShouldSplash(cache, opts);
+}
+
+export function apkGateCachedUpdate(cache, origin) {
+    if (!cache || !origin || cache.origin !== origin) return null;
+    if (!isApkOutdated(cache.currentCode, cache.latestCode)) return null;
+    return cache;
 }
 
 export function loadApkGateCache() {
@@ -67,7 +80,9 @@ function initialApkGateState() {
     if (!isNativeApp()) return {status: "ready", update: null};
     const origin = getServerUrl();
     const cache = loadApkGateCache();
-    if (!apkGateNeedsCheck(cache, {origin})) return {status: "ready", update: null};
+    const cached = apkGateCachedUpdate(cache, origin);
+    if (cached) return {status: "outdated", update: cached};
+    if (!apkGateShouldSplash(cache, {origin})) return {status: "ready", update: null};
     return {status: "checking", update: null};
 }
 
@@ -88,7 +103,7 @@ export async function readApkUpdate() {
     } finally {
         clearTimeout(timer);
     }
-    if (!resp.ok) return null;
+    if (!resp?.ok || !info) return null;
     const latest = await resp.json();
     const currentCode = parseInt(info.build, 10) || 0;
     const latestCode = parseInt(latest.versionCode, 10) || 0;
@@ -101,12 +116,16 @@ export async function readApkUpdate() {
     };
 }
 
+const RECHECK_MS = 15 * 60 * 1000;
+
 // Native only. Browser/PWA always `ready` (they already run the server's
 // JS). A cold check must not mount the rest of the app: BottomNav + live
-// queries would fire before we know this APK is allowed. A passing check
-// is reused for 24h so opening the app several times a day is not a
-// splash + round trip each time. Resume rechecks only after that TTL,
-// and never flips back to the blocking spinner (the app is already up).
+// queries would fire before we know this APK is allowed.
+//
+// A passing cache skips the *splash* so opening the app several times
+// a day is not "Checking for an update" each time. The network check
+// still runs on start, resume, and every 15 minutes — otherwise a
+// same-day release stays invisible until tomorrow.
 export function useApkGate() {
     const [state, setState] = useState(initialApkGateState);
 
@@ -117,7 +136,6 @@ export function useApkGate() {
         async function check() {
             pinNativeMediaOrigin();
             const origin = getServerUrl();
-            if (!apkGateNeedsCheck(loadApkGateCache(), {origin})) return;
             try {
                 const result = await readApkUpdate();
                 if (!alive) return;
@@ -126,8 +144,10 @@ export function useApkGate() {
                 }
                 if (result && isApkOutdated(result.currentCode, result.latestCode)) {
                     setState({status: "outdated", update: result});
-                } else {
+                } else if (result) {
                     setState({status: "ready", update: null});
+                } else {
+                    setState((prev) => (prev.status === "outdated" ? prev : {status: "ready", update: null}));
                 }
             } catch {
                 // Offline / no APK published yet: keep using the app,
@@ -140,8 +160,10 @@ export function useApkGate() {
 
         check();
         const stop = onAppResume(check);
+        const tick = setInterval(check, RECHECK_MS);
         return () => {
             alive = false;
+            clearInterval(tick);
             if (typeof stop === "function") stop();
         };
     }, []);

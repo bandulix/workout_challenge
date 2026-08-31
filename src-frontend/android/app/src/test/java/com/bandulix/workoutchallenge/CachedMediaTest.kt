@@ -6,6 +6,15 @@ import org.junit.Test
 
 class CachedMediaTest {
     @Test
+    fun noContentIsNotACachedImage() {
+        assertTrue(CachedMedia.isEmptyBody(204))
+        assertTrue(CachedMedia.isEmptyBody(403))
+        assertTrue(CachedMedia.isEmptyBody(404))
+        assertFalse(CachedMedia.isEmptyBody(200))
+        assertFalse(CachedMedia.isEmptyBody(304))
+    }
+
+    @Test
     fun sameOriginHttpsIsAllowed() {
         assertTrue(
             CachedMedia.isAllowed(

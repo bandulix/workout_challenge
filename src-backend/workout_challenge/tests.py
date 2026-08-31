@@ -384,6 +384,118 @@ class ThumbFilePermissionTests(TestCase):
         mode = dest.stat().st_mode & 0o777
         self.assertEqual(mode, 0o644, oct(mode))
 
+    def test_thumb_dir_0700_is_repaired(self):
+        import os
+        from pathlib import Path
+        from django.conf import settings
+        from workout_challenge.images import _avatar_thumb_rel, _nginx_can_read
+
+        rel = _avatar_thumb_rel(self._jpeg_field())
+        dest = Path(settings.MEDIA_ROOT) / rel
+        os.chmod(dest.parent, 0o700)
+        again = _avatar_thumb_rel(self._jpeg_field())
+        self.assertTrue(again)
+        self.assertEqual(dest.parent.stat().st_mode & 0o001, 0o001)
+        self.assertTrue(_nginx_can_read(dest))
+
+    def test_missing_file_is_204_not_404(self):
+        from pathlib import Path
+        from django.conf import settings
+        from django.http import HttpRequest
+        from workout_challenge.images import protected_media_response
+
+        field = self._jpeg_field()
+        (Path(settings.MEDIA_ROOT) / field.name).unlink()
+        request = HttpRequest()
+        request.META = {}
+        response = protected_media_response(field, request=request, size="avatar")
+        self.assertEqual(response.status_code, 204)
+
+    def test_0600_original_is_repaired_and_accel(self):
+        import os
+        from pathlib import Path
+        from django.conf import settings
+        from django.http import HttpRequest
+        from django.test import override_settings
+        from workout_challenge.images import protected_media_response
+
+        field = self._jpeg_field()
+        dest = Path(settings.MEDIA_ROOT) / field.name
+        os.chmod(dest, 0o600)
+        request = HttpRequest()
+        request.META = {}
+        with override_settings(DEBUG=False):
+            response = protected_media_response(field, request=request)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get("X-Accel-Redirect", "").endswith(field.name))
+        self.assertEqual(dest.stat().st_mode & 0o777, 0o644)
+
+    def test_tmp_is_644_before_replace(self):
+        import os
+        from unittest.mock import patch
+        from workout_challenge.images import _avatar_thumb_rel
+
+        seen = []
+        real_replace = os.replace
+
+        def spy_replace(src, dst):
+            seen.append(os.stat(src).st_mode & 0o777)
+            return real_replace(src, dst)
+
+        with patch("os.replace", side_effect=spy_replace):
+            rel = _avatar_thumb_rel(self._jpeg_field())
+        self.assertTrue(rel)
+        self.assertEqual(seen, [0o644])
+
+    def test_crowdsec_burst_of_unreadable_pictures_is_not_4xx(self):
+        """http-probing bans after ~6 distinct 400/403/404s in a few seconds."""
+        import os
+        from pathlib import Path
+        from django.conf import settings
+        from django.http import HttpRequest
+        from django.test import override_settings
+        from workout_challenge.images import protected_media_response
+
+        request = HttpRequest()
+        request.META = {}
+        codes = []
+        with override_settings(DEBUG=False):
+            for _ in range(8):
+                field = self._jpeg_field()
+                dest = Path(settings.MEDIA_ROOT) / field.name
+                os.chmod(dest, 0o600)
+                try:
+                    os.chmod(dest.parent, 0o700)
+                except OSError:
+                    pass
+                response = protected_media_response(field, request=request, size="avatar")
+                codes.append(response.status_code)
+        self.assertTrue(codes)
+        self.assertTrue(all(code in (200, 204, 304) for code in codes), codes)
+        self.assertFalse(any(code in (400, 403, 404) for code in codes), codes)
+
+    def test_unreadable_after_chmod_fail_streams_instead_of_accel(self):
+        import os
+        from pathlib import Path
+        from django.conf import settings
+        from django.http import HttpRequest
+        from django.test import override_settings
+        from unittest.mock import patch
+        from workout_challenge.images import protected_media_response
+
+        field = self._jpeg_field()
+        dest = Path(settings.MEDIA_ROOT) / field.name
+        os.chmod(dest, 0o600)
+        request = HttpRequest()
+        request.META = {}
+        with override_settings(DEBUG=False), patch(
+            "workout_challenge.images.os.chmod", side_effect=OSError,
+        ):
+            response = protected_media_response(field, request=request)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("X-Accel-Redirect", response)
+        self.assertTrue(response.streaming)
+
 
 class HeicUploadTests(TestCase):
     """iPhone and Galaxy camera rolls default to HEIC. Pillow alone cannot

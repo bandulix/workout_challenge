@@ -61,7 +61,7 @@ docker compose --profile health up -d
 
 Phones reach it at `MAIN_HOST/health` by default. In the Android app, Health Connect is one tap. In a browser, Settings shows a connection code for a health app on the phone.
 
-**Android APK** — `scripts/build_apk.sh` (or the APK on each GitHub Release). One APK works on every instance: enter the server address on first start. After pulling a new image: `scripts/update_apk_from_release.sh`. An installed APK older than the one the server is publishing opens only the download screen.
+**Android APK** — `scripts/build_apk.sh` (or the APK on each GitHub Release). One APK works on every instance: enter the server address on first start. After pulling a new image, publish the matching APK with `scripts/update_apk_from_release.sh` (the in-app check reads `/download/apk-version.json`, not the Docker tag). An installed APK older than that file opens only the download screen — it re-checks on start, resume, and every 15 minutes. Uploaded photos stay private (login required; never a public `/media/` URL).
 
 ## Changes from the original
 

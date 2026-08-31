@@ -228,6 +228,19 @@ class ProfilePictureEndpointTests(TestCase):
         response = self.client.get(f"/api/user/{self.mate.id}/picture/")
         self.assertEqual(response.status_code, 404)
 
+    def test_missing_bytes_are_204_not_404(self):
+        """ImageField set, file gone: nginx 404 used to be http-probing."""
+        from pathlib import Path
+        from django.conf import settings
+
+        self.client.force_authenticate(self.owner)
+        path = Path(settings.MEDIA_ROOT) / self.owner.profile_picture.name
+        path.unlink()
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 204)
+        avatar = self.client.get(self.url + "?size=avatar")
+        self.assertEqual(avatar.status_code, 204)
+
     def test_payload_uses_authenticated_url(self):
         self.client.force_authenticate(self.owner)
         response = self.client.get("/api/user/me/")

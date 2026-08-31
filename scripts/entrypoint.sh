@@ -42,9 +42,13 @@ fi
 # writable by it - named volumes already inherit the image ownership,
 # but bind mounts arrive root-owned.
 chown -R app:app /workout_challenge/src-backend/data
-# nginx (X-Accel-Redirect) runs as user `nginx`, not `app`. Avatar/card
-# thumbs used to be 0600 from mkstemp; nginx then 403'd every
-# /api/.../picture/?size=… GET, which CrowdSec http-probing bans as a scan.
+# nginx (X-Accel-Redirect) runs as user `nginx`, not `app`. 0600 files
+# and 0700 dirs 403 every /api/.../picture/ GET; CrowdSec http-probing
+# bans the client after a handful of distinct URLs. a+rX is files +
+# directory traverse. umask 022 so thumbs created after boot stay 0644/0755.
+umask 022
+# nginx must traverse `data/` to reach `data/media/` (alias target).
+chmod a+x /workout_challenge/src-backend/data || true
 if [ -d /workout_challenge/src-backend/data/media ]; then
     chmod -R a+rX /workout_challenge/src-backend/data/media || true
 fi
