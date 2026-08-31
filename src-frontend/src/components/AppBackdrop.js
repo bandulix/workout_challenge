@@ -11,11 +11,10 @@ export default function AppBackdrop({forceCinematic = false}) {
     const {webp, jpg} = useMemo(() => backdropUrls(), []);
 
     return (
-        <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden="true">
+        <div className="app-backdrop" aria-hidden="true">
             <picture>
                 <source srcSet={webp} type="image/webp"/>
-                <img src={jpg} alt=""
-                     className="absolute inset-0 h-full w-full object-cover object-center animate-kenburns"/>
+                <img src={jpg} alt="" className="app-backdrop-img animate-kenburns"/>
             </picture>
             <div className={"absolute inset-0 " + (cinematic
                 ? "bg-gradient-to-b from-ink-950/25 via-ink-950/40 to-ink-950/88"

@@ -111,8 +111,8 @@ module.exports = {
           '50%': { transform: 'translateY(-3px) scale(1.2)' },
         },
         'kenburns': {
-          '0%': { transform: 'scale(1) translate3d(0,0,0)' },
-          '100%': { transform: 'scale(1.12) translate3d(0,-2%,0)' },
+          '0%': { transform: 'scale(1)' },
+          '100%': { transform: 'scale(1.1)' },
         },
       },
       animation: {

@@ -422,6 +422,34 @@ body, #root {
   background: transparent;
 }
 
+/* Gym plate stays put while the page scrolls. Size to the large
+   viewport so collapsing browser chrome does not recrop object-cover. */
+.app-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100lvh;
+  overflow: hidden;
+  pointer-events: none;
+}
+.app-backdrop picture {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.app-backdrop-img {
+  position: absolute;
+  inset: -6%;
+  width: 112%;
+  height: 112%;
+  max-width: none;
+  object-fit: cover;
+  object-position: center;
+}
+
 body {
   margin: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',

@@ -171,7 +171,7 @@ class EndToEndChallengeJourneyTests(TestCase):
         self.assertEqual(self.client.get(f"/api/stats/{cid}/").status_code, 403)
         self.assertEqual(
             self.client.get(f"/api/user/{athlete['id']}/picture/").status_code,
-            404,
+            204,
         )
         listed = self.client.get("/api/user/").json()
         ids = {row["id"] for row in listed}

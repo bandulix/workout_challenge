@@ -328,6 +328,25 @@ def _privacy_headers(response, etag):
     return response
 
 
+def empty_picture_response():
+    """Authenticated picture GET that has no bytes to send.
+
+    CrowdSec http-probing 24h-bans after a handful of distinct
+    400/403/404s. 204 is not one of those, and the UI already treats
+    it as "no image".
+    """
+    response = HttpResponse(status=204)
+    response["Cache-Control"] = "private, no-store"
+    response["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet"
+    return response
+
+
+def serve_picture(file_field, *, request=None, size=None):
+    if not file_field:
+        return empty_picture_response()
+    return protected_media_response(file_field, request=request, size=size)
+
+
 def protected_media_response(file_field, *, request=None, size=None):
     """Authenticated-picture response: stream in DEBUG, X-Accel otherwise.
 

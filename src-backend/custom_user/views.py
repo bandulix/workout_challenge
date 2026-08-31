@@ -220,22 +220,23 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         production, hands the actual file delivery to nginx via
         X-Accel-Redirect. In DEBUG the file is streamed.
         """
+        from workout_challenge.images import empty_picture_response, serve_picture
+
         lookup = pk
         if str(lookup).lower() in ["me", "my", "myself", "i"]:
             lookup = request.user.id
-        user = get_object_or_404(CustomUser.objects.only("id", "profile_picture"), pk=lookup)
+        user = CustomUser.objects.only("id", "profile_picture").filter(pk=lookup).first()
+        if user is None:
+            return empty_picture_response()
         if user.pk != request.user.pk:
             from competition.models import Competition
             shared = Competition.objects.filter(
                 Q(owner=request.user) | Q(user=request.user),
             ).filter(Q(owner=user) | Q(user=user)).exists()
             if not shared:
-                raise Http404("No profile picture.")
-        if not user.profile_picture:
-            raise Http404("No profile picture.")
-        from workout_challenge.images import protected_media_response
+                return empty_picture_response()
         size = request.query_params.get("size")
-        return protected_media_response(user.profile_picture, request=request, size=size)
+        return serve_picture(user.profile_picture, request=request, size=size)
 
 
 class PasswordResetView(APIView):

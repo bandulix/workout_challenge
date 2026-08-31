@@ -288,6 +288,72 @@ class ReleaseVersionEndpointTests(TestCase):
         response = self.client.get("/api/version/")
         self.assertEqual(response.json()["version"], "dev")
 
+    def test_apk_stamp_is_included_when_published(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            downloads = Path(tmp) / "downloads"
+            downloads.mkdir()
+            (downloads / "apk-version.json").write_text(
+                json.dumps({"versionName": "0.52.0", "versionCode": 156, "url": "https://evil.example/x.apk"}),
+                encoding="utf-8",
+            )
+            with override_settings(DATA_DIR=Path(tmp)):
+                response = self.client.get("/api/version/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["apk"], {
+            "versionName": "0.52.0",
+            "versionCode": 156,
+            "url": "/download/workout-challenge.apk",
+        })
+
+
+class ApkVersionEndpointTests(TestCase):
+    """GET /api/apk-version/ is the CORS JSON copy of apk-version.json."""
+
+    def test_missing_file_is_404(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp, override_settings(DATA_DIR=Path(tmp)):
+            response = self.client.get("/api/apk-version/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_published_stamp_is_public_json(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            downloads = Path(tmp) / "downloads"
+            downloads.mkdir()
+            (downloads / "apk-version.json").write_text(
+                json.dumps({"versionName": "0.52.0", "versionCode": "156"}),
+                encoding="utf-8",
+            )
+            with override_settings(DATA_DIR=Path(tmp)):
+                response = self.client.get("/api/apk-version/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            "versionName": "0.52.0",
+            "versionCode": 156,
+            "url": "/download/workout-challenge.apk",
+        })
+
+    def test_junk_file_is_404(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            downloads = Path(tmp) / "downloads"
+            downloads.mkdir()
+            (downloads / "apk-version.json").write_text("not-json", encoding="utf-8")
+            with override_settings(DATA_DIR=Path(tmp)):
+                response = self.client.get("/api/apk-version/")
+        self.assertEqual(response.status_code, 404)
+
 
 class ApiNoStoreMiddlewareTests(TestCase):
     """API responses carry no-store headers: the Android WebView's disk

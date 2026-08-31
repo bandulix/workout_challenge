@@ -1,6 +1,6 @@
 import {useEffect, useState} from "react";
 import {App} from "@capacitor/app";
-import {isNativeApp, assetUrl, getServerUrl} from "./platform";
+import {apiUrl, isNativeApp, assetUrl, getServerUrl} from "./platform";
 import {onAppResume} from "./appLifecycle";
 import {pinNativeMediaOrigin} from "./protectedMedia";
 import {isApkOutdated} from "./queryPage";
@@ -86,33 +86,63 @@ function initialApkGateState() {
     return {status: "checking", update: null};
 }
 
+// Old APKs only fetch the nginx file. New builds also try /api/apk-version/
+// so a Content-Disposition: attachment on the file cannot hide an update.
+export function apkManifestUrls() {
+    return [
+        assetUrl("/download/apk-version.json"),
+        apiUrl("/apk-version/"),
+    ];
+}
+
+export function parseApkManifest(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const latestCode = parseInt(raw.versionCode, 10) || 0;
+    if (!latestCode) return null;
+    return {
+        latestCode,
+        versionName: String(raw.versionName || ""),
+    };
+}
+
+async function fetchJson(url, ms) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    try {
+        const resp = await fetch(url, {cache: "no-store", signal: ctrl.signal});
+        if (!resp?.ok) return null;
+        return await resp.json();
+    } catch {
+        return null;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+async function fetchApkManifest() {
+    for (const url of apkManifestUrls()) {
+        const parsed = parseApkManifest(await fetchJson(url, 4000));
+        if (parsed) return parsed;
+    }
+    return null;
+}
+
 // Sideload APK vs the APK the server is publishing
 // (/download/apk-version.json, stamped by scripts/build_apk.sh).
 // Fail-open: missing manifest, offline, or a parse error must not brick
 // the phone. A known-newer server build is the only "outdated" case.
 export async function readApkUpdate() {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 5000);
-    let info;
-    let resp;
-    try {
-        [info, resp] = await Promise.all([
-            App.getInfo(),
-            fetch(assetUrl("/download/apk-version.json"), {cache: "no-store", signal: ctrl.signal}),
-        ]);
-    } finally {
-        clearTimeout(timer);
-    }
-    if (!resp?.ok || !info) return null;
-    const latest = await resp.json();
+    const [info, latest] = await Promise.all([
+        App.getInfo(),
+        fetchApkManifest(),
+    ]);
+    if (!info || !latest) return null;
     const currentCode = parseInt(info.build, 10) || 0;
-    const latestCode = parseInt(latest.versionCode, 10) || 0;
-    if (!latestCode) return null;
     return {
         currentCode,
-        latestCode,
+        latestCode: latest.latestCode,
         currentName: String(info.version || ""),
-        versionName: String(latest.versionName || ""),
+        versionName: latest.versionName,
     };
 }
 

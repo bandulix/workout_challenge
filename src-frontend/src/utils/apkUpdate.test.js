@@ -4,7 +4,9 @@ import {
     apkGateCachedUpdate,
     apkGateNeedsCheck,
     apkGateShouldSplash,
+    apkManifestUrls,
     parseApkGateCache,
+    parseApkManifest,
 } from "./apkUpdate";
 
 const ORIGIN = "https://challenge.example.com";
@@ -51,5 +53,30 @@ describe("apkGateCachedUpdate", () => {
         expect(apkGateCachedUpdate(behind, ORIGIN)).toEqual(behind);
         expect(apkGateCachedUpdate(cache(), ORIGIN)).toBeNull();
         expect(apkGateCachedUpdate(behind, "https://other.example")).toBeNull();
+    });
+});
+
+describe("apkManifestUrls", () => {
+    it("tries the nginx file first, then the CORS API copy", () => {
+        expect(apkManifestUrls()).toEqual([
+            "/download/apk-version.json",
+            "/api/apk-version/",
+        ]);
+    });
+});
+
+describe("parseApkManifest", () => {
+    it("keeps a published versionCode and drops junk", () => {
+        expect(parseApkManifest({versionName: "0.52.0", versionCode: 156})).toEqual({
+            latestCode: 156,
+            versionName: "0.52.0",
+        });
+        expect(parseApkManifest({versionCode: "156"})).toEqual({
+            latestCode: 156,
+            versionName: "",
+        });
+        expect(parseApkManifest(null)).toBeNull();
+        expect(parseApkManifest({versionName: "0.52.0"})).toBeNull();
+        expect(parseApkManifest({versionCode: 0})).toBeNull();
     });
 });

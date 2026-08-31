@@ -16,7 +16,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from workout_challenge.images import ProtectedMediaRenderer
+from workout_challenge.images import ProtectedMediaRenderer, empty_picture_response, serve_picture
 from .llm_client import check_vision_capability
 from competition.models import Competition, Points
 from .models import (
@@ -70,8 +70,9 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
             return qs.order_by("name")
         # List is the pickable library (built-ins + yours). Retrieve and
         # picture also allow a custom coach assigned to a challenge the
-        # caller is in - so avatars load in the feed - but never every
-        # uploaded picture on the server.
+        # caller is in, plus custom coaches created by teammates (the
+        # weekly ballot lists those, and fetching their portraits as
+        # 404 used to CrowdSec-ban the voter).
         #
         # Assigned coaches go in via pk__in, not a JOIN on this queryset:
         # ``filter(Q(is_builtin=True) | Q(competitions__...))`` INNER
@@ -79,11 +80,14 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
         # PATCH/DELETE on a stock coach 404'd instead of 403.
         visible = Q(is_builtin=True) | Q(created_by=user)
         if self.action != "list":
+            shared = Competition.objects.filter(Q(owner=user) | Q(user=user))
             assigned = DrillInstructorPersona.objects.filter(
-                Q(competitions__competition__owner=user)
-                | Q(competitions__competition__user=user)
+                competitions__competition__in=shared
             ).values("pk")
-            visible |= Q(pk__in=assigned)
+            teammate_ids = set(shared.values_list("owner_id", flat=True))
+            teammate_ids.update(shared.values_list("user", flat=True))
+            teammate_ids.discard(None)
+            visible |= Q(pk__in=assigned) | Q(created_by_id__in=teammate_ids)
         return qs.filter(visible).distinct().order_by("name")
 
     def _may_write(self, persona):
@@ -122,12 +126,12 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
         via X-Accel-Redirect (an internal, non-public location). In bare
         Django dev (DEBUG) the file is streamed directly.
         """
-        persona = self.get_object()
-        if not persona.profile_picture:
-            raise Http404("No custom profile picture.")
-        from workout_challenge.images import protected_media_response
+        try:
+            persona = self.get_object()
+        except Http404:
+            return empty_picture_response()
         size = request.query_params.get("size")
-        return protected_media_response(persona.profile_picture, request=request, size=size)
+        return serve_picture(persona.profile_picture, request=request, size=size)
 
 
 class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
@@ -585,15 +589,13 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         hangs on a child (reaction) message, so any message of a
         competition the user belongs to must resolve here.
         """
-        message = get_object_or_404(
-            DrillInstructorMessage.objects.filter(_competition_member(request.user)),
-            pk=pk,
-        )
-        if not message.image:
-            raise Http404("No picture on this message.")
-        from workout_challenge.images import protected_media_response
+        message = DrillInstructorMessage.objects.filter(
+            _competition_member(request.user)
+        ).filter(pk=pk).first()
+        if message is None:
+            return empty_picture_response()
         size = request.query_params.get("size")
-        return protected_media_response(message.image, request=request, size=size)
+        return serve_picture(message.image, request=request, size=size)
 
     # The swipe box shows the newest roasts across the user's
     # competitions; older cards fall off the edge (they stay in the
@@ -852,12 +854,12 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=["get"], renderer_classes=[ProtectedMediaRenderer])
     def picture(self, request, pk=None):
-        echo = self.get_object()
-        if not echo.image:
-            raise Http404("No Echo art.")
-        from workout_challenge.images import protected_media_response
+        try:
+            echo = self.get_object()
+        except Http404:
+            return empty_picture_response()
         size = request.query_params.get("size")
-        return protected_media_response(echo.image, request=request, size=size)
+        return serve_picture(echo.image, request=request, size=size)
 
     MAX_ECHO_ART_BYTES = 5 * 1024 * 1024
     MAX_ECHO_ART_PER_DAY = 8

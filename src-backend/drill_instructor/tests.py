@@ -345,7 +345,7 @@ class PersonaPictureEndpointTests(TestCase):
         self.assertIn("noindex", response["X-Robots-Tag"])
         self.assertIn("private", response["Cache-Control"])
 
-    def test_404_when_persona_has_no_picture(self):
+    def test_204_when_persona_has_no_picture(self):
         plain = DrillInstructorPersona.objects.create(
             name="Plain Coach",
             system_prompt="You are plain.",
@@ -355,7 +355,23 @@ class PersonaPictureEndpointTests(TestCase):
 
         response = self.client.get(f"/api/drill-instructor/persona/{plain.id}/picture/")
 
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 204)
+
+    def test_vote_grid_burst_of_empty_portraits_is_not_4xx(self):
+        """http-probing bans after ~6 distinct 404s. The ballot renders
+        every coach at once."""
+        self.client.force_authenticate(self.regular)
+        codes = []
+        for i in range(8):
+            persona = DrillInstructorPersona.objects.create(
+                name=f"Empty Face {i}",
+                system_prompt="plain",
+                is_builtin=True,
+            )
+            codes.append(self.client.get(
+                f"/api/drill-instructor/persona/{persona.id}/picture/?size=avatar"
+            ).status_code)
+        self.assertEqual(codes, [204] * 8)
 
     def test_list_payload_uses_authenticated_url(self):
         DrillInstructorPersona.objects.create(
@@ -391,7 +407,7 @@ class PersonaPictureEndpointTests(TestCase):
         self.assertEqual(self.client.get(url).status_code, 200)
 
         self.client.force_authenticate(outsider)
-        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertEqual(self.client.get(url).status_code, 204)
 
         today = timezone.localdate()
         cup = Competition.objects.create(
@@ -399,6 +415,11 @@ class PersonaPictureEndpointTests(TestCase):
             start_date=today, end_date=today + datetime.timedelta(days=7),
         )
         outsider.my_competitions.add(cup)
+        # On the ballot before this coach is assigned: teammate portrait
+        # must 200 (a 404 here is CrowdSec http-probing on the vote grid).
+        self.client.force_authenticate(outsider)
+        self.assertEqual(self.client.get(url).status_code, 200)
+
         DrillInstructorConfig.objects.create(
             competition=cup, persona=custom, enabled=True,
         )
@@ -1841,11 +1862,11 @@ class PhotoPostTests(TestCase):
         self.assertIn("noindex", response["X-Robots-Tag"])
         self.assertEqual(response["Cross-Origin-Resource-Policy"], "same-origin")
 
-    def test_picture_outsider_gets_404(self):
+    def test_picture_outsider_gets_204(self):
         message = self._photo_message()
         self.client.force_authenticate(self.outsider)
         response = self.client.get(f"/api/drill-instructor/message/{message.id}/picture/")
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 204)
 
     def test_picture_anonymous_gets_401(self):
         message = self._photo_message()
@@ -1968,7 +1989,7 @@ class PhotoPostTests(TestCase):
         self.assertEqual(response.status_code, 200)  # child message, not a root
         self.client.force_authenticate(self.outsider)
         response = self.client.get(f"/api/drill-instructor/message/{roast_msg.id}/picture/")
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 204)
 
     def test_photo_reaction_task_text_only_when_model_cant_see(self):
         from .tasks import post_photo_reaction

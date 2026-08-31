@@ -218,15 +218,15 @@ class ProfilePictureEndpointTests(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
 
-    def test_outsider_gets_404(self):
+    def test_outsider_gets_204(self):
         self.client.force_authenticate(self.outsider)
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 204)
 
-    def test_404_when_user_has_no_picture(self):
+    def test_204_when_user_has_no_picture(self):
         self.client.force_authenticate(self.mate)
         response = self.client.get(f"/api/user/{self.mate.id}/picture/")
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 204)
 
     def test_missing_bytes_are_204_not_404(self):
         """ImageField set, file gone: nginx 404 used to be http-probing."""
