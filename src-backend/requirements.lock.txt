@@ -86,7 +86,7 @@ django-redis==5.4.0
     # via -r requirements.txt
 django-timezone-field==7.2.2
     # via django-celery-beat
-djangorestframework==3.16.1
+djangorestframework==3.17.2
     # via
     #   -r requirements.txt
     #   djangorestframework-simplejwt
