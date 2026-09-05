@@ -84,3 +84,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - Light-theme selector, system theme matching, and the ten `-light` backdrop files.
+
+## [0.45.0] - 2026-08-25
+
+### Added
+- **Daily action backdrops** — five volt-neon plates (snowboard, swim, gravel, studio, lift) rotate one per local calendar day. Dark mode and login use the night grade; light mode uses a brighter twin. The old gym-runners still is gone.
+- **Coach 24h activity ring** — neon-green volt ring on the persona portrait, segmented by who trained in the last 24 hours (full/glowing vs sparse). Mood-based orbiting pips stay around it.
+- **Coach message wheel** — last five coach lines in the hero bubble, with up/down and drag.
+- **Overlay portal** — popups (roasts, info, athlete cards, forms) render on `document.body` so glass `backdrop-filter` no longer traps `position:fixed`.
+- **Native camera vs gallery** — Android `takePhoto` / `chooseFromGallery` (FileProvider Pictures path). Web keeps a labelled capture input.
+
+### Changed
+- **Light mode glass** — limestone canvas (`#efece4`), white frost over the plate, darker secondary type and volt labels. Dark charcoal glass is unchanged. Dock sheen runs in both themes (quieter on dark).
+- **Theme first launch is Match device** — `color-scheme: light dark` until the user picks Light or Dark. Android WebView follows the system night setting.
+- **Coach is the default landing** (`/coach`). Challenge goals pull-down, quieter tabs, 48h feed, replies only on activity posts.
+- **Create a challenge** from the Compete dock actually opens the challenge form.
+- **Ken Burns plate** on every screen, including after login.
+- **Popups** share one glass size/shape. Roaster cards sit in a multi-column grid. AI Drill Instructor settings use the same glass chrome.
+- **Android status / WebView canvas** uses limestone in light and ink in night.
+
+### Fixed
+- **Popup freeze** when closing X / info / hall of roasts / activity rows — overlays were clipped inside frosted cards.
+- **Login dock** no longer shows on `/login/` (trailing slash) or when logged out.
+- **Camera button opened the gallery** on Android because FileProvider missed `Pictures/` and HTML `capture` was ignored.
+- **Coach portrait animation** missing after the five-style experiment — mood orbit is back, with one calm default when there is no mood yet.
+
+## [0.44.0] - 2026-08-24
+
+### Added
+- **Home latest workouts has “N older activities”** — same day-grouped history sheet as the challenge feed, instead of only the last 5.
+- **Challenge opens on Feed** and swipes to Board and Trophies. The tab bar has chevrons, a sliding pill, and page dots so it reads as swipeable.
+- **Echo art reminder** — if you hold an Echo without a picture, a popup asks you to add one (Camera or Gallery). Later dismisses that Echo until you upload.
+- **Coach comments when someone declares war on an Echo** — persona-voiced announcement in Coach’s Corner (canned fallback if the LLM is down), labelled “Declared war”.
+- **Public athlete card** — tap a leaderboard avatar for rank, week and trend, workout KPIs, dog tags and Echoes. No email or legal name.
+
+### Changed
+- **Challenge tabs are Feed / Board / Trophies** (Feed first).
+- **Hall of Roasts is on the Coach page**, not on the challenge Trophies tab. The box shows the top 3; a “N more roasts” button opens the rest.
+- **Dog tags are only on Home** (welcome box) and the Settings sheet — the extra Coach box is gone. Tapping a tag opens a short description of the achievement.
+- **Light mode contrast** — leftover night-ink cards (coach hero, streak, pings, Echoes, orders, dog tags) now have light surfaces; borders and body text are darker on the olive canvas. Theme still defaults to the device setting; Settings cycles Match device → Light → Dark.
+- **Gym photo behind the whole app** — login’s night plate in dark mode, a daylight twin of the same scene in light mode. Cards, modals and the dock are frosted glass over it. Primary actions stay solid volt; secondary buttons are glass pills.
+- **Vote next week’s coach is on the Coach page** (below Hall of Roasts), not on the challenge Board. If you are in more than one coached challenge, a chip row picks which ballot you are voting on.
+- **Coach’s Corner is the feed** — when the coach comments on a workout, the post shows the athlete’s picture, workout line, order ribbon and points. The separate Activity feed box is gone.
+- **Leaderboard carries the week and the trend** — each row has a 7-day spark of that athlete; your row also shows this week’s bars and a cumulative spark vs the field. The separate This week and Trend boxes are gone.
+- **Activity goals sit in the challenge info box** — slim progress rows for your targets, with Edit for the organizer. The extra Activity goals box on the Board is gone.
+- **Configure is gone from Coach’s Corner** — owners still set up the coach from the challenge header.
+- **The roaster lives under Settings**, not on the Coach page. Same create / manage / detail flow, opened from the Settings sheet.
+- **Bottom nav “Me” is now Settings** — Account opens personal details and device links.
+- **Settings and Compete grow out of the dock** — they pull up as the same glass capsule as the menu bar, not a separate sheet. Tap the tab again (or the dimmed canvas) to close.
+- **Account is grouped** — Profile, Emails, Connected services (Strava / Garmin / Health), then save. Title is “Account”, not “Personal Setting”. Goal Equalizer, Help, and admin settings use the same type, cards and field chrome.
+- **Dock is frostier** — stronger backdrop blur and a more opaque fill so page content does not show through. The active tab is a slim volt dash under the label instead of a green chip.
+- **Coach “who moved” is an orbit** around the persona portrait. Lit hopping pips are athletes who trained; the caption reads “N of M trained last 48h”. Mood (Unleashed / Proud / …) is a chip next to On duty — the extra “coach is unleashed” line under the last message is gone.
+- **Coach “Open the feed” is “Add a photo”** and only appears when the speech bubble is the coach commenting on *your* workout.
+- **Coach’s Corner reply row** — camera, comment field and send sit on one 44px row. Picture replies show a live elapsed timer. A “N older messages” button expands the box past the latest 3.
+- **Weekly coach vote stays after you pick** — the Coach-page ballot keeps showing tallies and your highlighted pick; tap another coach to change your vote until Monday.
+- **Tied weekly coach votes are drawn at random** — previously a tie (including the sitting coach) always kept the incumbent, which looked like the vote never switched. No votes still keeps the current coach.
+- **Echo art is splashier** — the remix now puts the holder and the coach together in an invented, persona-styled world (movie-poster energy, not a snapshot). Workout stats stay on the picture; the coach portrait is used as a face lock when there is one.
+- **README screenshots recaptured** for the gym-glass UI (login, Home, Feed, Coach, and the social preview).
+
+### Fixed
+- **Echo art can only be set by the current holder** — staff used to get the camera button on every Echo and the API accepted their upload. Admins who do not hold the Echo no longer can.
+- **Google Health Connect still not importing, and Re-Sync bringing in nothing** — tapping Sync only *scheduled* WorkManager, then the server polled Open Wearables immediately (still empty) and stamped `health_last_synced_at`, which locked both the hourly beat and the button for ~an hour. Re-Sync now waits for an in-process `syncNow()` upload, retries the OW list while ingest is queued, and the manual cooldown is 2 minutes. The Android plugin also pins the Google provider (the SDK worker defaulted to Samsung), calls the SDK foreground/background lifecycle hooks, and requests notification permission so the health foreground service can actually run.
+- **Challenge tab bar `role="tablist"` was outside the tag** and leaked as text; swipe tabs now expose a real tablist.
+- **Edit-photo affordance is hover-only** — the volt camera bubble is gone from Home, Settings, persona edit, and Echo art. Hover (or tap) the picture to change it.
+- **Hot or Not is hidden** when there are no unrated roast pictures left to vote on.
+- **Android status-bar strip** — the thin black band above the page was the splash/window color showing through the status-bar inset. The window, WebView and that inset now use the olive (or night) canvas, with a transparent status bar so the background reaches the top.
+- **Echo art daily cap is atomic** (`cache.incr`); remix is skipped if the Echo changed hands after upload. Health Re-Sync stamps under a row lock so overlapping GETs cannot skip the 2-minute cooldown. Native Health Connect `daysBack` is clamped to 1–43.
+- **A teammate could edit or delete another athlete’s account** — `GET/PATCH/DELETE /api/user/<id>/` skipped object permissions, so anyone in the same challenge could change a co-participant’s email, password or wipe the row. Object GET/PATCH/DELETE is now self-only; avatars of teammates still load. The public card uses the stats payload, not this endpoint.
+- **Health identity was writable on the profile** — `health_user_id` and `health_last_synced_at` could be PATCHed, which would attach someone else’s Open Wearables user or skip the sync cooldown. Both are read-only; only the Health link/sync views write them.
+- **Health host URLs reject credentials and non-http(s)** in Site Settings, the Android `HealthHost` check, and the WebView fetch path. A poisoned `localStorage` host is dropped when the server-provided public URL has a different origin.
+
+## [0.42.0] - 2026-08-23
+
+### Added
+- **Echo Chamber art upload** — the current holder can add a photo on the Echo card (camera or gallery). The coach remixes it to match the Echo title and sport; the original stays if no image-edit model is configured.
+- **Echo holder crown on avatars** — anyone holding a living or immortal Echo gets a small volt crown on their profile picture (Home, Me sheet, leaderboard).
+- **Get started checklist on Home** — join/create a challenge, connect a device or log by hand, turn the coach on (owners). Hides when it's done.
+- **HEIC/HEIF photos** from iPhone and Galaxy camera rolls (Pillow + `pillow-heif`, re-encoded to JPEG).
+
+### Changed
+- **Compete opens your running challenge** when you only have one; the picker appears when you have several.
+- **Challenge page is Board / Feed / Trophies** instead of one long scroll. Coach conversation lives on Feed; Echoes and Hall of Roasts on Trophies.
+- **Coach tab is the persona** (mood, roaster, pings). “Open the feed” goes to that challenge’s Feed.
+- **Home is you** — the extra “My challenges” list is gone from Coach; Home still lists your challenges with your rank.
+- **Wording is “challenge”** in the UI (join, create, invite, leave).
+- **Apple-glass menu bar** — floating frosted capsule dock; Me/Compete sheets use the same material. Honours `prefers-reduced-motion`.
+- **Dark mode is night charcoal, not olive** (`#0b0b0c` / `#141416`).
+- **Garmin/Health hourly and manual sync look back 14 days** (was 3). First Health Connect catch-up on the phone is 43 days, matching Garmin’s initial import.
+
+### Fixed
+- **A broken Strava activity no longer blocks the rest of that user's import**; `elapsed_time` is used when `moving_time` is absent.
+- **LLM roast-image URL fetch is SSRF-safe** (https, public DNS, redirect re-check, streamed size cap).
+- **ALLOWED_HOSTS** uses hostname only (no `:port` from `HOSTS`).
+- **Register throttle ignores spoofed `X-Forwarded-For`** unless the TCP peer is loopback nginx.
+- **Celery task-status no longer echoes exception text**.
+- **Logging a workout now refreshes the board and feed** (RTK `tagTypes` for Stats/Feed).
+- **Leaderboard highlights you before you have logged** (`id` vs `workout__user__id`).
+- **Activate the coach on a phone** no longer clips Create; Activate starts with Enabled on.
+- **Android camera vs gallery** actually open the camera vs the library; HEIC/empty MIME is accepted and re-encoded to JPEG.
+- **Profile picture on Android** uses the native camera/gallery prompt.
+
+## [0.41.1] - 2026-08-23
+
+### Fixed
+- **CrowdSec `nginx-req-limit-exceeded` 24h-bans on a normal visit** — the service worker `cache.addAll()`'d 25 shell URLs in parallel on every install/update. Install now only precaches `/` + `/offline.html`. If you rate-limit a reverse proxy in front, allow about 25 r/s with burst 80.
+
+## [0.40.0] - 2026-08-22
+
+### Added
