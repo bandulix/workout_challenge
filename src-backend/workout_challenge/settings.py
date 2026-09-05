@@ -1,13 +1,10 @@
 """
 Django settings for workout_challenge project.
 
-Security hardening (issues #17, #23) is applied at the bottom via
-workout_challenge.sec_hardening after the base settings load.
-JWT refresh cookie settings (issue #19) are applied here too.
+Base settings live in settings_base.py. This module applies production
+boot checks and the httpOnly refresh-cookie / HTTPS-link gates.
 """
 
-# Base settings live in settings_base so this file stays small enough
-# for API updates while keeping the security gates reviewable.
 from workout_challenge.settings_base import *  # noqa: F401,F403
 
 import os

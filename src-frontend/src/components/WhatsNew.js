@@ -18,8 +18,7 @@ const HIGHLIGHTS = [
 // user acknowledged; a mismatch means this device hasn't been told yet.
 // "dev" builds (local dev, source builds) never nag.
 
-const SEEN_KEY = "wc-release-version"; // changelog-restore: re-fire test
-// ci: touch to re-run Production Deployment test on docs PR
+const SEEN_KEY = "wc-release-version";
 const POLL_MS = 15 * 60 * 1000; // also catches tabs left open across a deploy
 
 function WhatsNew() {

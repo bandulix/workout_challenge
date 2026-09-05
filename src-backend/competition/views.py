@@ -391,8 +391,8 @@ def _feed_rows_for_ids(competition, workout_ids):
             start = row.get("workout__start_datetime")
             on_today = False
             if start is not None:
-                d = start.date() if hasattr(start, "date") else None
-                on_today = d == today
+                local_start = timezone.localtime(start) if timezone.is_aware(start) else start
+                on_today = local_start.date() == today
             row["order_ribbon"] = bool(uid in completers and on_today)
     except Exception:
         for row in grouped.values():
