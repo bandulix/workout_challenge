@@ -1,1 +1,1 @@
-PLACEHOLDER
+file:///tmp/patched_views.py
