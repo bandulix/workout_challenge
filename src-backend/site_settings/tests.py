@@ -5,6 +5,8 @@ from rest_framework.test import APIClient
 
 from custom_user.models import CustomUser
 
+from custom_user.token_crypto import decrypt_token
+
 from .models import SiteSettings, resolve_llm_settings, resolve_strava_settings
 
 
@@ -64,7 +66,8 @@ class SiteSettingsApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         solo.refresh_from_db()
         self.assertEqual(solo.llm_model, "new-model")
-        self.assertEqual(solo.llm_api_key, "keep-me")
+        self.assertEqual(decrypt_token(solo.llm_api_key), "keep-me")
+        self.assertTrue(solo.llm_api_key.startswith("gAAAA"))
 
     def test_llm_base_url_rejects_private_http(self):
         self.client.force_authenticate(self.admin)
@@ -131,3 +134,73 @@ class SiteSettingsApiTests(TestCase):
         cfg = resolve_strava_settings()
         self.assertEqual(cfg["client_id"], 999)
         self.assertEqual(cfg["client_secret"], "db-strava")
+
+
+class SiteSettingsSecretEncryptionTests(TestCase):
+    """Fernet-at-rest for Site Settings secrets + plaintext compatibility."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.verify_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+    def test_secrets_encrypted_on_save_and_transparent_to_resolvers(self):
+        solo = SiteSettings.get_solo()
+        solo.llm_api_key = "plain-llm-key"
+        solo.strava_client_secret = "plain-strava-secret"
+        solo.email_host_password = "plain-smtp-pw"
+        solo.health_developer_password = "plain-health-pw"
+        solo.save()
+        solo.refresh_from_db()
+        for field, expected in (
+            ("llm_api_key", "plain-llm-key"),
+            ("strava_client_secret", "plain-strava-secret"),
+            ("email_host_password", "plain-smtp-pw"),
+            ("health_developer_password", "plain-health-pw"),
+        ):
+            stored = getattr(solo, field)
+            self.assertTrue(stored.startswith("gAAAA"), field)
+            self.assertEqual(decrypt_token(stored), expected)
+            self.assertNotEqual(stored, expected)
+        self.assertEqual(resolve_llm_settings()["api_key"], "plain-llm-key")
+        self.assertEqual(resolve_strava_settings()["client_secret"], "plain-strava-secret")
+
+    def test_legacy_plaintext_readable_then_reencrypted(self):
+        solo = SiteSettings.get_solo()
+        # Simulate a pre-encryption row written straight to the column.
+        SiteSettings.objects.filter(pk=solo.pk).update(llm_api_key="legacy-plain")
+        solo.refresh_from_db()
+        self.assertEqual(solo.llm_api_key, "legacy-plain")
+        self.assertEqual(resolve_llm_settings()["api_key"], "legacy-plain")
+        solo.llm_model = "touch"
+        solo.save()
+        solo.refresh_from_db()
+        self.assertTrue(solo.llm_api_key.startswith("gAAAA"))
+        self.assertEqual(decrypt_token(solo.llm_api_key), "legacy-plain")
+
+    def test_blank_secret_in_api_preserves_encrypted_value(self):
+        solo = SiteSettings.get_solo()
+        solo.llm_api_key = "keep-encrypted"
+        solo.save()
+        solo.refresh_from_db()
+        stored = solo.llm_api_key
+        self.assertTrue(stored.startswith("gAAAA"))
+        admin = CustomUser.objects.create_user(
+            email="admin2@example.com", password="test-pw", first_name="Ada", last_name="",
+            is_staff=True, is_superuser=True,
+        )
+        client = APIClient()
+        client.force_authenticate(admin)
+        response = client.put(
+            "/api/site-settings/",
+            {"llm_api_key": "", "llm_model": "after-blank"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        solo.refresh_from_db()
+        self.assertEqual(solo.llm_model, "after-blank")
+        self.assertEqual(solo.llm_api_key, stored)
