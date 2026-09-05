@@ -4,7 +4,9 @@ Resolution order:
   1. ``VAPID_PUBLIC_KEY`` and ``VAPID_PRIVATE_KEY`` env vars (preferred
      for production - generate once with ``openssl`` or ``py_vapid``).
   2. A persisted keypair in ``DATA_DIR/vapid.json`` (auto-generated on
-     first startup and reused across restarts).
+     first startup and reused across restarts). The private key is
+     Fernet-encrypted at rest (same helpers as Site Settings / OAuth
+     tokens); plaintext legacy files are upgraded on the next write.
   3. A freshly-generated keypair (development only).
 
 The public key is safe to expose; the private key stays on the server.
@@ -22,6 +24,34 @@ logger = logging.getLogger(__name__)
 
 _VAPID_CACHE: dict | None = None
 _DEFAULT_SUBJECT = "mailto:admin@example.com"
+
+
+def _encrypt_vapid_private(value: str) -> str:
+    """Fernet-encrypt a VAPID private key for disk; leave ciphertext alone."""
+    if not value or value.startswith("gAAAA"):
+        return value
+    from custom_user.token_crypto import encrypt_token
+    return encrypt_token(value)
+
+
+def _decrypt_vapid_private(value: str) -> str:
+    """Decrypt a stored VAPID private key (plaintext-compatible)."""
+    if not value:
+        return value
+    from custom_user.token_crypto import decrypt_token
+    return decrypt_token(value)
+
+
+def _write_vapid_file(path: Path, payload: dict) -> None:
+    """Persist vapid.json with the private key encrypted and mode 0o600."""
+    to_store = dict(payload)
+    priv = to_store.get("private") or ""
+    to_store["private"] = _encrypt_vapid_private(priv)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(to_store, f)
+    os.chmod(path, 0o600)
 
 
 def _public_to_b64url(value: str) -> str:
@@ -83,13 +113,21 @@ def ensure_vapid_keys():
                 # public key in PEM form (broke browser subscription).
                 stored_public = (_VAPID_CACHE or {}).get("public", "")
                 normalised_public = _public_to_b64url(stored_public)
-                if normalised_public and normalised_public != stored_public:
+                public_changed = bool(normalised_public and normalised_public != stored_public)
+                if public_changed:
                     _VAPID_CACHE["public"] = normalised_public
+                # Decrypt private for runtime; rewrite file when the on-disk
+                # private was still plaintext (or public needed healing).
+                stored_private = (_VAPID_CACHE or {}).get("private", "") or ""
+                plaintext_private = _decrypt_vapid_private(stored_private)
+                _VAPID_CACHE["private"] = plaintext_private
+                needs_rewrite = public_changed or (
+                    bool(stored_private) and not stored_private.startswith("gAAAA")
+                )
+                if needs_rewrite:
                     try:
-                        with path.open("w") as f:
-                            json.dump(_VAPID_CACHE, f)
-                        os.chmod(path, 0o600)
-                        logger.info("Normalised persisted VAPID public key to base64url form.")
+                        _write_vapid_file(path, _VAPID_CACHE)
+                        logger.info("Normalised / re-encrypted persisted VAPID keypair at %s", path)
                     except Exception as exc:  # noqa: BLE001
                         logger.warning("Could not rewrite %s: %s", path, exc)
             except Exception as exc:
@@ -106,13 +144,8 @@ def ensure_vapid_keys():
                     "private": _ensure_str(vapid.private_pem()),
                     "subject": subject,
                 }
-                path.parent.mkdir(parents=True, exist_ok=True)
-                # Write with mode 0o600 so the VAPID private key is not
-                # world-readable on the host.
-                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                with os.fdopen(fd, "w") as f:
-                    json.dump(_VAPID_CACHE, f)
-                os.chmod(path, 0o600)
+                # Persist with Fernet-encrypted private key and mode 0o600.
+                _write_vapid_file(path, _VAPID_CACHE)
                 logger.info("Generated and persisted new VAPID keypair at %s", path)
             except ImportError:
                 logger.error("py_vapid is not installed; push notifications will not work.")
