@@ -16,10 +16,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from custom_user.throttles import ClientIPScopedThrottle
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
+from custom_user.jwt_views import (
+    CookieTokenObtainPairView,
+    CookieTokenRefreshView,
+    CookieTokenLogoutView,
 )
 from rest_framework.routers import DefaultRouter
 from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, CompetitionStatsSummaryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView, PointsFactorsView
@@ -47,20 +47,11 @@ SecureLinkStravaView = _https_required(LinkStravaView)
 SecureLinkGarminView = _https_required(LinkGarminView)
 
 
-# Token endpoints with a strict throttle bucket (online brute-force
-# protection for email/password pairs and refresh tokens).
-class ThrottledTokenObtainPairView(TokenObtainPairView):
-    throttle_classes = [ClientIPScopedThrottle]
-    throttle_scope = 'auth'
-
-
-class ThrottledTokenRefreshView(TokenRefreshView):
-    throttle_classes = [ClientIPScopedThrottle]
-    # Separate from 'auth' (password login): refresh traffic is
-    # continuous (~4/hour/device at a 15-minute access token) and per-IP
-    # budgets are shared behind carrier-grade NAT - see settings
-    # 'auth_refresh' rate.
-    throttle_scope = 'auth_refresh'
+# Token endpoints: httpOnly refresh cookie + throttled obtain/refresh.
+# Aliases keep workout_challenge.tests.TokenThrottleSplitTests importing
+# the historical Throttled* names.
+ThrottledTokenObtainPairView = CookieTokenObtainPairView
+ThrottledTokenRefreshView = CookieTokenRefreshView
 from drill_instructor.views import (
     DrillInstructorPersonaViewSet,
     DrillInstructorConfigViewSet,
@@ -125,6 +116,7 @@ urlpatterns = [
         path('apk-version/', ApkVersionView.as_view(), name='apk-version'),
         path('token/', ThrottledTokenObtainPairView.as_view(), name='token-initial'),
         path('token/refresh/', ThrottledTokenRefreshView.as_view(), name='token-refresh'),
+        path('token/logout/', CookieTokenLogoutView.as_view(), name='token-logout'),
         path('password-reset/request/', PasswordResetView.as_view(), name='password-reset'),
         path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
         path('email-verify/confirm/', EmailVerifyConfirmView.as_view(), name='email-verify-confirm'),
@@ -137,4 +129,3 @@ urlpatterns = [
 admin.site.site_header = 'Backend Admin Panel'
 admin.site.site_title = 'Workout Challenge Backend'
 admin.site.index_title = 'Welcome to the Workout Challenge Backend'
-
