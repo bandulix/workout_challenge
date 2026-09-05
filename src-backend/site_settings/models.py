@@ -8,6 +8,35 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db import models
 
+from custom_user.token_crypto import decrypt_token, encrypt_token
+
+
+# Secrets stored on the singleton. Fernet-encrypted at rest (same helpers
+# as Garmin/Strava OAuth tokens). Plaintext legacy rows still decrypt via
+# decrypt_token's fail-open; the next save() re-encrypts them.
+_SECRET_FIELDS = (
+    "llm_api_key",
+    "strava_client_secret",
+    "email_host_password",
+    "health_developer_password",
+)
+
+
+def _ensure_encrypted(value: str) -> str:
+    """Encrypt plaintext; leave blank / already-Fernet values alone."""
+    if not value:
+        return value
+    if value.startswith("gAAAA"):
+        return value
+    return encrypt_token(value)
+
+
+def _secret_plaintext(value: str) -> str:
+    """Decrypt a stored secret for runtime callers (plaintext-compatible)."""
+    if not value:
+        return value
+    return decrypt_token(value)
+
 
 def _truthy(value):
     if value is None:
@@ -48,14 +77,24 @@ class SiteSettings(models.Model):
             "Blank = follow the deployment (.env LLM_PROVIDER / 'custom')."
         ),
     )
-    llm_api_key = models.CharField(max_length=200, blank=True, default="")
+    llm_api_key = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Stored Fernet-encrypted at rest.",
+    )
     llm_base_url = models.CharField(max_length=300, blank=True, default="")
     llm_model = models.CharField(max_length=80, blank=True, default="")
     llm_email_model = models.CharField(max_length=80, blank=True, default="")
 
     # ---- Strava OAuth + rate limits ------------------------------------
     strava_client_id = models.IntegerField(null=True, blank=True)
-    strava_client_secret = models.CharField(max_length=200, blank=True, default="")
+    strava_client_secret = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Stored Fernet-encrypted at rest.",
+    )
     strava_limit_15min = models.IntegerField(null=True, blank=True)
     strava_limit_day = models.IntegerField(null=True, blank=True)
 
@@ -63,7 +102,12 @@ class SiteSettings(models.Model):
     health_base_url = models.CharField(max_length=300, blank=True, default="")
     health_public_url = models.CharField(max_length=300, blank=True, default="")
     health_developer_email = models.CharField(max_length=200, blank=True, default="")
-    health_developer_password = models.CharField(max_length=200, blank=True, default="")
+    health_developer_password = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Stored Fernet-encrypted at rest.",
+    )
 
     # ---- Points calculation ------------------------------------------
     # Per-activity-type multipliers on raw points, e.g. {"Swim": 1.5,
@@ -75,7 +119,12 @@ class SiteSettings(models.Model):
     email_host = models.CharField(max_length=200, blank=True, default="")
     email_port = models.IntegerField(null=True, blank=True)
     email_host_user = models.CharField(max_length=200, blank=True, default="")
-    email_host_password = models.CharField(max_length=200, blank=True, default="")
+    email_host_password = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Stored Fernet-encrypted at rest.",
+    )
     email_use_tls = models.BooleanField(null=True, blank=True)
     email_use_ssl = models.BooleanField(null=True, blank=True)
     email_from = models.CharField(max_length=200, blank=True, default="")
@@ -94,6 +143,10 @@ class SiteSettings(models.Model):
     def save(self, *args, **kwargs):
         """Force the table to hold exactly one row."""
         self.pk = 1
+        # Encrypt secrets at rest (plaintext legacy values are upgraded
+        # on the next save; already-Fernet values are left alone).
+        for name in _SECRET_FIELDS:
+            setattr(self, name, _ensure_encrypted(getattr(self, name, "") or ""))
         # Diff the sport point factors before overwriting so changed
         # factors trigger a re-score of the affected points rows.
         try:
@@ -127,19 +180,19 @@ class SiteSettings(models.Model):
 
     @property
     def llm_api_key_masked(self):
-        return _mask(self.llm_api_key)
+        return _mask(_secret_plaintext(self.llm_api_key))
 
     @property
     def strava_client_secret_masked(self):
-        return _mask(self.strava_client_secret)
+        return _mask(_secret_plaintext(self.strava_client_secret))
 
     @property
     def email_host_password_masked(self):
-        return _mask(self.email_host_password)
+        return _mask(_secret_plaintext(self.email_host_password))
 
     @property
     def health_developer_password_masked(self):
-        return _mask(self.health_developer_password)
+        return _mask(_secret_plaintext(self.health_developer_password))
 
 
 def _mask(value):
@@ -205,7 +258,7 @@ def _uncached_llm_settings():
 
     return {
         "provider": provider,
-        "api_key": (solo.llm_api_key or settings.OPENAI_API_KEY or "").strip() or None,
+        "api_key": (_secret_plaintext(solo.llm_api_key) or settings.OPENAI_API_KEY or "").strip() or None,
         "base_url": base_url,
         "model": model,
         "email_model": (solo.llm_email_model or settings.LLM_EMAIL_MODEL or "gpt-4o").strip(),
@@ -228,7 +281,7 @@ def _uncached_strava_settings():
     solo = SiteSettings.get_solo()
     return {
         "client_id": solo.strava_client_id if solo.strava_client_id is not None else settings.STRAVA_CLIENT_ID,
-        "client_secret": (solo.strava_client_secret or settings.STRAVA_CLIENT_SECRET or "").strip() or None,
+        "client_secret": (_secret_plaintext(solo.strava_client_secret) or settings.STRAVA_CLIENT_SECRET or "").strip() or None,
         "limit_15min": solo.strava_limit_15min if solo.strava_limit_15min is not None else settings.STRAVA_LIMIT_15MIN,
         "limit_day": solo.strava_limit_day if solo.strava_limit_day is not None else settings.STRAVA_LIMIT_DAY,
     }
@@ -252,7 +305,7 @@ def _uncached_health_settings():
     base_url = (solo.health_base_url or getattr(settings, "HEALTH_BASE_URL", "") or "").strip().rstrip("/")
     public_url = (solo.health_public_url or getattr(settings, "HEALTH_PUBLIC_URL", "") or "").strip().rstrip("/")
     email = (solo.health_developer_email or getattr(settings, "HEALTH_DEVELOPER_EMAIL", "") or "").strip()
-    password = (solo.health_developer_password or getattr(settings, "HEALTH_DEVELOPER_PASSWORD", "") or "").strip()
+    password = (_secret_plaintext(solo.health_developer_password) or getattr(settings, "HEALTH_DEVELOPER_PASSWORD", "") or "").strip()
     return {
         "base_url": base_url or None,
         # The address phones use in the connection code. Default: the
@@ -279,7 +332,7 @@ def _uncached_email_settings():
         "host": (solo.email_host or settings.EMAIL_HOST or "").strip() or None,
         "port": solo.email_port if solo.email_port is not None else settings.EMAIL_PORT,
         "host_user": (solo.email_host_user or settings.EMAIL_HOST_USER or "").strip() or None,
-        "host_password": (solo.email_host_password or settings.EMAIL_HOST_PASSWORD or "").strip() or None,
+        "host_password": (_secret_plaintext(solo.email_host_password) or settings.EMAIL_HOST_PASSWORD or "").strip() or None,
         "use_tls": solo.email_use_tls if solo.email_use_tls is not None else settings.EMAIL_USE_TLS,
         "use_ssl": solo.email_use_ssl if solo.email_use_ssl is not None else settings.EMAIL_USE_SSL,
         "from_email": (solo.email_from or settings.EMAIL_FROM or "").strip() or None,
