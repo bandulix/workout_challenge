@@ -239,3 +239,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.37.0] - 2026-08-22
 
 ### Added
+- **CI now runs the backend test suite before every release** — a new `test` job in `prod-deploy.yml` installs from the pinned lockfile and runs `manage.py test` on Python 3.12. Autotag / Docker / APK wait for it, so a red suite can no longer mint a GitHub Release. Open PRs run the same job (the workflow previously only fired on merge). The cap-math cases that lived as a `__main__` script in `point_recalc.py` are now Django tests, and `workouts` has an API test module (auth, isolation, duration/steps validators). Also: the empty `src-backend/__init__.py` is gone — unittest treated that folder as a package and imported the suite as `src-backend.competition.tests`, which crashed every app's models on `manage.py test`.
+- **`site_settings` tests** for staff-only access, write-only secrets, and DB-over-env resolution.
+
+### Changed
+- **Visual pass so Home and Challenge match the Coach** — workout/competition lists are tappable cards (not tables); goal bars always show caps and use a volt fill; the activity feed is a timeline with profile pictures and tap-to-expand scoring; team rosters expand on tap; this-week chart leads with a points hero; empty states use the coach face; errors/loaders/modals/forms sit on ink + volt (no leftover bootstrap blue); What's New opens on three visual beats. README phone screenshots (and the social preview) recaptured to match.
+- **Photo remix prompt is hardcoded** (the admin-editable Site Settings template is gone). A posted picture is edited into the coach's world (setting from the persona description), the coach appears in the scene with their profile-picture face locked when a portrait is uploaded, and the answered-to workout's stats are painted on the image.
+- **Python dependencies are pinned** — `requirements.txt` is the abstract spec (Django 5.2 LTS; 4.2 extended support ended April 2026); `requirements.lock.txt` is the pip-compile lock. The Docker image and CI run Python 3.12.
+- **Vite is 6.4.3** — patched 6.x (dev-server FS/WebSocket issues). Not the Dependabot jump to Vite 8, which is a separate major.
+- **Releases are no longer minted on every merge to main** — push/PR only run the test job. Cut a release from Actions (`workflow_dispatch`) after tests pass.
+- **Frontend build is Vite**, not CRA/CRACO. Same `build/` output for nginx and Capacitor; no inline runtime chunk (CSP unchanged).
+- **Login/register/password-reset use the same RTK API client** as the rest of the app (`usersApi` + `authClient.js`).
+- **Scoring is an explicit `score_workout` / `unscore_workout` call** (`Workout.save(score=True)` still delegates so imports and tests keep working).
+- **Polling pauses while the tab is hidden**.
+- **Native `window.confirm` / `window.alert` replaced** with an in-app dialog.
+- **How-to copy is provider-neutral** (Strava / Garmin / Health Connect).
+- **`print()` in scorer, syncs, emails, point recalc is now `logger`**.
+- **Uploaded pictures are resized** (avatars ≤512px, coach photos ≤1600px) before save.
+- **Joining a competition/team no longer re-saves the parent row** (m2m add already scores; the extra save re-ran competition-change plumbing).
+- **Feed membership uses `exists()`** like stats, not a full user-id list, and skips a wasted Competition fetch on cache hits.
+- **Token blacklist on delete/unlink is one `bulk_create`**, not one insert per outstanding token.
+- **`?my=` workout/user filters actually mean "the current user"** (they compared pk to the user id, which hid real workouts).
+
+### Security
+- **APK update link is a hardcoded path on a sanitized http(s) origin** — the native server-address field no longer flows into `href` as raw DOM text (CodeQL `js/xss-through-dom`).
+- **User list no longer exposes co-participants' last names** (emails, staff flags, Garmin/Health ids, equalizer factors were already stripped; first name stays for the transfer-ownership picker).
+- **Activity goals and teams cannot be re-parented** onto another competition via PATCH.
+- **X-Accel-Redirect paths reject `..` / absolute names** so a poisoned ImageField cannot point nginx outside MEDIA_ROOT.
+- **Help accordion no longer uses `dangerouslySetInnerHTML`** (static copy is JSX).
+- **Team join is on the `join` throttle** (was unthrottled join-code-adjacent).
+- **Celery POST is allowlisted** — staff can only enqueue known operational tasks, not an arbitrary registered name.
+- **Uploaded images are verified and re-encoded with Pillow** (pixels, not the client Content-Type).
+- **Per-resource permission classes** replace duck-typed `IsOwnerOrReadOnly` on workouts, competitions, teams, and goals. Points stay read-only + authenticated.
+- **Permissions-Policy allows `camera=(self)`** so photo posts (`<input capture>`) are not blocked.
+- **Logout now actually wipes the session on shared devices** — the logout/login/register flows reset only 6 of the 12 RTK Query slices, and the store re-persisted itself into `localStorage.appState` ~2s after `localStorage.clear()`, so admin site settings, team rosters and other cached API data survived "logout" in the browser. All three flows now dispatch the store-wide `RESET_STORE`. Also: `/logout` added to the reauth guard's public paths (the bottom nav's still-subscribed `me` query 401'd mid-logout and redirected to `/login?redirect=/logout` - the next login navigated back to /logout and wiped the just-issued tokens, a login-logout loop); the native app's server address (`wc_server_url`) survives the wipe (its loss stranded the APK's registration and post-logout API calls); per-device user leftovers (`wc_equalizer_inputs`, coach ping baseline) are cleared on login/logout; `health_developer_password` added to both secret scrub lists (was missing from the Redux persistence scrub and the Sentry redaction).
+- **Open Wearables developer login no longer internet-exposed** — the new `/health/` route proxies the whole OW API for the phone flow; the developer login endpoint (admin-equivalent for the OW instance) and the API docs/schema are now 404 through it. Phones never need them (tokens come from the single-use code redeem); our backend logs in via the internal URL.
+
+### Fixed
+- **Android Java/Kotlin quality** — Capacitor's placeholder tests still lived under `com.getcapacitor.myapp` and asserted `com.getcapacitor.app` (they would fail if CI ran them). Replaced with a real-package context test and host-allowlist unit tests. Also: `allowBackup` off (Health Connect tokens must not hit cloud backup), FileProvider limited to app cache instead of the whole external volume, Health plugin coroutines cancelled on destroy, and SDK errors logged instead of being forwarded into the WebView.
+- **CodeQL alerts on the Coach photo preview, APK update link, and equalizer storage** — the preview `<img>` now draws a decoded bitmap (not a raw blob URL of the pick); the in-app update button always links the same-origin `/download/workout-challenge.apk` (the JSON-supplied URL is ignored, and `getServerUrl` was never imported so the href was `undefined/…`); the equalizer no longer writes gender to localStorage (it already lives on the profile).
+- **Editing a challenge goal now rescores the whole challenge** — a target/metric change previously only enqueued a cap recalc on the old `points_raw`, so changing 150 min → 300 min left every workout at the old raw score. Raw points are recomputed for every workout in the challenge window, then caps are reapplied from day one.
+- **Coach photo posts can come from the gallery, not only the camera** — `capture="user"` on the file input forced the camera on phones and hid the library. The composer now offers Camera and Gallery as separate actions (gallery is a file input with no `capture` attribute).
+- **Switching the coach no longer rewrites every old post's picture** — the feed serialized `config.persona` live, so picking a new persona replaced avatars on historical bubbles. Each message now snapshots the persona that was on duty when it was written.
