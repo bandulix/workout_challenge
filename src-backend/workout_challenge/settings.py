@@ -3,11 +3,11 @@ Django settings for workout_challenge project.
 
 Security hardening (issues #17, #23) is applied at the bottom via
 workout_challenge.sec_hardening after the base settings load.
+JWT refresh cookie settings (issue #19) are applied here too.
 """
 
-# Base settings (unchanged from main) live in settings_base so this file
-# stays small enough for API updates while keeping the security gates
-# reviewable in isolation.
+# Base settings live in settings_base so this file stays small enough
+# for API updates while keeping the security gates reviewable.
 from workout_challenge.settings_base import *  # noqa: F401,F403
 
 import os
@@ -37,3 +37,28 @@ if _mw not in MIDDLEWARE:
         _i = 0
     MIDDLEWARE = list(MIDDLEWARE)
     MIDDLEWARE.insert(_i, _mw)
+
+# JWT refresh cookie (issue #19). Access stays in the JSON body
+# (memory-only on the client). Refresh is httpOnly Secure so XSS cannot
+# exfiltrate it from localStorage.
+JWT_REFRESH_COOKIE_NAME = "wc_refresh"
+JWT_REFRESH_COOKIE_PATH = "/api/token"
+JWT_REFRESH_COOKIE_SECURE = not DEBUG
+# Lax for local same-origin DEBUG; None for production so Capacitor
+# WebViews (cross-origin to the API host) still send the cookie.
+JWT_REFRESH_COOKIE_SAMESITE = "Lax" if DEBUG else "None"
+
+# Native Capacitor clients send these on token obtain (X-WC-Client: native)
+# so the backend can leave refresh in the JSON body for secure storage.
+_cors_headers = list(globals().get("CORS_ALLOW_HEADERS") or [
+    "accept",
+    "authorization",
+    "content-type",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+])
+for _h in ("x-wc-client", "x-wc-requested-with"):
+    if _h not in _cors_headers:
+        _cors_headers.append(_h)
+CORS_ALLOW_HEADERS = _cors_headers

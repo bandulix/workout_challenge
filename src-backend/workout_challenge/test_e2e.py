@@ -7,6 +7,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from custom_user.jwt_cookies import REFRESH_COOKIE_NAME
 from custom_user.models import CustomUser
 from competition.models import Competition, Points
 
@@ -48,6 +49,11 @@ class EndToEndChallengeJourneyTests(TestCase):
         }, format="json")
         self.assertEqual(response.status_code, 200, response.content)
         body = response.json()
+        self.assertTrue(body.get("access"))
+        # Web clients: refresh is httpOnly cookie only (not JSON body).
+        self.assertNotIn("refresh", body)
+        self.assertIn(REFRESH_COOKIE_NAME, response.cookies)
+        self.assertTrue(response.cookies[REFRESH_COOKIE_NAME]["httponly"])
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {body['access']}")
         return body
 
@@ -66,7 +72,7 @@ class EndToEndChallengeJourneyTests(TestCase):
     def test_full_challenge_journey(self):
         owner = self._register("owner@example.com", "Olivia")
         tokens = self._login("owner@example.com")
-        self.assertIn("refresh", tokens)
+        self.assertIn("access", tokens)
 
         me = self.client.get("/api/user/me/").json()
         self.assertEqual(me["email"], "owner@example.com")
