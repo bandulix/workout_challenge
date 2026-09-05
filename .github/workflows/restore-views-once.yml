@@ -1,0 +1,62 @@
+name: restore-views-once
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/cr-bugs-24-28-clean]
+    paths: ['.github/workflows/restore-views-once.yml']
+permissions:
+  contents: write
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/cr-bugs-24-28-clean
+          fetch-depth: 0
+      - name: Restore views.py from main + localtime fix
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:src-backend/competition/views.py > src-backend/competition/views.py
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path("src-backend/competition/views.py")
+          t = p.read_text()
+          old = (
+              "            if start is not None:\n"
+              "                d = start.date() if hasattr(start, \"date\") else None\n"
+              "                on_today = d == today"
+          )
+          new = (
+              "            if start is not None:\n"
+              "                # Use local calendar day, not UTC date from the timestamp (#25).\n"
+              "                on_today = timezone.localtime(start).date() == today"
+          )
+          if "timezone.localtime(start).date()" in t:
+              print("already patched")
+          elif old not in t:
+              raise SystemExit("old pattern missing")
+          else:
+              p.write_text(t.replace(old, new, 1))
+              print("patched")
+          text = p.read_text()
+          assert text.startswith("import datetime")
+          assert "PLACEHOLDER" not in text
+          assert "timezone.localtime(start).date()" in text
+          print("ok", len(text))
+          PY
+      - name: Commit views + remove workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/restore-views-once.yml
+          git add src-backend/competition/views.py
+          git add -u .github/workflows/restore-views-once.yml
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+          else
+            git commit -m "fix(competition): restore views.py Order ribbon localtime (#25)"
+            git push
+          fi
