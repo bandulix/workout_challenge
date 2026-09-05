@@ -37,4 +37,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CrowdSec `http-probing` still 24h-banned a visit after the thumb chmod.** nginx is not the `app` user: original uploads (lightbox, failed thumbs) could stay `0600`, `thumbs/` could stay `0700`, and a missing file was nginx `404`. Six distinct `/picture/` 4xx in a couple of seconds is the ban. Picture GETs now chmod the file *and* parent dirs, chmod the tempfile before `replace` so dest is never `0600`, stream from Django if nginx still could not read, and answer `204` (not `404`) when the bytes are gone. The client treats `204` as no image and does not refetch 400/403/404 on every remount. Files stay private: `/media/` and `/protected-media/` 404 for the internet; bytes only go out through `/api/…/picture/` after a JWT.
 - **Coach portraits missing in the APK.** The Android disk cache serves pictures as `https://localhost/_capacitor_file_/…`. User avatars and feed photos use that URL as-is; coach portraits ran it through `safeImageSrc`, which only allowed `blob:`, `data:image/`, and relative paths, so the face stayed empty. The whitelist now accepts Capacitor local-file URLs.
 - **Swiping Feed → Board crashed until you tapped Board.** The gesture mounts Board while `?tab=` is still Feed, so the stats query stayed skipped and the leaderboard read `undefined`. Tapping the tab started the fetch (and then swipe worked from cache). The swipe now peeks stats during the drag and the board waits for the payload.
-- **Avatar and card JPEGs 403'd in production** (`tempfile.mkstemp` writes `0600`; nginx is not the `app` user). Six distinct `/picture/?size=ava
+- **Avatar and card JPEGs 403'd in production** (`tempfile.mkstemp` writes `0600`; nginx is not the `app` user). Six distinct `/picture/?size=avatar` 403s in two seconds is CrowdSec `http-probing` — a 24h ban for opening the Android app. Thumbs are now `0644`, existing files are chmod'd on container start, and nginx is in group `app`.
+- **Replies and stamps show up immediately** instead of sitting behind a stale 20s message list. They no longer rebuild the season points snapshot — that refreshes when a workout actually changes scores.
+- **Card JPEGs no longer share one `.tmp.jpg`.** Each thumb writes its own tempfile and keeps at most 200 on disk.
+- **Re-uploading a portrait busts the picture** in the browser and on the APK disk cache (ETag revalidation, not `force-cache`). Logout and a 401 also clear the native cache.
+- **Login/join throttles are per client behind nginx**, not one global bucket that could lock the whole site.
+- **Push subscriptions cannot point at an attacker URL.** Signup no longer says an email is already taken. Display names that collide get a suffix. Only a participant can take over a challenge. Workout kcal/km/steps have sanity caps. Coach error text is owner/staff only. APK downloads must match the configured server. `/download/` keeps security headers; join and OAuth codes are redacted in nginx access logs.
+
+## [0.48.0] - 2026-08-28
+
+### Added
+- **Confirm your email before any other mail.** Signup sends a short confirmation link, not the welcome. Welcome, weekly, board, and “log your workouts” wait until that link is clicked. Existing accounts stay confirmed. Changing your address sends a new link. Resend is on the yellow bar (own inbox, 10-minute cooldown).
+- **Photo on an activity is +10P** — one picture per workout. The original lands as a feed answer on the activity; the coach's remixed poster is the activity-card backdrop and the hot-or-not card. The Photo button advertises +10P and disappears after upload.
+- **Tap the points chip** for how that score was made: real minutes / kcal / km, the activity-type factor from Site Settings, each challenge goal (target, period, caps), Photo +10P, and Order +5P. Several goals add up (`25 + 10 + 5 = 40P`). If a cap fired: “Capped at 40P. You hit the daily limit of 60 active minutes.”
+- **Leaderboard shows equalizer factors** for every athlete (`92% effort · 105% distance`), including team rows and the athlete card.
+- **Your stamp comes off only on the profile-pic button** — tapping the emoji itself no longer unstamps you (hover / long-press still shows who voted).
+- **Challenge owners can delete an Echo** — small trash on the card. Wars and art files go with it; holder counts refresh.
+- **Daily order is +5P** — completing it credits five points on that workout. The green Order tag reads `+5P`. The points-chip popup lists Order next to the goals and Photo +10P.
+- **Stamps on activities** — 14 cartoon locker-room stickers (WTF!, GOAT, Oof, Too cool, Lit, …). Icons sit next to the points chip. Stamp (next to Reply) becomes your photo after you pick one; tap the photo to take it off. One stamp per person. Hover or long-press an icon for names.
+- **Echo Chamber events in the feed** — planting, war, claim, and immortal already posted a coach line. Adding art and a held defense now do too; pictured Echoes show the art on that card.
+
+### Changed
+- **Feed keeps the last 10 posts**, then only workouts that have a picture. The old 48-hour dump and “N older” toggle are gone.
+- **Coach portrait ring matches the roaster** — the neon ring, activity ticks, and orbiting pips use that coach’s accent colour instead of always volt.
+- **Pulldowns match the glass UI** — sport type, intensity, gender, teams, goals, and site-settings provider use a frost list with volt for the current choice instead of the OS-native menu.
+- **Echo Chamber art first** — trophies with a picture sit above crown placeholders (power still ranks inside each group).
+- **Coach pings are quieter** — one random pep talk per day (was 1–2), and two events a few seconds apart (workout comment + Echo, overlapping beat jobs, a late catch-up) collapse to a single lock-screen ping instead of buzzing twice.
