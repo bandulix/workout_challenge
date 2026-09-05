@@ -43,6 +43,66 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 
+def _thread_url(message):
+    """Deep link to the feed card for this thread (push tap / share)."""
+    root_id = message.parent_id or message.pk
+    cid = message.config.competition_id
+    return f"/competition/{cid}?tab=feed&reply={root_id}"
+
+
+def _notify_reply_audience(reply):
+    """Push the post owner and any uniquely @mentioned teammate (#12)."""
+    try:
+        from push_notifications.sender import send_push_to_user
+    except ImportError:
+        return
+    root = reply.parent
+    if root is None or reply.user_id is None:
+        return
+    author = reply.user
+    competition = root.config.competition
+    url = _thread_url(root)
+    recipients = {}
+
+    owner_id = getattr(getattr(root, "workout", None), "user_id", None) or root.user_id
+    if owner_id and owner_id != author.id:
+        owner = getattr(getattr(root, "workout", None), "user", None) or root.user
+        if owner is not None:
+            recipients[owner.id] = ("comment", owner)
+
+    import re
+    names = [n.lower() for n in re.findall(r"@([A-Za-z0-9_-]+)", reply.body or "")]
+    if names:
+        by_key = {}
+        people = list(competition.user.all())
+        if competition.owner_id:
+            people.append(competition.owner)
+        for user in people:
+            for key in ((user.first_name or "").strip().lower(), (user.username or "").strip().lower()):
+                if key:
+                    by_key.setdefault(key, []).append(user)
+        for name in names:
+            matches = by_key.get(name) or []
+            if len(matches) == 1 and matches[0].id != author.id:
+                recipients[matches[0].id] = ("mention", matches[0])
+
+    who = author.first_name or author.username or "Someone"
+    snippet = " ".join((reply.body or "").split())[:140]
+    for kind, user in recipients.values():
+        title = f"{who} mentioned you" if kind == "mention" else f"{who} commented on your post"
+        try:
+            send_push_to_user(
+                user,
+                title=title,
+                body=snippet or title,
+                url=url,
+                badge="/icon-badge.png",
+                tag=f"social-{root.pk}-{user.pk}",
+            )
+        except Exception:  # noqa: BLE001 - never fail the reply
+            logger.warning("Social push failed for user %s on reply %s", user.pk, reply.pk, exc_info=True)
+
+
 def _competition_member(user, fk="config__competition_id"):
     """Exists() subquery: owner or M2M participant, no JOIN/distinct."""
     return Exists(
@@ -79,16 +139,20 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
         # JOINs configs and drops built-ins that are not assigned, so
         # PATCH/DELETE on a stock coach 404'd instead of 403.
         visible = Q(is_builtin=True) | Q(created_by=user)
+        shared = Competition.objects.filter(Q(owner=user) | Q(user=user))
+        teammate_ids = set(shared.values_list("owner_id", flat=True))
+        teammate_ids.update(shared.values_list("user", flat=True))
+        teammate_ids.discard(None)
+        teammate_ids.discard(user.id)
+        # Released coaches from people you train with, so another group's
+        # owner can pick them (#16).
+        visible |= Q(is_shared=True, created_by_id__in=teammate_ids)
         if self.action != "list":
-            shared = Competition.objects.filter(Q(owner=user) | Q(user=user))
             assigned = DrillInstructorPersona.objects.filter(
                 competitions__competition__in=shared
             ).values("pk")
-            teammate_ids = set(shared.values_list("owner_id", flat=True))
-            teammate_ids.update(shared.values_list("user", flat=True))
-            teammate_ids.discard(None)
             visible |= Q(pk__in=assigned) | Q(created_by_id__in=teammate_ids)
-        return qs.filter(visible).distinct().order_by("name")
+        return qs.filter(visible).distinct().select_related("created_by").order_by("name")
 
     def _may_write(self, persona):
         user = self.request.user
@@ -115,6 +179,31 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
             raise ValidationError(
                 {"detail": "This persona is still assigned to a challenge. Pick another coach there first."}
             )
+
+    @action(detail=True, methods=["post"])
+    def transfer(self, request, pk=None):
+        """Hand this custom coach to a teammate (they become the owner)."""
+        persona = self.get_object()
+        if persona.is_builtin:
+            raise ValidationError({"detail": "Built-in coaches cannot be transferred."})
+        if not self._may_write(persona):
+            raise PermissionDenied("You can only transfer a roaster you created.")
+        try:
+            target_id = int(request.data.get("user") or 0)
+        except (TypeError, ValueError):
+            target_id = 0
+        if not target_id or target_id == request.user.id:
+            raise ValidationError({"user": "Pick a teammate to hand this coach to."})
+        from custom_user.models import CustomUser
+        from .serializers import _users_share_a_challenge
+        target = get_object_or_404(CustomUser, pk=target_id)
+        if not _users_share_a_challenge(request.user, target.id):
+            raise ValidationError({"user": "You can only hand a coach to someone you share a challenge with."})
+        persona.created_by = target
+        persona.save(update_fields=["created_by", "updated_at"])
+        return Response(
+            DrillInstructorPersonaSerializer(persona, context={"request": request}).data
+        )
 
     @action(detail=True, methods=["get"], renderer_classes=[ProtectedMediaRenderer])
     def picture(self, request, pk=None):
@@ -375,6 +464,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
 
         from .tasks import post_reply_reaction
         post_reply_reaction.delay(reply.id)
+        _notify_reply_audience(reply)
 
         return Response(
             DrillInstructorReplySerializer(reply, context={"request": request}).data,

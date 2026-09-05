@@ -1,5 +1,6 @@
 import re
 
+from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import serializers
@@ -8,6 +9,15 @@ from competition.scorer import ORDER_AWARD_NAME, PHOTO_AWARD_NAME, sport_factor
 from custom_user.serializers import user_picture_url
 
 from .formatters import format_workout_summary
+
+
+def _users_share_a_challenge(user, other_id):
+    """True when ``user`` and ``other_id`` are both in at least one competition."""
+    if not user or not other_id or user.pk == other_id:
+        return False
+    from competition.models import Competition
+    mine = Competition.objects.filter(Q(owner=user) | Q(user=user))
+    return mine.filter(Q(owner_id=other_id) | Q(user__id=other_id)).exists()
 from .models import (
     DrillInstructorConfig,
     DrillInstructorMessage,
@@ -62,6 +72,7 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
         write_only=True, required=False, allow_null=True, source="profile_picture"
     )
     mine = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = DrillInstructorPersona
@@ -76,17 +87,24 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
             "theme_color",
             "system_prompt",
             "is_builtin",
+            "is_shared",
             "mine",
             "created_by",
+            "created_by_name",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["is_builtin", "mine", "created_by", "created_at", "updated_at"]
+        read_only_fields = ["is_builtin", "mine", "created_by", "created_by_name", "created_at", "updated_at"]
 
     def get_mine(self, obj):
         request = self.context.get("request")
         user = getattr(request, "user", None)
         return bool(user and user.is_authenticated and obj.created_by_id == user.id)
+
+    def get_created_by_name(self, obj):
+        if obj.created_by_id is None:
+            return None
+        return obj.created_by.first_name or obj.created_by.username or None
 
     def to_representation(self, instance):
         rep = super().to_representation(instance)
@@ -204,8 +222,10 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
         # the owner can keep that incumbent without being blocked.
         if self.instance and self.instance.persona_id == persona.id:
             return persona
+        if persona.is_shared and _users_share_a_challenge(user, persona.created_by_id):
+            return persona
         raise serializers.ValidationError(
-            "You can only pick a built-in persona or one you created."
+            "You can only pick a built-in persona, one you created, or one a teammate released."
         )
 
     def update(self, instance, validated_data):
@@ -367,6 +387,7 @@ class DrillInstructorReplySerializer(serializers.ModelSerializer):
     """
 
     is_coach = serializers.SerializerMethodField()
+    author_id = serializers.IntegerField(source="user_id", read_only=True)
     author_name = serializers.SerializerMethodField()
     author_profile_picture = serializers.SerializerMethodField()
     # The coach's roasted-photo remix hangs under the photo post as a
@@ -375,7 +396,7 @@ class DrillInstructorReplySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DrillInstructorMessage
-        fields = ["id", "kind", "body", "posted_at", "is_coach", "author_name", "author_profile_picture", "image"]
+        fields = ["id", "kind", "body", "posted_at", "is_coach", "author_id", "author_name", "author_profile_picture", "image"]
         read_only_fields = fields
 
     def get_is_coach(self, obj):

@@ -44,6 +44,10 @@ class DrillInstructorPersona(models.Model):
     )
     system_prompt = models.TextField()
     is_builtin = models.BooleanField(default=False)
+    is_shared = models.BooleanField(
+        default=False,
+        help_text="When on, teammates can pick this coach for challenges they own.",
+    )
     created_by = models.ForeignKey(
         CustomUser,
         on_delete=models.SET_NULL,
