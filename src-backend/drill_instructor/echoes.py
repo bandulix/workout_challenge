@@ -302,20 +302,37 @@ def mint_echo(workout, config, judgment=None):
     except Exception as exc:  # noqa: BLE001
         logger.info("Echo narrative fell back for workout %s: %s", workout.pk, exc)
     try:
-        echo = LegendEcho.objects.create(
-            config=config,
-            origin_user=workout.user,
-            origin_workout=workout,
-            holder=workout.user,
-            holder_workout=workout,
-            title=title[:80],
-            narrative=(narrative or fallback)[:2000],
-            power=power,
-            metric=metric,
-            metric_value=value,
-            sport_type=echo_sport_family(workout.sport_type),
-            status=LegendEcho.STATUS_UNDEFEATED,
-        )
+        with transaction.atomic():
+            # Serialize mints per config so concurrent workers cannot
+            # push past MAX_LIVE_ECHOES (judge_echo alone is racy).
+            DrillInstructorConfig = apps.get_model("drill_instructor", "DrillInstructorConfig")
+            locked_config = DrillInstructorConfig.objects.select_for_update().get(pk=config.pk)
+            live_count = LegendEcho.objects.filter(
+                config_id=locked_config.pk,
+                status__in=("undefeated", "contested"),
+            ).count()
+            if live_count >= MAX_LIVE_ECHOES:
+                logger.info(
+                    "Echo mint skipped for workout %s: live cap %s reached under lock",
+                    workout.pk, MAX_LIVE_ECHOES,
+                )
+                return None
+            if LegendEcho.objects.filter(origin_workout=workout, config_id=locked_config.pk).exists():
+                return None
+            echo = LegendEcho.objects.create(
+                config=locked_config,
+                origin_user=workout.user,
+                origin_workout=workout,
+                holder=workout.user,
+                holder_workout=workout,
+                title=title[:80],
+                narrative=(narrative or fallback)[:2000],
+                power=power,
+                metric=metric,
+                metric_value=value,
+                sport_type=echo_sport_family(workout.sport_type),
+                status=LegendEcho.STATUS_UNDEFEATED,
+            )
     except IntegrityError:
         logger.info("Duplicate Echo mint suppressed for workout %s", workout.pk)
         return None
