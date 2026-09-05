@@ -1,1 +1,10 @@
-# size test placeholder - will delete
+line 0 of size test
+line 1 of size test
+line 2 of size test
+line 3 of size test
+line 4 of size test
+line 5 of size test
+line 6 of size test
+line 7 of size test
+line 8 of size test
+line 9 of size test
