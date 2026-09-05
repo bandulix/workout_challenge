@@ -258,7 +258,7 @@ def _sync_user_activities(user, days_back=RECENT_SYNC_DAYS) -> dict:
     """Fetch the last ``days_back`` days of activities for one user."""
     client = get_client_for_user(user)
 
-    end = datetime.date.today()
+    end = timezone.localdate()
     start = end - datetime.timedelta(days=days_back)
     try:
         activities = client.get_activities_by_date(

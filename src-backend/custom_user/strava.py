@@ -299,9 +299,8 @@ def sync_strava(self, user__id, start_datetime=None):
         page += 1
 
     strava_last_synced_at = timezone.now()
-    if start_datetime is None:
-        setattr(user, 'strava_last_synced_at', strava_last_synced_at)
-        user.save()
+    user.strava_last_synced_at = strava_last_synced_at
+    user.save(update_fields=['strava_last_synced_at'])
     logger.info('User %s - fetched %s new strava activities, updated %s existing, skipped %s cross-provider duplicates', user__id, cnt_new_strava_activities, cnt_updated_strava_activities, cnt_duplicate_strava_activities)
 
     return {'user': user__id, 'total_activities': (page - 1) * per_page + len(activities), 'new_activities': cnt_new_strava_activities, 'updated_activities': cnt_updated_strava_activities, 'duplicates_skipped': cnt_duplicate_strava_activities, 'sync_time': strava_last_synced_at}

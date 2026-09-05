@@ -1437,6 +1437,56 @@ class PasswordResetFlowTests(TestCase):
 
 
 @override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class PasswordChangeRequiresCurrentTests(TestCase):
+    """PATCH /api/user/me/ must not change the password without the current one."""
+
+    def setUp(self):
+        cache.clear()
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.verify_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            email="chg@example.com", password="Old-Pass-123!", first_name="Cee", last_name="",
+        )
+        self.client.force_authenticate(self.user)
+
+    def test_rejects_password_change_without_current(self):
+        response = self.client.patch(
+            "/api/user/me/", {"password": "New-Pass-456!"}, format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("Old-Pass-123!"))
+
+    def test_rejects_wrong_current_password(self):
+        response = self.client.patch(
+            "/api/user/me/",
+            {"password": "New-Pass-456!", "current_password": "nope"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("Old-Pass-123!"))
+
+    def test_accepts_password_change_with_current(self):
+        response = self.client.patch(
+            "/api/user/me/",
+            {"password": "New-Pass-456!", "current_password": "Old-Pass-123!"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("New-Pass-456!"))
+
+
+@override_settings(
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
     MAIN_HOST="https://workout.example.com",
     EMAIL_FROM="workout@example.com",
