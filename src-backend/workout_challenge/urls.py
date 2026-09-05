@@ -25,6 +25,26 @@ from rest_framework.routers import DefaultRouter
 from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, CompetitionStatsSummaryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView, PointsFactorsView
 from workouts.views import WorkoutViewSet
 from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, ResetStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, EmailVerifyConfirmView, EmailVerifyResendView, LinkGarminView, UnlinkGarminView, SyncGarminView, LinkHealthView, UnlinkHealthView, SyncHealthView
+from custom_user.link_https import reject_insecure_link
+
+
+def _https_required(view_cls):
+    """Wrap a CBV so Garmin/Strava link flows refuse cleartext HTTP (except DEBUG)."""
+    class Wrapped(view_cls):
+        def dispatch(self, request, *args, **kwargs):
+            blocked = reject_insecure_link(request)
+            if blocked is not None:
+                return blocked
+            return super().dispatch(request, *args, **kwargs)
+    Wrapped.__name__ = view_cls.__name__
+    Wrapped.__qualname__ = view_cls.__qualname__
+    Wrapped.__module__ = view_cls.__module__
+    return Wrapped
+
+
+SecureStravaStateView = _https_required(StravaStateView)
+SecureLinkStravaView = _https_required(LinkStravaView)
+SecureLinkGarminView = _https_required(LinkGarminView)
 
 
 # Token endpoints with a strict throttle bucket (online brute-force
@@ -77,15 +97,15 @@ urlpatterns = [
         path('feed/<int:competition>/', FeedQueryView.as_view(), name='competition-feed'),
         path('join/competition/<str:join_code>/', JoinCompetitionView.as_view(), name='join-competition'),
         path('join/team/', JoinTeamView.as_view(), name='join-team'),
-        path('strava/state/', StravaStateView.as_view(), name='strava-state'),
-        path('strava/link/<str:code>/<path:state>/', LinkStravaView.as_view(), name='strava-link'),
+        path('strava/state/', SecureStravaStateView.as_view(), name='strava-state'),
+        path('strava/link/<str:code>/<path:state>/', SecureLinkStravaView.as_view(), name='strava-link'),
         # Missing state must still hit the view (JSON 400) instead of
         # falling through to a bare 404 HTML page the frontend can't parse.
-        path('strava/link/<str:code>/', LinkStravaView.as_view(), name='strava-link-no-state'),
+        path('strava/link/<str:code>/', SecureLinkStravaView.as_view(), name='strava-link-no-state'),
         path('strava/unlink/', UnlinkStravaView.as_view(), name='strava-unlink'),
         path('strava/reset/', ResetStravaView.as_view(), name='strava-reset'),
         path('strava/sync/', SyncStravaView.as_view(), name='strava-sync'),
-        path('garmin/link/', LinkGarminView.as_view(), name='garmin-link'),
+        path('garmin/link/', SecureLinkGarminView.as_view(), name='garmin-link'),
         path('garmin/unlink/', UnlinkGarminView.as_view(), name='garmin-unlink'),
         path('garmin/sync/', SyncGarminView.as_view(), name='garmin-sync'),
         path('health/link/', LinkHealthView.as_view(), name='health-link'),
@@ -117,3 +137,4 @@ urlpatterns = [
 admin.site.site_header = 'Backend Admin Panel'
 admin.site.site_title = 'Workout Challenge Backend'
 admin.site.index_title = 'Welcome to the Workout Challenge Backend'
+

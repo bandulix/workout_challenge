@@ -28,15 +28,15 @@ services:
     labels:
       org.opencontainers.image.source: "https://github.com/bandulix/workout_challenge"
     ports:
-      # The app port (nginx serves frontend + /api) - the only port that
-      # should ever be reachable from outside. Behind a reverse proxy on
-      # the same host: APP_BIND=127.0.0.1 and APP_PORT=<proxy target port>,
-      # then point the proxy at 127.0.0.1:<APP_PORT>.
+      # The app port (nginx serves frontend + /api). Defaults to
+      # loopback so cleartext HTTP is not exposed on 0.0.0.0:80 - put a
+      # TLS-terminating reverse proxy in front and point it at
+      # 127.0.0.1:<APP_PORT>. Set APP_BIND=0.0.0.0 only on trusted LANs.
       # If that proxy has nginx limit_req, allow ~25 r/s burst 80: a
       # page load is many parallel GETs, and CrowdSec treats each
       # "limiting requests" log as nginx-req-limit-exceeded (5 in 60s
       # = 24h ban). 5 r/s burst 20 is too tight for this SPA.
-      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-80}:80"
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-80}:80"
       # Celery Flower task monitoring (basic-auth protected, see below).
       # Localhost-only by default - reach it from the server itself or
       # via SSH port forwarding, e.g.
@@ -67,6 +67,9 @@ services:
       - JWT_REFRESH_DAYS=${JWT_REFRESH_DAYS:-31}
       - MAIN_HOST=${MAIN_HOST:-http://localhost}
       - HOSTS=${HOSTS:-http://localhost,http://127.0.0.1}
+      # Mirrored into the container so Django can warn when MAIN_HOST is
+      # cleartext HTTP while the published bind is public (issue #17).
+      - APP_BIND=${APP_BIND:-127.0.0.1}
       # NOTE: in production set HOSTS to the comma-separated list of
       # public origins (e.g. https://workout.example.com,https://www.workout.example.com)
       # and DEBUG=false. There is intentionally no ALLOW_ALL_HOSTS escape
@@ -96,15 +99,20 @@ services:
       # --- Health (Open Wearables: Apple Health / Health Connect) ---
       # The `openwearables` service below (compose profile "health") is
       # reachable internally at http://openwearables:8000 - the default
-      # here. The developer credentials default to the seeded OW admin
-      # (OW_ADMIN_* below / SECRET_KEY), so the connector works out of
-      # the box. HEALTH_PUBLIC_URL is the address shown to phones in the
-      # connection code (they must reach it!) - empty means MAIN_HOST +
-      # /health, which the container nginx proxies to OW automatically.
+      # here. Developer credentials must be distinct from SECRET_KEY
+      # (Django refuses to start in production if they match). Defaults
+      # to OW_ADMIN_* when unset. HEALTH_PUBLIC_URL is the address shown
+      # to phones in the connection code (they must reach it!) - empty
+      # means MAIN_HOST + /health, which nginx proxies to OW.
       - HEALTH_BASE_URL=${HEALTH_BASE_URL:-http://openwearables:8000}
       - HEALTH_PUBLIC_URL=${HEALTH_PUBLIC_URL:-}
       - HEALTH_DEVELOPER_EMAIL=${HEALTH_DEVELOPER_EMAIL:-${OW_ADMIN_EMAIL:-admin@example.com}}
-      - HEALTH_DEVELOPER_PASSWORD=${HEALTH_DEVELOPER_PASSWORD:-${OW_ADMIN_PASSWORD:-${SECRET_KEY:?SECRET_KEY env var is required}}}
+      # Empty when Health is unused. When set (or falling back to
+      # OW_ADMIN_PASSWORD), must differ from SECRET_KEY or Django
+      # refuses production boot.
+      - HEALTH_DEVELOPER_PASSWORD=${HEALTH_DEVELOPER_PASSWORD:-${OW_ADMIN_PASSWORD:-}}
+      # Passed through so settings.py can refuse SECRET_KEY reuse (#23).
+      - OW_ADMIN_PASSWORD=${OW_ADMIN_PASSWORD:-}
 
       # --- Email (SMTP) ---
       # Leave host/user/password blank to disable outbound email.
@@ -152,10 +160,10 @@ services:
 
       # --- Celery Flower (task monitoring on 127.0.0.1:5555) ---
       # Basic auth is mandatory - Flower exposes task payloads and
-      # controls. Defaults the password to SECRET_KEY so no extra secret
-      # needs managing; set FLOWER_USER/FLOWER_PASSWORD to override.
+      # controls. FLOWER_PASSWORD is REQUIRED and must differ from
+      # SECRET_KEY (Django refuses production boot if they match).
       - FLOWER_USER=${FLOWER_USER:-admin}
-      - FLOWER_PASSWORD=${FLOWER_PASSWORD:-${SECRET_KEY:?SECRET_KEY env var is required}}
+      - FLOWER_PASSWORD=${FLOWER_PASSWORD:?FLOWER_PASSWORD env var is required - must differ from SECRET_KEY}
     restart: unless-stopped
     # Drop all capabilities and add back only what the stack needs:
     # NET_BIND_SERVICE (nginx on :80), SETUID/SETGID (supervisord
@@ -253,10 +261,10 @@ services:
       - REDIS_PORT=6379
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY env var is required}
       # Initial developer login (used once to mint the API key for
-      # HEALTH_API_KEY). Defaults the password to SECRET_KEY - override
-      # with OW_ADMIN_EMAIL / OW_ADMIN_PASSWORD.
+      # HEALTH_API_KEY). OW_ADMIN_PASSWORD is REQUIRED and must differ
+      # from SECRET_KEY - never reuse Django's secret as the OW password.
       - ADMIN_EMAIL=${OW_ADMIN_EMAIL:-admin@example.com}
-      - ADMIN_PASSWORD=${OW_ADMIN_PASSWORD:-${SECRET_KEY:?SECRET_KEY env var is required}}
+      - ADMIN_PASSWORD=${OW_ADMIN_PASSWORD:?OW_ADMIN_PASSWORD env var is required - must differ from SECRET_KEY}
       # The Android app redeems invitation codes / syncs from its
       # Capacitor WebView origin (https://localhost) - without a CORS
       # allowance the WebView blocks the calls and the app shows

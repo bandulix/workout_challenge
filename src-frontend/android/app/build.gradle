@@ -1,15 +1,30 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
-// Optional release signing ("sideload now, Play later"): credentials
-// live OUTSIDE the repo in ~/.gradle/workout-signing.properties
-// (storeFile/storePassword/keyAlias/keyPassword). Without it the
-// release build falls back to the debug key, so assembleRelease always
-// produces an installable APK.
+// Release signing ("sideload now, Play later"): credentials live
+// OUTSIDE the repo in ~/.gradle/workout-signing.properties
+// (storeFile/storePassword/keyAlias/keyPassword). assembleRelease
+// FAILS without a real release keystore - never silently fall back to
+// the debug key (that would ship debug-signed "release" artifacts).
 def signingProps = new Properties()
 def signingFile = file("${System.getProperty('user.home')}/.gradle/workout-signing.properties")
 if (signingFile.exists()) {
     signingFile.withInputStream { signingProps.load(it) }
+}
+def hasReleaseSigning = signingProps['storeFile'] as boolean
+if (!hasReleaseSigning) {
+    // Only fail when a release variant is actually being built so
+    // assembleDebug / IDE sync still works without a keystore.
+    def taskNames = gradle.startParameter.taskNames.collect { it.toLowerCase() }
+    def buildingRelease = taskNames.any { it.contains('releas') }
+    if (buildingRelease) {
+        throw new GradleException(
+            "Release signing is required for assembleRelease. Create " +
+            "~/.gradle/workout-signing.properties with storeFile, " +
+            "storePassword, keyAlias, and keyPassword. " +
+            "Debug builds (assembleDebug / build_apk.sh --debug) do not need it."
+        )
+    }
 }
 
 android {
@@ -42,7 +57,8 @@ android {
     }
     buildTypes {
         release {
-            signingConfig signingProps['storeFile'] ? signingConfigs.release : signingConfigs.debug
+            // No debug-keystore fallback: missing release signing fails above.
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
