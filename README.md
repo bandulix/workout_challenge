@@ -30,13 +30,21 @@ cp .env.example .env    # set POSTGRES_PASSWORD and SECRET_KEY
 docker compose up -d    # pulls ghcr.io/bandulix/workout_challenge
 ```
 
-Set `HOSTS` / `MAIN_HOST` to your public URL and `DEBUG=false` in production. The Android app also needs `https://localhost` in `HOSTS`. Migrations run at container start.
+Set `HOSTS` / `MAIN_HOST` to your public **HTTPS** URL and `DEBUG=false` in production. Default `APP_BIND=127.0.0.1` — terminate TLS on a reverse proxy in front of `127.0.0.1:<APP_PORT>` (set `APP_BIND=0.0.0.0` only on a trusted LAN). Set `FLOWER_PASSWORD` to a value **different from** `SECRET_KEY` (required). With `--profile health`, set `OW_ADMIN_PASSWORD` the same way. The Android app also needs `https://localhost` in `HOSTS`. Migrations run at container start.
 
 Update: `git pull && docker compose pull workoutchallenge && docker compose up -d`.
 
 Releases are deliberate — **Actions → Production Deployment → Run workflow**. Merging to `main` does not tag or publish. Image: [`ghcr.io/bandulix/workout_challenge`](https://github.com/bandulix/workout_challenge/pkgs/container/workout_challenge). Upstream Docker Hub (`vanalmsick/workout_challenge`) is the original app, not this fork.
 
 Tests: `cd src-backend && DEBUG=true SECRET_KEY=ci-test-not-a-real-secret-32bytes-min python manage.py test --settings=workout_challenge.test_settings --top-level-directory=.` Frontend: `cd src-frontend && npm test`.
+
+
+### Upgrading through this security wave
+
+1. Set `FLOWER_PASSWORD` (and `OW_ADMIN_PASSWORD` if you use Health) to values different from `SECRET_KEY` before restart.
+2. Prefer HTTPS on `MAIN_HOST` / `HOSTS`; keep `APP_BIND=127.0.0.1` behind your proxy.
+3. After migrate: rotate Site Settings / VAPID secrets that ever appeared in plaintext backups ([docs/security-secrets-and-backups.md](docs/security-secrets-and-backups.md)).
+4. Expect a one-time web re-login (httpOnly refresh cookies). Native Android is unchanged for refresh handling.
 
 ## Optional setup
 
@@ -61,7 +69,7 @@ docker compose --profile health up -d
 
 Phones reach it at `MAIN_HOST/health` by default. In the Android app, Health Connect is one tap. In a browser, Settings shows a connection code for a health app on the phone.
 
-**Android APK** — `scripts/build_apk.sh` (or the APK on each GitHub Release). One APK works on every instance: enter the server address on first start. After pulling a new image, publish the matching APK with `scripts/update_apk_from_release.sh` (the in-app check reads `/download/apk-version.json`, not the Docker tag — that file must be JSON, not an attachment, or old phones never see it). An installed APK older than that file opens only the download screen — it re-checks on start, resume, and every 15 minutes. Uploaded photos stay private (login required; never a public `/media/` URL).
+**Android APK** — `scripts/build_apk.sh` (or the APK on each GitHub Release). One APK works on every instance: enter the server address on first start. After pulling a new image, publish the matching APK with `scripts/update_apk_from_release.sh` (the in-app check reads `/download/apk-version.json`, not the Docker tag — that file must be JSON, not an attachment, or old phones never see it). An installed APK older than that file opens only the download screen — it re-checks on start, resume, and every 15 minutes. Uploaded photos stay private (login required; never a public `/media/` URL). Release builds require real signing credentials (`~/.gradle/workout-signing.properties` or `ANDROID_KEYSTORE_*`); unsigned/debug-keystore release builds are refused.
 
 ## Changes from the original
 
