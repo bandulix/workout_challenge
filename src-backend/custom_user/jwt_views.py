@@ -12,6 +12,7 @@ from custom_user.jwt_cookies import (
     clear_refresh_cookie,
     get_refresh_from_request,
     set_refresh_cookie,
+    strip_refresh_from_response_data,
 )
 from custom_user.throttles import ClientIPScopedThrottle
 
@@ -29,6 +30,7 @@ class CookieTokenObtainPairView(TokenObtainPairView):
         refresh = response.data.get("refresh")
         if refresh:
             set_refresh_cookie(response, refresh)
+        strip_refresh_from_response_data(response, request)
         return response
 
 
@@ -66,6 +68,7 @@ class CookieTokenRefreshView(TokenRefreshView):
         else:
             # Rotation disabled: keep the presented refresh in the cookie.
             set_refresh_cookie(response, refresh)
+        strip_refresh_from_response_data(response, request)
         return response
 
 
