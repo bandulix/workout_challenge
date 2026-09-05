@@ -35,12 +35,14 @@ export function CoachHandover({configId, enabled}) {
         pollingInterval: poll,
         skip: !configId,
     });
-    const now = useNowTick(Boolean(ballot?.next_switch_at));
-    if (!enabled || !ballot?.changed_this_term) return null;
+    const until = ballot?.handover_until;
+    const now = useNowTick(Boolean(until));
+    const recently = Boolean(ballot?.changed_recently ?? ballot?.changed_this_term);
+    if (!enabled || !recently || (until && new Date(until).getTime() <= now)) return null;
     const current = (ballot.candidates || []).find((c) => c.persona.id === ballot.current_persona)?.persona;
     if (!current) return null;
     const previous = ballot.previous_persona;
-    const countdown = formatCountdown(ballot.next_switch_at, now);
+    const countdown = formatCountdown(until, now);
     return (
         <div className="mb-3 rounded-3xl glass-card px-4 py-3 ring-1 ring-volt-500/40 dark:ring-volt-400/40">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400 flex items-center gap-1.5">
@@ -61,9 +63,11 @@ export function CoachHandover({configId, enabled}) {
                     </p>
                 </div>
             </div>
+            {countdown ? (
             <p className="mt-2 text-xs text-volt-700 dark:text-volt-300 font-bold uppercase tracking-wider tabular-nums">
                 On the clock · {countdown}
             </p>
+            ) : null}
         </div>
     );
 }

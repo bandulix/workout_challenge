@@ -3317,6 +3317,60 @@ class PersonaVoteTests(TestCase):
         response = self._vote(stranger)
         self.assertEqual(response.status_code, 400)
 
+    def test_manual_persona_change_stamps_handover(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.patch(
+            f"/api/drill-instructor/config/{self.config.id}/",
+            {"persona": self.roast.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.persona_id, self.roast.id)
+        self.assertEqual(self.config.previous_persona_id, self.sergeant.id)
+        self.assertIsNotNone(self.config.persona_changed_at)
+
+        self.client.force_authenticate(self.athlete)
+        ballot = self._ballot()
+        self.assertEqual(ballot.status_code, 200)
+        data = ballot.json()
+        self.assertTrue(data["changed_recently"])
+        self.assertTrue(data["changed_this_term"])
+        self.assertEqual(data["previous_persona"]["id"], self.sergeant.id)
+        self.assertIsNotNone(data["handover_until"])
+
+    def test_same_persona_patch_does_not_restamp(self):
+        self.config.persona_changed_at = timezone.now() - datetime.timedelta(days=5)
+        self.config.previous_persona = self.roast
+        self.config.save(update_fields=["persona_changed_at", "previous_persona"])
+        stamped = self.config.persona_changed_at
+        self.client.force_authenticate(self.owner)
+        response = self.client.patch(
+            f"/api/drill-instructor/config/{self.config.id}/",
+            {"persona": self.sergeant.id, "enabled": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.persona_changed_at, stamped)
+        self.assertEqual(self.config.previous_persona_id, self.roast.id)
+
+    def test_handover_box_hides_after_two_days(self):
+        self.config.previous_persona = self.roast
+        self.config.persona_changed_at = timezone.now() - datetime.timedelta(days=2, minutes=1)
+        self.config.save(update_fields=["previous_persona", "persona_changed_at"])
+        self.client.force_authenticate(self.athlete)
+        data = self._ballot().json()
+        self.assertFalse(data["changed_recently"])
+        self.assertIsNone(data["previous_persona"])
+        self.assertIsNone(data["handover_until"])
+
+        self.config.persona_changed_at = timezone.now() - datetime.timedelta(hours=12)
+        self.config.save(update_fields=["persona_changed_at"])
+        data = self._ballot().json()
+        self.assertTrue(data["changed_recently"])
+        self.assertEqual(data["previous_persona"]["id"], self.roast.id)
+
 
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
