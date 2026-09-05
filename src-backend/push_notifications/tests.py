@@ -89,7 +89,13 @@ class VapidPublicKeyTests(TestCase):
             self.assertEqual(len(_decode_b64url(key)), 65)
             healed = json.loads(path.read_text())
             self.assertEqual(healed["public"], key)
-            self.assertEqual(healed["private"], priv_pem)  # private untouched
+            # Private is Fernet-encrypted at rest; runtime still sees PEM.
+            self.assertTrue(
+                healed["private"].startswith("gAAAA"),
+                healed["private"][:20],
+            )
+            self.assertEqual(vapid._decrypt_vapid_private(healed["private"]), priv_pem)
+            self.assertEqual(vapid.get_vapid_private_key(), priv_pem)
 
 
 class SendPushCooldownTests(TestCase):
