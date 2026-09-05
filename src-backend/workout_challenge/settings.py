@@ -166,6 +166,13 @@ MIGRATION_MODULES = {
     "drill_instructor": "drill_instructor.migrations",
     "site_settings": "site_settings.migrations",
     "push_notifications": "push_notifications.migrations",
+    # "django_celery_beat": "db_migrations.django_celery_beat",
+    # "django_celery_beat_periodictask": "db_migrations.django_celery_beat_periodictask",
+    # "sessions": "db_migrations.sessions",
+    # "auth": "db_migrations.auth",
+    # "authtoken": "db_migrations.authtoken",
+    # "admin": "db_migrations.admin",
+    # "contenttypes": "db_migrations.contenttypes",
 }
 
 
@@ -240,6 +247,9 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    # Baseline request throttling. Scoped, stricter buckets ('auth',
+    # 'join') are applied to the brute-force-sensitive endpoints
+    # (token obtain/refresh, password reset, competition joins).
     'DEFAULT_THROTTLE_CLASSES': [
         'custom_user.throttles.ClientIPAnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
@@ -248,13 +258,30 @@ REST_FRAMEWORK = {
         'anon': '100/hour',
         'user': '2000/hour',
         'auth': '30/hour',
+        # Token REFRESH gets its own, roomier bucket: the tight 'auth'
+        # rate exists to stop password guessing on token/, but a refresh
+        # token is a 256-bit random value (not brute-forceable), and the
+        # app legitimately needs one refresh per access-token expiry
+        # (~4/hour per foreground device at 15 min) - plus mobile users
+        # share the per-IP budget via carrier-grade NAT. 30/hour here
+        # logged users out whenever the app was used regularly.
         'auth_refresh': '300/hour',
         'join': '60/hour',
     },
 }
 
 SIMPLE_JWT = {
+    # 15 min (was 5): the SPA polls several endpoints plus per-avatar
+    # picture fetches. A 5-minute JWT expired in the middle of a session
+    # and every poller + every <img> hit the API with a dead token at
+    # once - a burst of 401s that CrowdSec http-auth-bf / http-generic-bf
+    # treats as credential stuffing. The frontend now also refreshes
+    # 60s before expiry; this is the server-side half.
     'ACCESS_TOKEN_LIFETIME': datetime.timedelta(minutes=15),
+    # Effective "stay logged in" duration. With rotation the refresh token
+    # is re-issued on every app use, so users only see the login screen
+    # after this much *inactivity* - default 31 days = login at most once
+    # a month. Override via JWT_REFRESH_DAYS.
     'REFRESH_TOKEN_LIFETIME': datetime.timedelta(days=int(os.environ.get("JWT_REFRESH_DAYS", "31"))),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
@@ -285,10 +312,15 @@ USE_I18N = True
 
 USE_TZ = True
 
+# Django 5+: URLField otherwise assumes http:// in forms. Our hosts are HTTPS
+# in production; this matches CSRF_TRUSTED_ORIGINS which already carry a scheme.
 FORMS_URLFIELD_ASSUME_HTTPS = True
 
 
-# Security headers
+# Security headers - Django emits these on every response. nginx also
+# sets some headers (see nginx.conf) so we set both for defense in
+# depth: nginx is in front of the API for the public compose setup but
+# gunicorn is also exposed on :8000 for debugging.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = 'same-origin'
@@ -305,6 +337,11 @@ CELERY_BROKER_URL = 'redis://localhost:6379/0'
 CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 
 CACHES = {
+    # Redis is always running in this stack (supervisord starts it as
+    # the first process). We use it for the cache regardless of DEBUG
+    # so that throttles / locks work across all gunicorn workers -
+    # LocMemCache is per-process so multi-worker dev runs would have
+    # N times the intended throttle threshold.
     'default': {
         "BACKEND": "django_redis.cache.RedisCache",
         "LOCATION": "redis://127.0.0.1:6379/1",
@@ -321,14 +358,26 @@ CACHES = {
 }
 
 
-# Static files
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/4.2/howto/static-files/
+
 STATIC_URL = 'apistatic/'
 STATIC_ROOT = BASE_DIR / 'static'
 
+# User-uploaded media (profile / photo / Echo pictures). NEVER served
+# at this URL: nginx 404s /media/, Django middleware 404s it too, and
+# serializers only emit authenticated /api/.../picture/ paths. Files
+# live in the data volume and are delivered via X-Accel-Redirect to
+# the internal /protected-media/ location after a JWT check.
 MEDIA_URL = '/media/'
 MEDIA_ROOT = DATA_DIR / 'media'
+# nginx (user `nginx`) serves these via X-Accel-Redirect. Default umask
+# is usually fine; 0600 thumbs (mkstemp) are not - see images._thumb_rel.
 FILE_UPLOAD_PERMISSIONS = 0o644
 FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o755
+
+# Default primary key field type
+# https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -339,7 +388,10 @@ STRAVA_CLIENT_SECRET = os.environ.get("STRAVA_CLIENT_SECRET", "ReplaceWithClient
 STRAVA_LIMIT_15MIN = int(os.environ.get("STRAVA_LIMIT_15MIN", 100))
 STRAVA_LIMIT_DAY = int(os.environ.get("STRAVA_LIMIT_DAY", 1000))
 
-# Health
+# Health (Open Wearables): Apple Health / Health Connect connector.
+# BASE_URL + developer credentials are required to enable it (Site
+# Settings can override at runtime). PUBLIC_URL is the phone-facing
+# address shown in connection codes (falls back to BASE_URL when unset).
 HEALTH_BASE_URL = os.environ.get("HEALTH_BASE_URL", "")
 HEALTH_PUBLIC_URL = os.environ.get("HEALTH_PUBLIC_URL", "")
 HEALTH_DEVELOPER_EMAIL = os.environ.get("HEALTH_DEVELOPER_EMAIL", "")
@@ -390,6 +442,7 @@ LOGGING = {
         },
     },
     "loggers": {
+        # This is where Django logs DisallowedHost errors
         "django.security.DisallowedHost": {
             "handlers": ["console"],
             "level": "WARNING",
@@ -400,11 +453,32 @@ LOGGING = {
 
 # OpenAI for AI quotes
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", None)
+# Provider preset: "custom" (default OpenAI-compatible), "MiniMax",
+# "openai". Used as a fallback when the Site Settings DB row hasn't
+# picked one. Resolved base_url + model are derived from this preset
+# unless the DB row overrides them.
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", None)
+# Any OpenAI-compatible provider can be used by setting LLM_BASE_URL
+# (e.g. https://openrouter.ai/api/v1, https://api.groq.com/openai/v1,
+# http://localhost:11434/v1 for Ollama). Leave unset to use the
+# provider preset's default endpoint (or OpenAI's endpoint for "custom").
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", None)
+# Default model for the Drill Instructor (short, persona-voiced comments).
 LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+# Model used for the weekly email AI fact. Slightly higher quality is
+# fine here because it runs once per user per week.
 LLM_EMAIL_MODEL = os.environ.get("LLM_EMAIL_MODEL", "gpt-4o")
+
+# Coach feed photo posts: per-user daily cap. Every photo queues an LLM
+# reaction (and, with an image-capable provider, an image-edit roast) -
+# both cost money per call, so keep this tight.
 DRILL_MAX_PHOTOS_PER_DAY = int(os.environ.get("DRILL_MAX_PHOTOS_PER_DAY", 2))
+
+# Optional: a SEPARATE OpenAI-compatible provider for image editing (the
+# coach's roasted-photo remix). Chat models that can READ images often
+# can't CREATE them (e.g. MiniMax M3) - with these set, the roast edit
+# call goes here while chat/vision stay on the main provider above.
+# Leave unset to probe the main endpoint for image editing as before.
 LLM_IMAGE_BASE_URL = os.environ.get("LLM_IMAGE_BASE_URL", "")
 LLM_IMAGE_MODEL = os.environ.get("LLM_IMAGE_MODEL", "")
 LLM_IMAGE_API_KEY = os.environ.get("LLM_IMAGE_API_KEY", "")  # falls back to OPENAI_API_KEY
