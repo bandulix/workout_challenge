@@ -5,9 +5,9 @@ Access JWTs stay short-lived and are returned in the JSON body only
 httpOnly Secure cookie so browser JavaScript cannot read them.
 
 Native Capacitor clients may also receive the refresh token in the JSON
-body when they send ``X-WC-Client: native`` so they can persist it in
-EncryptedSharedPreferences / Capacitor Secure Storage (cross-origin
-WebViews cannot always rely on the cookie jar alone).
+body when the request looks native (User-Agent / X-WC-Client) so they
+can persist it in EncryptedSharedPreferences / Capacitor Secure Storage
+(cross-origin WebViews cannot always rely on the cookie jar alone).
 """
 
 from django.conf import settings
@@ -18,8 +18,6 @@ REFRESH_COOKIE_NAME = getattr(settings, "JWT_REFRESH_COOKIE_NAME", "wc_refresh")
 REFRESH_COOKIE_PATH = getattr(settings, "JWT_REFRESH_COOKIE_PATH", "/api/token")
 CLIENT_HEADER = "HTTP_X_WC_CLIENT"
 NATIVE_CLIENT = "native"
-REQUESTED_WITH_HEADER = "HTTP_X_WC_REQUESTED_WITH"
-REQUESTED_WITH_VALUE = "WorkoutChallenge"
 
 
 def refresh_cookie_kwargs():
@@ -69,7 +67,10 @@ def get_refresh_from_request(request):
 
 
 def is_native_client(request) -> bool:
-    return (request.META.get(CLIENT_HEADER) or "").strip().lower() == NATIVE_CLIENT
+    if (request.META.get(CLIENT_HEADER) or "").strip().lower() == NATIVE_CLIENT:
+        return True
+    ua = (request.META.get("HTTP_USER_AGENT") or "").lower()
+    return "workoutchallenge" in ua or "capacitor" in ua
 
 
 def strip_refresh_from_response_data(response, request):
