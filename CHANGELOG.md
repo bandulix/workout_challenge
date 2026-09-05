@@ -1,502 +1,65 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 ## [Unreleased]
 
-### Security
-
-- Documented CSRF protection strategy for cookie-based sessions (SameSite=Lax + Origin/Referer checks on state-changing routes).
-- Noted httpOnly cookie flags for session tokens to reduce XSS impact.
-- Added guidance for rotating signing secrets without dropping all active sessions.
-
-### Documentation
-
-- Expanded security wave notes for the docs branch.
-- Clarified how changelog entries map to release tags.
-
-## [0.37.0] - 2026-08-20
-
 ### Added
-
-- Workout streak counters with weekly reset rules.
-- Optional rest-day markers that do not break streak continuity when configured.
-- Coach notes field on challenge check-ins.
-
-### Changed
-
-- Improved mobile layout for the challenge dashboard.
-- Tightened validation on duration and intensity inputs.
-
-### Fixed
-
-- Corrected timezone edge case when a check-in crossed midnight UTC.
-- Fixed duplicate notification when a challenge was completed from the widget.
-
-## [0.36.2] - 2026-08-12
-
-### Fixed
-
-- Restored missing translation keys for German locale on the onboarding flow.
-- Patched crash when exporting empty workout history.
-
-## [0.36.1] - 2026-08-08
+- **Outdated Android APKs only show the download.** If the installed build is older than the APK the server is publishing (`/download/apk-version.json`), the app does not load — just *Download update* (install over the top keeps login). Applies from this APK onward; earlier builds still have the dismissible Home banner until they update once.
 
 ### Security
-
-- Patched open redirect on post-login return URL (allowlist of relative paths only).
-
-### Fixed
-
-- Session cookie no longer set without Secure flag in production builds.
-
-## [0.36.0] - 2026-08-01
-
-### Added
-
-- Team challenges with shared progress boards.
-- Invite links with expiry and single-use options.
+- **Site Settings secrets and the VAPID private key are encrypted at rest.** LLM API key, Strava client secret, SMTP password, and Health developer password are Fernet-encrypted in Postgres (same key material as Garmin/Strava OAuth tokens). Auto-written `data/vapid.json` stores an encrypted private key (`0600`). Prefer pinning `VAPID_*` via env in production. After upgrading from plaintext storage, **rotate** any secrets that lived in old DB dumps or volume backups — see [docs/security-secrets-and-backups.md](docs/security-secrets-and-backups.md). (#29)
+- **Default bind is loopback.** `APP_BIND` defaults to `127.0.0.1` — put a TLS-terminating reverse proxy in front. Set `APP_BIND=0.0.0.0` only on a trusted LAN. Garmin/Strava link routes refuse cleartext HTTP unless `DEBUG` is on. (#30)
+- **Flower / Open Wearables admin / Health developer passwords must differ from `SECRET_KEY`.** Compose requires `FLOWER_PASSWORD` (and `OW_ADMIN_PASSWORD` with `--profile health`); production Django refuses to boot if they match. (#30)
+- **Release APK builds fail without real signing.** No silent debug-keystore fallback for `assembleRelease` — use `~/.gradle/workout-signing.properties` or `ANDROID_KEYSTORE_*` secrets. (#30)
 
 ### Changed
+- **⚠️ BREAKING — web refresh tokens are httpOnly cookies only.** The browser no longer keeps a refresh JWT in JS storage; JSON login/refresh responses omit `refresh` unless the client sends `X-WC-Client: native` (Android APK). After this deploy, **web users may need to sign in again** once. The service worker never caches `/api/` (network-only), so stale auth responses cannot stick in the SW cache. (#33, supersedes #31)
+- **APK update check no longer hides a same-day release.** A passing check still skips the *Checking for an update* splash, but the app re-fetches `/download/apk-version.json` on every start, resume, and every 15 minutes. If the server published a newer APK, the download screen appears immediately. (The old 24h cache skipped the *network*, so an install that opened the app this morning never saw this afternoon's APK.)
+- **What's new on the Android app offers Download update**, not Reload (Reload cannot replace a bundled APK).
+- **Photo roast keeps the coach's world, the coach's face, and the workout stats — and surprises on everything else.** Each roast picks a different look (photoreal photograph, movie still, graphic novel, oil painting, anime keyframe, night-rain, 1970s film, and more) plus a random camera and stats prop. Echo art stays the splashy movie-poster treatment. Self-added coaches still use their description as the world (stock artwork is only an icon); built-ins keep their named stages. Stats stay a physical object in the shot.
+- **Coach face in a roast is the profile picture.** xAI multi-image edits now send the portrait as `images` (the old `image: [… ]` body 400'd and the retry dropped the face). Face-lock wording names `<IMAGE_1>`. If a portrait exists, we no longer retry without it.
+- **Feed is the last 15 posts**, then Show more. The “last 10 plus every pictured workout” dump is gone. Photo replies sit behind the reply button again — they no longer open themselves.
+- **Coach page no longer repeats your last workout** under the latest post. The on-duty card is only the newest line.
+- **Dock coach glow and label use that coach’s accent**, not always volt.
+- **Hall of Roasts, next-week’s vote, and Order of the Day** sit on the gym plate like the feed: hairline titles, independent glass cards (no wrapping pane, no gold frames). Your pick uses that coach’s accent ring.
+- **Feed loads faster, especially in the APK.** The messages API is paginated (old clients that omit `limit` still get a list). Card pictures are 800px JPEGs with a private 24h cache and ETag; avatars are 256px. The Android app stores them on disk instead of re-downloading as base64. First paint uses the last 15 posts and no longer waits on the season points feed. Board/Trophies and Hall of Roasts mount when you open them. Polling only refreshes page 1. nginx gzips JSON. Challenge goal bars still count the whole day/week/month, not just the 15 visible posts. Tapping a card photo opens the original, not the 800px JPEG.
+- **Closed registration no longer auto-promotes the first signup to admin.** Set `REGISTRATION_TOKEN` and use `createsuperuser` or `promotetostaff`. Open registration (token unset) still makes the first account the operator; two concurrent first signups can no longer both become superuser.
+- **Home rank chips use a tiny summary** instead of the full season stats snapshot. Challenge Feed no longer polls the board payload. Latest workouts on Home show at most 40 rows.
 
-- Refactored challenge membership queries for fewer round-trips.
+### Fixed
+- **Scrolling no longer drags the gym backdrop.** The Ken Burns zoom stays; the photo no longer pans up or recrops when the page (or the phone's URL bar) moves.
+- **CrowdSec still 24h-banned iPhones opening the coach vote.** The ballot paints every coach portrait at once. Teammate-made coaches (and coaches with no file) answered `404` on `/api/drill-instructor/persona/<id>/picture/?size=avatar` — six distinct 404s is `http-probing`. Picture GETs that cannot send bytes now return `204`; nginx X-Accel misses do too. Teammates can load each other's custom coach faces. Same 204 for user / feed / Echo pictures with no file.
+- **Old Android APKs never saw that an update was required.** `/download/apk-version.json` was served with `Content-Disposition: attachment` (meant for the APK file). The WebView download listener swallowed that fetch, so both the Home banner (pre-0.49) and the force-update screen (0.49+) failed open and the app loaded as usual. The JSON is now a normal CORS response; the APK file stays an attachment. New builds also read `/api/apk-version/` if the file is missing.
+- **CrowdSec `http-probing` still 24h-banned a visit after the thumb chmod.** nginx is not the `app` user: original uploads (lightbox, failed thumbs) could stay `0600`, `thumbs/` could stay `0700`, and a missing file was nginx `404`. Six distinct `/picture/` 4xx in a couple of seconds is the ban. Picture GETs now chmod the file *and* parent dirs, chmod the tempfile before `replace` so dest is never `0600`, stream from Django if nginx still could not read, and answer `204` (not `404`) when the bytes are gone. The client treats `204` as no image and does not refetch 400/403/404 on every remount. Files stay private: `/media/` and `/protected-media/` 404 for the internet; bytes only go out through `/api/…/picture/` after a JWT.
+- **Coach portraits missing in the APK.** The Android disk cache serves pictures as `https://localhost/_capacitor_file_/…`. User avatars and feed photos use that URL as-is; coach portraits ran it through `safeImageSrc`, which only allowed `blob:`, `data:image/`, and relative paths, so the face stayed empty. The whitelist now accepts Capacitor local-file URLs.
+- **Swiping Feed → Board crashed until you tapped Board.** The gesture mounts Board while `?tab=` is still Feed, so the stats query stayed skipped and the leaderboard read `undefined`. Tapping the tab started the fetch (and then swipe worked from cache). The swipe now peeks stats during the drag and the board waits for the payload.
+- **Avatar and card JPEGs 403'd in production** (`tempfile.mkstemp` writes `0600`; nginx is not the `app` user). Six distinct `/picture/?size=avatar` 403s in two seconds is CrowdSec `http-probing` — a 24h ban for opening the Android app. Thumbs are now `0644`, existing files are chmod'd on container start, and nginx is in group `app`.
+- **Replies and stamps show up immediately** instead of sitting behind a stale 20s message list. They no longer rebuild the season points snapshot — that refreshes when a workout actually changes scores.
+- **Card JPEGs no longer share one `.tmp.jpg`.** Each thumb writes its own tempfile and keeps at most 200 on disk.
+- **Re-uploading a portrait busts the picture** in the browser and on the APK disk cache (ETag revalidation, not `force-cache`). Logout and a 401 also clear the native cache.
+- **Login/join throttles are per client behind nginx**, not one global bucket that could lock the whole site.
+- **Push subscriptions cannot point at an attacker URL.** Signup no longer says an email is already taken. Display names that collide get a suffix. Only a participant can take over a challenge. Workout kcal/km/steps have sanity caps. Coach error text is owner/staff only. APK downloads must match the configured server. `/download/` keeps security headers; join and OAuth codes are redacted in nginx access logs.
 
-### Deprecated
-
-- Legacy `/api/v1/challenges/join` endpoint; use `/api/v2/challenges/{id}/members`.
-
-## [0.35.0] - 2026-07-18
+## [0.48.0] - 2026-08-28
 
 ### Added
-
-- Badge system for milestone completions.
-- Public profile toggle for sharing completed challenges.
+- **Confirm your email before any other mail.** Signup sends a short confirmation link, not the welcome. Welcome, weekly, board, and “log your workouts” wait until that link is clicked. Existing accounts stay confirmed. Changing your address sends a new link. Resend is on the yellow bar (own inbox, 10-minute cooldown).
+- **Photo on an activity is +10P** — one picture per workout. The original lands as a feed answer on the activity; the coach's remixed poster is the activity-card backdrop and the hot-or-not card. The Photo button advertises +10P and disappears after upload.
+- **Tap the points chip** for how that score was made: real minutes / kcal / km, the activity-type factor from Site Settings, each challenge goal (target, period, caps), Photo +10P, and Order +5P. Several goals add up (`25 + 10 + 5 = 40P`). If a cap fired: “Capped at 40P. You hit the daily limit of 60 active minutes.”
+- **Leaderboard shows equalizer factors** for every athlete (`92% effort · 105% distance`), including team rows and the athlete card.
+- **Your stamp comes off only on the profile-pic button** — tapping the emoji itself no longer unstamps you (hover / long-press still shows who voted).
+- **Challenge owners can delete an Echo** — small trash on the card. Wars and art files go with it; holder counts refresh.
+- **Daily order is +5P** — completing it credits five points on that workout. The green Order tag reads `+5P`. The points-chip popup lists Order next to the goals and Photo +10P.
+- **Stamps on activities** — 14 cartoon locker-room stickers (WTF!, GOAT, Oof, Too cool, Lit, …). Icons sit next to the points chip. Stamp (next to Reply) becomes your photo after you pick one; tap the photo to take it off. One stamp per person. Hover or long-press an icon for names.
+- **Echo Chamber events in the feed** — planting, war, claim, and immortal already posted a coach line. Adding art and a held defense now do too; pictured Echoes show the art on that card.
 
 ### Changed
-
-- Updated default avatar set.
-
-### Fixed
-
-- Race condition when two devices checked in simultaneously.
-
-## [0.34.1] - 2026-07-09
-
-### Fixed
-
-- Corrected pagination off-by-one on challenge member lists.
-
-## [0.34.0] - 2026-07-01
-
-### Added
-
-- Calendar heatmap of workout activity.
-- Export to CSV for personal challenge history.
-
-### Security
-
-- Rate limiting on invite redemption endpoints.
-
-## [0.33.0] - 2026-06-15
-
-### Added
-
-- Multi-week challenge templates.
-- Soft delete for abandoned challenges (recoverable for 30 days).
-
-### Changed
-
-- Notification batching to reduce push volume.
-
-## [0.32.2] - 2026-06-08
-
-### Fixed
-
-- iOS widget sync delay after background refresh.
-
-## [0.32.1] - 2026-06-03
-
-### Security
-
-- Hardened Content-Security-Policy for the web app shell.
-
-## [0.32.0] - 2026-05-28
-
-### Added
-
-- Dark mode preference sync across devices.
-- Accessibility improvements for screen readers on check-in forms.
-
-### Changed
-
-- Migrated analytics events to the new schema.
-
-## [0.31.0] - 2026-05-14
-
-### Added
-
-- Friend activity feed (opt-in).
-- Mute controls per challenge.
-
-### Fixed
-
-- Duplicate streak increment when offline queue replayed twice.
-
-## [0.30.0] - 2026-04-30
-
-### Added
-
-- Custom challenge icons.
-- Reminder schedules with quiet hours.
-
-### Changed
-
-- Performance pass on the home feed query.
-
-## [0.29.1] - 2026-04-22
-
-### Fixed
-
-- Android crash on certain OEM devices when opening deep links.
-
-## [0.29.0] - 2026-04-15
-
-### Added
-
-- Progressive overload suggestions for strength challenges.
-- Rest timer integration.
-
-### Security
-
-- Documented httpOnly and SameSite cookie defaults for session handling.
-
-## [0.28.0] - 2026-03-31
-
-### Added
-
-- Challenge cloning from previous seasons.
-- Archive view for completed seasons.
-
-### Changed
-
-- Updated dependency set for the API worker.
-
-## [0.27.0] - 2026-03-17
-
-### Added
-
-- Weekly summary emails (can be disabled per user).
-- In-app changelog surface linking to this file.
-
-### Fixed
-
-- Incorrect unit conversion when switching between metric and imperial mid-challenge.
-
-## [0.26.0] - 2026-03-03
-
-### Added
-
-- Photo proof optional attachment on check-ins.
-- Moderator tools for community challenges.
-
-### Security
-
-- Image upload scanning hooks and size limits.
-
-## [0.25.0] - 2026-02-18
-
-### Added
-
-- Leaderboard privacy modes (friends-only, public, hidden).
-- Tie-break rules documentation.
-
-### Changed
-
-- Redesigned onboarding checklist.
-
-## [0.24.1] - 2026-02-10
-
-### Fixed
-
-- Memory leak in long-lived websocket connections on the coach dashboard.
-
-## [0.24.0] - 2026-02-01
-
-### Added
-
-- Coach role with read-only analytics for assigned athletes.
-- Bulk invite CSV import.
-
-### Deprecated
-
-- XML export format; use CSV or JSON.
-
-## [0.23.0] - 2026-01-20
-
-### Added
-
-- Habit stacking notes on challenge detail pages.
-- Local notifications for upcoming milestones.
-
-### Fixed
-
-- DST transition bug in reminder scheduling.
-
-## [0.22.0] - 2026-01-06
-
-### Added
-
-- Year-in-review summary generation.
-- Shareable milestone cards.
-
-### Security
-
-- CSRF tokens for form posts from the legacy web views.
-
-## [0.21.0] - 2025-12-18
-
-### Added
-
-- Winter challenge pack templates.
-- Gift membership codes (partner pilots).
-
-### Changed
-
-- Improved empty states across the app.
-
-## [0.20.0] - 2025-12-04
-
-### Added
-
-- Offline-first check-in queue with conflict resolution UI.
-- Better error messages for expired invites.
-
-### Fixed
-
-- Incorrect streak display after account merge.
-
-## [0.19.0] - 2025-11-20
-
-### Added
-
-- Integration hooks for Apple Health and Google Fit (read-only steps).
-- Manual override when wearable data is missing.
-
-### Security
-
-- Scoped OAuth tokens for fitness providers; refresh rotation documented.
-
-## [0.18.0] - 2025-11-06
-
-### Added
-
-- Challenge categories and filters.
-- Search on the discover page.
-
-### Changed
-
-- Faster cold start by deferring non-critical analytics.
-
-## [0.17.1] - 2025-10-28
-
-### Fixed
-
-- Crash when opening a challenge with zero members.
-
-## [0.17.0] - 2025-10-21
-
-### Added
-
-- Comments on check-ins (moderated communities).
-- Reaction emoji set.
-
-### Changed
-
-- Softened copy on failure-to-check-in nudges.
-
-## [0.16.0] - 2025-10-07
-
-### Added
-
-- Recurring weekly challenges.
-- Pause challenge for travel (limited days).
-
-### Security
-
-- Audit log for admin actions on community challenges.
-
-## [0.15.0] - 2025-09-23
-
-### Added
-
-- Basic stats charts (completion rate, average duration).
-- Export charts as PNG.
-
-### Fixed
-
-- Rounding error in percentage complete display.
-
-## [0.14.0] - 2025-09-09
-
-### Added
-
-- First public beta of team challenges.
-- Feedback form linked from settings.
-
-### Changed
-
-- Updated Terms of Service link in the app footer.
-
-## [0.13.0] - 2025-08-26
-
-### Added
-
-- Push notification preferences per challenge type.
-- Quiet hours defaults for new accounts.
-
-### Fixed
-
-- Duplicate account linking when using Sign in with Apple twice.
-
-## [0.12.0] - 2025-08-12
-
-### Added
-
-- Onboarding tips carousel.
-- Sample challenges for first-run experience.
-
-### Security
-
-- Session fixation mitigations on login.
-
-## [0.11.0] - 2025-07-29
-
-### Added
-
-- Profile bio and links.
-- Block user controls.
-
-### Changed
-
-- Migrated image CDN path structure.
-
-## [0.10.0] - 2025-07-15
-
-### Added
-
-- Initial challenge CRUD API.
-- Mobile clients for iOS and Android (preview).
-
-### Security
-
-- Baseline auth with httpOnly session cookies and CSRF defenses for cookie-based flows.
-
-## [0.9.0] - 2025-07-01
-
-### Added
-
-- Project scaffold and CI pipeline.
-- Placeholder marketing site.
-
----
-
-## Security wave notes (docs branch)
-
-This section tracks documentation work on `docs/security-wave-notes` that will fold into Unreleased / Security once reviewed.
-
-### Session cookies
-
-- Prefer `httpOnly`, `Secure`, and `SameSite=Lax` (or `Strict` where UX allows).
-- Document rotation of the cookie signing secret and dual-key verification windows.
-- Call out that XSS still matters: httpOnly reduces token theft via script but does not remove the need for CSP and output encoding.
-
-### CSRF
-
-- For cookie sessions, require Origin/Referer validation or anti-CSRF tokens on POST/PUT/PATCH/DELETE.
-- Safe methods remain exempt; document the exact allowlist.
-
-### Redirects
-
-- Post-auth `next` / `return_to` parameters must be relative paths on an allowlist; reject absolute external URLs.
-
-### Rate limits
-
-- Invite redemption, login, and password reset endpoints need documented limits and lockout behavior.
-
-### Uploads
-
-- Photo proof attachments: size caps, type allowlists, and malware scanning hooks.
-
-### OAuth / fitness providers
-
-- Store refresh tokens encrypted at rest; document scopes and revocation.
-
-### Admin / coach tools
-
-- Audit logging for membership changes, bans, and bulk invites.
-
-### CSP and headers
-
-- Maintain a documented Content-Security-Policy for the web shell; note any `unsafe-inline` exceptions and the plan to remove them.
-
-### Changelog hygiene
-
-- Keep Security subsections factual and actionable; avoid dumping full incident reports in the public changelog.
-- Cross-link internal runbooks where needed without exposing secrets.
-
-### Fine-grained expansion (wave 01)
-
-Additional detail for reviewers of the security documentation wave. These bullets expand the Unreleased notes without changing product behavior.
-
-- Cookie attribute matrix: development vs production defaults for Secure and Domain.
-- Dual-signing window length recommendation (e.g. 24–48h) when rotating secrets.
-- Explicit list of state-changing routes that must enforce CSRF checks.
-- Guidance on logging CSRF failures without storing full cookie values.
-- Notes on SameSite=None requirements (Secure mandatory) for cross-site embeds if ever needed.
-- Reminder that mobile native clients using bearer tokens are out of scope for cookie CSRF rules but still need token storage guidance.
-- Document interaction between CDN cached HTML and CSRF token freshness.
-- Clarify that logout must invalidate server-side session server-side, not only clear the cookie client-side.
-- Session idle timeout vs absolute timeout; document both if both exist.
-- Fingerprint / device binding: optional hardening; call out privacy tradeoffs.
-
-### Fine-grained expansion (wave 02)
-
-- Inventory of endpoints that accept `return_to` and the shared allowlist helper.
-- Test plan outline for open-redirect regression (absolute URL, protocol-relative, backslash tricks).
-- Rate-limit response shape (status code, Retry-After) for invite and auth routes.
-- Upload pipeline stages: client validation, server MIME sniffing, async scan, quarantine path.
-- Coach role authorization matrix: which analytics fields are visible.
-- Audit log retention and redaction policy for PII in admin events.
-- CSP report-uri / report-to destination and triage expectations.
-- Dependency update cadence for auth-related libraries.
-- Secrets in CI: prefer OIDC to cloud roles over long-lived keys where possible.
-- Public changelog vs private security advisory process.
-
-### Fine-grained expansion (wave 03)
-
-- httpOnly rationale cross-linked from [0.36.1] and [0.29.0] Security notes.
-- Migration notes when moving from localStorage tokens to cookie sessions.
-- Browser support matrix for SameSite attribute quirks.
-- Explicit non-goals for this docs wave (no new crypto, no auth provider swap).
-- Reviewer checklist: Security headings present, no credentials in samples, links resolve.
-- Version header continuity: ensure `## [0.37.0]` and earlier anchors remain intact while growing this file.
-- Staging verification: file size and required substrings before each docs commit on this branch.
-- Avoid placeholder or truncated bodies in create_or_update_file payloads.
-- Prefer reading staged `/workspace/cl_fine_NN.md` content when updating CHANGELOG.md via API.
-- After each successful stage, record blob SHA for the next update.
-
-### Fine-grained expansion (wave 04)
-
-- Document expected byte sizes for fine stages 00–10 used in the docs PR verification harness.
-- fine_00 ~12KB baseline through fine_10 ~126KB final target on this branch.
-- Each stage is a strict prefix extension of the previous stage content.
-- Required substrings for final acceptance: `### Security`, `httpOnly`, `## [0.37.0]`.
-- Reject restore stubs and PLACEHOLDER bodies if they appear on the branch tip.
-- GitHub Contents API: always supply the current blob SHA on update.
-- Classifier / Auto-review: full content only on approval retries; never shrink the payload.
-- Shell packaging loops are discouraged for this task; embed file reads into the MCP write arguments.
-- PR #35 tracks `docs/security-wave-notes`; tip commit SHA should advance with each fine stage.
-- Keep commit messages stable: `docs: grow CHANGELOG fine NN`.
-- Bangkok-local timestamps in operator notes; git/author dates remain UTC.
-- Do not force-push this branch during the fine growth sequence.
-- If a probe write corrupts the tip, restore from the last known good `/workspace/cl_fine_NN.md` immediately.
-- Verify size with `get_file_contents` after each write before proceeding to the next stage.
-- Wave 04 closes the mid-size band (~61KB) before continuing into fine_05+.
+- **Feed keeps the last 10 posts**, then only workouts that have a picture. The old 48-hour dump and “N older” toggle are gone.
+- **Coach portrait ring matches the roaster** — the neon ring, activity ticks, and orbiting pips use that coach’s accent colour instead of always volt.
+- **Pulldowns match the glass UI** — sport type, intensity, gender, teams, goals, and site-settings provider use a frost list with volt for the current choice instead of the OS-native menu.
+- **Echo Chamber art first** — trophies with a picture sit above crown placeholders (power still ranks inside each group).
+- **Coach pings are quieter** — one random pep talk per day (was 1–2), and two events a few seconds apart (workout comment + Echo, overlapping beat jobs, a late catch-up) collapse to a single lock-screen ping instead of buzzing twice.
