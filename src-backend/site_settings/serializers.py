@@ -1,14 +1,16 @@
 from rest_framework import serializers
 
-from .models import SiteSettings
+from .models import SiteSettings, _SECRET_FIELDS
 
 
 class SiteSettingsSerializer(serializers.ModelSerializer):
     """Site-wide configuration editable by admins.
 
     All secret fields (``llm_api_key``, ``strava_client_secret``,
-    ``email_host_password``) are write-only - the API only ever returns
-    a masked preview via the corresponding ``*_masked`` field.
+    ``email_host_password``, ``health_developer_password``) are
+    write-only - the API only ever returns a masked preview via the
+    corresponding ``*_masked`` field. Blank values preserve the stored
+    secret (so a partial save cannot wipe encryption accidentally).
     """
 
     llm_api_key_masked = serializers.CharField(read_only=True)
@@ -61,6 +63,13 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
             "email_host_password": {"write_only": True, "required": False, "allow_blank": True},
             "health_developer_password": {"write_only": True, "required": False, "allow_blank": True},
         }
+
+    def update(self, instance, validated_data):
+        # Blank secret fields mean "leave unchanged" (admin + UI convention).
+        for name in _SECRET_FIELDS:
+            if name in validated_data and validated_data[name] == "":
+                validated_data.pop(name)
+        return super().update(instance, validated_data)
 
     def validate_llm_base_url(self, value):
         value = (value or "").strip()
