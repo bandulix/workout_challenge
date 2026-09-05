@@ -74,6 +74,8 @@ class UnlinkGarminView(APIView):
         user.garmin_tokens_enc = None
         user.garmin_last_synced_at = None
         user.save()
+        # Match Strava unlink: revoke outstanding refresh JWTs (#27).
+        _blacklist_user_tokens(user)
         return Response({"message": "Successfully unlinked Garmin."}, status=status.HTTP_200_OK)
 
 
@@ -175,6 +177,8 @@ class UnlinkHealthView(APIView):
         if user.activity_source == 'health':
             user.activity_source = None
         user.save()
+        # Match Strava unlink: revoke outstanding refresh JWTs (#27).
+        _blacklist_user_tokens(user)
         return Response({"message": "Successfully unlinked Health."}, status=status.HTTP_200_OK)
 
 
