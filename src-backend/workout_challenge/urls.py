@@ -24,7 +24,7 @@ from rest_framework_simplejwt.views import (
 from rest_framework.routers import DefaultRouter
 from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, CompetitionStatsSummaryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView, PointsFactorsView
 from workouts.views import WorkoutViewSet
-from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, ResetStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, EmailVerifyConfirmView, EmailVerifyResendView, LinkGarminView, UnlinkGarminView, SyncGarminView, LinkHealthView, UnlinkHealthView, SyncHealthView
+from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, ResetStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, PasswordChangeView, EmailVerifyConfirmView, EmailVerifyResendView, LinkGarminView, UnlinkGarminView, SyncGarminView, LinkHealthView, UnlinkHealthView, SyncHealthView
 
 
 # Token endpoints with a strict throttle bucket (online brute-force
@@ -107,6 +107,7 @@ urlpatterns = [
         path('token/refresh/', ThrottledTokenRefreshView.as_view(), name='token-refresh'),
         path('password-reset/request/', PasswordResetView.as_view(), name='password-reset'),
         path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
+        path('password-change/', PasswordChangeView.as_view(), name='password-change'),
         path('email-verify/confirm/', EmailVerifyConfirmView.as_view(), name='email-verify-confirm'),
         path('email-verify/resend/', EmailVerifyResendView.as_view(), name='email-verify-resend'),
     ])),
