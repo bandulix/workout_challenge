@@ -1,1 +1,49 @@
-FILE_USE_WORKSPACE
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- **Outdated Android APKs only show the download.** If the installed build is older than the APK the server is publishing (`/download/apk-version.json`), the app does not load — just *Download update* (install over the top keeps login). Applies from this APK onward; earlier builds still have the dismissible Home banner until they update once.
+
+### Security
+- **Site Settings secrets and the VAPID private key are encrypted at rest.** LLM API key, Strava client secret, SMTP password, and Health developer password are Fernet-encrypted in Postgres (same key material as Garmin/Strava OAuth tokens). Auto-written `data/vapid.json` stores an encrypted private key (`0600`). Prefer pinning `VAPID_*` via env in production. After upgrading from plaintext storage, **rotate** any secrets that lived in old DB dumps or volume backups — see [docs/security-secrets-and-backups.md](docs/security-secrets-and-backups.md). (#29)
+- **Default bind is loopback.** `APP_BIND` defaults to `127.0.0.1` — put a TLS-terminating reverse proxy in front. Set `APP_BIND=0.0.0.0` only on a trusted LAN. Garmin/Strava link routes refuse cleartext HTTP unless `DEBUG` is on. (#30)
+- **Flower / Open Wearables admin / Health developer passwords must differ from `SECRET_KEY`.** Compose requires `FLOWER_PASSWORD` (and `OW_ADMIN_PASSWORD` with `--profile health`); production Django refuses to boot if they match. (#30)
+- **Release APK builds fail without real signing.** No silent debug-keystore fallback for `assembleRelease` — use `~/.gradle/workout-signing.properties` or `ANDROID_KEYSTORE_*` secrets. (#30)
+
+### Changed
+- **⚠️ BREAKING — web refresh tokens are httpOnly cookies only.** The browser no longer keeps a refresh JWT in JS storage; JSON login/refresh responses omit `refresh` unless the client sends `X-WC-Client: native` (Android APK). After this deploy, **web users may need to sign in again** once. The service worker never caches `/api/` (network-only), so stale auth responses cannot stick in the SW cache. (#33, supersedes #31)
+- **APK update check no longer hides a same-day release.** A passing check still skips the *Checking for an update* splash, but the app re-fetches `/download/apk-version.json` on every start, resume, and every 15 minutes. If the server published a newer APK, the download screen appears immediately. (The old 24h cache skipped the *network*, so an install that opened the app this morning never saw this afternoon's APK.)
+- **What's new on the Android app offers Download update**, not Reload (Reload cannot replace a bundled APK).
+- **Photo roast keeps the coach's world, the coach's face, and the workout stats — and surprises on everything else.** Each roast picks a different look (photoreal photograph, movie still, graphic novel, oil painting, anime keyframe, night-rain, 1970s film, and more) plus a random camera and stats prop. Echo art stays the splashy movie-poster treatment. Self-added coaches still use their description as the world (stock artwork is only an icon); built-ins keep their named stages. Stats stay a physical object in the shot.
+- **Coach face in a roast is the profile picture.** xAI multi-image edits now send the portrait as `images` (the old `image: [… ]` body 400'd and the retry dropped the face). Face-lock wording names `<IMAGE_1>`. If a portrait exists, we no longer retry without it.
+- **Feed is the last 15 posts**, then Show more. The “last 10 plus every pictured workout” dump is gone. Photo replies sit behind the reply button again — they no longer open themselves.
+- **Coach page no longer repeats your last workout** under the latest post. The on-duty card is only the newest line.
+- **Dock coach glow and label use that coach’s accent**, not always volt.
+- **Hall of Roasts, next-week’s vote, and Order of the Day** sit on the gym plate like the feed: hairline titles, independent glass cards (no wrapping pane, no gold frames). Your pick uses that coach’s accent ring.
+- **Feed loads faster, especially in the APK.** The messages API is paginated (old clients that omit `limit` still get a list). Card pictures are 800px JPEGs with a private 24h cache and ETag; avatars are 256px. The Android app stores them on disk instead of re-downloading as base64. First paint uses the last 15 posts and no longer waits on the season points feed. Board/Trophies and Hall of Roasts mount when you open them. Polling only refreshes page 1. nginx gzips JSON. Challenge goal bars still count the whole day/week/month, not just the 15 visible posts. Tapping a card photo opens the original, not the 800px JPEG.
+- **Closed registration no longer auto-promotes the first signup to admin.** Set `REGISTRATION_TOKEN` and use `createsuperuser` or `promotetostaff`. Open registration (token unset) still makes the first account the operator; two concurrent first signups can no longer both become superuser.
+- **Home rank chips use a tiny summary** instead of the full season stats snapshot. Challenge Feed no longer polls the board payload. Latest workouts on Home show at most 40 rows.
+
+### Fixed
+- **Scrolling no longer drags the gym backdrop.** The Ken Burns zoom stays; the photo no longer pans up or recrops when the page (or the phone's URL bar) moves.
+- **CrowdSec still 24h-banned iPhones opening the coach vote.** The ballot paints every coach portrait at once. Teammate-made coaches (and coaches with no file) answered `404` on `/api/drill-instructor/persona/<id>/picture/?size=avatar` — six distinct 404s is `http-probing`. Picture GETs that cannot send bytes now return `204`; nginx X-Accel misses do too. Teammates can load each other's custom coach faces. Same 204 for user / feed / Echo pictures with no file.
+- **Old Android APKs never saw that an update was required.** `/download/apk-version.json` was served with `Content-Disposition: attachment` (meant for the APK file). The WebView download listener swallowed that fetch, so both the Home banner (pre-0.49) and the force-update screen (0.49+) failed open and the app loaded as usual. The JSON is now a normal CORS response; the APK file stays an attachment. New builds also read `/api/apk-version/` if the file is missing.
+- **CrowdSec `http-probing` still 24h-banned a visit after the thumb chmod.** nginx is not the `app` user: original uploads (lightbox, failed thumbs) could stay `0600`, `thumbs/` could stay `0700`, and a missing file was nginx `404`. Six distinct `/picture/` 4xx in a couple of seconds is the ban. Picture GETs now chmod the file *and* parent dirs, chmod the tempfile before `replace` so dest is never `0600`, stream from Django if nginx still could not read, and answer `204` (not `404`) when the bytes are gone. The client treats `204` as no image and does not refetch 400/403/404 on every remount. Files stay private: `/media/` and `/protected-media/` 404 for the internet; bytes only go out through `/api/…/picture/` after a JWT.
+- **Coach portraits missing in the APK.** The Android disk cache serves pictures as `https://localhost/_capacitor_file_/…`. User avatars and feed photos use that URL as-is; coach portraits ran it through `safeImageSrc`, which only allowed `blob:`, `data:image/`, and relative paths, so the face stayed empty. The whitelist now accepts Capacitor local-file URLs.
+- **Swiping Feed → Board crashed until you tapped Board.** The gesture mounts Board while `?tab=` is still Feed, so the stats query stayed skipped and the leaderboard read `undefined`. Tapping the tab started the fetch (and then swipe worked from cache). The swipe now peeks stats during the drag and the board waits for the payload.
+- **Avatar and card JPEGs 403'd in production** (`tempfile.mkstemp` writes `0600`; nginx is not the `app` user). Six distinct `/picture/?size=avatar` 403s in two seconds is CrowdSec `http-probing` — a 24h ban for opening the Android app. Thumbs are now `0644`, existing files are chmod'd on container start, and nginx is in group `app`.
+- **Replies and stamps show up immediately** instead of sitting behind a stale 20s message list. They no longer rebuild the season points snapshot — that refreshes when a workout actually changes scores.
+- **Card JPEGs no longer share one `.tmp.jpg`.** Each thumb writes its own tempfile and keeps at most 200 on disk.
+- **Re-uploading a portrait busts the picture** in the browser and on the APK disk cache (ETag revalidation, not `force-cache`). Logout and a 401 also clear the native cache.
+- **Login/join throttles are per client behind nginx**, not one global bucket that could lock the whole site.
+- **Push subscriptions cannot point at an attacker URL.** Signup no longer says an email is already taken. Display names that collide get a suffix. Only a participant can take over a challenge. Workout kcal/km/steps have sanity caps. Coach error text is owner/staff only. APK downloads must match the configured server. `/download/` keeps security headers; join and OAuth codes are redacted in nginx access logs.
+
+## [0.48.0] - 2026-08-28
+
+*(Historical entries restore in progress — do not merge.)*
