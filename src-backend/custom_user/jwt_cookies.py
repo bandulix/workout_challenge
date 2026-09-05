@@ -1,13 +1,11 @@
 """httpOnly Secure refresh-token cookies (issue #19).
 
 Access JWTs stay short-lived and are returned in the JSON body only
-(frontend keeps them in memory). Refresh JWTs are delivered via an
-httpOnly Secure cookie so browser JavaScript cannot read them.
-
-Native Capacitor clients may also receive the refresh token in the JSON
-body when the request looks native (User-Agent / X-WC-Client) so they
-can persist it in EncryptedSharedPreferences / Capacitor Secure Storage
-(cross-origin WebViews cannot always rely on the cookie jar alone).
+(frontend keeps them in memory). Refresh JWTs are *also* delivered via
+an httpOnly Secure cookie so browser JavaScript never needs
+localStorage. The JSON body may still include ``refresh`` for native
+Capacitor clients (secure storage) and existing API tests; the web SPA
+must ignore it and rely on the cookie + credentials:include.
 """
 
 from django.conf import settings
@@ -71,14 +69,3 @@ def is_native_client(request) -> bool:
         return True
     ua = (request.META.get("HTTP_USER_AGENT") or "").lower()
     return "workoutchallenge" in ua or "capacitor" in ua
-
-
-def strip_refresh_from_response_data(response, request):
-    """Omit refresh from JSON unless the Capacitor native client asked."""
-    if is_native_client(request):
-        return response
-    data = getattr(response, "data", None)
-    if isinstance(data, dict) and "refresh" in data:
-        data = {k: v for k, v in data.items() if k != "refresh"}
-        response.data = data
-    return response
