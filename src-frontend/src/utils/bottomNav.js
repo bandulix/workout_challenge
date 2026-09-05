@@ -199,8 +199,8 @@ export default function BottomNav() {
     // (Web Push does not work inside the WebView) - runs while logged in.
     useEffect(() => {
         if (!user) return undefined;
-        return startNativeCoachPings();
-    }, [user?.id]);
+        return startNativeCoachPings(user);
+    }, [user?.id, user?.first_name]);
 
     // Keep the access token fresh in the background so polling never
     // expires mid-flight (a 5–15 min JWT + 8 pollers = a 401 burst).

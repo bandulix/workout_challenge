@@ -1,5 +1,5 @@
 import React, {Suspense, lazy, useEffect} from "react";
-import {BrowserRouter as Router, Routes, Route, useLocation} from "react-router-dom";
+import {BrowserRouter as Router, Routes, Route, useLocation, useNavigate} from "react-router-dom";
 import {rememberPath} from "./utils/lastPath";
 import {useDarkTheme} from "./utils/theme";
 import {useApkGate} from "./utils/apkUpdate";
@@ -48,6 +48,19 @@ function App() {
 }
 
 
+function DeepLinkListener() {
+    const navigate = useNavigate();
+    useEffect(() => {
+        function onOpen(e) {
+            const url = e.detail;
+            if (typeof url === "string" && url.startsWith("/")) navigate(url);
+        }
+        window.addEventListener("wc-open", onOpen);
+        return () => window.removeEventListener("wc-open", onOpen);
+    }, [navigate]);
+    return null;
+}
+
 function AppShell() {
     const {status, update} = useApkGate();
 
@@ -74,6 +87,7 @@ function AppShell() {
     return (
         <>
             <RememberPath/>
+            <DeepLinkListener/>
             <AppBackdrop/>
             <div className="relative z-10">
             <Routes>

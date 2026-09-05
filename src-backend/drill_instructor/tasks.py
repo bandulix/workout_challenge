@@ -27,6 +27,12 @@ logger = logging.getLogger(__name__)
 COACH_PING_COOLDOWN = 120
 
 
+def _feed_url(message):
+    """Open the challenge feed on the thread this ping is about (#15)."""
+    root_id = message.parent_id or message.pk
+    return f"/competition/{message.config.competition_id}?tab=feed&reply={root_id}"
+
+
 def _ping_user(user, *, title, body, url, icon, competition_id, log_label="push"):
     if send_push_to_user is None:
         return
@@ -269,7 +275,7 @@ def post_workout_comment(self, workout_id):
                 workout.user,
                 title=f"{competition.name} - {persona.name}",
                 body=body,
-                url="/coach",
+                url=_feed_url(message),
                 icon=_persona_icon(persona),
                 competition_id=competition.id,
                 log_label="push",
@@ -469,7 +475,7 @@ def post_reply_reaction(self, reply_id):
             reply.user,
             title=f"{config.competition.name} - {persona.name}",
             body=body,
-            url=f"/competition/{config.competition_id}",
+            url=_feed_url(message),
             icon=_persona_icon(persona),
             competition_id=config.competition_id,
             log_label="reaction push",
@@ -572,7 +578,7 @@ def post_photo_reaction(self, photo_id):
             photo.user,
             title=f"{config.competition.name} - {persona.name}",
             body=body,
-            url=f"/competition/{config.competition_id}",
+            url=_feed_url(photo),
             icon=_persona_icon(persona),
             competition_id=config.competition_id,
             log_label="photo reaction push",
@@ -897,7 +903,7 @@ def post_inactivity_nudges(self):
                     participant,
                     title=f"{competition.name} - {persona.name}",
                     body=body,
-                    url="/coach",
+                    url=_feed_url(message),
                     icon=_persona_icon(persona),
                     competition_id=competition.id,
                     log_label="nudge push",
@@ -1047,7 +1053,7 @@ def post_random_pushes(self):
                         participant,
                         title=f"{competition.name} - {persona.name}",
                         body=body,
-                        url="/coach",
+                        url=_feed_url(message),
                         icon=_persona_icon(persona),
                         competition_id=competition.id,
                         log_label="random push notification",
@@ -1086,7 +1092,7 @@ def _post_coach_line(config, kind, body, llm_error="", send_push=True, image_fie
                 participant,
                 title=f"{config.competition.name} - {persona.name}",
                 body=body,
-                url="/coach",
+                url=_feed_url(message),
                 icon=_persona_icon(persona),
                 competition_id=config.competition_id,
                 log_label=f"{kind} push",

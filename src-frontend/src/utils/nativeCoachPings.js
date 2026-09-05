@@ -17,7 +17,7 @@ import {onAppResume} from "./appLifecycle";
 //   - silent without notification permission or when logged out.
 const LAST_KEY = "wc_last_coach_msg_id";
 const POLL_MS = 90000;
-const NOTIFY_KINDS = new Set(["activity", "push", "nudge", "reaction", "order", "sigh", "dunce"]);
+const NOTIFY_KINDS = new Set(["activity", "push", "nudge", "reaction", "order", "sigh", "dunce", "handover", "echo", "claim", "war"]);
 // One Android notification slot so a overlapping poll replaces instead
 // of stacking two banners. Capacitor ids are int32.
 const NOTIFY_ID = 71001;
@@ -35,15 +35,28 @@ async function fetchLatestCoachMessage() {
     const data = await resp.json();
     const roots = Array.isArray(data) ? data : (data.results || []);
 
-    // Candidates: coach-authored roots (comment/push/nudge) plus coach
-    // reactions nested in threads (both share the same id sequence).
+    // Candidates: coach-authored roots plus coach reactions and (for
+    // native) participant replies on your post / @mentions.
     let latest = null;
     for (const root of roots) {
-        if (NOTIFY_KINDS.has(root.kind) && (!latest || root.id > latest.id)) latest = root;
+        if (NOTIFY_KINDS.has(root.kind) && (!latest || root.id > latest.id)) {
+            latest = {
+                ...root,
+                _url: feedUrl(root),
+            };
+        }
         for (const reply of root.replies || []) {
-            if (reply.is_coach && (!latest || reply.id > latest.id)) {
-                latest = {...reply, persona_name: root.persona_name, competition_name: root.competition_name};
-            }
+            const merged = {
+                ...reply,
+                persona_name: root.persona_name,
+                competition_name: root.competition_name,
+                competition_id: root.competition_id,
+                parent_id: root.id,
+                workout_user_id: root.workout_user_id,
+                _url: feedUrl({...reply, competition_id: root.competition_id, parent_id: root.id}),
+            };
+            if (reply.is_coach && (!latest || reply.id > latest.id)) latest = merged;
+            if (!reply.is_coach && (!latest || reply.id > latest.id)) latest = {...merged, _social: true};
         }
     }
     return latest;
@@ -56,12 +69,32 @@ async function ensurePermission() {
     return requested.display === "granted";
 }
 
-export function startNativeCoachPings() {
+function feedUrl(message) {
+    const rootId = message.parent_id || message.id;
+    const cid = message.competition_id;
+    if (!cid) return "/coach";
+    return `/competition/${cid}?tab=feed&reply=${rootId}`;
+}
+
+function mentionsName(body, firstName) {
+    if (!body || !firstName) return false;
+    const needle = firstName.trim().toLowerCase();
+    return new RegExp(`@${needle}\\b`, "i").test(body);
+}
+
+export function startNativeCoachPings(user) {
     if (!isNativeApp()) return () => {};
 
     let stopped = false;
     let timer = null;
     let inflight = false;
+    let clickHandle = null;
+    LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
+        const url = action?.notification?.extra?.url;
+        if (url && typeof url === "string" && url.startsWith("/")) {
+            window.dispatchEvent(new CustomEvent("wc-open", {detail: url}));
+        }
+    }).then((h) => { clickHandle = h; }).catch(() => {});
 
     async function tick() {
         if (stopped || inflight) return;
@@ -77,15 +110,27 @@ export function startNativeCoachPings() {
                         localStorage.setItem(LAST_KEY, String(latest.id));
                     } else if (latest.id > lastSeen) {
                         localStorage.setItem(LAST_KEY, String(latest.id));
-                        await LocalNotifications.schedule({
-                            notifications: [{
-                                id: NOTIFY_ID,
-                                title: latest.persona_name
+                        const social = latest._social;
+                        const ownReply = user?.id && latest.author_id === user.id;
+                        const mine = user?.id && latest.workout_user_id === user.id;
+                        const tagged = mentionsName(latest.body, user?.first_name);
+                        if (social && (ownReply || (!mine && !tagged))) {
+                            // Someone else's reply that is not an @mention of you.
+                        } else {
+                            const title = social
+                                ? (tagged ? "You were mentioned" : "New comment on your post")
+                                : (latest.persona_name
                                     ? `${latest.persona_name}${latest.competition_name ? " · " + latest.competition_name : ""}`
-                                    : "Your coach",
-                                body: latest.body || "",
-                            }],
-                        });
+                                    : "Your coach");
+                            await LocalNotifications.schedule({
+                                notifications: [{
+                                    id: NOTIFY_ID,
+                                    title,
+                                    body: latest.body || "",
+                                    extra: {url: latest._url || "/coach"},
+                                }],
+                            });
+                        }
                     }
                 }
             }
@@ -111,5 +156,6 @@ export function startNativeCoachPings() {
         stopped = true;
         if (timer) clearTimeout(timer);
         stopResume();
+        clickHandle?.remove?.();
     };
 }

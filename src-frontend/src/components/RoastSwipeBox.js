@@ -95,7 +95,7 @@ function RoastCard({card, top, onVote}) {
                     </div>
                 </div>
                 <div className="px-4 py-3">
-                    <p className="text-sm leading-snug break-words dark:text-gray-100 line-clamp-2">{card.body}</p>
+                    <p className="text-sm leading-snug break-words dark:text-gray-100">{card.body}</p>
                     <p className="text-[11px] text-gray-400 mt-1">
                         {card.persona_name} roasting {card.athlete_name || "an athlete"} · {card.competition_name} · {timeAgo(card.posted_at)}
                     </p>

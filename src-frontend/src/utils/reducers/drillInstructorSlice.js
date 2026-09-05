@@ -50,6 +50,14 @@ export const drillInstructorApi = createApi({
             }),
             invalidatesTags: (result, error, id) => [{type: 'DrillPersona', id}, 'DrillPersona'],
         }),
+        transferPersona: builder.mutation({
+            query: ({id, user}) => ({
+                url: `drill-instructor/persona/${id}/transfer/`,
+                method: "POST",
+                body: {user},
+            }),
+            invalidatesTags: (result, error, {id}) => [{type: "DrillPersona", id}, "DrillPersona", "DrillConfig"],
+        }),
 
         // ---- Configs ----------------------------------------------------
         getDrillConfigs: builder.query({
@@ -331,6 +339,7 @@ export const {
     useAddPersonaMutation,
     useUpdatePersonaMutation,
     useDeletePersonaMutation,
+    useTransferPersonaMutation,
     useGetDrillConfigsQuery,
     useAddDrillConfigMutation,
     useUpdateDrillConfigMutation,

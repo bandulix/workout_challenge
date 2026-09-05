@@ -176,6 +176,49 @@ class PersonaAdminPermissionTests(TestCase):
         self.assertEqual(response.status_code, 400, response.content)
         self.assertIn("persona", response.json())
 
+    def test_shared_teammate_persona_can_be_assigned(self):
+        teammate = _user("teammate@example.com", "Tim")
+        cup = Competition.objects.create(
+            name="Shared Cup", start_date=timezone.now().date(),
+            end_date=(timezone.now() + datetime.timedelta(days=14)).date(),
+            owner=self.regular,
+        )
+        cup.user.add(self.regular, teammate)
+        voice = DrillInstructorPersona.objects.create(
+            name="Tim's Voice", system_prompt="Go.", created_by=teammate, is_shared=True,
+        )
+        self.client.force_authenticate(self.regular)
+        listed = self.client.get("/api/drill-instructor/persona/").json()
+        self.assertIn("Tim's Voice", {row["name"] for row in listed})
+        response = self.client.post(
+            "/api/drill-instructor/config/",
+            {"competition": cup.id, "persona": voice.id, "enabled": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+
+    def test_transfer_persona_to_teammate(self):
+        teammate = _user("take@example.com", "Tara")
+        cup = Competition.objects.create(
+            name="Hand-off Cup", start_date=timezone.now().date(),
+            end_date=(timezone.now() + datetime.timedelta(days=14)).date(),
+            owner=self.regular,
+        )
+        cup.user.add(self.regular, teammate)
+        own = DrillInstructorPersona.objects.create(
+            name="Uli's Mic", system_prompt="Bark.", created_by=self.regular,
+        )
+        self.client.force_authenticate(self.regular)
+        response = self.client.post(
+            f"/api/drill-instructor/persona/{own.id}/transfer/",
+            {"user": teammate.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        own.refresh_from_db()
+        self.assertEqual(own.created_by_id, teammate.id)
+        self.assertFalse(response.json()["mine"])
+
     def test_admin_can_create_update_and_delete(self):
         self.client.force_authenticate(self.admin)
 
@@ -1096,8 +1139,25 @@ class CoachThreadReplyTests(TestCase):
             post_reply_reaction(reply.id)
         push.assert_called_once()
         self.assertEqual(push.call_args[0][0], self.athlete)
-        self.assertIn(f"/competition/{self.competition.id}", push.call_args[1]["url"])
+        self.assertIn(f"/competition/{self.competition.id}?tab=feed&reply={self.root.id}", push.call_args[1]["url"])
 
+    def test_reply_notifies_post_owner_and_mentions(self):
+        workout = Workout(
+            user=self.athlete, sport_type="Run", start_datetime=timezone.now(),
+            duration=datetime.timedelta(minutes=30), distance=5, kcal=300, intensity_category=2,
+        )
+        workout.save(score=False)
+        root = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
+            workout=workout, body="Nice run, @Alex.",
+        )
+        with mock.patch("push_notifications.sender.send_push_to_user") as push:
+            response = self._reply(self.owner, body="Solid work @Alex", root=root)
+        self.assertEqual(response.status_code, 201, response.content)
+        notified = {call[0][0].id for call in push.call_args_list}
+        self.assertIn(self.athlete.id, notified)
+        self.assertNotIn(self.owner.id, notified)
+        self.assertIn(f"reply={root.id}", push.call_args[1]["url"])
 
 
 @override_settings(
