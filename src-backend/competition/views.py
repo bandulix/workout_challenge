@@ -1,1 +1,1 @@
-file:///tmp/patched_views.py
+@/tmp/assembled_views.py
