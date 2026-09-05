@@ -1,6 +1,7 @@
 import re
 
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import serializers
 
 from competition.scorer import ORDER_AWARD_NAME, PHOTO_AWARD_NAME, sport_factor
@@ -206,6 +207,23 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
         raise serializers.ValidationError(
             "You can only pick a built-in persona or one you created."
         )
+
+    def update(self, instance, validated_data):
+        # Manual coach pick must stamp handover the same way the weekly
+        # vote does, so the New-coach box appears for ≤2 days (#32).
+        new_persona = validated_data.get("persona")
+        old_persona = instance.persona
+        switched = (
+            new_persona is not None
+            and old_persona is not None
+            and old_persona.pk != new_persona.pk
+        )
+        instance = super().update(instance, validated_data)
+        if switched:
+            instance.previous_persona = old_persona
+            instance.persona_changed_at = timezone.now()
+            instance.save(update_fields=["previous_persona", "persona_changed_at", "updated_at"])
+        return instance
 
     def _capability_flags(self):
         """(vision, image_edit) for the photo/roast features.

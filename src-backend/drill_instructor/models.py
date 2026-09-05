@@ -126,9 +126,9 @@ class DrillInstructorConfig(models.Model):
     )
     dunce_since = models.DateTimeField(null=True, blank=True)
 
-    # Weekly group vote: the winner takes the megaphone each Monday.
-    # persona_changed_at is when the last automatic (or first) handover
-    # happened, so the challenge page can show a countdown for the term.
+    # Weekly group vote *or* a manual owner pick. persona_changed_at is
+    # when the sitting coach last changed, so the New-coach box can show
+    # for two days after either kind of handover.
     previous_persona = models.ForeignKey(
         DrillInstructorPersona,
         on_delete=models.SET_NULL,

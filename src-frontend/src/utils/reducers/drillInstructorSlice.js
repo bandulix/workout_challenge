@@ -72,7 +72,7 @@ export const drillInstructorApi = createApi({
                 method: 'POST',
                 body: newConfig,
             }),
-            invalidatesTags: ['DrillConfig'],
+            invalidatesTags: ['DrillConfig', 'DrillBallot'],
         }),
         updateDrillConfig: builder.mutation({
             query: ({id, ...patch}) => ({
@@ -80,14 +80,20 @@ export const drillInstructorApi = createApi({
                 method: 'PATCH',
                 body: patch,
             }),
-            invalidatesTags: (result, error, {id}) => [{type: 'DrillConfig', id}, 'DrillConfig'],
+            invalidatesTags: (result, error, {id}) => [
+                {type: 'DrillConfig', id}, 'DrillConfig',
+                {type: 'DrillBallot', id}, 'DrillBallot',
+            ],
         }),
         deleteDrillConfig: builder.mutation({
             query: (id) => ({
                 url: `drill-instructor/config/${id}/`,
                 method: 'DELETE',
             }),
-            invalidatesTags: (result, error, id) => [{type: 'DrillConfig', id}, 'DrillConfig'],
+            invalidatesTags: (result, error, id) => [
+                {type: 'DrillConfig', id}, 'DrillConfig',
+                {type: 'DrillBallot', id}, 'DrillBallot',
+            ],
         }),
 
         // ---- Messages ---------------------------------------------------

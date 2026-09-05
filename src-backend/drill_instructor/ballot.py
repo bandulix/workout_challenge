@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 SWITCH_HOUR = 7
 SWITCH_MINUTE = 15
+# New-coach info box: vote handover *or* a manual persona pick, then hide.
+HANDOVER_VISIBLE = datetime.timedelta(days=2)
 
 
 def next_persona_switch_at(now=None):
@@ -26,6 +28,22 @@ def next_persona_switch_at(now=None):
 def term_started_at(now=None):
     """Monday 07:15 that opened the current term (one week before next)."""
     return next_persona_switch_at(now) - datetime.timedelta(days=7)
+
+
+def handover_until(changed_at):
+    """When the New-coach box should hide, or None if it never showed."""
+    if not changed_at:
+        return None
+    return changed_at + HANDOVER_VISIBLE
+
+
+def is_handover_visible(changed_at, now=None):
+    """True for ≤2 days after persona_changed_at."""
+    until = handover_until(changed_at)
+    if until is None:
+        return False
+    now = now or timezone.now()
+    return until > now
 
 
 def eligible_personas(competition, incumbent_id=None):
@@ -87,9 +105,10 @@ def ballot_payload_for_request(config, request):
     candidates.sort(key=lambda c: (-c["votes"], c["persona"]["name"] or ""))
     next_at = next_persona_switch_at()
     changed_at = config.persona_changed_at
-    changed_this_term = bool(changed_at and timezone.localtime(changed_at) >= term_started_at())
+    changed_recently = is_handover_visible(changed_at)
+    until = handover_until(changed_at) if changed_recently else None
     previous = None
-    if config.previous_persona_id and changed_this_term:
+    if config.previous_persona_id and changed_recently:
         previous = DrillInstructorPersonaSerializer(
             config.previous_persona, context=serializer_ctx
         ).data
@@ -100,7 +119,10 @@ def ballot_payload_for_request(config, request):
         "my_vote": my_vote,
         "next_switch_at": next_at.isoformat(),
         "persona_changed_at": changed_at.isoformat() if changed_at else None,
-        "changed_this_term": changed_this_term,
+        "handover_until": until.isoformat() if until else None,
+        "changed_recently": changed_recently,
+        # Kept for older clients; same 2-day window as changed_recently.
+        "changed_this_term": changed_recently,
         "previous_persona": previous,
         "candidates": candidates,
         "vote_count": sum(counts.values()),

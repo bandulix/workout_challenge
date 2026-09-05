@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Home rank chips use a tiny summary** instead of the full season stats snapshot. Challenge Feed no longer polls the board payload. Latest workouts on Home show at most 40 rows.
 
 ### Fixed
+- **New coach box follows a manual coach change too**, and only stays up for two days after the switch (vote or picker), not the whole weekly term. (#32)
 - **Strava stamps `strava_last_synced_at` after every successful sync**, including the initial 43-day backfill. (#24)
 - **Feed Order ribbon uses the local calendar day** of the workout start, not the UTC date. (#25)
 - **Password change via the user API requires the current password** and blacklists outstanding refresh tokens. (#26)
