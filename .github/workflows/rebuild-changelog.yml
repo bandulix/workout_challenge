@@ -1,0 +1,38 @@
+name: rebuild-changelog
+on:
+  push:
+    branches: [docs/security-wave-notes]
+    paths:
+      - 'docs/changelog-parts/**'
+      - '.github/workflows/rebuild-changelog.yml'
+permissions:
+  contents: write
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/security-wave-notes
+          fetch-depth: 0
+      - name: Concatenate parts into CHANGELOG.md
+        run: |
+          python3 << 'PY'
+          from pathlib import Path
+          parts = sorted(Path('docs/changelog-parts').glob('*.md'))
+          if not parts:
+              raise SystemExit('no parts')
+          text = ''.join(p.read_text() for p in parts)
+          if '### Security' not in text.split('## [0.48.0]')[0]:
+              raise SystemExit('missing Unreleased Security')
+          Path('CHANGELOG.md').write_text(text)
+          print('wrote', len(text), 'from', len(parts), 'parts')
+          PY
+      - name: Commit CHANGELOG.md if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --cached --quiet && echo "No CHANGELOG change" && exit 0
+          git commit -m "docs: rebuild CHANGELOG.md from parts (security Unreleased)"
+          git push origin HEAD:docs/security-wave-notes
