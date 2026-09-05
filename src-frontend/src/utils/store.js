@@ -3,6 +3,7 @@ import {setupListeners} from '@reduxjs/toolkit/query';
 import {loadState, saveState} from './localStorage';
 import {onAppResume} from './appLifecycle';
 import {isNativeApp} from './platform';
+import {getAccessToken, hasAuthMarker} from './authTokens';
 import {workoutsApi} from './reducers/workoutsSlice';
 import {usersApi} from './reducers/usersSlice';
 import {competitionsApi} from "./reducers/competitionsSlice";
@@ -31,18 +32,13 @@ const appReducer = combineReducers({
     [pushApi.reducerPath]: pushApi.reducer,
 });
 
-// root reducer that handles RESET_STORE
 const rootReducer = (state, action) => {
     if (action.type === 'RESET_STORE') {
-        state = undefined; // wipes the whole redux state, including RTK Query caches
+        state = undefined;
     }
     return appReducer(state, action);
 };
 
-// Rehydrate fulfilled RTK Query entries so the APK paints last session's
-// Coach/Home immediately, then mount/focus/reconnect revalidate.
-// Only `fulfilled` rows with `data` are kept: a persisted `pending` entry
-// can never resolve (its promise is gone) and used to freeze the UI.
 function sanitizeApiSlice(slice) {
     if (!slice || typeof slice !== 'object') return undefined;
     const queries = {};
@@ -63,8 +59,6 @@ function sanitizeApiSlice(slice) {
         mutations: {},
         provided: slice.provided || {},
         subscriptions: {},
-        // Do not persist `config` (especially middlewareRegistered) -
-        // rehydrating it makes the middleware skip setup on the next boot.
     };
 }
 
@@ -83,8 +77,6 @@ function trimWorkouts(data) {
 function persistableState(state) {
     const persisted = {};
     for (const key of Object.keys(state)) {
-        // Feed/stats are the whole season - too big for localStorage and
-        // the coach feed does not wait on them.
         if (key === "feedApi" || key === "statsApi") continue;
         if (key.endsWith('Api')) {
             const clean = sanitizeApiSlice(state[key]);
@@ -135,17 +127,13 @@ const store = configureStore({
     preloadedState,
 });
 
-// Persisted-state writes are throttled: saveState serializes on EVERY
-// dispatched action - with several polling loops that's many full
-// JSON.stringify+setItem per minute on the main thread. 2s is plenty.
 let saveStateTimer = null;
 store.subscribe(() => {
     if (saveStateTimer !== null) return;
     saveStateTimer = setTimeout(() => {
         saveStateTimer = null;
-        // Logout clears the refresh token then RESET_STORE; a pending
-        // timer must not write the previous user's API cache back.
-        if (!localStorage.getItem('refresh_token')) return;
+        // Do not persist API caches after logout (no access / auth marker).
+        if (!getAccessToken() && !hasAuthMarker()) return;
         const full = persistableState(store.getState());
         if (!saveState(full)) {
             const slim = {...full};
@@ -158,13 +146,8 @@ store.subscribe(() => {
 
 setupListeners(store.dispatch);
 
-// Android WebView often skips visibilitychange / window focus, so RTK's
-// built-in refetchOnFocus never runs when the user comes back. Capacitor's
-// appStateChange is the native equivalent of "the app is in front again".
 if (isNativeApp()) {
     onAppResume(() => {
-        // `onFocus` is not a public RTK Query export. The action lives
-        // on each API slice (`__rtkq/focused`) and every slice listens.
         store.dispatch(usersApi.internalActions.onFocus());
     });
 }
