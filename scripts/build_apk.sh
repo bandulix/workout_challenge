@@ -11,11 +11,12 @@
 # Prerequisites (once per build machine):
 #   - JDK 21 (e.g. ~/jdk21) and Android SDK platform-36 (e.g. ~/Android/Sdk)
 #   - npm ci already run in src-frontend (Capacitor deps included)
-#   - optional: ~/.gradle/workout-signing.properties for release signing
-#     (without it the release APK falls back to the debug key)
+#   - required for release: ~/.gradle/workout-signing.properties
+#     (assembleRelease fails without a real release keystore - no
+#     silent debug-key fallback)
 #
 # Usage:
-#   scripts/build_apk.sh            # release APK (signed per above)
+#   scripts/build_apk.sh            # release APK (requires signing props)
 #   scripts/build_apk.sh --debug    # debug APK (faster, debug key)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -74,6 +75,13 @@ if [ "${1:-}" = "--debug" ]; then
     ./gradlew assembleDebug --no-daemon -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
     APK="app/build/outputs/apk/debug/app-debug.apk"
 else
+    SIGNING_PROPS="${HOME}/.gradle/workout-signing.properties"
+    if [ ! -f "$SIGNING_PROPS" ]; then
+        echo "ERROR: release signing required at $SIGNING_PROPS" >&2
+        echo "       (storeFile/storePassword/keyAlias/keyPassword)." >&2
+        echo "       Use --debug for a debug-signed APK, or configure release signing." >&2
+        exit 1
+    fi
     ./gradlew assembleRelease --no-daemon -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
     APK="app/build/outputs/apk/release/app-release.apk"
 fi
