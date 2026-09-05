@@ -1,1 +1,0 @@
-@/tmp/assembled_views.py
