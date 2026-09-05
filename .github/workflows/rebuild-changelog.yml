@@ -1,0 +1,11 @@
+name: rebuild-changelog
+# Permanently disabled on this branch — was overwriting CHANGELOG with incomplete parts.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "disabled permanently — do not re-enable without full parts 00-15"
