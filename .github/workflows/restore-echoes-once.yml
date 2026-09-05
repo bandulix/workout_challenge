@@ -1,0 +1,91 @@
+name: restore-echoes-once
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/cr-bugs-24-28-clean]
+    paths: ['.github/workflows/restore-echoes-once.yml']
+permissions:
+  contents: write
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/cr-bugs-24-28-clean
+      - name: Apply echoes live-cap patch
+        run: |
+          set -euo pipefail
+          cat > /tmp/echoes.patch << 'PATCH'
+--- a/src-backend/drill_instructor/echoes.py
++++ b/src-backend/drill_instructor/echoes.py
+@@ -302,20 +302,37 @@
+     except Exception as exc:  # noqa: BLE001
+         logger.info("Echo narrative fell back for workout %s: %s", workout.pk, exc)
+     try:
+-        echo = LegendEcho.objects.create(
+-            config=config,
+-            origin_user=workout.user,
+-            origin_workout=workout,
+-            holder=workout.user,
+-            holder_workout=workout,
+-            title=title[:80],
+-            narrative=(narrative or fallback)[:2000],
+-            power=power,
+-            metric=metric,
+-            metric_value=value,
+-            sport_type=echo_sport_family(workout.sport_type),
+-            status=LegendEcho.STATUS_UNDEFEATED,
+-        )
++        with transaction.atomic():
++            # Serialize mints per config so concurrent workers cannot
++            # push past MAX_LIVE_ECHOES (judge_echo alone is racy).
++            DrillInstructorConfig = apps.get_model("drill_instructor", "DrillInstructorConfig")
++            locked_config = DrillInstructorConfig.objects.select_for_update().get(pk=config.pk)
++            live_count = LegendEcho.objects.filter(
++                config_id=locked_config.pk,
++                status__in=("undefeated", "contested"),
++            ).count()
++            if live_count >= MAX_LIVE_ECHOES:
++                logger.info(
++                    "Echo mint skipped for workout %s: live cap %s reached under lock",
++                    workout.pk, MAX_LIVE_ECHOES,
++                )
++                return None
++            if LegendEcho.objects.filter(origin_workout=workout, config_id=locked_config.pk).exists():
++                return None
++            echo = LegendEcho.objects.create(
++                config=locked_config,
++                origin_user=workout.user,
++                origin_workout=workout,
++                holder=workout.user,
++                holder_workout=workout,
++                title=title[:80],
++                narrative=(narrative or fallback)[:2000],
++                power=power,
++                metric=metric,
++                metric_value=value,
++                sport_type=echo_sport_family(workout.sport_type),
++                status=LegendEcho.STATUS_UNDEFEATED,
++            )
+     except IntegrityError:
+         logger.info("Duplicate Echo mint suppressed for workout %s", workout.pk)
+         return None
+PATCH
+          git apply /tmp/echoes.patch
+          grep -n "live_count >= MAX_LIVE_ECHOES" src-backend/drill_instructor/echoes.py
+          grep -n "select_for_update" src-backend/drill_instructor/echoes.py | head
+      - name: Commit + remove workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/restore-echoes-once.yml
+          git add src-backend/drill_instructor/echoes.py
+          git add -u .github/workflows/restore-echoes-once.yml
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+          else
+            git commit -m "fix(drill_instructor): echo mint live-cap under select_for_update (#28)"
+            git push
+          fi
