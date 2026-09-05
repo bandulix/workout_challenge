@@ -13,68 +13,28 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: fix/cr-bugs-24-28-clean
-      - name: Apply echoes live-cap patch
+      - name: Apply echoes live-cap via python replace
         run: |
           set -euo pipefail
-          cat > /tmp/echoes.patch << 'PATCH'
---- a/src-backend/drill_instructor/echoes.py
-+++ b/src-backend/drill_instructor/echoes.py
-@@ -302,20 +302,37 @@
-     except Exception as exc:  # noqa: BLE001
-         logger.info("Echo narrative fell back for workout %s: %s", workout.pk, exc)
-     try:
--        echo = LegendEcho.objects.create(
--            config=config,
--            origin_user=workout.user,
--            origin_workout=workout,
--            holder=workout.user,
--            holder_workout=workout,
--            title=title[:80],
--            narrative=(narrative or fallback)[:2000],
--            power=power,
--            metric=metric,
--            metric_value=value,
--            sport_type=echo_sport_family(workout.sport_type),
--            status=LegendEcho.STATUS_UNDEFEATED,
--        )
-+        with transaction.atomic():
-+            # Serialize mints per config so concurrent workers cannot
-+            # push past MAX_LIVE_ECHOES (judge_echo alone is racy).
-+            DrillInstructorConfig = apps.get_model("drill_instructor", "DrillInstructorConfig")
-+            locked_config = DrillInstructorConfig.objects.select_for_update().get(pk=config.pk)
-+            live_count = LegendEcho.objects.filter(
-+                config_id=locked_config.pk,
-+                status__in=("undefeated", "contested"),
-+            ).count()
-+            if live_count >= MAX_LIVE_ECHOES:
-+                logger.info(
-+                    "Echo mint skipped for workout %s: live cap %s reached under lock",
-+                    workout.pk, MAX_LIVE_ECHOES,
-+                )
-+                return None
-+            if LegendEcho.objects.filter(origin_workout=workout, config_id=locked_config.pk).exists():
-+                return None
-+            echo = LegendEcho.objects.create(
-+                config=locked_config,
-+                origin_user=workout.user,
-+                origin_workout=workout,
-+                holder=workout.user,
-+                holder_workout=workout,
-+                title=title[:80],
-+                narrative=(narrative or fallback)[:2000],
-+                power=power,
-+                metric=metric,
-+                metric_value=value,
-+                sport_type=echo_sport_family(workout.sport_type),
-+                status=LegendEcho.STATUS_UNDEFEATED,
-+            )
-     except IntegrityError:
-         logger.info("Duplicate Echo mint suppressed for workout %s", workout.pk)
-         return None
-PATCH
-          git apply /tmp/echoes.patch
-          grep -n "live_count >= MAX_LIVE_ECHOES" src-backend/drill_instructor/echoes.py
-          grep -n "select_for_update" src-backend/drill_instructor/echoes.py | head
+          python3 <<'PY'
+          from pathlib import Path
+          import base64
+          p = Path("src-backend/drill_instructor/echoes.py")
+          t = p.read_text()
+          if "live_count >= MAX_LIVE_ECHOES" in t and "locked_config" in t:
+              print("already patched")
+          else:
+              old = base64.b64decode("ICAgICAgICBlY2hvID0gTGVnZW5kRWNoby5vYmplY3RzLmNyZWF0ZSgKICAgICAgICAgICAgY29uZmlnPWNvbmZpZywKICAgICAgICAgICAgb3JpZ2luX3VzZXI9d29ya291dC51c2VyLAogICAgICAgICAgICBvcmlnaW5fd29ya291dD13b3Jrb3V0LAogICAgICAgICAgICBob2xkZXI9d29ya291dC51c2VyLAogICAgICAgICAgICBob2xkZXJfd29ya291dD13b3Jrb3V0LAogICAgICAgICAgICB0aXRsZT10aXRsZVs6ODBdLAogICAgICAgICAgICBuYXJyYXRpdmU9KG5hcnJhdGl2ZSBvciBmYWxsYmFjaylbOjIwMDBdLAogICAgICAgICAgICBwb3dlcj1wb3dlciwKICAgICAgICAgICAgbWV0cmljPW1ldHJpYywKICAgICAgICAgICAgbWV0cmljX3ZhbHVlPXZhbHVlLAogICAgICAgICAgICBzcG9ydF90eXBlPWVjaG9fc3BvcnRfZmFtaWx5KHdvcmtvdXQuc3BvcnRfdHlwZSksCiAgICAgICAgICAgIHN0YXR1cz1MZWdlbmRFY2hvLlNUQVRVU19VTkRFRkVBVEVELAogICAgICAgICkK").decode()
+              new = base64.b64decode("ICAgICAgICB3aXRoIHRyYW5zYWN0aW9uLmF0b21pYygpOgogICAgICAgICAgICAjIFNlcmlhbGl6ZSBtaW50cyBwZXIgY29uZmlnIHNvIGNvbmN1cnJlbnQgd29ya2VycyBjYW5ub3QKICAgICAgICAgICAgIyBwdXNoIHBhc3QgTUFYX0xJVkVfRUNIT0VTIChqdWRnZV9lY2hvIGFsb25lIGlzIHJhY3kpLgogICAgICAgICAgICBEcmlsbEluc3RydWN0b3JDb25maWcgPSBhcHBzLmdldF9tb2RlbCgiZHJpbGxfaW5zdHJ1Y3RvciIsICJEcmlsbEluc3RydWN0b3JDb25maWciKQogICAgICAgICAgICBsb2NrZWRfY29uZmlnID0gRHJpbGxJbnN0cnVjdG9yQ29uZmlnLm9iamVjdHMuc2VsZWN0X2Zvcl91cGRhdGUoKS5nZXQocGs9Y29uZmlnLnBrKQogICAgICAgICAgICBsaXZlX2NvdW50ID0gTGVnZW5kRWNoby5vYmplY3RzLmZpbHRlcigKICAgICAgICAgICAgICAgIGNvbmZpZ19pZD1sb2NrZWRfY29uZmlnLnBrLAogICAgICAgICAgICAgICAgc3RhdHVzX19pbj0oInVuZGVmZWF0ZWQiLCAiY29udGVzdGVkIiksCiAgICAgICAgICAgICkuY291bnQoKQogICAgICAgICAgICBpZiBsaXZlX2NvdW50ID49IE1BWF9MSVZFX0VDSE9FUzoKICAgICAgICAgICAgICAgIGxvZ2dlci5pbmZvKAogICAgICAgICAgICAgICAgICAgICJFY2hvIG1pbnQgc2tpcHBlZCBmb3Igd29ya291dCAlczogbGl2ZSBjYXAgJXMgcmVhY2hlZCB1bmRlciBsb2NrIiwKICAgICAgICAgICAgICAgICAgICB3b3Jrb3V0LnBrLCBNQVhfTElWRV9FQ0hPRVMsCiAgICAgICAgICAgICAgICApCiAgICAgICAgICAgICAgICByZXR1cm4gTm9uZQogICAgICAgICAgICBpZiBMZWdlbmRFY2hvLm9iamVjdHMuZmlsdGVyKG9yaWdpbl93b3Jrb3V0PXdvcmtvdXQsIGNvbmZpZ19pZD1sb2NrZWRfY29uZmlnLnBrKS5leGlzdHMoKToKICAgICAgICAgICAgICAgIHJldHVybiBOb25lCiAgICAgICAgICAgIGVjaG8gPSBMZWdlbmRFY2hvLm9iamVjdHMuY3JlYXRlKAogICAgICAgICAgICAgICAgY29uZmlnPWxvY2tlZF9jb25maWcsCiAgICAgICAgICAgICAgICBvcmlnaW5fdXNlcj13b3Jrb3V0LnVzZXIsCiAgICAgICAgICAgICAgICBvcmlnaW5fd29ya291dD13b3Jrb3V0LAogICAgICAgICAgICAgICAgaG9sZGVyPXdvcmtvdXQudXNlciwKICAgICAgICAgICAgICAgIGhvbGRlcl93b3Jrb3V0PXdvcmtvdXQsCiAgICAgICAgICAgICAgICB0aXRsZT10aXRsZVs6ODBdLAogICAgICAgICAgICAgICAgbmFycmF0aXZlPShuYXJyYXRpdmUgb3IgZmFsbGJhY2spWzoyMDAwXSwKICAgICAgICAgICAgICAgIHBvd2VyPXBvd2VyLAogICAgICAgICAgICAgICAgbWV0cmljPW1ldHJpYywKICAgICAgICAgICAgICAgIG1ldHJpY192YWx1ZT12YWx1ZSwKICAgICAgICAgICAgICAgIHNwb3J0X3R5cGU9ZWNob19zcG9ydF9mYW1pbHkod29ya291dC5zcG9ydF90eXBlKSwKICAgICAgICAgICAgICAgIHN0YXR1cz1MZWdlbmRFY2hvLlNUQVRVU19VTkRFRkVBVEVELAogICAgICAgICAgICApCg==").decode()
+              if old not in t:
+                  raise SystemExit("old block missing")
+              p.write_text(t.replace(old, new, 1))
+              print("patched")
+          text = p.read_text()
+          assert "live_count >= MAX_LIVE_ECHOES" in text
+          assert "locked_config" in text
+          print("ok", len(text))
+          PY
       - name: Commit + remove workflow
         run: |
           set -euo pipefail
