@@ -1,13 +1,13 @@
 import React, {useEffect, useState} from "react";
-import {Camera, Download, PartyPopper, RefreshCw, Sparkles} from "lucide-react";
+import {Download, PartyPopper, RefreshCw, Shield, Server} from "lucide-react";
 import {Modal} from "../forms/basicComponents";
 import {apiUrl, isNativeApp} from "../utils/platform";
 import {apkDownloadHref} from "../utils/apkUpdate";
 
 const HIGHLIGHTS = [
-    {icon: Camera, title: "Photos on your workout", body: "Reply to your own session from the gallery — the coach remixes it."},
-    {icon: RefreshCw, title: "Goals rescore the field", body: "Change a target and every workout in the challenge is recalculated."},
-    {icon: Sparkles, title: "Home matches the Coach", body: "Cards, ink, volt — the rest of the app caught up."},
+    {icon: Shield, title: "Safer web sign-in", body: "Sign-in on the web is safer: refresh stays in an httpOnly cookie (you may need to log in once after this update)."},
+    {icon: RefreshCw, title: "No offline API cache", body: "API responses are no longer kept in the offline cache."},
+    {icon: Server, title: "Operators", body: "Secrets at rest are encrypted; deploys default to loopback + distinct Flower/Health passwords. See the release notes."},
 ];
 
 // "What's new" release popup: after every release, the user gets one
@@ -83,7 +83,7 @@ function WhatsNew() {
                     <PartyPopper className="h-5 w-5 text-volt-500"/>
                 </span>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                    A new release just landed. Here's what you'll notice.
+                    Web login got harder to steal from XSS or a stuck service-worker cache — you might need to sign in one more time after the update. Phones on the Android app keep working as usual.
                 </p>
             </div>
 
