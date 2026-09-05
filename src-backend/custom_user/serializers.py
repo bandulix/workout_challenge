@@ -51,6 +51,10 @@ class CustomUserSerializer(serializers.ModelSerializer):
     # of the link IS the invitation. Write-only; validated in validate().
     join_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
+    # Required when changing password via PATCH/PUT on the user resource.
+    # Prefer POST /api/password-change/ for password updates.
+    current_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
     MAX_PROFILE_PICTURE_BYTES = 5 * 1024 * 1024  # 5 MB
 
     # Read path: the authenticated endpoint URL (see user_picture_url).
@@ -119,7 +123,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'invite_token', 'join_code', 'profile_picture', 'profile_picture_upload', 'dog_tags', 'echoes_held', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'health_user_id', 'health_last_synced_at', 'health_configured', 'health_public_url', 'activity_source', 'activity_source_effective', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
+        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'current_password', 'invite_token', 'join_code', 'profile_picture', 'profile_picture_upload', 'dog_tags', 'echoes_held', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'health_user_id', 'health_last_synced_at', 'health_configured', 'health_public_url', 'activity_source', 'activity_source_effective', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
         # my_competitions / my_teams are read-only: joining happens
         # exclusively through the dedicated join views (join code +
         # participant checks). Writable M2M fields would be a
@@ -198,7 +202,15 @@ class CustomUserSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         # DRF's default update() would setattr('password', <plaintext>)
         # and store the raw password in the DB. Hash it properly.
+        # Prefer POST /api/password-change/; if password arrives here,
+        # current_password is mandatory and refresh tokens are blacklisted.
         password = validated_data.pop('password', None)
+        current_password = validated_data.pop('current_password', None)
+        if password:
+            if not current_password or not instance.check_password(current_password):
+                raise serializers.ValidationError(
+                    {"current_password": "Current password is required and must be correct."}
+                )
         instance = super().update(instance, validated_data)
         if password:
             from django.contrib.auth.password_validation import validate_password
@@ -209,6 +221,9 @@ class CustomUserSerializer(serializers.ModelSerializer):
             instance.is_verified = False
         if password or 'email' in validated_data:
             instance.save()
+        if password:
+            from .views import _blacklist_user_tokens
+            _blacklist_user_tokens(instance)
         return instance
 
     # Fields only the user themselves may see - hidden when serializing
@@ -305,6 +320,30 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         # outstanding refresh token so stolen sessions end here.
         from .views import _blacklist_user_tokens
         _blacklist_user_tokens(self.user)
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    """Dedicated authenticated password change (preferred over PATCH user)."""
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        user = self.context['request'].user
+        if not user.check_password(attrs['current_password']):
+            raise serializers.ValidationError(
+                {"current_password": "Current password is incorrect."}
+            )
+        from django.contrib.auth.password_validation import validate_password
+        validate_password(attrs['new_password'], user=user)
+        return attrs
+
+    def save(self):
+        user = self.context['request'].user
+        user.set_password(self.validated_data['new_password'])
+        user.save()
+        from .views import _blacklist_user_tokens
+        _blacklist_user_tokens(user)
+        return user
 
 
 class EmailVerifyConfirmSerializer(serializers.Serializer):
