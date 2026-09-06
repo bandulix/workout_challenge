@@ -177,7 +177,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                 )}
             </SettingsGroup>
 
-            <SettingsGroup title="Starting coach" hint="Built-ins plus any roaster you created from Settings.">
+            <SettingsGroup title="Starting coach" hint="Built-ins, coaches you made, and any a teammate released for others to use.">
                 {fieldErrors.persona && (
                     <p className="text-xs text-red-500">Persona {String(fieldErrors.persona)}</p>
                 )}
@@ -200,6 +200,11 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                                     </p>
                                     {p.mine && (
                                         <p className="text-[10px] font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 mt-1">Yours</p>
+                                    )}
+                                    {!p.mine && p.is_shared && (
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mt-1">
+                                            From {p.created_by_name || "a teammate"}
+                                        </p>
                                     )}
                                 </div>
                             </button>

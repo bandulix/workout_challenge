@@ -825,12 +825,12 @@ export function CoachCorner({competition, isOwner}) {
     const [searchParams] = useSearchParams();
     const replyTargetId = parseInt(searchParams.get("reply") || "", 10) || null;
     const cornerRef = React.useRef(null);
-    useEffect(() => {
-        if (replyTargetId && config && cornerRef.current) {
-            cornerRef.current.scrollIntoView({behavior: "smooth", block: "start"});
-        }
-    }, [replyTargetId, config]);
     const loaded = messageResults(page);
+    useEffect(() => {
+        if (!replyTargetId || !config) return;
+        const el = document.getElementById(`post-${replyTargetId}`) || cornerRef.current;
+        el?.scrollIntoView({behavior: "smooth", block: "start"});
+    }, [replyTargetId, config, loaded.length]);
     useEffect(() => {
         if (!replyTargetId || !page) return;
         if (loaded.some((m) => m.id === replyTargetId)) return;
@@ -882,7 +882,7 @@ export function CoachCorner({competition, isOwner}) {
         }
         if (m.kind === "activity") {
             return (
-                <li key={m.id} className="min-w-0">
+                <li key={m.id} id={`post-${m.id}`} className="min-w-0">
                     <ActivityCoachPost message={m} persona={threadPersona} canReply={canReply}
                                        defaultOpen={open}
                                        competitionId={competition.id}
@@ -892,7 +892,7 @@ export function CoachCorner({competition, isOwner}) {
             );
         }
         return (
-            <li key={m.id} className="min-w-0">
+            <li key={m.id} id={`post-${m.id}`} className="min-w-0">
                 <AnnouncementPost message={m} persona={threadPersona} canReply={canReply}
                                   defaultOpen={open}/>
             </li>

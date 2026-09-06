@@ -1,8 +1,9 @@
-import React, {useState} from "react";
-import {Megaphone, ScrollText, Trophy} from "lucide-react";
+import React, {useEffect, useRef, useState} from "react";
+import {ChevronLeft, ChevronRight, Megaphone, ScrollText, Share2, Trophy} from "lucide-react";
 import {useProtectedImage} from "../utils/protectedMedia";
-import {FullImageSheet, PaneHead, paneCardClass} from "./uiBits";
+import {PaneHead, paneCardClass} from "./uiBits";
 import {OverlaySheet} from "../forms/basicComponents";
+import {sharePostCard} from "../utils/shareCard";
 
 const HALL_PREVIEW = 3;
 
@@ -227,12 +228,73 @@ export function OrderCard({order}) {
     );
 }
 
+function RoastGallery({cards, index, onClose, onIndex}) {
+    const card = cards[index];
+    const {src} = useProtectedImage(card?.image);
+    const startX = useRef(null);
+
+    useEffect(() => {
+        function onKey(e) {
+            if (e.key === "ArrowLeft") onIndex(Math.max(0, index - 1));
+            if (e.key === "ArrowRight") onIndex(Math.min(cards.length - 1, index + 1));
+            if (e.key === "Escape") onClose();
+        }
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [index, cards.length, onClose, onIndex]);
+
+    if (!card) return null;
+    const caption = card.body || `${card.persona_name || "Coach"} roasting ${card.athlete_name || "an athlete"}`;
+
+    function onPointerDown(e) { startX.current = e.clientX; }
+    function onPointerUp(e) {
+        if (startX.current == null) return;
+        const dx = e.clientX - startX.current;
+        startX.current = null;
+        if (dx > 60) onIndex(Math.max(0, index - 1));
+        if (dx < -60) onIndex(Math.min(cards.length - 1, index + 1));
+    }
+
+    return (
+        <OverlaySheet title={card.athlete_name || "Roast"} onClose={onClose} zClass="z-[80]">
+            <div className="relative select-none" onPointerDown={onPointerDown} onPointerUp={onPointerUp}>
+                <img src={src} alt="" className="mx-auto max-h-[55vh] w-full rounded-2xl object-contain"/>
+                <p className="mt-3 text-sm leading-relaxed break-words text-gray-800 dark:text-gray-200">{caption}</p>
+                <p className="mt-1 text-[11px] text-gray-400">
+                    {[card.persona_name, card.competition_name, `${card.hot_votes || 0} hot`].filter(Boolean).join(" · ")}
+                </p>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                    <button type="button" disabled={index <= 0} onClick={() => onIndex(index - 1)}
+                            aria-label="Previous roast"
+                            className="min-h-[44px] min-w-[44px] rounded-full btn-glass flex items-center justify-center disabled:opacity-30">
+                        <ChevronLeft className="h-5 w-5"/>
+                    </button>
+                    <button type="button" onClick={() => sharePostCard({
+                        title: card.athlete_name || "Roast",
+                        text: caption,
+                        imageUrl: card.image,
+                    })}
+                            className="inline-flex items-center gap-1.5 rounded-full btn-glass px-3 py-2 text-[11px] font-bold uppercase tracking-wide">
+                        <Share2 className="h-3.5 w-3.5"/> Share
+                    </button>
+                    <button type="button" disabled={index >= cards.length - 1} onClick={() => onIndex(index + 1)}
+                            aria-label="Next roast"
+                            className="min-h-[44px] min-w-[44px] rounded-full btn-glass flex items-center justify-center disabled:opacity-30">
+                        <ChevronRight className="h-5 w-5"/>
+                    </button>
+                </div>
+                <p className="mt-2 text-center text-[11px] text-gray-500">{index + 1} / {cards.length} · swipe</p>
+            </div>
+        </OverlaySheet>
+    );
+}
+
 function HallFrame({card, place, onOpen, compact = false}) {
     const {src} = useProtectedImage(card.image, "card");
     const hot = card.hot_votes || 0;
     return (
         <article className="min-w-0 rounded-3xl glass-card overflow-hidden text-ink-950 dark:text-white">
-            <button type="button" onClick={() => src && onOpen(card.image)}
+            <button type="button" onClick={() => src && onOpen(place - 1)}
                     className="block w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
                 <div className="relative">
                     {src ? (
@@ -259,7 +321,7 @@ function HallFrame({card, place, onOpen, compact = false}) {
 }
 
 export function HallOfRoasts({cards}) {
-    const [fullSrc, setFullSrc] = useState(null);
+    const [openIndex, setOpenIndex] = useState(null);
     const [showAll, setShowAll] = useState(false);
     const list = cards || [];
     const preview = list.slice(0, HALL_PREVIEW);
@@ -283,7 +345,7 @@ export function HallOfRoasts({cards}) {
                       hint={list.length > HALL_PREVIEW ? `Top ${HALL_PREVIEW} of ${list.length}` : "Hottest remixed photos"}/>
             <div className="grid grid-cols-3 gap-3">
                 {preview.map((c, i) => (
-                    <HallFrame key={c.id} card={c} place={i + 1} onOpen={setFullSrc}/>
+                    <HallFrame key={c.id} card={c} place={i + 1} onOpen={setOpenIndex}/>
                 ))}
             </div>
             {older > 0 && (
@@ -296,13 +358,14 @@ export function HallOfRoasts({cards}) {
                 <OverlaySheet title="Hall of roasts" onClose={() => setShowAll(false)} zClass="z-[70]">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {list.map((c, i) => (
-                            <HallFrame key={c.id} card={c} place={i + 1} onOpen={setFullSrc} compact/>
+                            <HallFrame key={c.id} card={c} place={i + 1} onOpen={setOpenIndex} compact/>
                         ))}
                     </div>
                 </OverlaySheet>
             )}
-            {fullSrc && (
-                <FullImageSheet url={fullSrc} title="Roast" onClose={() => setFullSrc(null)} zClass="z-[80]"/>
+            {openIndex != null && list[openIndex] && (
+                <RoastGallery cards={list} index={openIndex} onIndex={setOpenIndex}
+                              onClose={() => setOpenIndex(null)}/>
             )}
         </div>
     );

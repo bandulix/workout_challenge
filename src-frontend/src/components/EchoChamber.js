@@ -16,6 +16,7 @@ import {
 } from "../utils/reducers/drillInstructorSlice";
 import usePollingInterval from "../utils/usePollingInterval";
 import {confirmAction, notice} from "../utils/dialogs";
+import {sharePostCard} from "../utils/shareCard";
 
 function formatCountdown(iso, now) {
     if (!iso) return "";
@@ -144,18 +145,11 @@ function EchoArt({url, title, canUpload, echoId}) {
 }
 
 async function shareEcho(echo) {
-    const text = `${echo.title} · Power ${echo.power}\n${echo.narrative}`;
-    try {
-        if (navigator.share) {
-            await navigator.share({title: echo.title, text});
-            return;
-        }
-        await navigator.clipboard.writeText(text);
-        notice("Copied the Echo to your clipboard.");
-    } catch (err) {
-        if (err && err.name === "AbortError") return;
-        notice("Could not share this Echo.");
-    }
+    await sharePostCard({
+        title: `${echo.title} · Power ${echo.power}`,
+        text: echo.narrative,
+        imageUrl: echo.image,
+    });
 }
 
 function EchoCard({echo, userId, onChallenge, onDelete, busy, now}) {

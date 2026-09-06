@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Share a picture, not just text.** Echo and roast share builds a card with the remixed image and caption (or saves the JPEG if the phone cannot attach files). (#10)
+- **Swipe through Hall of Roasts.** Open a roast and swipe (or use the arrows) to the next one; captions are no longer cut off. (#11)
+- **Comment and @mention pings.** A reply on your post, or a unique @FirstName mention, sends a push that opens that thread. (#12)
+- **Push tap opens the post.** Coach pings deep-link to the challenge feed card instead of Home. (#15)
+- **Release or hand off a custom coach.** Teammates can pick a released coach for their own challenges, or you can transfer ownership. (#16)
 - **Outdated Android APKs only show the download.** If the installed build is older than the APK the server is publishing (`/download/apk-version.json`), the app does not load — just *Download update* (install over the top keeps login). Applies from this APK onward; earlier builds still have the dismissible Home banner until they update once.
 
 ### Security

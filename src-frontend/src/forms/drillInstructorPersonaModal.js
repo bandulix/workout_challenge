@@ -4,9 +4,10 @@ import {
     useAddPersonaMutation,
     useDeletePersonaMutation,
     useGetPersonasQuery,
+    useTransferPersonaMutation,
     useUpdatePersonaMutation,
 } from "../utils/reducers/drillInstructorSlice";
-import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
+import {useGetUserByIdQuery, useGetUsersQuery} from "../utils/reducers/usersSlice";
 import {
     AddButton,
     DeleteButton,
@@ -48,6 +49,10 @@ export function PersonaEditModal({persona, setModalState}) {
 
     const [addPersona, {isLoading: addLoading, error: addError, isSuccess: addSuccess}] = useAddPersonaMutation();
     const [updatePersona, {isLoading: updateLoading, error: updateError, isSuccess: updateSuccess}] = useUpdatePersonaMutation();
+    const [transferPersona, {isLoading: transferLoading}] = useTransferPersonaMutation();
+    const {data: me} = useGetUserByIdQuery("me");
+    const {data: users} = useGetUsersQuery();
+    const [handOffTo, setHandOffTo] = useState("");
 
     useEffect(() => {
         if (persona) {
@@ -58,6 +63,7 @@ export function PersonaEditModal({persona, setModalState}) {
                 avatar: persona.avatar || "megaphone",
                 theme_color: persona.theme_color || PERSONA_COLORS[0],
                 system_prompt: persona.system_prompt || "",
+                is_shared: Boolean(persona.is_shared),
             });
             setPicturePreview(persona.profile_picture || null);
         }
@@ -224,6 +230,48 @@ export function PersonaEditModal({persona, setModalState}) {
                         This briefing is the coach's voice. Only you (and admins) can read or edit it.
                     </p>
                 </div>
+                <div className="px-4 w-full">
+                    <label className="flex items-start gap-3 rounded-2xl glass-card p-3 cursor-pointer">
+                        <input type="checkbox" className="mt-1" checked={Boolean(values.is_shared)}
+                               onChange={(e) => setValues({...values, is_shared: e.target.checked})}/>
+                        <span>
+                            <span className="block text-sm font-bold">Let teammates pick this coach</span>
+                            <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                People you share a challenge with can assign this coach to groups they own.
+                            </span>
+                        </span>
+                    </label>
+                </div>
+                {!isNew && (
+                    <div className="px-4 w-full">
+                        <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2">
+                            Hand this coach to a teammate
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                            <select className={inputClass + " flex-1 min-w-[12rem]"} value={handOffTo}
+                                    onChange={(e) => setHandOffTo(e.target.value)}>
+                                <option value="">Choose someone…</option>
+                                {(users || []).filter((u) => u.id !== me?.id).map((u) => (
+                                    <option key={u.id} value={u.id}>{u.first_name || u.username || u.email}</option>
+                                ))}
+                            </select>
+                            <button type="button" disabled={!handOffTo || transferLoading}
+                                    onClick={async () => {
+                                        const ok = await confirmAction("Hand this coach to them? You will no longer be able to edit it.");
+                                        if (!ok) return;
+                                        try {
+                                            await transferPersona({id: persona.id, user: Number(handOffTo)}).unwrap();
+                                            setModalState(false);
+                                        } catch (err) {
+                                            setFormError(JSON.stringify(err?.data || err?.message));
+                                        }
+                                    }}
+                                    className="min-h-[44px] px-4 rounded-full btn-glass text-sm font-bold uppercase tracking-wide disabled:opacity-40">
+                                Transfer
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
             <div className="text-center text-red-500 text-xs italic">{formError}</div>
             <div className="relative flex justify-end items-center">
@@ -258,7 +306,7 @@ export default function DrillInstructorPersonaModal({setModalState}) {
             <div className="text-sm text-gray-600 dark:text-gray-400 px-4 pb-2">
                 {isStaff
                     ? "You can add, edit or delete every roaster - built-ins and ones people made. Anyone else can only change the roasters they created."
-                    : "Create a coach in your voice. You can edit or delete only the ones you made. Built-ins are the shared lineup."}
+                    : "Create a coach in your voice. Release it so teammates can pick it in their challenges, or hand it to someone. Built-ins are the shared lineup."}
             </div>
             <div className="grid gap-2 sm:grid-cols-2 px-2">
                 {visible.length === 0 ? (
