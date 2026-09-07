@@ -9,6 +9,10 @@ import tempfile
 
 from .settings import *  # noqa: F403
 
+DEBUG = True
+REGISTRATION_TOKEN = ""
+APP_VERSION = "dev"
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",

@@ -51,12 +51,32 @@ function App() {
 function DeepLinkListener() {
     const navigate = useNavigate();
     useEffect(() => {
-        function onOpen(e) {
-            const url = e.detail;
+        function go(url) {
             if (typeof url === "string" && url.startsWith("/")) navigate(url);
         }
+        function onOpen(e) {
+            go(e.detail);
+        }
+        function onMessage(e) {
+            const data = e.data;
+            if (data && data.type === "wc-open") go(data.url);
+        }
         window.addEventListener("wc-open", onOpen);
-        return () => window.removeEventListener("wc-open", onOpen);
+        navigator.serviceWorker?.addEventListener?.("message", onMessage);
+        let clickHandle = null;
+        import("./utils/platform").then(({isNativeApp}) => {
+            if (!isNativeApp()) return;
+            import("@capacitor/local-notifications").then(({LocalNotifications}) => {
+                LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
+                    go(action?.notification?.extra?.url);
+                }).then((h) => { clickHandle = h; }).catch(() => {});
+            }).catch(() => {});
+        }).catch(() => {});
+        return () => {
+            window.removeEventListener("wc-open", onOpen);
+            navigator.serviceWorker?.removeEventListener?.("message", onMessage);
+            try { clickHandle && clickHandle.remove && clickHandle.remove(); } catch (err) { /* ignore */ }
+        };
     }, [navigate]);
     return null;
 }
@@ -70,6 +90,7 @@ function AppShell() {
     if (status === "checking") {
         return (
             <>
+                <DeepLinkListener/>
                 <AppBackdrop forceCinematic/>
                 <ForceUpdateChecking/>
             </>
@@ -78,6 +99,7 @@ function AppShell() {
     if (status === "outdated") {
         return (
             <>
+                <DeepLinkListener/>
                 <AppBackdrop forceCinematic/>
                 <ForceUpdateScreen update={update}/>
             </>

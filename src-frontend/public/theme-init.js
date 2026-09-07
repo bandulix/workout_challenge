@@ -7,8 +7,12 @@
         // the last in-app screen BEFORE React mounts so the first paint
         // is Coach/Home (with rehydrated cache) instead of the landing
         // page plus a multi-second loader. Keep in sync with lastPath.js.
-        var token = localStorage.getItem("refresh_token");
-        if (token) {
+        var authed = false;
+        try { authed = sessionStorage.getItem("wc_auth") === "1"; } catch (e) { authed = false; }
+        if (!authed) {
+            try { authed = Boolean(localStorage.getItem("wc_last_path")); } catch (e) { authed = false; }
+        }
+        if (authed) {
             var here = (window.location.pathname || "/").replace(/\/+$/, "") || "/";
             var params = new URLSearchParams(window.location.search || "");
             if (here === "/" && !params.get("join") && !params.get("action")) {

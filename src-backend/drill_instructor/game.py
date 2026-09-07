@@ -367,6 +367,13 @@ def evaluate_photo_game(photo_message):
         if workout is None and photo_message.parent_id:
             parent = photo_message.parent
             workout = getattr(parent, "workout", None) if parent is not None else None
+        if workout is not None and _local_date(workout.start_datetime) != today:
+            Workout = apps.get_model("workouts", "Workout")
+            workout = (
+                Workout.objects.filter(user=user, start_datetime__date=today)
+                .order_by("-start_datetime")
+                .first()
+            )
         mark_order_complete(order, user, workout=workout)
 
 

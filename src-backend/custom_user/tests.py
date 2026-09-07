@@ -610,7 +610,8 @@ class CrossProviderDuplicateGuardTests(TestCase):
         self.assertEqual(result["created"], 0)
         self.assertEqual(result["duplicates_skipped"], 1)
         self.assertEqual(Workout.objects.filter(user=self.user).count(), 1)
-        self.assertFalse(Workout.objects.filter(garmin_id="112233").exists())
+        self.existing.refresh_from_db()
+        self.assertEqual(self.existing.garmin_id, "112233")
 
     def test_garmin_sync_never_imports_step_summaries(self):
         """All-day step records are not workouts: they must be skipped -
@@ -705,7 +706,8 @@ class CrossProviderDuplicateGuardTests(TestCase):
         # Only the activities LIST was fetched - the duplicate never
         # cost an activity-details request.
         self.assertEqual(mock_get.call_count, 1)
-        self.assertFalse(WorkoutModel.objects.filter(strava_id=246810).exists())
+        manual.refresh_from_db()
+        self.assertEqual(str(manual.strava_id), "246810")
         self.assertTrue(WorkoutModel.objects.filter(pk=manual.pk).exists())
 
     def test_strava_sync_continues_after_a_malformed_activity(self):
@@ -989,6 +991,7 @@ class HealthWorkoutMappingTests(TestCase):
 
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+    DEBUG=True,
 )
 class HealthConnectorTests(TestCase):
     """The Open Wearables health connector: source resolution, sync
@@ -1129,8 +1132,8 @@ class HealthConnectorTests(TestCase):
         # Connect kilometres instead of staying blank (km challenges).
         from .health import _sync_user_workouts
         manual = Workout.objects.create(
-            user=self.user, sport_type="Workout", start_datetime=self.start,
-            duration=self.duration, intensity_category=2, distance=None,
+            user=self.user, sport_type="Ride", start_datetime=self.start,
+            duration=self.duration, intensity_category=2, distance=0,
         )
         self._link_health()
         with mock.patch("custom_user.health._fetch_workouts", return_value=[self._ow_payload(type="cycling")]):
@@ -1147,7 +1150,7 @@ class HealthConnectorTests(TestCase):
         from .health import HealthConfigError
         self.client.force_authenticate(self.user)
         with mock.patch("custom_user.health.generate_invitation", side_effect=HealthConfigError):
-            response = self.client.post("/api/health/link/")
+            response = self.client.post("/api/health/link/", {}, format="json")
         self.assertEqual(response.status_code, 503)
 
     def test_link_view_returns_invitation_and_sets_source(self):
@@ -1159,7 +1162,7 @@ class HealthConnectorTests(TestCase):
         invitation = {"code": "ABC-DEF", "host": "https://health.example.com", "expires_at": "2026-08-05T00:00:00Z"}
         with mock.patch("custom_user.health.generate_invitation", return_value=invitation), \
                 mock.patch("custom_user.health.sync_health") as sync_task:
-            response = self.client.post("/api/health/link/")
+            response = self.client.post("/api/health/link/", {}, format="json")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["code"], "ABC-DEF")
@@ -1176,7 +1179,7 @@ class HealthConnectorTests(TestCase):
         invitation = {"code": "ABC-DEF", "host": "https://health.example.com", "expires_at": None}
         with mock.patch("custom_user.health.generate_invitation", return_value=invitation), \
                 mock.patch("custom_user.health.sync_health") as sync_task:
-            response = self.client.post("/api/health/link/")
+            response = self.client.post("/api/health/link/", {}, format="json")
 
         self.assertEqual(response.status_code, 200)
         self.user.refresh_from_db()
@@ -1485,6 +1488,16 @@ class PasswordChangeRequiresCurrentTests(TestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("New-Pass-456!"))
 
+    def test_rejects_email_change_without_current(self):
+        response = self.client.patch(
+            "/api/user/me/",
+            {"email": "new@example.com"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, "chg@example.com")
+
 
 @override_settings(
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
@@ -1679,7 +1692,7 @@ class EmailVerifyFlowTests(TestCase):
         with mock.patch("custom_user.models.verify_email.apply_async") as queued:
             response = self.client.patch(
                 f"/api/user/{user.pk}/",
-                {"email": "moved@example.com"},
+                {"email": "moved@example.com", "current_password": "Sup3r-Secret!Pass"},
                 format="json",
             )
         self.assertEqual(response.status_code, 200, response.content)

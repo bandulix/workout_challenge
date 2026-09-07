@@ -304,7 +304,14 @@ def _sync_user_activities(user, days_back=RECENT_SYNC_DAYS) -> dict:
             continue
         # Cross-provider duplicate guard: the same activity may already
         # exist from Strava or as a manual entry - never import it twice.
-        if find_duplicate_workout(user, props["start_datetime"], props["duration"], provider="garmin") is not None:
+        dup = find_duplicate_workout(
+            user, props["start_datetime"], props["duration"],
+            provider="garmin", sport_type=props.get("sport_type"),
+        )
+        if dup is not None:
+            if not dup.garmin_id:
+                dup.garmin_id = garmin_id
+                dup.save(update_fields=["garmin_id"])
             duplicates += 1
             continue
         Workout.objects.create(**props)
@@ -324,6 +331,8 @@ def sync_garmin(self, user__id, days_back=RECENT_SYNC_DAYS):
     # Garmin must not import - the same activities would arrive twice.
     if user.get_activity_source() != 'garmin':
         logger.info("Garmin sync user %s skipped: Garmin is not the selected activity source", user__id)
+        user.garmin_last_synced_at = timezone.now()
+        user.save(update_fields=["garmin_last_synced_at"])
         return {"user": user__id, "skipped": "garmin is not the selected activity source"}
 
     result = _sync_user_activities(user, days_back=days_back)

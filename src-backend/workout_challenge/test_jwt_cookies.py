@@ -72,6 +72,38 @@ class CookieJwtAuthTests(TestCase):
         )
         self.assertEqual(reuse.status_code, 401)
 
+    def test_cookie_refresh_does_not_echo_refresh_even_with_native_header(self):
+        login = self.client.post(
+            "/api/token/",
+            {"email": "cookiejwt@example.com", "password": "Sup3r-Secret!Pass"},
+            format="json",
+        )
+        self.assertEqual(login.status_code, 200, login.content)
+        self.assertNotIn("refresh", login.json())
+        refreshed = self.client.post(
+            "/api/token/refresh/",
+            {},
+            format="json",
+            HTTP_X_WC_CLIENT="native",
+        )
+        self.assertEqual(refreshed.status_code, 200, refreshed.content)
+        self.assertTrue(refreshed.json().get("access"))
+        self.assertNotIn("refresh", refreshed.json())
+
+    def test_form_post_refresh_is_rejected(self):
+        login = self.client.post(
+            "/api/token/",
+            {"email": "cookiejwt@example.com", "password": "Sup3r-Secret!Pass"},
+            format="json",
+        )
+        self.assertEqual(login.status_code, 200, login.content)
+        blocked = self.client.post(
+            "/api/token/refresh/",
+            {},
+            content_type="application/x-www-form-urlencoded",
+        )
+        self.assertEqual(blocked.status_code, 403)
+
     def test_logout_clears_cookie(self):
         login = self.client.post(
             "/api/token/",

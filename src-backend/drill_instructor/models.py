@@ -609,11 +609,6 @@ class EchoChallenge(models.Model):
                 condition=models.Q(status="active"),
                 name="one_active_challenge_per_echo",
             ),
-            models.UniqueConstraint(
-                fields=["challenger"],
-                condition=models.Q(status="active"),
-                name="one_active_echo_war_per_user",
-            ),
         ]
 
     def __str__(self):

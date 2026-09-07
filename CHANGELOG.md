@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.55.0] - 2026-09-07
+
 ### Added
 - **Share a picture, not just text.** Echo and roast share builds a card with the remixed image and caption (or saves the JPEG if the phone cannot attach files). (#10)
 - **Swipe through Hall of Roasts.** Open a roast and swipe (or use the arrows) to the next one; captions are no longer cut off. (#11)
@@ -16,10 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Outdated Android APKs only show the download.** If the installed build is older than the APK the server is publishing (`/download/apk-version.json`), the app does not load — just *Download update* (install over the top keeps login). Applies from this APK onward; earlier builds still have the dismissible Home banner until they update once.
 
 ### Security
+- **Cookie refresh never returns the JWT in JSON**, even if the client spoofs `X-WC-Client: native`. Token obtain/refresh/logout reject cross-site HTML form posts. Logout `Set-Cookie` now matches `Secure`/`SameSite`. Outstanding refresh rows store a SHA-256 digest, not the live token.
+- **Changing email requires the current password** and blacklists outstanding refresh tokens (same as a password change).
+- **First-user admin promotion holds the SiteSettings lock through INSERT**, so two parallel signups on an empty database cannot both become superuser.
+- **Health link is on the HTTPS gate** (with Garmin/Strava). nginx forwards the incoming `X-Forwarded-Proto` instead of overwriting it with `$scheme`.
+- **Join codes are unguessable and owner-only.** New codes are 16-character CSPRNG values (no name/owner prefix). Members no longer see `join_code` on `GET /api/competition/`; owners can `POST …/rotate_join_code/`.
+- **Feed no longer leaks `workout__strava_id` when follow is off.**
+- **`POST /api/join/team/` 404s** for teams/users outside the caller’s competitions instead of enumerating ids.
 - **Site Settings secrets and the VAPID private key are encrypted at rest.** LLM API key, Strava client secret, SMTP password, and Health developer password are Fernet-encrypted in Postgres (same key material as Garmin/Strava OAuth tokens). Auto-written `data/vapid.json` stores an encrypted private key (`0600`). Prefer pinning `VAPID_*` via env in production. After upgrading from plaintext storage, **rotate** any secrets that lived in old DB dumps or volume backups — see [docs/security-secrets-and-backups.md](docs/security-secrets-and-backups.md). (#29)
 - **Default bind is loopback.** `APP_BIND` defaults to `127.0.0.1` — put a TLS-terminating reverse proxy in front. Set `APP_BIND=0.0.0.0` only on a trusted LAN. Garmin/Strava link routes refuse cleartext HTTP unless `DEBUG` is on. (#30)
 - **Flower / Open Wearables admin / Health developer passwords must differ from `SECRET_KEY`.** Compose requires `FLOWER_PASSWORD` (and `OW_ADMIN_PASSWORD` with `--profile health`); production Django refuses to boot if they match. (#30)
 - **Release APK builds fail without real signing.** No silent debug-keystore fallback for `assembleRelease` — use `~/.gradle/workout-signing.properties` or `ANDROID_KEYSTORE_*` secrets. (#30)
+- **postcss-selector-parser 7.1.6 / 6.1.4** close a CPU-exhaustion bug and CVE-2026-9358 in the CSS pipeline. (#13)
 
 ### Changed
 - **⚠️ BREAKING — web refresh tokens are httpOnly cookies only.** The browser no longer keeps a refresh JWT in JS storage; JSON login/refresh responses omit `refresh` unless the client sends `X-WC-Client: native` (Android APK). After this deploy, **web users may need to sign in again** once. The service worker never caches `/api/` (network-only), so stale auth responses cannot stick in the SW cache. (#33, supersedes #31)
@@ -34,8 +44,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Feed loads faster, especially in the APK.** The messages API is paginated (old clients that omit `limit` still get a list). Card pictures are 800px JPEGs with a private 24h cache and ETag; avatars are 256px. The Android app stores them on disk instead of re-downloading as base64. First paint uses the last 15 posts and no longer waits on the season points feed. Board/Trophies and Hall of Roasts mount when you open them. Polling only refreshes page 1. nginx gzips JSON. Challenge goal bars still count the whole day/week/month, not just the 15 visible posts. Tapping a card photo opens the original, not the 800px JPEG.
 - **Closed registration no longer auto-promotes the first signup to admin.** Set `REGISTRATION_TOKEN` and use `createsuperuser` or `promotetostaff`. Open registration (token unset) still makes the first account the operator; two concurrent first signups can no longer both become superuser.
 - **Home rank chips use a tiny summary** instead of the full season stats snapshot. Challenge Feed no longer polls the board payload. Latest workouts on Home show at most 40 rows.
+- **Django REST framework 3.17.2** (from 3.16.1). `request.data` respects `DATA_UPLOAD_MAX_MEMORY_SIZE`; AdminRenderer no longer leaks GET-protected data on a validation error. (#14)
 
 ### Fixed
+- **Join / date-extend scoring skips Steps** when `count_steps_as_walks` is off (same as a live log). Changing a workout’s start or sport type now adds/removes Points for the competitions it moved into or out of.
+- **Photo +10 / Order +5 cannot double on Postgres** (`NULL` is no longer distinct in the unique constraint).
+- **Steps restamp, coach arcade, and the leaderboard “today”** use the site timezone, not UTC / process local date.
+- **Photo-proof Order +5** lands on a same-day workout, not yesterday’s parent.
+- **Echo wars can run in two challenges at once**; the old global unique on `challenger` is gone.
+- **@mentions match Unicode names and unique usernames**; two people named Alex no longer notify nobody. Photo captions also ping.
+- **Android login sends `X-WC-Client: native`** on RTK Query, so the APK receives a refresh JWT. Cold start last-path no longer waits on `localStorage.refresh_token`.
+- **Tapping a push on an already-open PWA keeps you signed in.** The service worker `postMessage`s the tab instead of `navigate()` (which dropped the in-memory access JWT). Deep links also register during the APK update gate.
+- **A duplicate import now stamps the other provider’s id** on the existing workout instead of dropping the match.
 - **New coach box follows a manual coach change too**, and only stays up for two days after the switch (vote or picker), not the whole weekly term. (#32)
 - **Strava stamps `strava_last_synced_at` after every successful sync**, including the initial 43-day backfill. (#24)
 - **Feed Order ribbon uses the local calendar day** of the workout start, not the UTC date. (#25)

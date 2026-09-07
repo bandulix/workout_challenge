@@ -5,8 +5,9 @@
  * Android/Capacitor: EncryptedSharedPreferences via
  * capacitor-secure-storage-plugin (Keystore-backed) when installed.
  *
- * Plugin is optional until `npm i capacitor-secure-storage-plugin && npx cap sync`
- * (APK rebuild is out of scope for this PR); native then falls back to cookies.
+ * capacitor-secure-storage-plugin is a package.json dependency; CI runs
+ * `npx cap sync android` before assembleRelease. A Gradle-only rebuild
+ * without cap sync will miss the plugin and fall back to cookies.
  */
 import {registerPlugin} from "@capacitor/core";
 import {isNativeApp} from "./serverUrl";

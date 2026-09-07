@@ -29,6 +29,12 @@ POINT_REF_PERIODS = [
 ]
 
 
+def generate_join_code():
+    """Unguessable invite code: 16 chars, ~80 bits, no name/owner prefix."""
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(16))
+
+
 class Competition(models.Model):
     """Competition users can compete in"""
 
@@ -94,9 +100,13 @@ class Competition(models.Model):
         """ trigger recalculation of points_capped if competition changes """
         is_create = self.pk is None
         if self.join_code == '':
-            # secrets.randbelow: CSPRNG - join codes must not be
-            # brute-forceable via the predictable `random` module.
-            self.join_code = re.sub(r'[^a-zA-Z0-9]', '', self.name)[:8] + str(self.owner.pk).zfill(3) + str(secrets.randbelow(90_000) + 10_000)
+            for _ in range(8):
+                candidate = generate_join_code()
+                if not Competition.objects.filter(join_code=candidate).exists():
+                    self.join_code = candidate
+                    break
+            else:
+                self.join_code = generate_join_code()
         self.join_code = self.join_code.upper()
         super().save(*args, **kwargs)
         changed = self.get_changed_fields()
@@ -221,7 +231,16 @@ class Points(models.Model):
         verbose_name = "Points"
         verbose_name_plural = "Points"
         constraints = [
-            models.UniqueConstraint(fields=['goal', 'award', 'workout'], name='unique_goal_award_workout')
+            models.UniqueConstraint(
+                fields=["goal", "workout"],
+                condition=models.Q(award__isnull=True, goal__isnull=False),
+                name="unique_goal_workout",
+            ),
+            models.UniqueConstraint(
+                fields=["award", "workout"],
+                condition=models.Q(goal__isnull=True, award__isnull=False),
+                name="unique_award_workout",
+            ),
         ]
 
     def __str__(self):

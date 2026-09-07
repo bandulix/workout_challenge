@@ -266,6 +266,14 @@ const SHEET_PANEL =
 
 export function OverlaySheet({title = null, onClose, children, isLoading = false, zClass = "z-50", labelledBy}) {
     useBodyScrollLock();
+    useEffect(() => {
+        if (!onClose) return undefined;
+        function onKey(e) {
+            if (e.key === "Escape") onClose();
+        }
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [onClose]);
     return (
         <OverlayPortal>
             <div className={SHEET_BACKDROP + " " + zClass} onClick={onClose}

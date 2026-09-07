@@ -16,6 +16,16 @@ class CompetitionSerializer(serializers.ModelSerializer):
         fields = ['id', 'owner', 'user', 'user_info', 'name', 'start_date', 'start_date_fmt', 'start_date_epoch', 'end_date', 'end_date_fmt', 'end_date_epoch', 'has_teams', 'organizer_assigns_teams', 'join_code', 'goals']
         read_only_fields = ['join_code', 'user', 'user_info', 'goals']
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            data.pop("join_code", None)
+        elif not (getattr(user, "is_staff", False) or user.pk == instance.owner_id):
+            data.pop("join_code", None)
+        return data
+
     def validate_owner(self, owner):
         if self.instance is None:
             return owner

@@ -1,6 +1,7 @@
 import datetime
 
 from django.conf import settings
+from django.utils import timezone
 from django.apps import apps
 from rest_framework.response import Response
 from rest_framework import status
@@ -58,7 +59,7 @@ def _compute_days_on_rank(competition_obj, timeseries_user, leaderboard_user, us
     if not current_rank:
         return {}
 
-    today = datetime.date.today()
+    today = timezone.localdate()
     first_day = competition_obj.start_date
     last_day = min(today, competition_obj.end_date)  # ranks freeze at the end date
     total_days = (last_day - first_day).days + 1
@@ -113,7 +114,7 @@ def get_competition_stats(competition, last_seven_days=False):
     all_points = Points.objects.filter(Q(award__competition__id=competition) | Q(goal__competition_id=competition))
 
     if last_seven_days:
-        today = datetime.date.today()
+        today = timezone.localdate()
         last_sunday = today - datetime.timedelta(days=today.weekday() + 1) if today.weekday() != 6 else today
         monday_before = last_sunday - datetime.timedelta(days=6)
         all_points = all_points.filter(workout__start_datetime__gte=monday_before, workout__start_datetime__lt=last_sunday + datetime.timedelta(days=1))
@@ -307,9 +308,9 @@ def get_competition_stats(competition, last_seven_days=False):
         'member_count': len(member_pks),
         'active_member_count': len(timeseries_user),
         'start_date': competition_obj.start_date,
-        'start_date_count': (datetime.date.today() - competition_obj.start_date).days,
+        'start_date_count': (timezone.localdate() - competition_obj.start_date).days,
         'end_date': competition_obj.end_date,
-        'end_date_count': (datetime.date.today() - competition_obj.end_date).days,
+        'end_date_count': (timezone.localdate() - competition_obj.end_date).days,
         'has_teams': competition_obj.has_teams,
         'goals': competition_obj.activitygoal_set.all().values(),
     }
@@ -378,7 +379,7 @@ def get_competition_rank_summary(competition_id, user_id):
                 if tid == team.id:
                     team_rank = tr
                     break
-    start_count = (datetime.date.today() - comp.start_date).days
+    start_count = (timezone.localdate() - comp.start_date).days
     return {
         "my_rank": my_rank,
         "my_points": my_points,

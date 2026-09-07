@@ -197,13 +197,14 @@ self.addEventListener("notificationclick", (event) => {
     self.clients.matchAll({type: "window", includeUncontrolled: true}).then((wins) => {
       const url = new URL(target, self.location.origin);
       if (url.origin !== self.location.origin) return;
+      const path = url.pathname + url.search + url.hash;
       for (const w of wins) {
-        if ("focus" in w) {
-          w.navigate(url.pathname + url.search + url.hash);
-          return w.focus();
-        }
+        try {
+          w.postMessage({type: "wc-open", url: path});
+        } catch (err) { /* ignore */ }
+        if (typeof w.focus === "function") return w.focus();
       }
-      if (self.clients.openWindow) return self.clients.openWindow(url.pathname + url.search + url.hash);
+      if (self.clients.openWindow) return self.clients.openWindow(path);
     })
   );
 });

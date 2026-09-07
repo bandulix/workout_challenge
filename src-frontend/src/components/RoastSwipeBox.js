@@ -158,6 +158,15 @@ export default function RoastSwipeBox() {
             .catch(() => { /* the vote is fun, not finance - stay quiet */ });
     }, [top, voteRoast]);
 
+    useEffect(() => {
+        function onKey(e) {
+            if (e.key === "ArrowRight") { e.preventDefault(); handleVote(true); }
+            else if (e.key === "ArrowLeft") { e.preventDefault(); handleVote(false); }
+        }
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [handleVote]);
+
     // After the hooks - early return must not reorder hook calls.
     if (!top) return null;
 

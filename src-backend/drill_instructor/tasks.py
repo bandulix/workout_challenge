@@ -179,11 +179,12 @@ def post_workout_comment(self, workout_id):
     start_dt = workout.start_datetime
     if isinstance(start_dt, str):
         start_dt = datetime.datetime.fromisoformat(start_dt.replace("Z", "+00:00"))
+    start_day = timezone.localtime(start_dt).date() if timezone.is_aware(start_dt) else start_dt.date()
 
     Competition = apps.get_model("competition", "Competition")
     competitions = Competition.objects.filter(
-        start_date__lte=start_dt.date(),
-        end_date__gte=start_dt.date(),
+        start_date__lte=start_day,
+        end_date__gte=start_day,
         user=workout.user,
         drill_instructor__enabled=True,
         drill_instructor__comment_on_activity=True,
@@ -289,8 +290,8 @@ def post_workout_comment(self, workout_id):
         arcade_configs = DrillInstructorConfig.objects.filter(
             enabled=True,
             competition__user=workout.user,
-            competition__start_date__lte=start_dt.date(),
-            competition__end_date__gte=start_dt.date(),
+            competition__start_date__lte=start_day,
+            competition__end_date__gte=start_day,
         ).select_related("competition")
         for arcade_config in arcade_configs:
             try:

@@ -203,7 +203,9 @@ class CustomUserSerializer(serializers.ModelSerializer):
         # and store the raw password in the DB. Hash it properly.
         password = validated_data.pop('password', None)
         current_password = validated_data.pop('current_password', None)
-        if password:
+        incoming_email = validated_data.get('email')
+        email_changing = incoming_email is not None and incoming_email != instance.email
+        if password or email_changing:
             if not current_password or not instance.check_password(current_password):
                 raise serializers.ValidationError(
                     {"current_password": "Current password is required and must be correct."}
@@ -213,12 +215,8 @@ class CustomUserSerializer(serializers.ModelSerializer):
             from django.contrib.auth.password_validation import validate_password
             validate_password(password, user=instance)
             instance.set_password(password)
-        # A changed email must be re-verified.
-        if 'email' in validated_data and validated_data['email'] != instance.email:
-            instance.is_verified = False
-        if password or 'email' in validated_data:
+        if password or email_changing:
             instance.save()
-        if password:
             from .views import _blacklist_user_tokens
             _blacklist_user_tokens(instance)
         return instance

@@ -45,6 +45,8 @@ Tests: `cd src-backend && DEBUG=true SECRET_KEY=ci-test-not-a-real-secret-32byte
 2. Prefer HTTPS on `MAIN_HOST` / `HOSTS`; keep `APP_BIND=127.0.0.1` behind your proxy.
 3. After migrate: rotate Site Settings / VAPID secrets that ever appeared in plaintext backups ([docs/security-secrets-and-backups.md](docs/security-secrets-and-backups.md)).
 4. Expect a one-time web re-login (httpOnly refresh cookies). Native Android is unchanged for refresh handling.
+5. Put `https://localhost` in `HOSTS` (the Android WebView origin) or the APK cannot talk to the API.
+6. Changing email now requires the current password. Challenge join codes are 16-character random values; owners can rotate them. Existing codes still work until rotated.
 
 ## Optional setup
 
@@ -75,9 +77,9 @@ Phones reach it at `MAIN_HOST/health` by default. In the Android app, Health Con
 
 This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/workout_challenge) (base `main` @ `256e5b1`) under the same SSPL v1. Original copyright is untouched. Full list: [CHANGELOG.md](CHANGELOG.md).
 
-- **AI Drill Instructor** — persona-voiced comments, activity stamps, quiet-day nudges, Order of the Day, dunce, Hall of Roasts, Legend Echoes, weekly coach vote, photo posts remixed into the coach’s world, web push / native Android pings.
-- **Coach-centred PWA** — volt accent, glass dock, Coach as home, daily action plates, dark theme, profile pictures. Uploaded photos stay private (login required; never a public `/media/` URL). Mail uses the same identity; new inboxes must confirm before welcome / weekly mail.
+- **AI Drill Instructor** — persona-voiced comments, activity stamps, quiet-day nudges, Order of the Day, dunce, Hall of Roasts (swipe between roasts), Legend Echoes, weekly coach vote, photo posts remixed into the coach’s world, share cards, web push / native Android pings that open the post. Release or hand off a custom coach to teammates.
+- **Coach-centred PWA** — volt accent, glass dock, Coach as home, daily action plates, dark theme, profile pictures. Uploaded photos stay private (login required; never a public `/media/` URL). Mail uses the same identity; new inboxes must confirm before welcome / weekly mail. Web sessions use httpOnly refresh cookies.
 - **Garmin Connect** and **Apple Health / Health Connect** (via Open Wearables) next to Strava; one activity source per user.
-- **Sideload Android app** with one-tap Health Connect.
+- **Sideload Android app** with one-tap Health Connect. Outdated APKs only show the download until you install over the top.
 
 License: [LICENSE](LICENSE) (SSPL v1). Fork and third-party notices: [NOTICE](NOTICE).

@@ -11,6 +11,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from custom_user.jwt_cookies import (
     clear_refresh_cookie,
     get_refresh_from_request,
+    is_nonsimple_token_post,
     set_refresh_cookie,
     strip_refresh_from_response_data,
 )
@@ -24,6 +25,8 @@ class CookieTokenObtainPairView(TokenObtainPairView):
     throttle_scope = "auth"
 
     def post(self, request, *args, **kwargs):
+        if not is_nonsimple_token_post(request):
+            return Response({"detail": "Invalid request."}, status=status.HTTP_403_FORBIDDEN)
         response = super().post(request, *args, **kwargs)
         if response.status_code != 200:
             return response
@@ -41,7 +44,9 @@ class CookieTokenRefreshView(TokenRefreshView):
     throttle_scope = "auth_refresh"
 
     def post(self, request, *args, **kwargs):
-        refresh = get_refresh_from_request(request)
+        if not is_nonsimple_token_post(request):
+            return Response({"detail": "Invalid request."}, status=status.HTTP_403_FORBIDDEN)
+        refresh, source = get_refresh_from_request(request)
         if not refresh:
             return Response(
                 {"detail": "No refresh token.", "code": "token_not_found"},
@@ -68,7 +73,7 @@ class CookieTokenRefreshView(TokenRefreshView):
         else:
             # Rotation disabled: keep the presented refresh in the cookie.
             set_refresh_cookie(response, refresh)
-        strip_refresh_from_response_data(response, request)
+        strip_refresh_from_response_data(response, request, source=source)
         return response
 
 
@@ -86,7 +91,9 @@ class CookieTokenLogoutView(APIView):
     authentication_classes = []
 
     def post(self, request, *args, **kwargs):
-        refresh = get_refresh_from_request(request)
+        if not is_nonsimple_token_post(request):
+            return Response({"detail": "Invalid request."}, status=status.HTTP_403_FORBIDDEN)
+        refresh, _source = get_refresh_from_request(request)
         if refresh:
             try:
                 token = RefreshToken(refresh)

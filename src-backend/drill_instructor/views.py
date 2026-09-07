@@ -71,20 +71,32 @@ def _notify_reply_audience(reply):
             recipients[owner.id] = ("comment", owner)
 
     import re
-    names = [n.lower() for n in re.findall(r"@([A-Za-z0-9_-]+)", reply.body or "")]
+    names = [n.lower() for n in re.findall(r"@([\w-]+)", reply.body or "", flags=re.UNICODE)]
     if names:
-        by_key = {}
+        by_username = {}
+        by_first = {}
         people = list(competition.user.all())
         if competition.owner_id:
             people.append(competition.owner)
+        seen = set()
         for user in people:
-            for key in ((user.first_name or "").strip().lower(), (user.username or "").strip().lower()):
-                if key:
-                    by_key.setdefault(key, []).append(user)
+            if user.id in seen:
+                continue
+            seen.add(user.id)
+            un = (user.username or "").strip().lower()
+            fn = (user.first_name or "").strip().lower()
+            if un:
+                by_username.setdefault(un, []).append(user)
+            if fn:
+                by_first.setdefault(fn, []).append(user)
         for name in names:
-            matches = by_key.get(name) or []
-            if len(matches) == 1 and matches[0].id != author.id:
-                recipients[matches[0].id] = ("mention", matches[0])
+            um = by_username.get(name) or []
+            if len(um) == 1 and um[0].id != author.id:
+                recipients[um[0].id] = ("mention", um[0])
+                continue
+            fm = by_first.get(name) or []
+            if len(fm) == 1 and fm[0].id != author.id and name not in by_username:
+                recipients[fm[0].id] = ("mention", fm[0])
 
     who = author.first_name or author.username or "Someone"
     snippet = " ".join((reply.body or "").split())[:140]
@@ -637,18 +649,29 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
 
-        message = DrillInstructorMessage.objects.create(
-            config=config,
-            kind=DrillInstructorMessage.KIND_PHOTO,
-            parent=parent,
-            user=request.user,
-            body=caption,
-            image=image,
-        )
+        with transaction.atomic():
+            parent = DrillInstructorMessage.objects.select_for_update().get(pk=parent.pk)
+            if parent.replies.filter(kind=DrillInstructorMessage.KIND_PHOTO).exists():
+                return Response(
+                    {"image": "This workout already has a photo."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            message = DrillInstructorMessage.objects.create(
+                config=config,
+                kind=DrillInstructorMessage.KIND_PHOTO,
+                parent=parent,
+                user=request.user,
+                body=caption,
+                image=image,
+            )
+            try:
+                from competition.scorer import grant_photo_bonus
+                grant_photo_bonus(parent.workout, config.competition)
+            except Exception:
+                pass
 
         try:
-            from competition.scorer import grant_photo_bonus
-            grant_photo_bonus(parent.workout, config.competition)
+            _notify_reply_audience(message)
         except Exception:
             pass
 

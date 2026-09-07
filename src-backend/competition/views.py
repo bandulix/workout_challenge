@@ -5,6 +5,7 @@ from django.db.models import Q
 from django.core.exceptions import PermissionDenied
 from django.utils import timezone
 from rest_framework import viewsets
+from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -41,6 +42,21 @@ class CompetitionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # when creating a new competition, set the owner to the request user
         serializer.save(owner=self.request.user)
+
+    @action(detail=True, methods=["post"])
+    def rotate_join_code(self, request, pk=None):
+        from .models import generate_join_code
+        competition = self.get_object()
+        if competition.owner_id != request.user.id and not request.user.is_staff:
+            raise PermissionDenied("Only the owner can rotate the join code.")
+        for _ in range(8):
+            competition.join_code = generate_join_code()
+            try:
+                competition.save(update_fields=["join_code"])
+                break
+            except Exception:
+                continue
+        return Response(CompetitionSerializer(competition, context={"request": request}).data)
 
 
 class TeamViewSet(viewsets.ModelViewSet):
@@ -379,6 +395,8 @@ def _feed_rows_for_ids(competition, workout_ids):
         pic = row.pop("workout__user__profile_picture", None)
         uid = row.get("workout__user")
         row["workout__user__profile_picture"] = f"/api/user/{uid}/picture/" if pic and uid else None
+        if not row.pop("workout__user__strava_allow_follow", True):
+            row["workout__strava_id"] = None
     for i in all_points.values("workout", "id", "goal", "goal__name", "award", "award__name", "points_capped", "points_raw"):
         grouped.setdefault(i["workout"], {}).setdefault("details", []).append(i)
     try:
@@ -513,22 +531,25 @@ class JoinTeamView(APIView):
         try:
             team_id = int(team_id)
         except (TypeError, ValueError):
-            return Response({"message": "Invalid team id."}, status=status.HTTP_400_BAD_REQUEST)
-        team = Team.objects.filter(id=team_id)
-        if len(team) == 0:
-            return Response({"message": "Invalid team id."}, status=status.HTTP_400_BAD_REQUEST)
-        team = team[0]
+            return Response({"message": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        visible = Team.objects.filter(
+            Q(competition__owner=request.user) | Q(competition__user=request.user)
+        ).distinct()
+        team = visible.filter(id=team_id).first()
+        if team is None:
+            return Response({"message": "Not found."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             user_id = int(request.query_params.get('user', request.user.id))
         except (TypeError, ValueError):
-            return Response({"message": "Invalid user id."}, status=status.HTTP_400_BAD_REQUEST)
-        user = CustomUser.objects.filter(id=user_id)
-        if len(user) == 0:
-            return Response({"message": "Invalid user id."}, status=status.HTTP_400_BAD_REQUEST)
-        user = user[0]
-
+            return Response({"message": "Not found."}, status=status.HTTP_404_NOT_FOUND)
         competition = team.competition
+        user = competition.user.filter(id=user_id).first()
+        if user is None and competition.owner_id == user_id:
+            user = competition.owner
+        if user is None:
+            return Response({"message": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
         competition_teams = competition.team_set.all()
 
         target_is_self = (user.pk == request.user.pk)
@@ -567,15 +588,6 @@ class JoinTeamView(APIView):
             return Response(
                 {"message": "Unauthorized. Only the competition owner can assign un-teamed participants to a team."},
                 status=status.HTTP_403_FORBIDDEN,
-            )
-
-        # Make sure the target is actually a participant of the
-        # competition - otherwise we'd be adding a stranger to the
-        # team rosters.
-        if not competition.user.filter(pk=user.pk).exists():
-            return Response(
-                {"message": "User is not a participant of this competition."},
-                status=status.HTTP_400_BAD_REQUEST,
             )
 
         user.my_teams.remove(*list(user.my_teams.filter(competition=competition)))

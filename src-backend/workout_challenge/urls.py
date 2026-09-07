@@ -45,6 +45,7 @@ def _https_required(view_cls):
 SecureStravaStateView = _https_required(StravaStateView)
 SecureLinkStravaView = _https_required(LinkStravaView)
 SecureLinkGarminView = _https_required(LinkGarminView)
+SecureLinkHealthView = _https_required(LinkHealthView)
 
 
 # Token endpoints: httpOnly refresh cookie + throttled obtain/refresh.
@@ -99,7 +100,7 @@ urlpatterns = [
         path('garmin/link/', SecureLinkGarminView.as_view(), name='garmin-link'),
         path('garmin/unlink/', UnlinkGarminView.as_view(), name='garmin-unlink'),
         path('garmin/sync/', SyncGarminView.as_view(), name='garmin-sync'),
-        path('health/link/', LinkHealthView.as_view(), name='health-link'),
+        path('health/link/', SecureLinkHealthView.as_view(), name='health-link'),
         path('health/unlink/', UnlinkHealthView.as_view(), name='health-unlink'),
         path('health/sync/', SyncHealthView.as_view(), name='health-sync'),
         path('celery/tasks/', CeleryQueryView.as_view(), name='celery-task-list'),

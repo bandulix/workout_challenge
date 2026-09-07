@@ -227,13 +227,13 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         # (no REGISTRATION_TOKEN). Closed signups are operator-run:
         # `createsuperuser` / `promotetostaff`. Lock SiteSettings — a
         # SELECT FOR UPDATE on zero user rows locks nothing on Postgres.
-        if is_create and not self.is_superuser and not getattr(settings, "REGISTRATION_TOKEN", ""):
-            from site_settings.models import SiteSettings
-            with transaction.atomic():
-                SiteSettings.objects.select_for_update().get_or_create(pk=1)
-                if not CustomUser.objects.filter(is_superuser=True).exists():
-                    self.is_staff = True
-                    self.is_superuser = True
+        # The INSERT must stay inside this transaction or two parallel
+        # first signups can both promote.
+        promote_first = (
+            is_create
+            and not self.is_superuser
+            and not getattr(settings, "REGISTRATION_TOKEN", "")
+        )
 
         # Housekeeping: if the profile picture was replaced, delete the old
         # file so abandoned uploads don't pile up in MEDIA_ROOT.
@@ -248,7 +248,16 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
             except Exception:  # noqa: BLE001 - never block a user save
                 pass
 
-        super().save(*args, **kwargs)
+        if promote_first:
+            from site_settings.models import SiteSettings
+            with transaction.atomic():
+                SiteSettings.objects.select_for_update().get_or_create(pk=1)
+                if not CustomUser.objects.filter(is_superuser=True).exists():
+                    self.is_staff = True
+                    self.is_superuser = True
+                super().save(*args, **kwargs)
+        else:
+            super().save(*args, **kwargs)
 
         # Confirm the address before any welcome / coach / weekly mail.
         # The verify task is the only mail that may leave the server for

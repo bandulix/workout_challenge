@@ -5,6 +5,7 @@ from django.core.cache import cache
 from django.conf import settings
 from django.apps import apps
 from django.template.loader import render_to_string
+from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from workout_challenge.celery import app
@@ -80,8 +81,8 @@ def send_all_log_workouts_email():
     CustomUser = apps.get_model("custom_user", "CustomUser")
     user_lst = CustomUser.objects.filter(
         is_verified=True,
-        my_competitions__start_date__lte=datetime.date.today(),
-        my_competitions__end_date__gte=datetime.date.today(),
+        my_competitions__start_date__lte=timezone.localdate(),
+        my_competitions__end_date__gte=timezone.localdate(),
     ).order_by("pk").distinct()
     task_log = []
     if len(user_lst) > 0:
@@ -118,7 +119,7 @@ def log_workouts_email(user_pk):
 def send_all_competition_start_email():
     logger.info("Scheduling competition start emails")
     Competition = apps.get_model("competition", "Competition")
-    competition_lst = Competition.objects.filter(start_date=datetime.date.today() + datetime.timedelta(days=1)).order_by("pk")
+    competition_lst = Competition.objects.filter(start_date=timezone.localdate() + datetime.timedelta(days=1)).order_by("pk")
     task_log = []
     for i, competition_obj in enumerate(competition_lst):
         eta = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10) + datetime.timedelta(minutes=(15 * i))
@@ -161,8 +162,8 @@ def send_all_leaderboard_emails():
     CustomUser = apps.get_model("custom_user", "CustomUser")
     user_lst = CustomUser.objects.filter(
         is_verified=True,
-        my_competitions__start_date__lt=datetime.date.today(),
-        my_competitions__end_date__gte=datetime.date.today(),
+        my_competitions__start_date__lt=timezone.localdate(),
+        my_competitions__end_date__gte=timezone.localdate(),
     ).order_by("pk").distinct()
     task_log = []
     if len(user_lst) > 0:
@@ -185,7 +186,7 @@ def leaderboard_email(user_pk):
         return f"skip unverified user {user.pk}"
     competition_all_data = []
     competition_7d_data = []
-    for competition in user.my_competitions.filter(start_date__lte=datetime.date.today(), end_date__gte=datetime.date.today()).order_by("-start_date"):
+    for competition in user.my_competitions.filter(start_date__lte=timezone.localdate(), end_date__gte=timezone.localdate()).order_by("-start_date"):
         competition_all_stats = get_competition_stats(competition.pk)
         competition_all_data.append({
             "competition": competition_all_stats["competition"],
@@ -263,7 +264,7 @@ def openai_quote():
 
 
 def calendar_stats(user_pk):
-    today = datetime.date.today()
+    today = timezone.localdate()
 
     days_until_sunday = (6 - today.weekday()) % 7
     next_sunday = today + datetime.timedelta(days=days_until_sunday)
@@ -320,7 +321,7 @@ def weekly_email(user_pk):
     Workout = apps.get_model("workouts", "Workout")
     workout_7day_stats = Workout.objects.filter(
         user=user,
-        start_datetime__gte=datetime.date.today() - datetime.timedelta(days=7)
+        start_datetime__gte=timezone.localdate() - datetime.timedelta(days=7)
     ).annotate(
         day=TruncDate("start_datetime")
     ).aggregate(

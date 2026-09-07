@@ -326,6 +326,9 @@ const profileFields = {
     email: {
         type: "email", required: true, label: "Email", width: "max-sm:w-full w-1/2",
     },
+    current_password: {
+        type: "password", required: false, label: "Current password (required to change email)", width: "max-sm:w-full w-1/2",
+    },
     gender: {
         type: "select", required: true, label: "Gender", width: "max-sm:w-full w-1/2",
         selectList: [
@@ -415,11 +418,18 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
             // selector (which saves immediately). `values` is a snapshot
             // from mount time - sending its stale copy here would
             // silently revert a source switch made in between.
-            const {activity_source, activity_source_effective, ...profileValues} = values;
+            const {activity_source, activity_source_effective, current_password, ...profileValues} = values;
+            const emailChanged = user?.email && values.email
+                && values.email.toLowerCase() !== String(user.email).toLowerCase();
+            if (emailChanged && !current_password) {
+                setFieldErrors({current_password: "Current password is required to change email."});
+                return;
+            }
             await updateEntry({
                 id: 'me',
                 ...profileValues,
-                email: values.email.toLowerCase()
+                email: values.email.toLowerCase(),
+                ...(emailChanged ? {current_password} : {}),
             }).unwrap();
             setModalState(false);
             clearBodyScrollLock();

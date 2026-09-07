@@ -3,6 +3,7 @@ import {throwErrorWithCode} from '../miscellaneous';
 import {getServerUrl} from '../serverUrl';
 import {ensureFreshAccessToken, getAccessToken, hasAuthMarker, refreshAccessToken} from '../authTokens';
 import {isPublicPath} from '../publicPath';
+import {isNativeApp} from '../platform';
 
 function getSentry() {
     return import('@sentry/react').catch(() => null);
@@ -28,6 +29,9 @@ const baseQuery = fetchBaseQuery({
             headers.set('Content-Type', 'application/json');
         }
         headers.set('X-Requested-With', 'WorkoutChallenge');
+        if (isNativeApp()) {
+            headers.set('X-WC-Client', 'native');
+        }
         if (token) {
             headers.set('Authorization', `Bearer ${token}`);
         }

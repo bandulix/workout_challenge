@@ -416,7 +416,10 @@ def distance_km_from_ow(ow_workout: dict, duration_s) -> float | None:
         duration_min = (duration_s or 0) / 60
         # Athletic 2.5–20 min/km: a 5 km run sent as 5.0 with a 25 min
         # duration matches; a 50 m sprint in 10 s does not (treated as m).
-        if metres >= 0.2 and duration_min >= metres * 2.5 and duration_min <= metres * 20:
+        # Walks/hikes are often slower than 20 min/km.
+        sport = map_health_sport_type(ow_workout.get("type"))
+        max_min_per_km = 60 if sport in ("Walk", "Hike") else 20
+        if metres >= 0.2 and duration_min >= metres * 2.5 and duration_min <= metres * max_min_per_km:
             return round(metres, 2)
         return round(metres / 1000, 2)
 
@@ -498,10 +501,20 @@ def workout_to_props(user, ow_workout: dict) -> dict | None:
         return None
 
     kcal = _ow_pick(ow_workout, "calories_kcal", "calories", "kcal")
+    kcal_unit = None
     if kcal is None:
         entry = _values_entry(ow_workout, ("calories", "calories_kcal", "energy", "active_energy", "activeEnergy"))
         if entry is not None:
             kcal = entry.get("value")
+            kcal_unit = entry.get("unit")
+    if kcal is not None:
+        k = float(kcal)
+        u = str(kcal_unit or "").lower()
+        if u in ("kj", "kilojoule", "kilojoules"):
+            k = k / 4.184
+        elif u in ("j", "joule", "joules"):
+            k = k / 4184.0
+        kcal = round(k)
     avg_hr = _ow_pick(ow_workout, "avg_heart_rate_bpm", "avg_hr", "average_heart_rate")
 
     return {
@@ -511,7 +524,7 @@ def workout_to_props(user, ow_workout: dict) -> dict | None:
         "start_datetime": start_dt,
         "duration": datetime.timedelta(seconds=int(duration_s)),
         "distance": distance_km_from_ow(ow_workout, duration_s),
-        "kcal": None if kcal is None else round(float(kcal)),
+        "kcal": kcal,
         "intensity_category": _estimate_intensity(avg_hr, kcal, int(duration_s)),
     }
 
@@ -623,7 +636,10 @@ def _sync_user_workouts(user, start_datetime=None, wait_for_ingest=False) -> dic
             continue
         # Cross-provider duplicate guard: the same activity may already
         # exist from Strava/Garmin or as a manual entry - never twice.
-        dup = find_duplicate_workout(user, props["start_datetime"], props["duration"], provider="health")
+        dup = find_duplicate_workout(
+            user, props["start_datetime"], props["duration"],
+            provider="health", sport_type=props.get("sport_type"),
+        )
         if dup is not None:
             # A manual (or earlier empty) copy of this ride should pick
             # up Health Connect kilometres instead of staying at 0 km.
@@ -660,6 +676,8 @@ def sync_health(self, user__id, start_datetime=None, wait_for_ingest=False):
     # Health must not import - the same activities would arrive twice.
     if user.get_activity_source() != 'health':
         logger.info("Health sync user %s skipped: Health is not the selected activity source", user__id)
+        user.health_last_synced_at = timezone.now()
+        user.save(update_fields=["health_last_synced_at"])
         return {"user": user__id, "skipped": "health is not the selected activity source"}
 
     result = _sync_user_workouts(

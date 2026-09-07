@@ -3,6 +3,7 @@ from unittest import mock
 
 from django.core.cache import cache
 from django.test import TestCase, override_settings
+from rest_framework.test import APIClient
 
 from custom_user.models import CustomUser
 
@@ -94,6 +95,7 @@ class TokenThrottleSplitTests(TestCase):
             self.addCleanup(patcher.stop)
             patcher.start()
         cache.clear()
+        self.client = APIClient()
         self.user = CustomUser.objects.create_user(
             email="throttle@example.com", password="Sup3r-Secret!Pass", first_name="T",
         )
@@ -108,7 +110,7 @@ class TokenThrottleSplitTests(TestCase):
         from custom_user.jwt_cookies import REFRESH_COOKIE_NAME
         rates = {**SimpleRateThrottle.THROTTLE_RATES, "auth_refresh": "1/hour"}
         with mock.patch.object(SimpleRateThrottle, "THROTTLE_RATES", rates):
-            login = self.client.post("/api/token/", {"email": "throttle@example.com", "password": "Sup3r-Secret!Pass"})
+            login = self.client.post("/api/token/", {"email": "throttle@example.com", "password": "Sup3r-Secret!Pass"}, format="json")
             self.assertEqual(login.status_code, 200, login.content)
             self.assertNotIn("refresh", login.json())
             self.assertIn(REFRESH_COOKIE_NAME, login.cookies)
@@ -116,12 +118,12 @@ class TokenThrottleSplitTests(TestCase):
             self.assertEqual(first.status_code, 200, first.content)
             second = self.client.post("/api/token/refresh/", {}, content_type="application/json")
             self.assertEqual(second.status_code, 429)
-            again = self.client.post("/api/token/", {"email": "throttle@example.com", "password": "Sup3r-Secret!Pass"})
+            again = self.client.post("/api/token/", {"email": "throttle@example.com", "password": "Sup3r-Secret!Pass"}, format="json")
             self.assertEqual(again.status_code, 200, again.content)
 
     def test_refresh_rotates_and_rejects_old_token(self):
         from custom_user.jwt_cookies import REFRESH_COOKIE_NAME
-        login = self.client.post("/api/token/", {"email": "throttle@example.com", "password": "Sup3r-Secret!Pass"})
+        login = self.client.post("/api/token/", {"email": "throttle@example.com", "password": "Sup3r-Secret!Pass"}, format="json")
         self.assertEqual(login.status_code, 200, login.content)
         refresh = login.cookies[REFRESH_COOKIE_NAME].value
         rotated = self.client.post("/api/token/refresh/", {"refresh": refresh}, content_type="application/json")
@@ -157,6 +159,7 @@ class SportPointsFactorTests(TestCase):
         # The class-level LocMem cache instance is reused across test
         # methods of this class - start each test with a clean state.
         cache.clear()
+        self.client = APIClient()
         self.user = CustomUser.objects.create_user(
             email="factors@example.com", password="Sup3r-Secret!Pass", first_name="Fay",
         )
@@ -254,7 +257,7 @@ class SportPointsFactorTests(TestCase):
         anon = self.client.get("/api/points-factors/")
         self.assertIn(anon.status_code, (401, 403))
         # JWT-only API (no session auth) - authenticate via token.
-        login = self.client.post("/api/token/", {"email": "factors@example.com", "password": "Sup3r-Secret!Pass"})
+        login = self.client.post("/api/token/", {"email": "factors@example.com", "password": "Sup3r-Secret!Pass"}, format="json")
         self.assertEqual(login.status_code, 200, login.content)
         resp = self.client.get("/api/points-factors/", HTTP_AUTHORIZATION=f"Bearer {login.json()['access']}")
         self.assertEqual(resp.status_code, 200)

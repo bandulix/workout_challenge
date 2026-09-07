@@ -53,7 +53,8 @@ def eligible_personas(competition, incumbent_id=None):
     participant_ids = list(competition.user.values_list("id", flat=True))
     ids = set(
         DrillInstructorPersona.objects.filter(
-            Q(is_builtin=True) | Q(created_by_id__in=participant_ids)
+            Q(is_builtin=True)
+            | Q(is_shared=True, created_by_id__in=participant_ids)
         ).values_list("pk", flat=True)
     )
     if incumbent_id:

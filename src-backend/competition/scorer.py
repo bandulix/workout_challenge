@@ -3,6 +3,7 @@ import logging
 
 from django.apps import apps
 from django.core.cache import cache
+from django.db.models import Q
 from django.utils import timezone
 
 from custom_user.point_recalc import bump_stats_generation, recap_goal, trigger_recalc_points
@@ -24,6 +25,10 @@ def get_sport_factors() -> dict:
         factors = SiteSettings.get_solo().points_sport_factors or {}
         cache.set(_SPORT_FACTORS_CACHE_KEY, factors, 60)
     return factors
+
+
+def _include_workout_for_goal(goal, workout) -> bool:
+    return bool(goal.count_steps_as_walks or getattr(workout, "sport_type", None) != "Steps")
 
 
 def sport_factor(sport_type, factors=None) -> float:
@@ -173,7 +178,7 @@ def trigger_workout_change(instance, new, changes):
         new_requests = []
         for competition in instance.user.my_competitions.filter(start_date__lte=start_datetime, end_date__gte=start_datetime).prefetch_related('activitygoal_set'):
             for goal in competition.activitygoal_set.all():
-                if goal.count_steps_as_walks or instance.sport_type != 'Steps':
+                if _include_workout_for_goal(goal, instance):
                     points = _calculate_points_raw(goal=goal, workout=instance, user=instance.user, factors=factors)
                     new_points.append(Points(goal=goal, workout=instance, points_raw=points, points_capped=points))
                     new_requests.append(RecalcRequest(user=instance.user, goal=goal, start_datetime=start_datetime))
@@ -202,12 +207,20 @@ def trigger_workout_change(instance, new, changes):
             metric_change_lst.extend(['kcal', 'kj'])
         if 'distance' in changes:
             metric_change_lst.extend(['km'])
+        if 'sport_type' in changes:
+            metric_change_lst.extend(['min', 'num', 'kcal', 'km', 'kj'])
 
         recalc_start_datetime = changes.get('start_datetime', [instance.start_datetime])[0]
         # select_related: goal is dereferenced per row in the filter.
         points_to_update = []
+        points_to_delete = []
         requests = []
         for recalc_points in instance.points_set.all().select_related('goal'):
+            if recalc_points.goal is None:
+                continue
+            if not _include_workout_for_goal(recalc_points.goal, instance):
+                points_to_delete.append(recalc_points.pk)
+                continue
             if recalc_points.goal.metric not in metric_change_lst:
                 continue
             points = _calculate_points_raw(goal=recalc_points.goal, workout=instance, user=instance.user, factors=factors)
@@ -215,10 +228,14 @@ def trigger_workout_change(instance, new, changes):
             recalc_points.points_capped = points
             points_to_update.append(recalc_points)
             requests.append(RecalcRequest(user=instance.user, goal=recalc_points.goal, start_datetime=recalc_start_datetime))
+        if points_to_delete:
+            Points.objects.filter(pk__in=points_to_delete).delete()
         if points_to_update:
             Points.objects.bulk_update(points_to_update, ['points_raw', 'points_capped'], batch_size=500)
         if requests:
             RecalcRequest.objects.bulk_create(requests)
+        if 'start_datetime' in changes or 'sport_type' in changes:
+            _resync_workout_competition_points(instance, factors=factors)
 
     # Avoid logging the full changes dict - it contains all fields,
     # which is more than we need for an audit trail.
@@ -231,6 +248,38 @@ def trigger_workout_change(instance, new, changes):
 
     _bust_stats_cache_for(instance.user)
     trigger_recalc_points()
+
+
+def _resync_workout_competition_points(workout, factors=None):
+    """Drop out-of-window goal points and mint missing in-window rows."""
+    Points = apps.get_model("competition", "Points")
+    RecalcRequest = apps.get_model("custom_user", "RecalcRequest")
+    start = workout.start_datetime
+    if start is None or workout.user_id is None:
+        return
+    factors = factors if factors is not None else get_sport_factors()
+    in_window = workout.user.my_competitions.filter(
+        start_date__lte=start, end_date__gte=start,
+    )
+    in_ids = set(in_window.values_list("pk", flat=True))
+    for row in list(workout.points_set.filter(goal__isnull=False).select_related("goal")):
+        if row.goal.competition_id not in in_ids or not _include_workout_for_goal(row.goal, workout):
+            row.delete()
+    new_points = []
+    new_requests = []
+    for competition in in_window.prefetch_related("activitygoal_set"):
+        for goal in competition.activitygoal_set.all():
+            if not _include_workout_for_goal(goal, workout):
+                continue
+            if Points.objects.filter(goal=goal, workout=workout).exists():
+                continue
+            points = _calculate_points_raw(goal=goal, workout=workout, user=workout.user, factors=factors)
+            new_points.append(Points(goal=goal, workout=workout, points_raw=points, points_capped=points))
+            new_requests.append(RecalcRequest(user=workout.user, goal=goal, start_datetime=start))
+    if new_points:
+        Points.objects.bulk_create(new_points, ignore_conflicts=True)
+    if new_requests:
+        RecalcRequest.objects.bulk_create(new_requests)
 
 
 def challenge_start_datetime(competition):
@@ -356,6 +405,8 @@ def trigger_competition_change(instance, new, changes):
             workouts = Workout.objects.filter(start_datetime__gte=changes['start_date'][1], start_datetime__lte=changes['start_date'][0], user__in=instance.user.all()).select_related('user')
             for goal in instance.activitygoal_set.all():
                 for workout in workouts:
+                    if not _include_workout_for_goal(goal, workout):
+                        continue
                     points = _calculate_points_raw(goal=goal, workout=workout, user=workout.user, factors=factors)
                     new_points.append(Points(goal=goal, workout=workout, points_raw=points, points_capped=points))
                     new_requests.append(RecalcRequest(user=workout.user, goal=goal, start_datetime=workout.start_datetime))
@@ -389,6 +440,8 @@ def trigger_competition_change(instance, new, changes):
             workouts = Workout.objects.filter(start_datetime__gte=changes['end_date'][0] + datetime.timedelta(days=1), start_datetime__lte=changes['end_date'][1] + datetime.timedelta(days=1), user__in=instance.user.all()).select_related('user')
             for goal in instance.activitygoal_set.all():
                 for workout in workouts:
+                    if not _include_workout_for_goal(goal, workout):
+                        continue
                     points = _calculate_points_raw(goal=goal, workout=workout, user=workout.user, factors=factors)
                     new_points.append(Points(goal=goal, workout=workout, points_raw=points, points_capped=points))
                     new_requests.append(RecalcRequest(user=workout.user, goal=goal, start_datetime=workout.start_datetime))
@@ -423,6 +476,8 @@ def trigger_user_change(instance, new, changes):
                 workout_lst = Workout.objects.filter(user=instance, start_datetime__gte=competition.start_date, start_datetime__lte=competition.end_date + datetime.timedelta(days=1))
                 for goal in competition.activitygoal_set.all():
                     for workout in workout_lst:
+                        if not _include_workout_for_goal(goal, workout):
+                            continue
                         points = _calculate_points_raw(goal=goal, workout=workout, user=instance, factors=factors)
                         new_points.append(Points(goal=goal, workout=workout, points_raw=points, points_capped=points))
                     new_requests.append(RecalcRequest(user=instance, goal=goal, start_datetime=challenge_start_datetime(competition)))
@@ -433,7 +488,11 @@ def trigger_user_change(instance, new, changes):
             logger.info("User %s joined competitions %s, triggering cap recalc", instance.pk, changes['my_competitions'][1])
         else:
             # remove/leave competition
-            Points.objects.filter(goal__competition__in=changes['my_competitions'][0], workout__user=instance).delete()
+            left = changes['my_competitions'][0]
+            Points.objects.filter(
+                Q(goal__competition__in=left) | Q(award__competition__in=left),
+                workout__user=instance,
+            ).delete()
             logger.info("User %s left competitions %s, not triggering cap recalc", instance.pk, changes['my_competitions'][0])
 
         trigger_recalc_points()

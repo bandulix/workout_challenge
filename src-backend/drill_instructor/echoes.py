@@ -598,10 +598,14 @@ def expire_challenges(now=None):
             expired += 1
 
         today = timezone.localdate()
-        finished = LegendEcho.objects.filter(
-            status__in=(LegendEcho.STATUS_UNDEFEATED, LegendEcho.STATUS_CONTESTED),
-            config__competition__end_date__lt=today,
-        ).select_related("config", "config__persona", "origin_user")
+        finished = list(
+            LegendEcho.objects.select_for_update()
+            .filter(
+                status__in=(LegendEcho.STATUS_UNDEFEATED, LegendEcho.STATUS_CONTESTED),
+                config__competition__end_date__lt=today,
+            )
+            .select_related("config", "config__persona", "origin_user")
+        )
         for echo in finished:
             immortalize(echo)
             immortal += 1

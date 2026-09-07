@@ -141,9 +141,14 @@ class StatsCacheTests(TestCase):
         self.assertEqual(len(rows1), 1)
         self.assertIn("workout__user__profile_picture", rows1[0])
 
-        # A new points row WITHOUT a generation bump (Points.objects.create
-        # fires no triggers) must NOT show up while the cache is warm...
-        Points.objects.create(goal=goal, workout=workout, points_raw=5, points_capped=5)
+        # A new award-backed row WITHOUT a generation bump must NOT show
+        # up while the cache is warm (Points.objects.create fires no triggers).
+        from .models import Award
+        award, _ = Award.objects.get_or_create(
+            competition=self.competition, name="CacheProbe",
+            defaults={"sport": "GROUP_ANY", "threshold": 1, "period": "day", "reward_points": 5},
+        )
+        Points.objects.create(award=award, workout=workout, goal=None, points_raw=5, points_capped=5)
         response2 = self.client.get(f"/api/feed/{self.competition.id}/")
         self.assertEqual(response2.json(), rows1)
 
@@ -680,3 +685,84 @@ class GoalEditRescoresChallengeTests(TestCase):
         self.assertAlmostEqual(float(late_pts.points_raw), 30.0, places=2)
         self.assertAlmostEqual(float(morning_pts.points_capped), 30.0, places=2)
         self.assertAlmostEqual(float(late_pts.points_capped), 30.0, places=2)
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class ReviewFixTests(TestCase):
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "drill_instructor.tasks.post_workout_comment.delay",
+            "custom_user.models.verify_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.client = APIClient()
+        self.owner = CustomUser.objects.create_user(
+            email="rf-owner@example.com", password="test-pw", first_name="Olivia", last_name="",
+        )
+        self.mate = CustomUser.objects.create_user(
+            email="rf-mate@example.com", password="test-pw", first_name="Max", last_name="",
+        )
+        today = timezone.localdate()
+        self.competition = Competition.objects.create(
+            owner=self.owner,
+            name="Review Cup",
+            start_date=today - datetime.timedelta(days=1),
+            end_date=today + datetime.timedelta(days=7),
+        )
+        self.owner.my_competitions.add(self.competition)
+        self.mate.my_competitions.add(self.competition)
+
+    def test_join_code_hidden_from_members(self):
+        self.client.force_authenticate(self.mate)
+        response = self.client.get(f"/api/competition/{self.competition.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("join_code", response.json())
+        self.client.force_authenticate(self.owner)
+        owned = self.client.get(f"/api/competition/{self.competition.id}/")
+        self.assertEqual(owned.status_code, 200)
+        self.assertTrue(owned.json().get("join_code"))
+        self.assertEqual(len(owned.json()["join_code"]), 16)
+
+    def test_join_does_not_score_steps_when_disabled(self):
+        self.competition.activitygoal_set.update(count_steps_as_walks=False)
+        outsider = CustomUser.objects.create_user(
+            email="rf-out@example.com", password="test-pw", first_name="Pat", last_name="",
+        )
+        Workout.objects.create(
+            user=outsider,
+            sport_type="Steps",
+            start_datetime=timezone.now(),
+            duration=datetime.timedelta(minutes=30),
+            steps=8000,
+            intensity_category=1,
+        )
+        outsider.my_competitions.add(self.competition)
+        self.assertFalse(
+            Points.objects.filter(workout__user=outsider, workout__sport_type="Steps").exists()
+        )
+
+    def test_feed_strips_strava_id_when_follow_off(self):
+        self.owner.strava_allow_follow = False
+        self.owner.save(update_fields=["strava_allow_follow"])
+        Workout.objects.create(
+            user=self.owner,
+            sport_type="Run",
+            start_datetime=timezone.now(),
+            duration=datetime.timedelta(minutes=30),
+            intensity_category=2,
+            strava_id=424242,
+        )
+        self.client.force_authenticate(self.mate)
+        feed = self.client.get(f"/api/feed/{self.competition.id}/")
+        self.assertEqual(feed.status_code, 200)
+        rows = feed.json()
+        if isinstance(rows, dict):
+            rows = rows.get("results") or rows.get("workouts") or []
+        for row in rows:
+            if row.get("workout__strava_id"):
+                self.fail(f"strava id leaked: {row}")

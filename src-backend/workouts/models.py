@@ -9,6 +9,14 @@ from django.db.models import Sum
 from custom_user.models import CustomUser
 from competition.scorer import score_workout, unscore_workout
 
+
+def _local_date(dt):
+    if dt is None:
+        return None
+    if timezone.is_aware(dt):
+        return timezone.localtime(dt).date()
+    return dt.date() if hasattr(dt, "date") else dt
+
 # Create your models here.
 
 SPORT_TYPE_GROUPS = [
@@ -232,17 +240,18 @@ class Workout(models.Model):
             self.intensity_category = 1
 
             # Subtract the steps from walks and runs from the daily total steps to not double count
-            recorded_walks = Workout.objects.filter(user=self.user, start_datetime__date=self.start_datetime, sport_type='Walk').aggregate(duration=Sum('duration'))['duration']
-            recorded_runs = Workout.objects.filter(user=self.user, start_datetime__date=self.start_datetime, sport_type='Run').aggregate(duration=Sum('duration'))['duration']
-            recorded_steps_walks = 0 if recorded_walks is None else 6_000 / (60 * 60) * recorded_walks.seconds
-            recorded_steps_runs = 0 if recorded_runs is None else 10_000 / (60 * 60) * recorded_runs.seconds
+            local_day = _local_date(self.start_datetime)
+            recorded_walks = Workout.objects.filter(user=self.user, start_datetime__date=local_day, sport_type='Walk').aggregate(duration=Sum('duration'))['duration']
+            recorded_runs = Workout.objects.filter(user=self.user, start_datetime__date=local_day, sport_type='Run').aggregate(duration=Sum('duration'))['duration']
+            recorded_steps_walks = 0 if recorded_walks is None else 6_000 / (60 * 60) * recorded_walks.total_seconds()
+            recorded_steps_runs = 0 if recorded_runs is None else 10_000 / (60 * 60) * recorded_runs.total_seconds()
             self.distance = 0.82 * scaling_distance * max(self.steps - recorded_steps_walks - recorded_steps_runs, 0) / 1000
             base_duration_seconds = self.distance * (1 / scaling_distance) / 5 * 60 * 60
             self.duration = datetime.timedelta(seconds=base_duration_seconds)
             self.kcal = SPORT_MET["Walk"][self.intensity_category] * 75 * (base_duration_seconds / (60 * 60)) * scaling_kcal  # default human 75kg scaled up/down by scaler
 
-            # update start_datetime to server 23:59:00 in UTC
-            server_time = datetime.datetime.combine(self.start_datetime.date(), datetime.time(23, 59, 0))
+            # update start_datetime to 23:59 of the local calendar day
+            server_time = datetime.datetime.combine(local_day, datetime.time(23, 59, 0))
             self.start_datetime = timezone.make_aware(server_time).astimezone(datetime.timezone.utc)
 
         if self.sport_type in ["Ride", "EBikeRide", "GravelRide", "Handcycle", "Velomobile", "VirtualRide", "MountainBikeRide", "EMountainBikeRide", "Run", "TrailRun", "VirtualRun", "Walk"]:
@@ -252,7 +261,7 @@ class Workout(models.Model):
             # Health Connect shipped without metres is worse than blank.
             imported = bool(self.strava_id or self.garmin_id or self.health_id)
             if not imported and (self.distance is None or self.distance == ""):
-                self.distance = SPORT_MET.get(self.sport_type, SPORT_MET['Workout'])[self.intensity_category] * (self.duration.seconds / (60 * 60)) * scaling_distance # default human 1000m scaled up/down by scaler
+                self.distance = SPORT_MET.get(self.sport_type, SPORT_MET['Workout'])[self.intensity_category] * (self.duration.total_seconds() / (60 * 60)) * scaling_distance # default human 1000m scaled up/down by scaler
 
         # default intensity 2
         if self.intensity_category is None or self.intensity_category == "":
@@ -260,7 +269,7 @@ class Workout(models.Model):
 
         # estimate kcal using database MET values
         if self.kcal is None or self.kcal == "":
-            self.kcal = SPORT_MET.get(self.sport_type, SPORT_MET['Workout'])[self.intensity_category] * 75 * (self.duration.seconds / (60 * 60)) * scaling_kcal # default human 75kg scaled up/down by scaler
+            self.kcal = SPORT_MET.get(self.sport_type, SPORT_MET['Workout'])[self.intensity_category] * 75 * (self.duration.total_seconds() / (60 * 60)) * scaling_kcal # default human 75kg scaled up/down by scaler
 
         super().save(*args, **kwargs)
         changed = self.get_changed_fields()
@@ -282,9 +291,9 @@ class Workout(models.Model):
                     if isinstance(dt, str):
                         dt = datetime.datetime.fromisoformat(dt)
                     if dt is not None:
-                        target_dates.add(dt.date())
+                        target_dates.add(_local_date(dt))
             else:
-                target_dates.add(self.start_datetime.date())
+                target_dates.add(_local_date(self.start_datetime))
             recorded_steps = Workout.objects.filter(user=self.user, start_datetime__date__in=target_dates, sport_type='Steps')
             if len(recorded_steps) > 0:
                 for steps in recorded_steps:
@@ -308,7 +317,7 @@ class Workout(models.Model):
                     steps.save(score=True)
 
 
-def find_duplicate_workout(user, start_datetime, duration, provider=None):
+def find_duplicate_workout(user, start_datetime, duration, provider=None, sport_type=None):
     """Cross-provider duplicate guard for sync imports.
 
     The same physical activity often exists in both ecosystems (recorded
@@ -339,6 +348,8 @@ def find_duplicate_workout(user, start_datetime, duration, provider=None):
             duration + datetime.timedelta(minutes=5),
         ),
     )
+    if sport_type:
+        qs = qs.filter(sport_type=sport_type)
     if provider == 'strava':
         qs = qs.filter(strava_id__isnull=True)
     elif provider == 'garmin':

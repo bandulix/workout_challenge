@@ -1159,6 +1159,35 @@ class CoachThreadReplyTests(TestCase):
         self.assertNotIn(self.owner.id, notified)
         self.assertIn(f"reply={root.id}", push.call_args[1]["url"])
 
+    def test_ambiguous_first_name_mention_notifies_nobody(self):
+        CustomUser = self.athlete.__class__
+        self.athlete.first_name = "Mia"
+        self.athlete.username = "runner1"
+        self.athlete.save(update_fields=["first_name", "username"])
+        other = CustomUser.objects.create_user(
+            email="mia2@example.com", password="test-pw", first_name="Mia", last_name="",
+        )
+        other.username = "runner2"
+        other.save(update_fields=["username"])
+        self.competition.user.add(other)
+        workout = Workout(
+            user=self.owner, sport_type="Run", start_datetime=timezone.now(),
+            duration=datetime.timedelta(minutes=30), distance=5, kcal=300, intensity_category=2,
+        )
+        workout.save(score=False)
+        root = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
+            workout=workout, body="go",
+        )
+        with mock.patch("push_notifications.sender.send_push_to_user") as push:
+            response = self._reply(self.owner, body="hey @Mia", root=root)
+        self.assertEqual(response.status_code, 201, response.content)
+        mentioned = [
+            call for call in push.call_args_list
+            if call[1].get("title", "").endswith("mentioned you") or "mentioned" in call[1].get("title", "").lower()
+        ]
+        self.assertEqual(mentioned, [])
+
 
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
@@ -1578,6 +1607,7 @@ class PhotoPostTests(TestCase):
         goal = ActivityGoal.objects.create(
             competition=self.competition, name="Minutes", metric="min", goal=30, period="day",
         )
+        Points.objects.filter(goal=goal, workout=root.workout).delete()
         Points.objects.create(goal=goal, workout=root.workout, points_raw=40, points_capped=32)
         order = DailyOrder.objects.create(
             config=self.config, date=timezone.localdate(),

@@ -131,6 +131,8 @@ def sync_strava(self, user__id, start_datetime=None):
     # Checked before any cache/Strava API access so it costs nothing.
     if user.get_activity_source() != 'strava':
         logger.info('User %s - Strava sync skipped: Strava is not the selected activity source', user__id)
+        user.strava_last_synced_at = timezone.now()
+        user.save(update_fields=['strava_last_synced_at'])
         return {'user': user__id, 'skipped': 'strava is not the selected activity source'}
 
     access_token = cache.get(f"strava_access_token_{user__id}")
@@ -249,7 +251,14 @@ def sync_strava(self, user__id, start_datetime=None):
                 # already exist from Garmin or as a manual entry. Checked
                 # before the details request so a duplicate also costs no
                 # Strava API quota.
-                if find_duplicate_workout(user, props['start_datetime'], props['duration'], provider='strava') is not None:
+                dup = find_duplicate_workout(
+                    user, props['start_datetime'], props['duration'],
+                    provider='strava', sport_type=props.get('sport_type'),
+                )
+                if dup is not None:
+                    if not dup.strava_id:
+                        dup.strava_id = props.get('strava_id')
+                        dup.save(update_fields=['strava_id'])
                     cnt_duplicate_strava_activities += 1
                     continue
 

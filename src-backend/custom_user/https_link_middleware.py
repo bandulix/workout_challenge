@@ -8,6 +8,7 @@ _LINK_PREFIXES = (
     "/api/strava/state/",
     "/api/strava/link/",
     "/api/garmin/link/",
+    "/api/health/link/",
 )
 
 
