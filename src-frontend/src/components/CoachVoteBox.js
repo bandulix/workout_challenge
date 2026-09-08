@@ -4,6 +4,7 @@ import PersonaAvatar from "./PersonaAvatar";
 import {PaneHead} from "./uiBits";
 import {useGetCoachBallotQuery, useVoteCoachPersonaMutation} from "../utils/reducers/drillInstructorSlice";
 import usePollingInterval from "../utils/usePollingInterval";
+import {playSfx} from "../utils/sfx";
 
 function formatCountdown(iso, now) {
     if (!iso) return "";
@@ -96,6 +97,7 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
         if (isLoading || personaId === ballot.my_vote) return;
         try {
             await vote({configId, persona: personaId}).unwrap();
+            playSfx("vote");
         } catch (err) {
             console.error("Coach vote failed", err);
         }

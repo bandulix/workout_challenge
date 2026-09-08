@@ -6,6 +6,7 @@ import ProfileAvatar from "./ProfileAvatar";
 import StampGlyph from "./stampGlyphs";
 import {OverlayPortal} from "../utils/overlay";
 import {useProtectedImage} from "../utils/protectedMedia";
+import {playSfx} from "../utils/sfx";
 
 // Workout stamps. Ids must match ACTIVITY_REACT_EMOJIS.
 export const ACTIVITY_REACTS = [
@@ -296,6 +297,7 @@ export function ActivityReactProvider({message, children}) {
             setPicker(false);
             setWho(null);
             if (!already) {
+                playSfx("stamp", {id: emoji});
                 setBurst(emoji);
                 clearTimeout(burstTimer.current);
                 burstTimer.current = setTimeout(() => setBurst(null), 560);

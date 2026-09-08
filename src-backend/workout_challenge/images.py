@@ -140,7 +140,8 @@ def _safe_media_name(name):
 
 def _content_type_for(name):
     return (
-        {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
+        {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif",
+         ".mid": "audio/midi", ".midi": "audio/midi"}
         .get(_Path(name).suffix.lower())
         or "application/octet-stream"
     )

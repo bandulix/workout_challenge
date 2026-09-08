@@ -197,6 +197,76 @@ class PersonaAdminPermissionTests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.content)
 
+    def test_owner_can_upload_and_clear_midi(self):
+        import struct
+        track = bytes([0x00, 0xFF, 0x2F, 0x00])
+        midi = (
+            b"MThd" + struct.pack(">IHHH", 6, 0, 1, 96)
+            + b"MTrk" + struct.pack(">I", len(track)) + track
+        )
+        cup = Competition.objects.create(
+            name="Midi Cup", start_date=timezone.now().date(),
+            end_date=(timezone.now() + datetime.timedelta(days=14)).date(),
+            owner=self.regular,
+        )
+        cup.user.add(self.regular)
+        self.client.force_authenticate(self.regular)
+        created = self.client.post(
+            "/api/drill-instructor/config/",
+            {"competition": cup.id, "persona": self.persona.id, "enabled": True},
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201, created.content)
+        config_id = created.json()["id"]
+        self.assertIsNone(created.json()["midi"])
+
+        upload = SimpleUploadedFile("theme.mid", midi, content_type="audio/midi")
+        patched = self.client.patch(
+            f"/api/drill-instructor/config/{config_id}/",
+            {"midi_upload": upload},
+            format="multipart",
+        )
+        self.assertEqual(patched.status_code, 200, patched.content)
+        midi_url = patched.json()["midi"]
+        self.assertEqual(midi_url, f"/api/drill-instructor/config/{config_id}/midi/")
+        self.assertNotIn("/media/", midi_url)
+
+        fetched = self.client.get(midi_url)
+        self.assertEqual(fetched.status_code, 200)
+        self.assertEqual(fetched["Content-Type"], "audio/midi")
+        self.assertIn("noindex", fetched["X-Robots-Tag"])
+        self.assertIn("private", fetched["Cache-Control"])
+        if "X-Accel-Redirect" in fetched:
+            self.assertTrue(fetched["X-Accel-Redirect"].startswith("/protected-media/coach_midi/"))
+        else:
+            body = b"".join(fetched.streaming_content)
+            self.assertTrue(body.startswith(b"MThd"))
+
+        self.client.logout()
+        self.assertEqual(self.client.get(midi_url).status_code, 401)
+        self.assertEqual(self.client.get("/media/coach_midi/theme.mid").status_code, 404)
+
+        self.client.force_authenticate(self.regular)
+        junk = SimpleUploadedFile("nope.mid", b"not midi", content_type="audio/midi")
+        bad = self.client.patch(
+            f"/api/drill-instructor/config/{config_id}/",
+            {"midi_upload": junk},
+            format="multipart",
+        )
+        self.assertEqual(bad.status_code, 400)
+
+        cleared = self.client.patch(
+            f"/api/drill-instructor/config/{config_id}/",
+            {"clear_midi": True},
+            format="json",
+        )
+        self.assertEqual(cleared.status_code, 200, cleared.content)
+        self.assertIsNone(cleared.json()["midi"])
+        self.assertEqual(
+            self.client.get(f"/api/drill-instructor/config/{config_id}/midi/").status_code,
+            204,
+        )
+
     def test_transfer_persona_to_teammate(self):
         teammate = _user("take@example.com", "Tara")
         cup = Competition.objects.create(
@@ -3142,16 +3212,41 @@ class ArcadeGameTests(TestCase):
         from .game import coach_mood
         mood = coach_mood(self.config)
         self.assertEqual(mood["key"], "disappointed")
+        self.assertEqual(mood["active_today"], 0)
         self.assertEqual(mood["active_24h"], 0)
         self._workout(self.alex)
         self._workout(self.nina)
         mood = coach_mood(self.config)
         self.assertIn(mood["key"], ("proud", "unleashed", "watching"))
+        self.assertEqual(mood["active_today"], 2)
         self.assertEqual(mood["active_24h"], 2)
-        self._workout(self.alex, when=timezone.now() - datetime.timedelta(hours=36))
+        yesterday = timezone.make_aware(
+            datetime.datetime.combine(
+                timezone.localdate() - datetime.timedelta(days=1),
+                datetime.time(12, 0),
+            )
+        )
+        self._workout(self.alex, when=yesterday)
         mood = coach_mood(self.config)
+        self.assertEqual(mood["active_today"], 2)
         self.assertEqual(mood["active_24h"], 2)
-        self.assertGreaterEqual(mood["active_48h"], 2)
+        self.assertEqual(mood["active_48h"], 2)
+
+    def test_mood_and_ring_ignore_yesterday(self):
+        from .game import coach_mood
+        yesterday = timezone.make_aware(
+            datetime.datetime.combine(
+                timezone.localdate() - datetime.timedelta(days=1),
+                datetime.time(18, 0),
+            )
+        )
+        self._workout(self.alex, when=yesterday)
+        self._workout(self.nina, when=yesterday)
+        mood = coach_mood(self.config)
+        self.assertEqual(mood["key"], "disappointed")
+        self.assertEqual(mood["active_today"], 0)
+        self.assertEqual(mood["active_24h"], 0)
+        self.assertEqual(mood["workouts_today"], 0)
 
     def test_config_payload_exposes_arcade(self):
         from .models import DailyOrder
@@ -3445,9 +3540,9 @@ class PersonaVoteTests(TestCase):
         self.assertEqual(self.config.persona_changed_at, stamped)
         self.assertEqual(self.config.previous_persona_id, self.roast.id)
 
-    def test_handover_box_hides_after_two_days(self):
+    def test_handover_box_hides_after_24_hours(self):
         self.config.previous_persona = self.roast
-        self.config.persona_changed_at = timezone.now() - datetime.timedelta(days=2, minutes=1)
+        self.config.persona_changed_at = timezone.now() - datetime.timedelta(hours=24, minutes=1)
         self.config.save(update_fields=["previous_persona", "persona_changed_at"])
         self.client.force_authenticate(self.athlete)
         data = self._ballot().json()
@@ -3460,6 +3555,29 @@ class PersonaVoteTests(TestCase):
         data = self._ballot().json()
         self.assertTrue(data["changed_recently"])
         self.assertEqual(data["previous_persona"]["id"], self.roast.id)
+
+    def test_ballot_includes_group_custom_coaches_not_only_stock(self):
+        """Vote grid is built-ins plus this group's custom roasters.
+
+        Shared-only filtering hid owner/participant coaches that were
+        not released, so the election box showed stock personas only.
+        """
+        owner_voice = DrillInstructorPersona.objects.create(
+            name="Olivia's Voice", system_prompt="Go.", created_by=self.owner,
+        )
+        athlete_voice = DrillInstructorPersona.objects.create(
+            name="Alex's Voice", system_prompt="Go.", created_by=self.athlete,
+        )
+        stranger = DrillInstructorPersona.objects.create(
+            name="Otto's Voice", system_prompt="Nope.", created_by=self.outsider,
+        )
+        self.client.force_authenticate(self.athlete)
+        names = {c["persona"]["name"] for c in self._ballot().json()["candidates"]}
+        self.assertIn("Vote Sergeant", names)
+        self.assertIn("Vote Roast", names)
+        self.assertIn(owner_voice.name, names)
+        self.assertIn(athlete_voice.name, names)
+        self.assertNotIn(stranger.name, names)
 
 
 @override_settings(

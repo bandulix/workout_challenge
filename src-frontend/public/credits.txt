@@ -1,3 +1,5 @@
+sfx/*.mp3 - Kenney Interface Sounds 1.0 (CC0) by Kenney (https://kenney.nl/assets/interface-sounds). Attribution optional; see /sfx/LICENSE-kenney.txt.
+Coach MIDI beds - GeneralUser GS by S. Christian Collins (https://www.schristiancollins.com/generaluser); see /soundfonts/LICENSE-generaluser.txt. Playback via FluidSynth (LGPL-2.1) / js-synthesizer (BSD-3-Clause).
 running.jpg, running.webp, running_email.jpg - Image by <a href="https://pixabay.com/users/fotorech-5554393/?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=4782722">Daniel Reche</a> from <a href="https://pixabay.com//?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=4782722">Pixabay</a>
 profile.png - Image by <a href="https://pixabay.com/users/raphaelsilva-4702998/?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=3814049">Raphael Silva</a> from <a href="https://pixabay.com//?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=3814049">Pixabay</a>
 backdrops/*.webp, backdrops/*.jpg - generated with xAI Imagine (volt-neon action plates: snowboard, swim, gravel, studio, lift).

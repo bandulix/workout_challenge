@@ -4,12 +4,13 @@ import {FIELD_INPUT_CLASS, Modal, SaveButton, SingleForm, StravaButton} from "./
 import {useNavigate} from "react-router-dom";
 import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, useUnlinkGarminMutation, useLinkHealthMutation, useUnlinkHealthMutation} from "../utils/reducers/linkSlice";
 import {useDispatch} from "react-redux";
-import {Watch, Smartphone, Download} from "lucide-react";
+import {Watch, Smartphone, Download, Volume2, VolumeX} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {isNativeHealthAvailable, nativeHealthConnect, nativeHealthDisconnect, nativeHealthSetSource} from "../utils/nativeHealth";
 import {confirmAction, notice} from "../utils/dialogs";
 import {assetUrl} from "../utils/platform";
 import {clearBodyScrollLock} from "../utils/overlay";
+import {playSfx, useSfxEnabled} from "../utils/sfx";
 
 
 const PROVIDER_LABELS = {strava: "Strava", garmin: "Garmin", health: "Apple/Google Health"};
@@ -313,6 +314,36 @@ function LinkedPill() {
     );
 }
 
+function SoundSettings() {
+    const [on, setOn] = useSfxEnabled();
+    return (
+        <SettingsGroup title="Sounds" hint="Short stings for stamps, roast swipes, Echoes, votes, a revealed roast, and a full squad ring. Mute anytime.">
+            <div className="rounded-2xl glass-card p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                    {on
+                        ? <Volume2 className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                        : <VolumeX className="h-4 w-4 text-gray-400"/>}
+                    <span className="font-display text-xs uppercase tracking-wider">Coach sounds</span>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Plays only while this app is open. Does not replace notification pings.
+                </p>
+                <button type="button"
+                        onClick={() => {
+                            const next = !on;
+                            setOn(next);
+                            if (next) playSfx("vote");
+                        }}
+                        aria-pressed={on}
+                        className={"rounded-full px-4 py-2.5 text-sm font-bold uppercase tracking-wide min-h-[44px] transition " +
+                            (on ? "bg-volt-400 text-ink-950 shadow-glow-volt" : "btn-glass")}>
+                    {on ? "Sounds on" : "Sounds off"}
+                </button>
+            </div>
+        </SettingsGroup>
+    );
+}
+
 const profileFields = {
     first_name: {
         type: "text", required: true, label: "First name", width: "max-sm:w-full w-1/2",
@@ -531,6 +562,8 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
                     <SyncSourceSection user={user} onChanged={() => dispatch(usersApi.util.invalidateTags(['User']))}/>
                 )}
             </SettingsGroup>
+
+            <SoundSettings/>
 
             {formError && <p className="text-center text-red-500 text-xs italic">{formError}</p>}
 

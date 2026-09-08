@@ -16,7 +16,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from workout_challenge.images import ProtectedMediaRenderer, empty_picture_response, serve_picture
+from workout_challenge.images import (
+    ProtectedMediaRenderer,
+    empty_picture_response,
+    protected_media_response,
+    serve_picture,
+)
 from .llm_client import check_vision_capability
 from competition.models import Competition, Points
 from .models import (
@@ -283,6 +288,22 @@ class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         self._ensure_owner(instance.competition)
         instance.delete()
+
+    @action(detail=True, methods=["get"], url_path="midi", renderer_classes=[ProtectedMediaRenderer])
+    def midi(self, request, pk=None):
+        """Serve this challenge's coach MIDI bed — authenticated only.
+
+        Same privacy model as pictures: never on public ``/media/``.
+        Django checks the JWT here; production nginx delivers bytes via
+        internal X-Accel-Redirect. Missing file is 204 (not 404).
+        """
+        try:
+            config = self.get_object()
+        except Http404:
+            return empty_picture_response()
+        if not config.midi:
+            return empty_picture_response()
+        return protected_media_response(config.midi, request=request)
 
     @action(detail=True, methods=["get"])
     def ballot(self, request, pk=None):

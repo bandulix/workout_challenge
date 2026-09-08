@@ -53,7 +53,7 @@ function AccordionMenu() {
         )},
         {title: "Credits", content: (
             <>
-                Fork of <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick/workout_challenge">vanalmsick/workout_challenge</a> under the SSPL v1.0 license — see <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/bandulix/workout_challenge">github.com/bandulix/workout_challenge</a>. See <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="/credits.txt">here for stock image credits</a>.
+                Fork of <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick/workout_challenge">vanalmsick/workout_challenge</a> under the SSPL v1.0 license — see <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/bandulix/workout_challenge">github.com/bandulix/workout_challenge</a>. See <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="/credits.txt">here for stock image and sound credits</a>.
             </>
         )},
     ];

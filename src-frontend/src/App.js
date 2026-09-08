@@ -21,6 +21,8 @@ import VerifyEmailBanner from "./components/VerifyEmailBanner";
 import DialogHost from "./components/DialogHost";
 import ForceUpdateScreen, {ForceUpdateChecking} from "./components/ForceUpdateScreen";
 import {InitStravaLink, ReturnStravaLink} from "./pages/StravaLink";
+import {installSfxUnlock} from "./utils/sfx";
+import CoachMidiBed from "./components/CoachMidiBed";
 
 // Lazy-loaded heavy pages - keeps the initial bundle small on mobile.
 const MySpace = lazy(() => import("./pages/MySpace"));
@@ -40,6 +42,7 @@ function RememberPath() {
 
 function App() {
     useDarkTheme();
+    useEffect(() => installSfxUnlock(), []);
     return (
         <Router>
             <AppShell/>
@@ -143,6 +146,7 @@ function AppShell() {
             </Routes>
 
             <BottomNav/>
+            <CoachMidiBed/>
             <DialogHost/>
             {/* Release popup: one changelog + reload prompt per release. */}
             <WhatsNew/>

@@ -4,6 +4,7 @@ import {useProtectedImage} from "../utils/protectedMedia";
 import {PaneHead, paneCardClass} from "./uiBits";
 import {OverlaySheet} from "../forms/basicComponents";
 import {sharePostCard} from "../utils/shareCard";
+import {playSfx} from "../utils/sfx";
 
 const HALL_PREVIEW = 3;
 
@@ -37,14 +38,13 @@ const DEFAULT_ORBIT = {ring: "animate-squad-orbit-slow", wave: false, tilt: fals
 export function trainedSummary(mood) {
     if (!mood) return null;
     const total = Math.max(Number(mood.participants) || 0, 1);
-    const use24 = mood.active_24h != null;
-    const active = Math.max(0, Math.min(Number(use24 ? mood.active_24h : mood.active_48h) || 0, total));
-    const window = use24 ? "the last 24 hours" : "the last 48 hours";
+    const raw = mood.active_today ?? mood.active_24h ?? mood.active_48h;
+    const active = Math.max(0, Math.min(Number(raw) || 0, total));
     return {
         active,
         total,
         label: `${active} of ${total} trained`,
-        hint: `${active} of ${total} ${total === 1 ? "athlete" : "athletes"} trained in ${window}`,
+        hint: `${active} of ${total} ${total === 1 ? "athlete" : "athletes"} trained today`,
     };
 }
 
@@ -84,7 +84,7 @@ function arcPath(startDeg, endDeg) {
     return `M ${sx} ${sy} A ${RING_R} ${RING_R} 0 ${large} 1 ${ex} ${ey}`;
 }
 
-// 24h activity ticks sit ON the neon photo border. The border itself is
+// Today's activity ticks sit ON the neon photo border. The border itself is
 // a CSS accent ring on the portrait; this SVG only lights trained segments.
 function ActivityTicks({total, filled, color}) {
     const n = Math.max(1, Math.min(total, RING_SEGMENTS_MAX));
@@ -127,6 +127,19 @@ export function SquadOrbit({mood, children, showCaption = true, accent}) {
     const trained = trainedSummary(mood) || {active: 0, total: 8, hint: "Coach orbit"};
     const total = trained.total;
     const active = trained.active;
+    const primedFull = useRef(false);
+    const wasFull = useRef(false);
+    useEffect(() => {
+        if (!mood) return;
+        const isFull = total > 0 && active >= total;
+        if (!primedFull.current) {
+            primedFull.current = true;
+            wasFull.current = isFull;
+            return;
+        }
+        if (isFull && !wasFull.current) playSfx("ring_full");
+        wasFull.current = isFull;
+    }, [mood, active, total]);
     const ringCount = Math.max(1, Math.min(total, RING_SEGMENTS_MAX));
     const ringLit = Math.round((active / Math.max(total, 1)) * ringCount);
     const pipCount = Math.max(8, Math.min(Math.max(total, 8), PIP_MAX));
@@ -190,7 +203,7 @@ export function SquadOrbit({mood, children, showCaption = true, accent}) {
                     {active}<span className="text-[0.7rem] font-sans font-bold text-gray-400"> of {total}</span>
                 </p>
                 <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
-                    trained last 24h
+                    trained today
                 </p>
             </div>
         </div>

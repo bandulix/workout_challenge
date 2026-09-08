@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 SWITCH_HOUR = 7
 SWITCH_MINUTE = 15
 # New-coach info box: vote handover *or* a manual persona pick, then hide.
-HANDOVER_VISIBLE = datetime.timedelta(days=2)
+HANDOVER_VISIBLE = datetime.timedelta(hours=24)
 
 
 def next_persona_switch_at(now=None):
@@ -38,7 +38,7 @@ def handover_until(changed_at):
 
 
 def is_handover_visible(changed_at, now=None):
-    """True for ≤2 days after persona_changed_at."""
+    """True for ≤24 hours after persona_changed_at."""
     until = handover_until(changed_at)
     if until is None:
         return False
@@ -50,11 +50,12 @@ def eligible_personas(competition, incumbent_id=None):
     """Built-ins + custom roasters created by current participants + incumbent."""
     from .models import DrillInstructorPersona
 
-    participant_ids = list(competition.user.values_list("id", flat=True))
+    participant_ids = set(competition.user.values_list("id", flat=True))
+    if competition.owner_id:
+        participant_ids.add(competition.owner_id)
     ids = set(
         DrillInstructorPersona.objects.filter(
-            Q(is_builtin=True)
-            | Q(is_shared=True, created_by_id__in=participant_ids)
+            Q(is_builtin=True) | Q(created_by_id__in=participant_ids)
         ).values_list("pk", flat=True)
     )
     if incumbent_id:
@@ -122,7 +123,7 @@ def ballot_payload_for_request(config, request):
         "persona_changed_at": changed_at.isoformat() if changed_at else None,
         "handover_until": until.isoformat() if until else None,
         "changed_recently": changed_recently,
-        # Kept for older clients; same 2-day window as changed_recently.
+        # Kept for older clients; same 24h window as changed_recently.
         "changed_this_term": changed_recently,
         "previous_persona": previous,
         "candidates": candidates,

@@ -72,6 +72,8 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
     const [testBody, setTestBody] = useState(PLACEHOLDER_BODY);
     const [fieldErrors, setFieldErrors] = useState({});
     const [formError, setFormError] = useState("");
+    const [midiFile, setMidiFile] = useState(null);
+    const [clearMidi, setClearMidi] = useState(false);
 
     useEffect(() => {
         if (existing) {
@@ -81,6 +83,8 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             setNudgeOnInactivity(existing.nudge_on_inactivity !== false);
             setRandomPush(existing.random_push !== false);
             setSendPushOnActivity(!!existing.send_push_on_activity);
+            setMidiFile(null);
+            setClearMidi(false);
         }
     }, [existing]);
 
@@ -92,7 +96,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
     async function handleSubmit() {
         setFieldErrors({});
         setFormError("");
-        const payload = {
+        const fields = {
             competition: competition.id,
             enabled,
             persona,
@@ -101,10 +105,21 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             random_push: randomPush,
             send_push_on_activity: sendPushOnActivity,
         };
+        let payload = fields;
+        if (midiFile || clearMidi) {
+            const fd = new FormData();
+            Object.entries(fields).forEach(([key, value]) => {
+                if (value === undefined || value === null) return;
+                fd.append(key, value);
+            });
+            if (midiFile) fd.append("midi_upload", midiFile);
+            if (clearMidi && !midiFile) fd.append("clear_midi", "true");
+            payload = fd;
+        }
 
         try {
             if (existing) {
-                await updateDrillConfig({id: existing.id, ...payload}).unwrap();
+                await updateDrillConfig({id: existing.id, body: payload}).unwrap();
             } else {
                 await addDrillConfig(payload).unwrap();
             }
@@ -213,6 +228,49 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                 </div>
                 {personasList.length === 0 && (
                     <p className="text-sm text-gray-500">No personas available yet.</p>
+                )}
+            </SettingsGroup>
+
+            <SettingsGroup title="Coach music"
+                           hint="A looping MIDI bed for this challenge, played across the app while the coach is on duty. Mute with the Sound control.">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Find files on{" "}
+                    <a className="text-volt-700 dark:text-volt-300 hover:underline font-semibold"
+                       href="https://bitmidi.com/"
+                       target="_blank" rel="noopener noreferrer">
+                        BitMidi
+                    </a>
+                </p>
+                <input
+                    type="file"
+                    accept=".mid,.midi,audio/midi,audio/mid"
+                    aria-label="Upload MIDI"
+                    className="block w-full text-sm text-gray-600 dark:text-gray-300 file:mr-3 file:rounded-full file:border-0 file:bg-volt-400 file:px-4 file:py-2 file:text-xs file:font-bold file:uppercase file:tracking-wide file:text-ink-950"
+                    onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        e.target.value = "";
+                        setMidiFile(file);
+                        if (file) setClearMidi(false);
+                    }}
+                />
+                {midiFile && (
+                    <p className="text-xs text-volt-700 dark:text-volt-300">Ready to save: {midiFile.name}</p>
+                )}
+                {!midiFile && existing?.midi && !clearMidi && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">A MIDI bed is already set for this challenge.</p>
+                )}
+                {fieldErrors.midi_upload && (
+                    <p className="text-xs text-red-500">{String(fieldErrors.midi_upload)}</p>
+                )}
+                {existing?.midi && (
+                    <button type="button"
+                            onClick={() => { setMidiFile(null); setClearMidi(true); }}
+                            className="text-xs font-semibold text-red-500 dark:text-red-400 hover:underline">
+                        Remove MIDI
+                    </button>
+                )}
+                {clearMidi && !midiFile && (
+                    <p className="text-xs text-gray-500">MIDI will be removed when you save.</p>
                 )}
             </SettingsGroup>
 

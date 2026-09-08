@@ -17,7 +17,7 @@ class BlockPublicMediaMiddleware:
     nginx already 404s /media/ and marks /protected-media/ internal.
     This is the Django-side belt: DEBUG runserver, a future
     ``static(MEDIA_URL)``, or a request that somehow bypasses nginx
-    still cannot stream profile/photo/echo bytes.
+    still cannot stream profile/photo/echo/MIDI bytes.
     """
 
     def __init__(self, get_response):

@@ -343,11 +343,12 @@ CACHES = {
 STATIC_URL = 'apistatic/'
 STATIC_ROOT = BASE_DIR / 'static'
 
-# User-uploaded media (profile / photo / Echo pictures). NEVER served
-# at this URL: nginx 404s /media/, Django middleware 404s it too, and
-# serializers only emit authenticated /api/.../picture/ paths. Files
-# live in the data volume and are delivered via X-Accel-Redirect to
-# the internal /protected-media/ location after a JWT check.
+# User-uploaded media (profile / photo / Echo pictures, coach MIDI).
+# NEVER served at this URL: nginx 404s /media/, Django middleware 404s
+# it too, and serializers only emit authenticated /api/.../picture/ and
+# /api/.../midi/ paths. Files live in the data volume and are delivered
+# via X-Accel-Redirect to the internal /protected-media/ location after
+# a JWT check.
 MEDIA_URL = '/media/'
 MEDIA_ROOT = DATA_DIR / 'media'
 # nginx (user `nginx`) serves these via X-Accel-Redirect. Default umask

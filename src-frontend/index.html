@@ -15,7 +15,7 @@
     <!-- Hosted nginx CSP is tighter (connect-src same-origin + Sentry/Strava).
          This meta is the APK WebView's only CSP: scripts stay 'self';
          connect-src https: covers the configured API host. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"/>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"/>
     <link rel="icon" type="image/svg+xml" href="/icon-192.svg" sizes="any"/>
     <link rel="icon" type="image/png" href="/favicon-32x32.png" sizes="32x32"/>
     <link rel="icon" type="image/png" href="/favicon-16x16.png" sizes="16x16"/>

@@ -5,6 +5,7 @@ import {useGetRoastsQuery, useVoteRoastMutation} from "../utils/reducers/drillIn
 import {fetchProtectedImage} from "../utils/protectedMedia";
 import {timeAgo} from "../utils/time";
 import usePollingInterval from "../utils/usePollingInterval";
+import {playSfx} from "../utils/sfx";
 
 // The coach's roasted photos as a hot-or-not swipe game: drag (or tap a
 // button) right for HOT, left for NOPE. One card at a time, the next one
@@ -45,6 +46,7 @@ function RoastCard({card, top, onVote}) {
             el.style.transition = `transform ${FLY_OFF_MS}ms ease-in`;
             el.style.transform = `translateX(${dx}px) rotate(${(hot ? 1 : -1) * 22}deg)`;
         }
+        playSfx(hot ? "roast_hot" : "roast_nope");
         navigator.vibrate?.(30);
         setTimeout(() => onVote(hot), FLY_OFF_MS);
     }, [onVote]);
@@ -160,8 +162,8 @@ export default function RoastSwipeBox() {
 
     useEffect(() => {
         function onKey(e) {
-            if (e.key === "ArrowRight") { e.preventDefault(); handleVote(true); }
-            else if (e.key === "ArrowLeft") { e.preventDefault(); handleVote(false); }
+            if (e.key === "ArrowRight") { e.preventDefault(); playSfx("roast_hot"); handleVote(true); }
+            else if (e.key === "ArrowLeft") { e.preventDefault(); playSfx("roast_nope"); handleVote(false); }
         }
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
@@ -185,11 +187,11 @@ export default function RoastSwipeBox() {
             </div>
 
             <div className="mt-3 flex items-center justify-center gap-6">
-                <button onClick={() => handleVote(false)} aria-label="Nope"
+                <button onClick={() => { playSfx("roast_nope"); handleVote(false); }} aria-label="Nope"
                         className="min-h-[52px] min-w-[52px] rounded-full btn-glass text-red-400 hover:bg-red-50/40 dark:hover:bg-red-400/10 transition flex items-center justify-center">
                     <X className="h-6 w-6"/>
                 </button>
-                <button onClick={() => handleVote(true)} aria-label="Hot"
+                <button onClick={() => { playSfx("roast_hot"); handleVote(true); }} aria-label="Hot"
                         className="min-h-[52px] min-w-[52px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt flex items-center justify-center">
                     <Flame className="h-6 w-6"/>
                 </button>

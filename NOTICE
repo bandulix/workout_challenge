@@ -50,3 +50,24 @@ The MIT license text is available in the upstream repository (`LICENSE`).
 If you redistribute Open Wearables itself (e.g. a fork of its mobile
 example app or a published container image of it), you must include its
 MIT license and copyright notice, as that license requires.
+
+Kenney Interface Sounds
+-----------------------
+A handful of UI stings in ``src-frontend/public/sfx/`` are from
+**Kenney Interface Sounds 1.0** (https://kenney.nl/assets/interface-sounds),
+released under Creative Commons CC0 1.0. Attribution is optional.
+See ``src-frontend/public/sfx/LICENSE-kenney.txt``.
+
+GeneralUser GS
+--------------
+Coach MIDI beds are rendered with **GeneralUser GS** by S. Christian Collins
+(https://www.schristiancollins.com/generaluser, also
+https://github.com/mrbumpy409/GeneralUser-GS). Free to use in software
+projects; see ``src-frontend/public/soundfonts/LICENSE-generaluser.txt``.
+The soundfont is downloaded at image/build time, not stored in git.
+
+FluidSynth (js-synthesizer)
+---------------------------
+Browser MIDI playback uses **js-synthesizer** (BSD-3-Clause) wrapping
+**FluidSynth** compiled to WebAssembly (LGPL-2.1). FluidSynth license:
+``src-frontend/public/synth/LICENSE.fluidsynth.txt``.

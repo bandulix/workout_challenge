@@ -1,0 +1,12 @@
+Kenney Interface Sounds 1.0 (CC0) — https://kenney.nl/assets/interface-sounds
+Original files in the pack, renamed here:
+
+stamp.mp3         <- Audio/drop_004.ogg
+roast_hot.mp3     <- Audio/confirmation_002.ogg
+roast_nope.mp3    <- Audio/error_005.ogg
+echo_plant.mp3    <- Audio/pluck_002.ogg
+echo_claim.mp3    <- Audio/confirmation_004.ogg
+echo_war.mp3      <- Audio/error_007.ogg
+vote.mp3          <- Audio/select_006.ogg
+roast_reveal.mp3  <- Audio/open_003.ogg
+ring_full.mp3     <- Audio/maximize_005.ogg

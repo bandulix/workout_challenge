@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useState} from "react";
 import {Link} from "react-router-dom";
-import {Megaphone, ChevronRight, Radio} from "lucide-react";
+import {Megaphone, ChevronRight, Radio, Volume2, VolumeX} from "lucide-react";
 import {PageWrapper} from "../utils/miscellaneous";
 
 import {SectionLoader} from "../utils/loaders";
@@ -15,6 +15,7 @@ import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {timeAgo} from "../utils/time";
 import usePollingInterval from "../utils/usePollingInterval";
+import {feedSfxItems, hallSfxItems, playSfx, useSfxEnabled, useSfxObserver} from "../utils/sfx";
 
 // ---------------------------------------------------------------------------
 // The Coach page: the Drill Instructor as the heart of the app.
@@ -90,6 +91,7 @@ function coachPersona(persona, message) {
 
 function CoachHero({persona, config, message: latest, ownedCompetitions, mood, lastOwnActivityId}) {
     const trained = trainedSummary(mood);
+    const [sfxOn, setSfxOn] = useSfxEnabled();
 
     function activityCard(message, hero) {
         return (
@@ -130,6 +132,22 @@ function CoachHero({persona, config, message: latest, ownedCompetitions, mood, l
                             {trained.label}
                         </span>
                     )}
+                    <button type="button"
+                            onClick={() => {
+                                const next = !sfxOn;
+                                setSfxOn(next);
+                                if (next) playSfx("vote");
+                            }}
+                            aria-pressed={sfxOn}
+                            aria-label={sfxOn ? "Mute coach sounds" : "Enable coach sounds"}
+                            title={sfxOn ? "Sounds on" : "Sounds off"}
+                            className={"ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.14em] min-h-[28px] transition " +
+                                (sfxOn
+                                    ? "bg-volt-400/25 text-volt-800 dark:text-volt-200"
+                                    : "text-gray-500 dark:text-gray-400 hover:text-volt-700 dark:hover:text-volt-300")}>
+                        {sfxOn ? <Volume2 className="h-3.5 w-3.5"/> : <VolumeX className="h-3.5 w-3.5"/>}
+                        {sfxOn ? "Sound" : "Muted"}
+                    </button>
                 </div>
 
                 <div className="mt-4 flex items-center gap-3 sm:gap-5">
@@ -201,6 +219,8 @@ function CoachPage() {
         pollingInterval: pollFast,
         skip: !mediaReady,
     });
+    useSfxObserver(`coach-feed:${heroConfigId || "none"}`, feedSfxItems(messages), Boolean(messagesPage));
+    useSfxObserver("hall", hallSfxItems(hall), hall !== undefined);
 
     const isLoading = userLoading || configsLoading || personasLoading;
 

@@ -87,6 +87,12 @@ class DrillInstructorConfig(models.Model):
         on_delete=models.PROTECT,
         related_name="competitions",
     )
+    midi = models.FileField(
+        upload_to="coach_midi/",
+        null=True,
+        blank=True,
+        help_text="Optional looping MIDI bed. Served only through the authenticated config MIDI endpoint, never public /media/.",
+    )
 
     comment_on_activity = models.BooleanField(default=True)
     nudge_on_inactivity = models.BooleanField(
@@ -132,7 +138,7 @@ class DrillInstructorConfig(models.Model):
 
     # Weekly group vote *or* a manual owner pick. persona_changed_at is
     # when the sitting coach last changed, so the New-coach box can show
-    # for two days after either kind of handover.
+    # for 24 hours after either kind of handover.
     previous_persona = models.ForeignKey(
         DrillInstructorPersona,
         on_delete=models.SET_NULL,

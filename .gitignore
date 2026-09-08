@@ -1,4 +1,7 @@
 ### Custom
+# Fetched at build/dev time (GeneralUser GS ~31MB, FluidSynth wasm JS).
+src-frontend/public/soundfonts/*.sf2
+src-frontend/public/synth/libfluidsynth*.js
 .rdb
 src-backend/static
 # src-backend/data holds runtime state (sqlite, vapid.json, media) and is
@@ -21,7 +24,9 @@ src-backend/data/*
 [Ss]cripts
 # ...but keep this repo's own /scripts directory - entrypoint.sh and
 # render_config_js.py are COPY'd into the image by the Dockerfile.
+# src-frontend/scripts/ is the Vite prebuild helper (soundfont fetch).
 !/scripts/
+!src-frontend/scripts/
 pyvenv.cfg
 .venv
 pip-selfcheck.json

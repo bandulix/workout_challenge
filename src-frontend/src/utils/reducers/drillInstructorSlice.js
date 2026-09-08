@@ -79,14 +79,16 @@ export const drillInstructorApi = createApi({
                 url: 'drill-instructor/config/',
                 method: 'POST',
                 body: newConfig,
+                ...(newConfig instanceof FormData ? {headers: {'X-Skip-Content-Type': '1'}} : {}),
             }),
             invalidatesTags: ['DrillConfig', 'DrillBallot'],
         }),
         updateDrillConfig: builder.mutation({
-            query: ({id, ...patch}) => ({
+            query: ({id, body}) => ({
                 url: `drill-instructor/config/${id}/`,
                 method: 'PATCH',
-                body: patch,
+                body,
+                ...(body instanceof FormData ? {headers: {'X-Skip-Content-Type': '1'}} : {}),
             }),
             invalidatesTags: (result, error, {id}) => [
                 {type: 'DrillConfig', id}, 'DrillConfig',

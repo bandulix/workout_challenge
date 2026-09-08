@@ -17,6 +17,7 @@ import {
 import usePollingInterval from "../utils/usePollingInterval";
 import {confirmAction, notice} from "../utils/dialogs";
 import {sharePostCard} from "../utils/shareCard";
+import {echoSfxItems, sfxOnce, useSfxObserver} from "../utils/sfx";
 
 function formatCountdown(iso, now) {
     if (!iso) return "";
@@ -270,6 +271,7 @@ export default function EchoChamber({competitionId, userId}) {
     const immortal = rows.filter((e) => e.status === "immortal").slice().sort(artFirst);
     const ticking = live.some((e) => e.active_challenge?.window_end);
     const now = useNowTick(ticking);
+    useSfxObserver(`echoes:${competitionId}`, echoSfxItems(echoes, userId), echoes !== undefined);
     if (rows.length === 0) {
         return (
             <div>
@@ -292,6 +294,7 @@ export default function EchoChamber({competitionId, userId}) {
         if (!ok) return;
         try {
             await challenge(echo.id).unwrap();
+            sfxOnce(`echo-war:${echo.id}`, "echo_war");
         } catch (err) {
             notice(err?.data?.detail || "Could not start that challenge.");
         }

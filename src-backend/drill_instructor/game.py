@@ -70,7 +70,7 @@ MOODS = {
     "disappointed": {
         "key": "disappointed",
         "label": "Disappointed",
-        "line": "Forty-eight hours. Silence. Do better.",
+        "line": "All day. Silence. Do better.",
         "intensity": 0,
     },
 }
@@ -90,14 +90,22 @@ def _minutes(workout):
     return round(workout.duration.total_seconds() / 60)
 
 
-def _day_minutes(user, day):
-    Workout = apps.get_model("workouts", "Workout")
+def _local_day_bounds(day=None):
+    """Inclusive start/end of a calendar day in the site timezone."""
+    if day is None:
+        day = timezone.localdate()
+    tz = timezone.get_current_timezone()
     start = datetime.datetime.combine(day, datetime.time.min)
     end = datetime.datetime.combine(day, datetime.time.max)
-    tz = timezone.get_current_timezone()
     if timezone.is_naive(start):
         start = timezone.make_aware(start, tz)
         end = timezone.make_aware(end, tz)
+    return start, end
+
+
+def _day_minutes(user, day):
+    Workout = apps.get_model("workouts", "Workout")
+    start, end = _local_day_bounds(day)
     qs = Workout.objects.filter(user=user, start_datetime__range=(start, end))
     total = 0
     for w in qs:
@@ -131,26 +139,24 @@ def tag_payload(user):
 
 
 def coach_mood(config, now=None):
-    """Mood of one competition's coach from the last 48 hours of the field."""
+    """Mood of one competition's coach from today's field (site timezone)."""
     now = now or timezone.now()
-    window = now - datetime.timedelta(hours=48)
+    start, end = _local_day_bounds(timezone.localtime(now).date())
     competition = config.competition
     Workout = apps.get_model("workouts", "Workout")
     DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
 
     participants = list(competition.user.all())
     n_part = max(len(participants), 1)
-    workouts = Workout.objects.filter(user__in=participants, start_datetime__gte=window)
+    workouts = Workout.objects.filter(
+        user__in=participants, start_datetime__range=(start, end),
+    )
     n_workouts = workouts.count()
     n_active = workouts.values("user").distinct().count()
-    window_24 = now - datetime.timedelta(hours=24)
-    workouts_24 = Workout.objects.filter(user__in=participants, start_datetime__gte=window_24)
-    n_workouts_24 = workouts_24.count()
-    n_active_24 = workouts_24.values("user").distinct().count()
     n_photos = DrillInstructorMessage.objects.filter(
         config=config,
         kind=DrillInstructorMessage.KIND_PHOTO,
-        posted_at__gte=window,
+        posted_at__range=(start, end),
     ).count()
 
     if n_workouts == 0 and n_photos == 0:
@@ -163,10 +169,13 @@ def coach_mood(config, now=None):
             mood = dict(MOODS["proud"])
         else:
             mood = dict(MOODS["watching"])
+    mood["workouts_today"] = n_workouts
+    mood["active_today"] = n_active
+    # Same calendar-day counts for older clients that still read 24h/48h.
     mood["workouts_48h"] = n_workouts
     mood["active_48h"] = n_active
-    mood["workouts_24h"] = n_workouts_24
-    mood["active_24h"] = n_active_24
+    mood["workouts_24h"] = n_workouts
+    mood["active_24h"] = n_active
     mood["participants"] = n_part
     return mood
 

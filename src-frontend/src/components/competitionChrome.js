@@ -26,6 +26,7 @@ import {elapsedSince, timeAgo} from "../utils/time";
 import {useProtectedImage} from "../utils/protectedMedia";
 import usePollingInterval from "../utils/usePollingInterval";
 import {confirmAction, notice} from "../utils/dialogs";
+import {feedSfxItems, useSfxObserver} from "../utils/sfx";
 import {pageResults, scoreGoals} from "../utils/queryPage";
 
 export function HeaderIconButton({onClick, title, icon: Icon, danger = false, isLoading = false}) {
@@ -826,6 +827,7 @@ export function CoachCorner({competition, isOwner}) {
     const replyTargetId = parseInt(searchParams.get("reply") || "", 10) || null;
     const cornerRef = React.useRef(null);
     const loaded = messageResults(page);
+    useSfxObserver(`feed:${competition.id}`, feedSfxItems(loaded), Boolean(page));
     useEffect(() => {
         if (!replyTargetId || !config) return;
         const el = document.getElementById(`post-${replyTargetId}`) || cornerRef.current;

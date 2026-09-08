@@ -9,7 +9,7 @@
 
 An **AI Drill Instructor** comments on every workout, remixes your photos, and pings your lock screen. Self-hosted fitness rivalries on the metrics you choose — kilometres, minutes, calories, steps — imported from **Strava, Garmin, or Health Connect**. Native **Android app** and installable **PWA**. Your data stays on your server.
 
-- **A coach, not a spreadsheet.** Personas roast, cheer, and nudge. Stamp a workout (WTF!, GOAT, Oof, …). Order of the Day, Hall of Roasts, Legend Echoes, weekly coach vote. Add a photo for +10P — the coach remixes it into their world, stats on a TV or a tattoo, not a floating HUD.
+- **A coach, not a spreadsheet.** Personas roast, cheer, and nudge. Stamp a workout (WTF!, GOAT, Oof, …). Order of the Day, Hall of Roasts, Legend Echoes, weekly coach vote. Add a photo for +10P — the coach remixes it into their world.
 - **Any watch, no lock-in.** Strava, Garmin Connect, or Apple Health / Google Health Connect. One source per athlete so nothing is counted twice.
 - **Your rules.** Custom goals, teams, caps, and a live leaderboard — 1 point per 1% of a goal.
 - **Yours to host.** Docker Compose. PWA on any phone; sideload APK for one-tap Health Connect.
@@ -26,37 +26,23 @@ An **AI Drill Instructor** comments on every workout, remixes your photos, and p
 ```bash
 git clone https://github.com/bandulix/workout_challenge.git
 cd workout_challenge
-cp .env.example .env    # set POSTGRES_PASSWORD and SECRET_KEY
+cp .env.example .env    # SECRET_KEY, POSTGRES_PASSWORD, FLOWER_PASSWORD
 docker compose up -d    # pulls ghcr.io/bandulix/workout_challenge
 ```
 
-Set `HOSTS` / `MAIN_HOST` to your public **HTTPS** URL and `DEBUG=false` in production. Default `APP_BIND=127.0.0.1` — terminate TLS on a reverse proxy in front of `127.0.0.1:<APP_PORT>` (set `APP_BIND=0.0.0.0` only on a trusted LAN). Set `FLOWER_PASSWORD` to a value **different from** `SECRET_KEY` (required). With `--profile health`, set `OW_ADMIN_PASSWORD` the same way. The Android app also needs `https://localhost` in `HOSTS`. Migrations run at container start.
+`FLOWER_PASSWORD` must differ from `SECRET_KEY`. In production set `MAIN_HOST` / `HOSTS` to your public **HTTPS** origin and `DEBUG=false`. Keep `APP_BIND=127.0.0.1` behind a TLS reverse proxy. The Android app also needs `https://localhost` in `HOSTS`. Migrations run at container start.
 
 Update: `git pull && docker compose pull workoutchallenge && docker compose up -d`.
 
-Releases are deliberate — **Actions → Production Deployment → Run workflow**. Merging to `main` does not tag or publish. Image: [`ghcr.io/bandulix/workout_challenge`](https://github.com/bandulix/workout_challenge/pkgs/container/workout_challenge). Upstream Docker Hub (`vanalmsick/workout_challenge`) is the original app, not this fork.
-
-Tests: `cd src-backend && DEBUG=true SECRET_KEY=ci-test-not-a-real-secret-32bytes-min python manage.py test --settings=workout_challenge.test_settings --top-level-directory=.` Frontend: `cd src-frontend && npm test`.
-
-
-### Upgrading through this security wave
-
-1. Set `FLOWER_PASSWORD` (and `OW_ADMIN_PASSWORD` if you use Health) to values different from `SECRET_KEY` before restart.
-2. Prefer HTTPS on `MAIN_HOST` / `HOSTS`; keep `APP_BIND=127.0.0.1` behind your proxy.
-3. After migrate: rotate Site Settings / VAPID secrets that ever appeared in plaintext backups ([docs/security-secrets-and-backups.md](docs/security-secrets-and-backups.md)).
-4. Expect a one-time web re-login (httpOnly refresh cookies). Native Android is unchanged for refresh handling.
-5. Put `https://localhost` in `HOSTS` (the Android WebView origin) or the APK cannot talk to the API.
-6. Changing email now requires the current password. Challenge join codes are 16-character random values; owners can rotate them. Existing codes still work until rotated.
+Image: [`ghcr.io/bandulix/workout_challenge`](https://github.com/bandulix/workout_challenge/pkgs/container/workout_challenge). The Docker Hub image `vanalmsick/workout_challenge` is the original app, not this fork.
 
 ## Optional setup
 
-**Admin** — if registration is open (`REGISTRATION_TOKEN` empty in `.env`), the first signup is staff. If you set an invite token, that does not happen — run `docker compose exec workoutchallenge python manage.py createsuperuser` or `promotetostaff user@example.com`. Runtime config (LLM, Strava, SMTP) is at `/admin/site-settings`.
+**Accounts** — with `REGISTRATION_TOKEN` empty, anyone can sign up and the first account is staff. Set a token to close registration, then `docker compose exec workoutchallenge python manage.py createsuperuser` (or `promotetostaff user@example.com`). Challenge invite links (`?join=`) still work. LLM, Strava, and SMTP live at `/admin/site-settings`.
 
-**Invite token** — set `REGISTRATION_TOKEN` so new accounts need that token, or a challenge invite link (`?join=`). Unset = anyone can register.
+**Email** — SMTP in `.env` or Site Settings. New accounts confirm the address before welcome / weekly mail.
 
-**Email** — SMTP in `.env` / Site Settings. New accounts get a confirmation link first; welcome, weekly, and board mail wait until the address is confirmed. Password reset still works on an unconfirmed account.
-
-**AI coach** — challenge owner: megaphone on the challenge page → pick a persona → activate. Any OpenAI-compatible LLM in Site Settings. Push: Coach page → Enable coach pings (native notifications inside the Android app).
+**AI coach** — challenge owner: megaphone on the challenge page → pick a persona → activate. Any OpenAI-compatible LLM in Site Settings. Push: Coach page → Enable coach pings.
 
 **Strava** — [create an API app](https://www.strava.com/settings/api). Since June 2026 Strava requires a paid subscription for Standard-Tier API access; Health Connect needs no Strava at all.
 
@@ -65,21 +51,23 @@ Tests: `cd src-backend && DEBUG=true SECRET_KEY=ci-test-not-a-real-secret-32byte
 **Apple Health / Google Health Connect** — no cloud API, so this stack can run a self-hosted [Open Wearables](https://github.com/the-momentum/open-wearables) instance (MIT, © Momentum; not vendored here — see [NOTICE](NOTICE)):
 
 ```bash
-# .env: OW_POSTGRES_PASSWORD
+# .env: OW_POSTGRES_PASSWORD and OW_ADMIN_PASSWORD (must differ from SECRET_KEY)
 docker compose --profile health up -d
 ```
 
 Phones reach it at `MAIN_HOST/health` by default. In the Android app, Health Connect is one tap. In a browser, Settings shows a connection code for a health app on the phone.
 
-**Android APK** — `scripts/build_apk.sh` (or the APK on each GitHub Release). One APK works on every instance: enter the server address on first start. After pulling a new image, publish the matching APK with `scripts/update_apk_from_release.sh` (the in-app check reads `/download/apk-version.json`, not the Docker tag — that file must be JSON, not an attachment, or old phones never see it). An installed APK older than that file opens only the download screen — it re-checks on start, resume, and every 15 minutes. Uploaded photos stay private (login required; never a public `/media/` URL). Release builds require real signing credentials (`~/.gradle/workout-signing.properties` or `ANDROID_KEYSTORE_*`); unsigned/debug-keystore release builds are refused.
+**Android APK** — GitHub Releases, or `scripts/build_apk.sh`. One APK works on every instance: enter the server address on first start. After pulling a new image, publish the matching APK with `scripts/update_apk_from_release.sh`.
+
+Secrets at rest and backup notes: [docs/security-secrets-and-backups.md](docs/security-secrets-and-backups.md).
 
 ## Changes from the original
 
 This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/workout_challenge) (base `main` @ `256e5b1`) under the same SSPL v1. Original copyright is untouched. Full list: [CHANGELOG.md](CHANGELOG.md).
 
-- **AI Drill Instructor** — persona-voiced comments, activity stamps, quiet-day nudges, Order of the Day, dunce, Hall of Roasts (swipe between roasts), Legend Echoes, weekly coach vote, photo posts remixed into the coach’s world, share cards, web push / native Android pings that open the post. Release or hand off a custom coach to teammates.
-- **Coach-centred PWA** — volt accent, glass dock, Coach as home, daily action plates, dark theme, profile pictures. Uploaded photos stay private (login required; never a public `/media/` URL). Mail uses the same identity; new inboxes must confirm before welcome / weekly mail. Web sessions use httpOnly refresh cookies.
+- **AI Drill Instructor** — persona comments, stamps, Order of the Day, Hall of Roasts, Legend Echoes, weekly coach vote, photo remixes, share cards, web push / Android pings.
+- **Coach-centred PWA** — glass dock, Coach as home, daily action plates, dark theme, private uploaded photos.
 - **Garmin Connect** and **Apple Health / Health Connect** (via Open Wearables) next to Strava; one activity source per user.
-- **Sideload Android app** with one-tap Health Connect. Outdated APKs only show the download until you install over the top.
+- **Sideload Android app** with one-tap Health Connect.
 
 License: [LICENSE](LICENSE) (SSPL v1). Fork and third-party notices: [NOTICE](NOTICE).
