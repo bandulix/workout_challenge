@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.56.0] - 2026-09-11
+
 ### Added
 - **Optional coach sounds** (on by default). Stamps, roast Hot/Nope, Echo plant/claim/war, a locked-in coach vote, a revealed photo roast, and a full activity ring each play a short sting from [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds) (CC0). Mute on Coach or in Account settings.
 - **Coach MIDI bed.** Challenge owners can upload a `.mid` on the Drill Instructor config ([BitMidi](https://bitmidi.com/) for browsing files). It loops across the app while that coach is on duty, rendered with [GeneralUser GS](https://www.schristiancollins.com/generaluser) + FluidSynth. The Sound toggle mutes it too. Uploaded MIDI is private (login required; never a public `/media/` URL).
