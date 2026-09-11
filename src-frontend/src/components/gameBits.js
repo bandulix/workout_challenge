@@ -1,12 +1,10 @@
 import React, {useEffect, useRef, useState} from "react";
-import {ChevronLeft, ChevronRight, Megaphone, ScrollText, Share2, Trophy} from "lucide-react";
+import {ChevronLeft, ChevronRight, Heart, Megaphone, ScrollText, Share2, Trophy} from "lucide-react";
 import {useProtectedImage} from "../utils/protectedMedia";
 import {PaneHead, paneCardClass} from "./uiBits";
 import {OverlaySheet} from "../forms/basicComponents";
 import {sharePostCard} from "../utils/shareCard";
 import {playSfx} from "../utils/sfx";
-
-const HALL_PREVIEW = 3;
 
 export const TAG_ICON = {
     first_blood: "🩸",
@@ -28,12 +26,12 @@ export const MOOD_CHIP = {
 // Orbit motion follows coach mood. No mood (no config yet) uses a
 // single calm spin so the portrait still lives.
 const MOOD_ORBIT = {
-    unleashed: {ring: "animate-squad-orbit-fast", wave: false, tilt: false},
-    proud: {ring: "animate-squad-orbit", wave: false, tilt: false},
-    watching: {ring: "animate-squad-orbit-swing", wave: false, tilt: false},
-    disappointed: {ring: "animate-squad-orbit-slow", wave: true, tilt: false},
+    unleashed: {ring: "animate-squad-orbit-fast", wave: false},
+    proud: {ring: "animate-squad-orbit", wave: false},
+    watching: {ring: "animate-squad-orbit-swing", wave: false},
+    disappointed: {ring: "animate-squad-orbit-slow", wave: true},
 };
-const DEFAULT_ORBIT = {ring: "animate-squad-orbit-slow", wave: false, tilt: false};
+const DEFAULT_ORBIT = {ring: "animate-squad-orbit-slow", wave: false};
 
 export function trainedSummary(mood) {
     if (!mood) return null;
@@ -170,8 +168,7 @@ export function SquadOrbit({mood, children, showCaption = true, accent}) {
         );
     }
     const ring = (
-        <div className={"relative h-[8.5rem] w-[8.5rem] [--orbit:3.45rem] sm:h-[9.6rem] sm:w-[9.6rem] sm:[--orbit:3.9rem] " +
-            (motion.tilt ? "[perspective:520px]" : "")}
+        <div className="relative h-[8.5rem] w-[8.5rem] [--orbit:3.45rem] sm:h-[9.6rem] sm:w-[9.6rem] sm:[--orbit:3.9rem]"
              style={{
                  "--coach-accent": color,
                  "--coach-accent-glow": accentRgba(color, 0.5),
@@ -179,7 +176,7 @@ export function SquadOrbit({mood, children, showCaption = true, accent}) {
              }}
              title={trained.hint}
              aria-label={trained.hint}>
-            <div className={"absolute inset-0 " + (motion.tilt ? "[transform-style:preserve-3d] " : "") + motion.ring}
+            <div className={"absolute inset-0 " + motion.ring}
                  aria-hidden="true">
                 {pips}
             </div>
@@ -273,8 +270,9 @@ function RoastGallery({cards, index, onClose, onIndex}) {
             <div className="relative select-none" onPointerDown={onPointerDown} onPointerUp={onPointerUp}>
                 <img src={src} alt="" className="mx-auto max-h-[55vh] w-full rounded-2xl object-contain"/>
                 <p className="mt-3 text-sm leading-relaxed break-words text-gray-800 dark:text-gray-200">{caption}</p>
-                <p className="mt-1 text-[11px] text-gray-400">
-                    {[card.persona_name, card.competition_name, `${card.hot_votes || 0} hot`].filter(Boolean).join(" · ")}
+                <p className="mt-1 text-[11px] text-gray-400 flex items-center gap-2 flex-wrap">
+                    <span>{[card.persona_name, card.competition_name].filter(Boolean).join(" · ")}</span>
+                    <HotCount count={card.hot_votes}/>
                 </p>
                 <div className="mt-3 flex items-center justify-between gap-2">
                     <button type="button" disabled={index <= 0} onClick={() => onIndex(index - 1)}
@@ -302,31 +300,58 @@ function RoastGallery({cards, index, onClose, onIndex}) {
     );
 }
 
-function HallFrame({card, place, onOpen, compact = false}) {
+function HotCount({count, light = false}) {
+    const n = Math.max(0, Number(count) || 0);
+    const filled = n > 0;
+    const stack = filled ? Math.min(n, 3) : 1;
+    return (
+        <span className={"inline-flex items-center gap-1 tabular-nums " +
+            (light ? "text-white" : "text-rose-600 dark:text-rose-400")}>
+            <span className="inline-flex items-center -space-x-1.5" aria-hidden="true">
+                {Array.from({length: stack}, (_, i) => (
+                    <Heart key={i}
+                           className={"h-3.5 w-3.5 " + (filled
+                               ? "fill-rose-500 text-rose-400"
+                               : (light ? "text-white/70" : "text-gray-400"))}
+                           style={{zIndex: stack - i}}
+                           strokeWidth={filled ? 1.75 : 2}/>
+                ))}
+            </span>
+            <span className="text-[10px] font-extrabold">{n}</span>
+            <span className="sr-only">{n === 1 ? "1 hot vote" : `${n} hot votes`}</span>
+        </span>
+    );
+}
+
+function sortHallCards(cards) {
+    return [...(cards || [])].sort((a, b) => {
+        const bt = Date.parse(b.posted_at || "") || 0;
+        const at = Date.parse(a.posted_at || "") || 0;
+        return bt - at;
+    });
+}
+
+function HallFrame({card, onOpen}) {
     const {src} = useProtectedImage(card.image, "card");
     const hot = card.hot_votes || 0;
     return (
         <article className="min-w-0 rounded-3xl glass-card overflow-hidden text-ink-950 dark:text-white">
-            <button type="button" onClick={() => src && onOpen(place - 1)}
+            <button type="button" onClick={() => src && onOpen()}
                     className="block w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
                 <div className="relative">
                     {src ? (
-                        <img src={src} alt=""
-                             className={(compact ? "h-28" : "h-36") + " w-full object-cover"}/>
+                        <img src={src} alt="" className="h-36 w-full object-cover"/>
                     ) : (
-                        <div className={(compact ? "h-28" : "h-36") + " bg-ink-950/40 dark:bg-ink-900 flex items-center justify-center"}>
+                        <div className="h-36 bg-ink-950/40 dark:bg-ink-900 flex items-center justify-center">
                             <Trophy className="h-7 w-7 text-volt-400/50"/>
                         </div>
                     )}
-                    <span className="absolute top-2 left-2 rounded-full bg-ink-950/75 text-volt-400 text-[10px] font-extrabold px-2 py-0.5">
-                        #{place}
+                    <span className="absolute bottom-2 right-2 inline-flex rounded-full bg-ink-950/75 px-2 py-0.5 backdrop-blur-sm">
+                        <HotCount count={hot} light/>
                     </span>
                 </div>
                 <div className="px-2.5 py-2">
                     <p className="text-[12px] font-bold truncate">{card.athlete_name || "Athlete"}</p>
-                    <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                        {hot} hot
-                    </p>
                 </div>
             </button>
         </article>
@@ -335,18 +360,16 @@ function HallFrame({card, place, onOpen, compact = false}) {
 
 export function HallOfRoasts({cards}) {
     const [openIndex, setOpenIndex] = useState(null);
-    const [showAll, setShowAll] = useState(false);
-    const list = cards || [];
-    const preview = list.slice(0, HALL_PREVIEW);
-    const older = Math.max(0, list.length - HALL_PREVIEW);
+    const list = sortHallCards(cards);
+    const many = list.length > 6;
 
     if (list.length === 0) {
         return (
             <div>
-                <PaneHead title="Hall of roasts" hint="Hottest remixed photos"/>
+                <PaneHead title="Hall of roasts" hint="Newest remixed photos"/>
                 <article className={paneCardClass}>
                     <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                        Empty for now. Post a photo under a workout — the coach remixes it, and the hottest shots land here.
+                        Empty for now. Post a photo under a workout — the coach remixes it, and the shots land here.
                     </p>
                 </article>
             </div>
@@ -354,28 +377,17 @@ export function HallOfRoasts({cards}) {
     }
     return (
         <div>
-            <PaneHead title="Hall of roasts"
-                      hint={list.length > HALL_PREVIEW ? `Top ${HALL_PREVIEW} of ${list.length}` : "Hottest remixed photos"}/>
-            <div className="grid grid-cols-3 gap-3">
-                {preview.map((c, i) => (
-                    <HallFrame key={c.id} card={c} place={i + 1} onOpen={setOpenIndex}/>
+            <PaneHead title="Hall of roasts" hint="Newest remixed photos"/>
+            <div className={"grid grid-cols-3 gap-3 " + (many ? "hall-scroller" : "")}>
+                {list.map((c, i) => (
+                    <HallFrame key={c.id} card={c} onOpen={() => setOpenIndex(i)}/>
                 ))}
             </div>
-            {older > 0 && (
-                <button type="button" onClick={() => setShowAll(true)}
-                        className="mt-3 w-full min-h-[44px] rounded-2xl border border-volt-400/40 text-sm font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition">
-                    {older} more {older === 1 ? "roast" : "roasts"}
-                </button>
-            )}
-            {showAll && (
-                <OverlaySheet title="Hall of roasts" onClose={() => setShowAll(false)} zClass="z-[70]">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {list.map((c, i) => (
-                            <HallFrame key={c.id} card={c} place={i + 1} onOpen={setOpenIndex} compact/>
-                        ))}
-                    </div>
-                </OverlaySheet>
-            )}
+            {many ? (
+                <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">
+                    Scroll for more
+                </p>
+            ) : null}
             {openIndex != null && list[openIndex] && (
                 <RoastGallery cards={list} index={openIndex} onIndex={setOpenIndex}
                               onClose={() => setOpenIndex(null)}/>

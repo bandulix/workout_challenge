@@ -45,6 +45,8 @@ export function PersonaEditModal({persona, setModalState}) {
     const [pictureFile, setPictureFile] = useState(null);
     const [picturePreview, setPicturePreview] = useState(null);
     const [pictureError, setPictureError] = useState(null);
+    const [midiFile, setMidiFile] = useState(null);
+    const [clearMidi, setClearMidi] = useState(false);
     const fileInput = useRef(null);
 
     const [addPersona, {isLoading: addLoading, error: addError, isSuccess: addSuccess}] = useAddPersonaMutation();
@@ -66,6 +68,8 @@ export function PersonaEditModal({persona, setModalState}) {
                 is_shared: Boolean(persona.is_shared),
             });
             setPicturePreview(persona.profile_picture || null);
+            setMidiFile(null);
+            setClearMidi(false);
         }
     }, [persona]);
 
@@ -108,12 +112,15 @@ export function PersonaEditModal({persona, setModalState}) {
         // With a custom picture on board the payload goes as multipart
         // form data; otherwise plain JSON (the slice sets the headers).
         let payload;
-        if (pictureFile) {
+        const needsMultipart = Boolean(pictureFile || midiFile || clearMidi);
+        if (needsMultipart) {
             payload = new FormData();
             for (const [key, value] of Object.entries(values)) {
                 payload.append(key, value ?? "");
             }
-            payload.append("profile_picture_upload", pictureFile);
+            if (pictureFile) payload.append("profile_picture_upload", pictureFile);
+            if (midiFile) payload.append("midi_upload", midiFile);
+            if (clearMidi && !midiFile) payload.append("clear_midi", "true");
         } else {
             payload = {...values};
         }
@@ -217,6 +224,45 @@ export function PersonaEditModal({persona, setModalState}) {
                                     style={{backgroundColor: c}}/>
                         ))}
                     </div>
+                </div>
+
+                <div className="px-4 w-full">
+                    <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
+                        Coach music{fieldErrors.midi_upload && <span className="text-red-600 font-normal italic"> ({fieldErrors.midi_upload})</span>}
+                    </label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                        Looping MIDI bed while this coach is on duty. Mute with Sound. Files on{" "}
+                        <a className="text-volt-700 dark:text-volt-300 hover:underline font-semibold"
+                           href="https://bitmidi.com/" target="_blank" rel="noopener noreferrer">BitMidi</a>.
+                    </p>
+                    <input
+                        type="file"
+                        accept=".mid,.midi,audio/midi,audio/mid"
+                        aria-label="Upload MIDI"
+                        className="block w-full text-sm text-gray-600 dark:text-gray-300 file:mr-3 file:rounded-full file:border-0 file:bg-volt-400 file:px-4 file:py-2 file:text-xs file:font-bold file:uppercase file:tracking-wide file:text-ink-950"
+                        onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            e.target.value = "";
+                            setMidiFile(file);
+                            if (file) setClearMidi(false);
+                        }}
+                    />
+                    {midiFile && (
+                        <p className="text-xs text-volt-700 dark:text-volt-300 mt-1">Ready to save: {midiFile.name}</p>
+                    )}
+                    {!midiFile && persona?.midi && !clearMidi && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">A MIDI bed is already set for this coach.</p>
+                    )}
+                    {persona?.midi && (
+                        <button type="button"
+                                onClick={() => { setMidiFile(null); setClearMidi(true); }}
+                                className="mt-1 text-xs font-semibold text-red-500 dark:text-red-400 hover:underline">
+                            Remove MIDI
+                        </button>
+                    )}
+                    {clearMidi && !midiFile && (
+                        <p className="text-xs text-gray-500 mt-1">MIDI will be removed when you save.</p>
+                    )}
                 </div>
 
                 <div className="px-4 w-full">

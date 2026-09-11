@@ -41,6 +41,8 @@ import {feedApi} from "../utils/reducers/feedSlice";
 import {BeatLoader} from "react-spinners";
 import {clearBodyScrollLock} from "../utils/overlay";
 import ProfileAvatar from "../components/ProfileAvatar";
+import PortraitWash from "../components/PortraitWash";
+import {useProtectedImage} from "../utils/protectedMedia";
 import {DogTagRow} from "../components/gameBits";
 import {Chip, EmptyState, SectionHead, SyncChip, rowClass, VOLT} from "../components/uiBits";
 import usePollingInterval from "../utils/usePollingInterval";
@@ -125,15 +127,19 @@ function WelcomeBox({user, workouts}) {
         () => topSportCounts(workouts, "sport_type"),
         [workouts],
     );
+    const pictureUrl = user?.profile_picture || null;
+    const {src: pictureSrc, failed: pictureFailed} = useProtectedImage(pictureUrl, "avatar");
+    const washSrc = pictureUrl && !pictureFailed ? pictureSrc : null;
 
     return (
-        <BoxSection additionalClasses={"mb-4"}>
+        <BoxSection additionalClasses={"mb-4 relative overflow-hidden" + (washSrc ? " portrait-wash-card" : "")}>
+            <PortraitWash src={washSrc}/>
             {/* Compact header: small avatar with the name beside it,
                 lifetime total and top sport counts on the right. On narrow
                 (smartphone) widths the count block wraps to a second row
                 (flex-wrap + basis on the name) so a longer first name is
                 no longer crushed between the avatar and the counter. */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 sm:px-3">
+            <div className="relative flex flex-wrap items-center gap-x-4 gap-y-2 px-1 sm:px-3">
                 <ProfileAvatar user={user} size={64} editable className="shrink-0"/>
                 <div className="flex-1 min-w-0 basis-40">
                     <p className="text-xs text-gray-600 dark:text-gray-400">Welcome back,</p>

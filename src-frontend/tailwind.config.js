@@ -8,8 +8,6 @@ module.exports = {
     "animate-squad-orbit",
     "animate-squad-orbit-slow",
     "animate-squad-orbit-fast",
-    "animate-squad-orbit-ccw",
-    "animate-squad-orbit-tilt",
     "animate-squad-orbit-swing",
     "animate-squad-pip-wave",
     "animate-squad-hop",
@@ -90,14 +88,6 @@ module.exports = {
           '0%': { transform: 'rotate(0deg)' },
           '100%': { transform: 'rotate(360deg)' },
         },
-        'squad-orbit-ccw': {
-          '0%': { transform: 'rotate(0deg)' },
-          '100%': { transform: 'rotate(-360deg)' },
-        },
-        'squad-orbit-tilt': {
-          '0%': { transform: 'rotateX(58deg) rotateZ(0deg)' },
-          '100%': { transform: 'rotateX(58deg) rotateZ(360deg)' },
-        },
         'squad-orbit-swing': {
           '0%, 100%': { transform: 'rotate(-55deg)' },
           '50%': { transform: 'rotate(55deg)' },
@@ -128,8 +118,6 @@ module.exports = {
         'squad-orbit-slow': 'squad-orbit 28s linear infinite',
         'squad-orbit': 'squad-orbit 16s linear infinite',
         'squad-orbit-fast': 'squad-orbit 9s linear infinite',
-        'squad-orbit-ccw': 'squad-orbit-ccw 18s linear infinite',
-        'squad-orbit-tilt': 'squad-orbit-tilt 14s linear infinite',
         'squad-orbit-swing': 'squad-orbit-swing 4.6s ease-in-out infinite',
         'squad-pip-wave': 'squad-pip-wave 1.6s ease-in-out infinite',
         'squad-hop': 'squad-hop 1.1s ease-in-out infinite',

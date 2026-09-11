@@ -7,11 +7,12 @@ import {useSfxEnabled} from "../utils/sfx";
 import {startMidiBed, stopMidiBed, unlockMidiBed} from "../utils/midiBed";
 
 function pickBedConfig(configs) {
-    const withMidi = (configs || []).filter((c) => c.enabled && c.midi);
+    const withMidi = (configs || []).filter((c) => c.enabled && c.persona_detail?.midi);
     if (!withMidi.length) return null;
-    return [...withMidi].sort(
+    const cfg = [...withMidi].sort(
         (a, b) => new Date(b.last_posted_at || 0) - new Date(a.last_posted_at || 0),
     )[0];
+    return {id: cfg.id, midi: cfg.persona_detail.midi};
 }
 
 export default function CoachMidiBed() {

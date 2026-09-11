@@ -46,6 +46,19 @@ def is_handover_visible(changed_at, now=None):
     return until > now
 
 
+def sort_ballot_personas(personas, counts):
+    """Most votes, then newest custom coaches, stock last."""
+    def key(persona):
+        created = persona.created_at.timestamp() if persona.created_at else 0
+        return (
+            -counts.get(persona.id, 0),
+            1 if persona.is_builtin else 0,
+            -created,
+            (persona.name or "").lower(),
+        )
+    return sorted(personas, key=key)
+
+
 def eligible_personas(competition, incumbent_id=None):
     """Built-ins + custom roasters created by current participants + incumbent."""
     from .models import DrillInstructorPersona
@@ -95,7 +108,7 @@ def ballot_payload_for_request(config, request):
     max_votes = max(counts.values(), default=0)
     serializer_ctx = {"request": request}
     candidates = []
-    for persona in personas:
+    for persona in sort_ballot_personas(personas, counts):
         votes = counts.get(persona.id, 0)
         data = DrillInstructorPersonaSerializer(persona, context=serializer_ctx).data
         data.pop("system_prompt", None)
@@ -104,7 +117,6 @@ def ballot_payload_for_request(config, request):
             "votes": votes,
             "leading": bool(max_votes and votes == max_votes),
         })
-    candidates.sort(key=lambda c: (-c["votes"], c["persona"]["name"] or ""))
     next_at = next_persona_switch_at()
     changed_at = config.persona_changed_at
     changed_recently = is_handover_visible(changed_at)

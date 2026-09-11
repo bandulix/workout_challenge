@@ -36,6 +36,12 @@ class DrillInstructorPersona(models.Model):
         blank=True,
         help_text="Custom uploaded profile picture. Takes precedence over the avatar artwork/emoji when set.",
     )
+    midi = models.FileField(
+        upload_to="coach_midi/",
+        null=True,
+        blank=True,
+        help_text="Optional looping MIDI bed for this coach. Served only through the authenticated persona MIDI endpoint, never public /media/.",
+    )
     theme_color = models.CharField(
         max_length=7,
         blank=True,
@@ -86,12 +92,6 @@ class DrillInstructorConfig(models.Model):
         DrillInstructorPersona,
         on_delete=models.PROTECT,
         related_name="competitions",
-    )
-    midi = models.FileField(
-        upload_to="coach_midi/",
-        null=True,
-        blank=True,
-        help_text="Optional looping MIDI bed. Served only through the authenticated config MIDI endpoint, never public /media/.",
     )
 
     comment_on_activity = models.BooleanField(default=True)

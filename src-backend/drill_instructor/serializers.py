@@ -28,6 +28,12 @@ from .models import (
 )
 
 
+def _persona_midi_url(persona):
+    if not persona.midi:
+        return None
+    return reverse("drill-persona-midi", kwargs={"pk": persona.pk})
+
+
 def _persona_picture_url(persona):
     """URL of the persona's custom profile picture - always the
     authenticated endpoint, never the raw /media/ path (uploaded artwork
@@ -75,6 +81,11 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
     )
     mine = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
+    midi = serializers.SerializerMethodField()
+    midi_upload = serializers.FileField(
+        write_only=True, required=False, allow_null=True, source="midi",
+    )
+    clear_midi = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
         model = DrillInstructorPersona
@@ -87,6 +98,9 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
             "profile_picture",
             "profile_picture_upload",
             "theme_color",
+            "midi",
+            "midi_upload",
+            "clear_midi",
             "system_prompt",
             "is_builtin",
             "is_shared",
@@ -118,6 +132,26 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
         if not (staff or owns):
             rep.pop("system_prompt", None)
         return rep
+
+    def get_midi(self, obj):
+        return _persona_midi_url(obj)
+
+    def validate_midi_upload(self, value):
+        return validate_midi_upload(value)
+
+    def create(self, validated_data):
+        validated_data.pop("clear_midi", False)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        clear_midi = validated_data.pop("clear_midi", False)
+        instance = super().update(instance, validated_data)
+        if clear_midi and not validated_data.get("midi"):
+            if instance.midi:
+                instance.midi.delete(save=False)
+            instance.midi = None
+            instance.save(update_fields=["midi", "updated_at"])
+        return instance
 
     def get_profile_picture(self, obj):
         return _persona_picture_url(obj)
@@ -167,11 +201,6 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
     daily_order = serializers.SerializerMethodField()
     dunce = serializers.SerializerMethodField()
     my_tags = serializers.SerializerMethodField()
-    midi = serializers.SerializerMethodField()
-    midi_upload = serializers.FileField(
-        write_only=True, required=False, allow_null=True, source="midi",
-    )
-    clear_midi = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
         model = DrillInstructorConfig
@@ -182,9 +211,6 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
             "enabled",
             "persona",
             "persona_detail",
-            "midi",
-            "midi_upload",
-            "clear_midi",
             "comment_on_activity",
             "nudge_on_inactivity",
             "random_push",
@@ -202,15 +228,6 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at"]
-
-    def get_midi(self, obj):
-        # Authenticated endpoint only — never the raw /media/ path.
-        if not obj.midi:
-            return None
-        return reverse("drill-config-midi", kwargs={"pk": obj.pk})
-
-    def validate_midi_upload(self, value):
-        return validate_midi_upload(value)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -247,12 +264,7 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
             "You can only pick a built-in persona, one you created, or one a teammate released."
         )
 
-    def create(self, validated_data):
-        validated_data.pop("clear_midi", False)
-        return super().create(validated_data)
-
     def update(self, instance, validated_data):
-        clear_midi = validated_data.pop("clear_midi", False)
         # Manual coach pick must stamp handover the same way the weekly
         # vote does, so the New-coach box appears for ≤24 hours (#32).
         new_persona = validated_data.get("persona")
@@ -267,11 +279,6 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
             instance.previous_persona = old_persona
             instance.persona_changed_at = timezone.now()
             instance.save(update_fields=["previous_persona", "persona_changed_at", "updated_at"])
-        if clear_midi and not validated_data.get("midi"):
-            if instance.midi:
-                instance.midi.delete(save=False)
-            instance.midi = None
-            instance.save(update_fields=["midi", "updated_at"])
         return instance
 
     def _capability_flags(self):

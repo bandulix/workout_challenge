@@ -239,6 +239,22 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
         size = request.query_params.get("size")
         return serve_picture(persona.profile_picture, request=request, size=size)
 
+    @action(detail=True, methods=["get"], url_path="midi", renderer_classes=[ProtectedMediaRenderer])
+    def midi(self, request, pk=None):
+        """Serve this coach's MIDI bed — authenticated only.
+
+        Same privacy model as pictures: never on public ``/media/``.
+        Django checks the JWT here; production nginx delivers bytes via
+        internal X-Accel-Redirect. Missing file is 204 (not 404).
+        """
+        try:
+            persona = self.get_object()
+        except Http404:
+            return empty_picture_response()
+        if not persona.midi:
+            return empty_picture_response()
+        return protected_media_response(persona.midi, request=request)
+
 
 class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
     """Per-competition Drill Instructor configuration.
@@ -288,22 +304,6 @@ class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         self._ensure_owner(instance.competition)
         instance.delete()
-
-    @action(detail=True, methods=["get"], url_path="midi", renderer_classes=[ProtectedMediaRenderer])
-    def midi(self, request, pk=None):
-        """Serve this challenge's coach MIDI bed — authenticated only.
-
-        Same privacy model as pictures: never on public ``/media/``.
-        Django checks the JWT here; production nginx delivers bytes via
-        internal X-Accel-Redirect. Missing file is 204 (not 404).
-        """
-        try:
-            config = self.get_object()
-        except Http404:
-            return empty_picture_response()
-        if not config.midi:
-            return empty_picture_response()
-        return protected_media_response(config.midi, request=request)
 
     @action(detail=True, methods=["get"])
     def ballot(self, request, pk=None):
@@ -781,7 +781,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["get"])
     def hall(self, request):
-        """Hottest roasted photos the caller can see (Hall of Roasts).
+        """Newest roasted photos the caller can see (Hall of Roasts).
 
         Optional ``competition`` limits the list to one challenge; omit it
         for every challenge the caller owns or is in (Coach page).
@@ -819,7 +819,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
                 not_votes=Count("photo_votes", filter=Q(photo_votes__hot=False), distinct=True),
             )
             .distinct()
-            .order_by("-hot_votes", "-posted_at")[: self.HALL_SIZE]
+            .order_by("-posted_at")[: self.HALL_SIZE]
         )
         return Response(RoastCardSerializer(qs, many=True, context={"request": request}).data)
 

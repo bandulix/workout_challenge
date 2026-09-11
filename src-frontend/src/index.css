@@ -21,11 +21,10 @@
   .animate-squad-orbit,
   .animate-squad-orbit-slow,
   .animate-squad-orbit-fast,
-  .animate-squad-orbit-ccw,
-  .animate-squad-orbit-tilt,
   .animate-squad-orbit-swing,
   .animate-squad-pip-wave,
   .animate-squad-hop,
+  .portrait-wash,
   .glass-sheen,
   .points-chip,
   .points-chip-bob,
@@ -95,6 +94,49 @@
   box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.4),
     0 1px 0 rgba(255, 255, 255, 0.1) inset;
+}
+
+/* Portrait wash: a ghost of a face fills a glass card; the sharp
+   avatar stays on top. Used on Coach (persona) and Home (user pic). */
+.portrait-wash-card {
+  background: rgba(255, 253, 249, 0.28);
+}
+.dark .portrait-wash-card {
+  background: rgba(12, 12, 14, 0.38);
+}
+.portrait-wash {
+  position: absolute;
+  top: -28%;
+  right: -16%;
+  width: 88%;
+  height: 148%;
+  object-fit: cover;
+  object-position: center 18%;
+  filter: blur(44px) saturate(1.45) brightness(1.06);
+  opacity: 0.52;
+  user-select: none;
+  transform-origin: 62% 38%;
+}
+.dark .portrait-wash {
+  filter: blur(48px) saturate(1.6) brightness(0.78);
+  opacity: 0.68;
+}
+.portrait-wash-tint {
+  position: absolute;
+  inset: 0;
+  mix-blend-mode: overlay;
+}
+.portrait-wash-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(100deg, rgba(255, 253, 249, 0.72) 0%, rgba(255, 253, 249, 0.22) 48%, rgba(255, 253, 249, 0.06) 100%),
+    linear-gradient(180deg, rgba(255, 253, 249, 0.22) 0%, transparent 42%, rgba(255, 253, 249, 0.55) 100%);
+}
+.dark .portrait-wash-veil {
+  background:
+    linear-gradient(100deg, rgba(12, 12, 14, 0.62) 0%, rgba(12, 12, 14, 0.2) 48%, rgba(12, 12, 14, 0.04) 100%),
+    linear-gradient(180deg, rgba(12, 12, 14, 0.18) 0%, transparent 42%, rgba(12, 12, 14, 0.52) 100%);
 }
 
 /* Nested lift (speech bubbles, inner groups) — a second pane of frost. */
@@ -567,6 +609,17 @@ body {
   background: color-mix(in srgb, var(--react-glow, #d7ff3e) 16%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--react-glow, #d7ff3e) 70%, transparent);
 }
+
+/* Two rows of a 3-col tile grid (~6 items); the rest scroll. */
+.coach-ballot-scroller,
+.hall-scroller {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 2px;
+}
+.coach-ballot-scroller { max-height: 19.75rem; }
+.hall-scroller { max-height: 23.5rem; }
 
 .no-scrollbar {
   -ms-overflow-style: none;

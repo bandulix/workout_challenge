@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from "react";
+import React, {useEffect, useMemo, useRef, useState} from "react";
 import {Timer} from "lucide-react";
 import PersonaAvatar from "./PersonaAvatar";
 import {PaneHead} from "./uiBits";
@@ -18,6 +18,20 @@ function formatCountdown(iso, now) {
     if (d > 0) return `${d}d ${h}h ${m}m`;
     if (h > 0) return `${h}h ${m}m ${s}s`;
     return `${m}m ${s}s`;
+}
+
+export function sortBallotCandidates(candidates) {
+    return [...(candidates || [])].sort((a, b) => {
+        const voteDiff = (b.votes || 0) - (a.votes || 0);
+        if (voteDiff) return voteDiff;
+        const aStock = a.persona?.is_builtin ? 1 : 0;
+        const bStock = b.persona?.is_builtin ? 1 : 0;
+        if (aStock !== bStock) return aStock - bStock;
+        const aCreated = Date.parse(a.persona?.created_at || "") || 0;
+        const bCreated = Date.parse(b.persona?.created_at || "") || 0;
+        if (aCreated !== bCreated) return bCreated - aCreated;
+        return (a.persona?.name || "").localeCompare(b.persona?.name || "");
+    });
 }
 
 function useNowTick(active) {
@@ -87,11 +101,29 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
     });
     const [vote, {isLoading}] = useVoteCoachPersonaMutation();
     const now = useNowTick(Boolean(ballot?.next_switch_at));
+    const candidates = useMemo(
+        () => sortBallotCandidates(ballot?.candidates),
+        [ballot?.candidates],
+    );
+    const scroller = useRef(null);
+    const many = candidates.length > 6;
+
+    useEffect(() => {
+        const root = scroller.current;
+        if (!root || !many) return undefined;
+        const el = root.querySelector("[data-selected='true']");
+        if (!el) return undefined;
+        const er = el.getBoundingClientRect();
+        const rr = root.getBoundingClientRect();
+        if (er.top >= rr.top && er.bottom <= rr.bottom) return undefined;
+        root.scrollTop += er.top - rr.top - (rr.height - er.height) / 2;
+        return undefined;
+    }, [many, ballot?.my_vote, configId]);
 
     if (!configId || !ballot) return null;
 
     const countdown = formatCountdown(ballot.next_switch_at, now);
-    const tiedLeaders = (ballot.candidates || []).filter((c) => c.leading && c.votes > 0).length > 1;
+    const tiedLeaders = candidates.filter((c) => c.leading && c.votes > 0).length > 1;
 
     async function pick(personaId) {
         if (isLoading || personaId === ballot.my_vote) return;
@@ -135,14 +167,16 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
                 {tiedLeaders ? " Tied coaches are drawn at random." : ""}
             </p>
 
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                {(ballot.candidates || []).map((c) => {
+            <div ref={scroller}
+                 className={"grid grid-cols-3 gap-3 " + (many ? "coach-ballot-scroller" : "")}>
+                {candidates.map((c) => {
                     const selected = ballot.my_vote === c.persona.id;
                     const onDuty = ballot.current_persona === c.persona.id;
                     const accent = c.persona.theme_color || "#d7ff3e";
                     return (
                         <button key={c.persona.id} type="button" onClick={() => pick(c.persona.id)}
                                 disabled={isLoading}
+                                data-selected={selected ? "true" : undefined}
                                 className={"min-w-0 rounded-3xl glass-card p-3 text-center transition active:scale-[0.97] disabled:opacity-60 " +
                                     (selected ? "" : "hover:bg-white/5")}
                                 style={selected
@@ -165,6 +199,11 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
                     );
                 })}
             </div>
+            {many ? (
+                <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">
+                    Scroll for more
+                </p>
+            ) : null}
         </div>
     );
 }

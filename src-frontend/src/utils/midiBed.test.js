@@ -40,7 +40,7 @@ import {isNativeApp} from "./platform";
 import {_resetMidiBedForTests, startMidiBed, stopMidiBed} from "./midiBed";
 import {_resetSfxForTests, setSfxEnabled} from "./sfx";
 
-const MIDI_PATH = "/api/drill-instructor/config/1/midi/";
+const MIDI_PATH = "/api/drill-instructor/persona/1/midi/";
 const MIDI_BYTES = new Uint8Array(20).buffer;
 
 function stubWindow() {

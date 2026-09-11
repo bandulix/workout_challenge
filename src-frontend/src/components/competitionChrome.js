@@ -1,7 +1,7 @@
 import React, {useEffect, useState} from "react";
 import {useNavigate, useSearchParams} from "react-router-dom";
 import {useDispatch} from "react-redux";
-import {ChevronDown, DoorOpen, Megaphone, Settings, UserRoundPlus} from "lucide-react";
+import {ChevronDown, DoorOpen, Megaphone, Settings, Timer, UserRoundPlus} from "lucide-react";
 import {competitionsApi} from "../utils/reducers/competitionsSlice";
 import {useLeaveCompetitionMutation} from "../utils/reducers/joinSlice";
 import {messageResults, useGetDrillConfigsQuery, useGetDrillMessageByIdQuery, useGetDrillMessagesQuery, useLazyGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
@@ -28,6 +28,7 @@ import usePollingInterval from "../utils/usePollingInterval";
 import {confirmAction, notice} from "../utils/dialogs";
 import {feedSfxItems, useSfxObserver} from "../utils/sfx";
 import {pageResults, scoreGoals} from "../utils/queryPage";
+import {challengeDaysLeftLabel} from "../utils/challenge";
 
 export function HeaderIconButton({onClick, title, icon: Icon, danger = false, isLoading = false}) {
     return (
@@ -85,6 +86,10 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
 
 
 
+    const daysLeft = challengeDaysLeftLabel(competition.end_date);
+    const ended = daysLeft === "Ended";
+    const lastDay = daysLeft === "Last day";
+
     const showGoals = scoredGoals.length > 0 || isOwner;
 
     function finishGoalsPull(event) {
@@ -103,7 +108,20 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                 the action buttons), counts + icon actions sit below. */}
             <div className="p-5 sm:p-6">
                 <p className="text-xl font-display uppercase tracking-wide">{competition.name}</p>
-                <p className="text-xs text-gray-500">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
+                <div className="mt-0.5 flex items-center justify-between gap-3">
+                    <p className="text-xs text-gray-500">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
+                    {daysLeft ? (
+                        <span className={"shrink-0 inline-flex items-center gap-1.5 text-sm font-extrabold uppercase tracking-[0.12em] " +
+                            (ended
+                                ? "text-gray-400"
+                                : lastDay
+                                    ? "text-amber-700 dark:text-amber-300"
+                                    : "text-volt-700 dark:text-volt-300")}>
+                            <Timer className="h-4 w-4"/>
+                            {daysLeft}
+                        </span>
+                    ) : null}
+                </div>
                 <div className="mt-2.5 flex items-center gap-3">
                     <div className="flex items-baseline gap-1.5 shrink-0">
                         <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>

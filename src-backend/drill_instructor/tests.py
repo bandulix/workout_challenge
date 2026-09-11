@@ -197,38 +197,29 @@ class PersonaAdminPermissionTests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.content)
 
-    def test_owner_can_upload_and_clear_midi(self):
+    def test_creator_can_upload_and_clear_midi(self):
         import struct
         track = bytes([0x00, 0xFF, 0x2F, 0x00])
         midi = (
             b"MThd" + struct.pack(">IHHH", 6, 0, 1, 96)
             + b"MTrk" + struct.pack(">I", len(track)) + track
         )
-        cup = Competition.objects.create(
-            name="Midi Cup", start_date=timezone.now().date(),
-            end_date=(timezone.now() + datetime.timedelta(days=14)).date(),
-            owner=self.regular,
+        own = DrillInstructorPersona.objects.create(
+            name="Midi Voice", system_prompt="Go.", created_by=self.regular,
         )
-        cup.user.add(self.regular)
         self.client.force_authenticate(self.regular)
-        created = self.client.post(
-            "/api/drill-instructor/config/",
-            {"competition": cup.id, "persona": self.persona.id, "enabled": True},
-            format="json",
-        )
-        self.assertEqual(created.status_code, 201, created.content)
-        config_id = created.json()["id"]
-        self.assertIsNone(created.json()["midi"])
+        listed = self.client.get(f"/api/drill-instructor/persona/{own.id}/").json()
+        self.assertIsNone(listed["midi"])
 
         upload = SimpleUploadedFile("theme.mid", midi, content_type="audio/midi")
         patched = self.client.patch(
-            f"/api/drill-instructor/config/{config_id}/",
+            f"/api/drill-instructor/persona/{own.id}/",
             {"midi_upload": upload},
             format="multipart",
         )
         self.assertEqual(patched.status_code, 200, patched.content)
         midi_url = patched.json()["midi"]
-        self.assertEqual(midi_url, f"/api/drill-instructor/config/{config_id}/midi/")
+        self.assertEqual(midi_url, f"/api/drill-instructor/persona/{own.id}/midi/")
         self.assertNotIn("/media/", midi_url)
 
         fetched = self.client.get(midi_url)
@@ -249,21 +240,21 @@ class PersonaAdminPermissionTests(TestCase):
         self.client.force_authenticate(self.regular)
         junk = SimpleUploadedFile("nope.mid", b"not midi", content_type="audio/midi")
         bad = self.client.patch(
-            f"/api/drill-instructor/config/{config_id}/",
+            f"/api/drill-instructor/persona/{own.id}/",
             {"midi_upload": junk},
             format="multipart",
         )
         self.assertEqual(bad.status_code, 400)
 
         cleared = self.client.patch(
-            f"/api/drill-instructor/config/{config_id}/",
+            f"/api/drill-instructor/persona/{own.id}/",
             {"clear_midi": True},
             format="json",
         )
         self.assertEqual(cleared.status_code, 200, cleared.content)
         self.assertIsNone(cleared.json()["midi"])
         self.assertEqual(
-            self.client.get(f"/api/drill-instructor/config/{config_id}/midi/").status_code,
+            self.client.get(f"/api/drill-instructor/persona/{own.id}/midi/").status_code,
             204,
         )
 
@@ -3273,7 +3264,7 @@ class ArcadeGameTests(TestCase):
         slugs = [t["slug"] for t in response.json()["dog_tags"]]
         self.assertIn("first_blood", slugs)
 
-    def test_hall_lists_top_roasts_by_hot_votes(self):
+    def test_hall_lists_newest_roasts_first(self):
         a = DrillInstructorMessage.objects.create(
             config=self.config, kind=DrillInstructorMessage.KIND_REACTION, body="A", user=None,
         )
@@ -3285,9 +3276,8 @@ class ArcadeGameTests(TestCase):
         b.image = "message_pics/b.png"
         b.save()
         from .models import DrillInstructorPhotoVote
-        DrillInstructorPhotoVote.objects.create(message=b, user=self.alex, hot=True)
-        DrillInstructorPhotoVote.objects.create(message=b, user=self.nina, hot=True)
         DrillInstructorPhotoVote.objects.create(message=a, user=self.alex, hot=True)
+        DrillInstructorPhotoVote.objects.create(message=a, user=self.nina, hot=True)
         self.client.force_authenticate(self.alex)
         response = self.client.get(
             "/api/drill-instructor/message/hall/",
@@ -3296,6 +3286,7 @@ class ArcadeGameTests(TestCase):
         self.assertEqual(response.status_code, 200)
         ids = [row["id"] for row in response.json()]
         self.assertEqual(ids[0], b.id)
+        self.assertEqual(ids[1], a.id)
 
     def test_hall_without_competition_lists_membership_roasts(self):
         roast = DrillInstructorMessage.objects.create(
@@ -3578,6 +3569,23 @@ class PersonaVoteTests(TestCase):
         self.assertIn(owner_voice.name, names)
         self.assertIn(athlete_voice.name, names)
         self.assertNotIn(stranger.name, names)
+
+    def test_ballot_orders_votes_then_newest_custom_then_stock(self):
+        old_custom = DrillInstructorPersona.objects.create(
+            name="Old Voice", system_prompt="Go.", created_by=self.owner,
+        )
+        new_custom = DrillInstructorPersona.objects.create(
+            name="New Voice", system_prompt="Go.", created_by=self.athlete,
+        )
+        self.client.force_authenticate(self.athlete)
+        names = [c["persona"]["name"] for c in self._ballot().json()["candidates"]]
+        self.assertLess(names.index(new_custom.name), names.index(old_custom.name))
+        self.assertLess(names.index(old_custom.name), names.index("Vote Roast"))
+        self.assertLess(names.index(old_custom.name), names.index("Vote Sergeant"))
+
+        self._vote(self.roast)
+        names = [c["persona"]["name"] for c in self._ballot().json()["candidates"]]
+        self.assertEqual(names[0], "Vote Roast")
 
 
 @override_settings(

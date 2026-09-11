@@ -32,7 +32,7 @@ export const drillInstructorApi = createApi({
                 body: newPersona,
                 ...(newPersona instanceof FormData ? {headers: {'X-Skip-Content-Type': '1'}} : {}),
             }),
-            invalidatesTags: ['DrillPersona'],
+            invalidatesTags: ['DrillPersona', 'DrillConfig'],
         }),
         updatePersona: builder.mutation({
             query: ({id, body}) => ({
@@ -41,7 +41,7 @@ export const drillInstructorApi = createApi({
                 body,
                 ...(body instanceof FormData ? {headers: {'X-Skip-Content-Type': '1'}} : {}),
             }),
-            invalidatesTags: (result, error, {id}) => [{type: 'DrillPersona', id}, 'DrillPersona'],
+            invalidatesTags: (result, error, {id}) => [{type: 'DrillPersona', id}, 'DrillPersona', 'DrillConfig'],
         }),
         deletePersona: builder.mutation({
             query: (id) => ({

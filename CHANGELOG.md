@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-09-11
+
+### Added
+- **Days left on the challenge header** — the title bar shows how many calendar days remain until the inclusive end date (`Last day` / `Ended` when it is due or past).
+- **Blurred coach portrait wash** on the Coach hero card — the on-duty face fills the top box as a slow kenburns ghost, tinted with the persona colour. Home’s welcome box does the same with the athlete’s profile picture when they have one.
+
+### Changed
+- **Weekly coach vote is easier to scan.** Candidates sort by most votes, then newest custom coaches, with stock last. Six show at a time; scroll for the rest. Your current pick stays in view.
+- **Hall of roasts matches that grid** — newest remixed photos first, six on screen, scroll for more. Hot votes show as a heart stack on each shot.
+- **Coach MIDI lives on the coach**, not the challenge. Upload or remove the looping bed in the persona’s general settings (Roasters). Existing challenge MIDI files are copied onto that coach.
+
 ## [0.56.0] - 2026-09-11
 
 ### Added

@@ -48,32 +48,31 @@ export function safeImageSrc(url) {
     return null;
 }
 
-function PersonaAvatar({persona, size = 48, ring = true, glow = false, className = ""}) {
+export function usePersonaImageSrc(persona, size = "avatar") {
     const avatar = persona?.avatar;
     const picture = persona?.profile_picture;
-    const color = persona?.theme_color || "#d7ff3e";
     const isEmoji = !picture && avatar && !ARTWORK_RE.test(avatar);
-
-    // blob: URLs (the editor's pre-upload preview) are used directly;
-    // API URLs go through the authenticated fetch.
     const isLocalPreview = !!picture && picture.startsWith("blob:");
     const {src: fetchedSrc, failed: fetchFailed} = useProtectedImage(
         picture && !isLocalPreview ? picture : null,
-        "avatar",
+        size,
     );
 
-    // The src is derived from the props on every render (a changed
-    // persona must show its new face immediately). The only state is
-    // "which src failed to load", so the onError fallback resets itself
-    // as soon as the persona changes.
     let requested;
-    if (!picture) requested = personaAvatarSrc(avatar) || FALLBACK_ART;
+    if (isEmoji) requested = null;
+    else if (!picture) requested = personaAvatarSrc(avatar) || FALLBACK_ART;
     else if (isLocalPreview) requested = picture;
     else if (fetchFailed) requested = FALLBACK_ART;
-    else requested = fetchedSrc; // null while the protected fetch is in flight
+    else requested = fetchedSrc;
 
     const [failedSrc, setFailedSrc] = useState(null);
     const src = safeImageSrc(requested && failedSrc === requested ? FALLBACK_ART : requested);
+    return {src, isEmoji, onError: () => setFailedSrc(requested)};
+}
+
+function PersonaAvatar({persona, size = 48, ring = true, glow = false, className = ""}) {
+    const color = persona?.theme_color || "#d7ff3e";
+    const {src, isEmoji, onError} = usePersonaImageSrc(persona);
 
     const ringStyle = ring
         ? {boxShadow: `0 0 0 2px ${color}${glow ? `, 0 0 18px ${color}66` : ""}`}
@@ -87,7 +86,7 @@ function PersonaAvatar({persona, size = 48, ring = true, glow = false, className
         >
             {isEmoji ? (
                 <div className="w-full h-full flex items-center justify-center" style={{fontSize: size * 0.55}}>
-                    {avatar}
+                    {persona?.avatar}
                 </div>
             ) : src ? (
                 <img
@@ -95,7 +94,7 @@ function PersonaAvatar({persona, size = 48, ring = true, glow = false, className
                     alt=""
                     draggable={false}
                     className="w-full h-full object-cover select-none"
-                    onError={() => setFailedSrc(requested)}
+                    onError={onError}
                 />
             ) : null}
         </div>

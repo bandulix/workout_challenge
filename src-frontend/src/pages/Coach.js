@@ -4,7 +4,8 @@ import {Megaphone, ChevronRight, Radio, Volume2, VolumeX} from "lucide-react";
 import {PageWrapper} from "../utils/miscellaneous";
 
 import {SectionLoader} from "../utils/loaders";
-import PersonaAvatar from "../components/PersonaAvatar";
+import PersonaAvatar, {usePersonaImageSrc} from "../components/PersonaAvatar";
+import PortraitWash from "../components/PortraitWash";
 import RoastSwipeBox from "../components/RoastSwipeBox";
 import CoachVoteBox from "../components/CoachVoteBox";
 import PushOptInCard from "../components/PushOptIn";
@@ -89,6 +90,18 @@ function coachPersona(persona, message) {
 }
 
 
+function CoachHeroWash({persona, mood}) {
+    const {src, onError} = usePersonaImageSrc(persona);
+    return (
+        <PortraitWash
+            src={src}
+            color={persona?.theme_color || "#d7ff3e"}
+            intensity={mood?.intensity}
+            onError={onError}
+        />
+    );
+}
+
 function CoachHero({persona, config, message: latest, ownedCompetitions, mood, lastOwnActivityId}) {
     const trained = trainedSummary(mood);
     const [sfxOn, setSfxOn] = useSfxEnabled();
@@ -108,12 +121,8 @@ function CoachHero({persona, config, message: latest, ownedCompetitions, mood, l
     }
 
     return (
-        <div className="relative rounded-3xl glass-card text-ink-950 dark:text-white">
-            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl" aria-hidden="true">
-                <div className="absolute -top-24 -right-16 h-64 w-64 rounded-full blur-3xl"
-                     style={{background: persona.theme_color || "#d7ff3e",
-                             opacity: 0.18 + 0.12 * (mood?.intensity ?? 1)}}/>
-            </div>
+        <div className="relative rounded-3xl glass-card portrait-wash-card text-ink-950 dark:text-white">
+            <CoachHeroWash persona={persona} mood={mood}/>
             <div className="relative p-5 sm:p-8">
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400">

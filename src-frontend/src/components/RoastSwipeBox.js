@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useRef, useState} from "react";
-import {Flame, FlameKindling, X} from "lucide-react";
+import {Flame, FlameKindling, Heart, X} from "lucide-react";
 import {BoxSection} from "../utils/miscellaneous";
 import {useGetRoastsQuery, useVoteRoastMutation} from "../utils/reducers/drillInstructorSlice";
 import {fetchProtectedImage} from "../utils/protectedMedia";
@@ -101,9 +101,12 @@ function RoastCard({card, top, onVote}) {
                     <p className="text-[11px] text-gray-400 mt-1">
                         {card.persona_name} roasting {card.athlete_name || "an athlete"} · {card.competition_name} · {timeAgo(card.posted_at)}
                     </p>
-                    <p className="text-[11px] mt-0.5 font-semibold">
-                        <span className="text-volt-600 dark:text-volt-300">{card.hot_votes} hot</span>
-                        <span className="text-gray-400"> · {card.not_votes} nope</span>
+                    <p className="text-[11px] mt-0.5 font-semibold inline-flex items-center gap-1.5 flex-wrap">
+                        <span className="inline-flex items-center gap-1 text-rose-600 dark:text-rose-400">
+                            <Heart className={"h-3.5 w-3.5 " + ((card.hot_votes || 0) > 0 ? "fill-rose-500 text-rose-400" : "")}/>
+                            {card.hot_votes || 0}
+                        </span>
+                        <span className="text-gray-400">· {card.not_votes} nope</span>
                         {card.my_vote !== null && card.my_vote !== undefined && (
                             <span className="text-gray-400"> · you said {card.my_vote ? "hot" : "nope"}</span>
                         )}
