@@ -690,10 +690,6 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
     roast.image.save(f"roast-{photo.id}.png", ContentFile(png_bytes), save=False)
     try:
         roast.save()
-        workout = _workout_answered_to(photo, parent)
-        if workout is not None:
-            from .echoes import attach_echo_image
-            attach_echo_image(workout, config, roast.image)
         config.last_posted_at = timezone.now()
         config.messages_posted = (config.messages_posted or 0) + 1
         config.save(update_fields=["last_posted_at", "messages_posted", "updated_at"])

@@ -222,7 +222,7 @@ export const drillInstructorApi = createApi({
                     headers: {'X-Skip-Content-Type': '1'},
                 };
             },
-            invalidatesTags: ['DrillMessage', 'DrillRoast'],
+            invalidatesTags: ['DrillMessage', 'DrillRoast', 'DrillEcho'],
         }),
 
         // ---- Roast swipe box (hot-or-not) ------------------------------
@@ -286,23 +286,6 @@ export const drillInstructorApi = createApi({
                 "DrillMessage",
             ],
         }),
-        uploadEchoArt: builder.mutation({
-            query: ({id, image}) => {
-                const form = new FormData();
-                form.append("image", image);
-                return {
-                    url: `drill-instructor/echoes/${id}/art/`,
-                    method: "POST",
-                    body: form,
-                    headers: {"X-Skip-Content-Type": "1"},
-                };
-            },
-            invalidatesTags: (result, error, {id}) => [
-                {type: "DrillEcho", id},
-                "DrillEcho",
-                "DrillMessage",
-            ],
-        }),
 
         // ---- Test message (Celery task runner) -------------------------
         runTestMessage: builder.mutation({
@@ -340,6 +323,5 @@ export const {
     useVoteCoachPersonaMutation,
     useGetEchoesQuery,
     useDeleteEchoMutation,
-    useUploadEchoArtMutation,
     useRunTestMessageMutation,
 } = drillInstructorApi;

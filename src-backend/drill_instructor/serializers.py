@@ -484,6 +484,8 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
     author_profile_picture = serializers.SerializerMethodField()
     reacts = serializers.SerializerMethodField()
+    echoes = serializers.SerializerMethodField()
+    athlete_echoes_held = serializers.SerializerMethodField()
 
     class Meta:
         model = DrillInstructorMessage
@@ -516,6 +518,8 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             "author_name",
             "author_profile_picture",
             "reacts",
+            "echoes",
+            "athlete_echoes_held",
         ]
         read_only_fields = fields
 
@@ -591,6 +595,52 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
 
     def get_workout_user_id(self, obj):
         return getattr(obj.workout, "user_id", None)
+
+    def get_athlete_echoes_held(self, obj):
+        user_id = getattr(obj.workout, "user_id", None)
+        if not user_id:
+            return 0
+        cache = self.context.setdefault("_echo_hold_counts", {})
+        if user_id not in cache:
+            from .echoes import LIVE_HOLDER_STATUSES
+            from .models import LegendEcho
+            cache[user_id] = LegendEcho.objects.filter(
+                holder_id=user_id, status__in=LIVE_HOLDER_STATUSES,
+            ).count()
+        return cache[user_id]
+
+    def get_echoes(self, obj):
+        from .models import DrillInstructorMessage, LegendEcho
+        if obj.kind != DrillInstructorMessage.KIND_ACTIVITY or not obj.workout_id:
+            return []
+        workout = obj.workout
+        if workout is None:
+            return []
+        originated = list(getattr(workout, "echoes_originated").all())
+        held = list(getattr(workout, "echoes_held").all())
+        chips = {}
+        for echo in originated + held:
+            if echo.config_id != obj.config_id:
+                continue
+            role = "claimed" if echo.holder_workout_id == workout.id and echo.origin_workout_id != workout.id else "earned"
+            image = None
+            if echo.image:
+                image = reverse("drill-echo-picture", kwargs={"pk": echo.pk})
+            chips[echo.id] = {
+                "id": echo.id,
+                "title": echo.title,
+                "status": echo.status,
+                "role": role,
+                "image": image,
+                "metric_label": self._echo_metric_label(echo),
+            }
+        return list(chips.values())
+
+    @staticmethod
+    def _echo_metric_label(echo):
+        from .echoes import echo_sport_label
+        unit = "km" if echo.metric == "distance" else "min"
+        return f"{echo.metric_value:g} {unit} {echo_sport_label(echo.sport_type)}"
 
     @staticmethod
     def _point_in_competition(point, competition_id):
@@ -916,7 +966,6 @@ class LegendEchoSerializer(serializers.ModelSerializer):
     holder_name = serializers.SerializerMethodField()
     holder_id = serializers.IntegerField(read_only=True)
     image = serializers.SerializerMethodField()
-    can_upload_art = serializers.SerializerMethodField()
     can_delete = serializers.SerializerMethodField()
     metric_label = serializers.SerializerMethodField()
 
@@ -926,7 +975,7 @@ class LegendEchoSerializer(serializers.ModelSerializer):
             "id", "title", "narrative", "power", "status", "metric", "metric_value",
             "metric_label", "sport_type", "chain_length", "defenses",
             "origin_name", "origin_id", "holder_name", "holder_id", "image",
-            "can_upload_art", "can_delete",
+            "can_delete",
             "created_at", "last_claimed_at", "immortalized_at",
         ]
         read_only_fields = fields
@@ -943,13 +992,6 @@ class LegendEchoSerializer(serializers.ModelSerializer):
         if not obj.image:
             return None
         return reverse("drill-echo-picture", kwargs={"pk": obj.pk})
-
-    def get_can_upload_art(self, obj):
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-        if not user or not user.is_authenticated:
-            return False
-        return obj.holder_id == user.id
 
     def get_can_delete(self, obj):
         request = self.context.get("request")

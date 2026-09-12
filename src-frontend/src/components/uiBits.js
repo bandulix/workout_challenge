@@ -1,8 +1,9 @@
 import React from "react";
-import {RefreshCw} from "lucide-react";
+import {RefreshCw, Share2} from "lucide-react";
 import PersonaAvatar from "./PersonaAvatar";
 import {OverlaySheet} from "../forms/basicComponents";
 import {useProtectedImage} from "../utils/protectedMedia";
+import {sharePostCard} from "../utils/shareCard";
 
 export const VOLT = "#d7ff3e";
 
@@ -35,12 +36,23 @@ export function PaneHead({title, hint, children}) {
 export const paneCardClass =
     "min-w-0 rounded-3xl glass-card p-3.5 sm:p-4 text-ink-950 dark:text-white";
 
-export function FullImageSheet({url, title, fallback, onClose, zClass = "z-[80]"}) {
+export function FullImageSheet({url, title, fallback, onClose, zClass = "z-[80]", shareText}) {
     const {src} = useProtectedImage(url);
     return (
         <OverlaySheet title={title} onClose={onClose} zClass={zClass}>
             <img src={src || fallback} alt=""
                  className="mx-auto max-h-[70vh] w-full rounded-2xl object-contain"/>
+            {url ? (
+                <button type="button"
+                        onClick={() => sharePostCard({
+                            title: title || "Photo",
+                            text: shareText || title || "",
+                            imageUrl: url,
+                        })}
+                        className="mx-auto flex min-h-[44px] items-center justify-center gap-1.5 rounded-full btn-glass px-4 py-2 text-[11px] font-bold uppercase tracking-wide">
+                    <Share2 className="h-3.5 w-3.5"/> Share
+                </button>
+            ) : null}
         </OverlaySheet>
     );
 }

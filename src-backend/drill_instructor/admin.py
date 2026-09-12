@@ -57,6 +57,15 @@ class LegendEchoAdmin(admin.ModelAdmin):
     search_fields = ("title", "narrative", "holder__email", "origin_user__email")
     readonly_fields = ("created_at", "last_claimed_at", "immortalized_at")
 
+    def delete_model(self, request, obj):
+        from .echoes import delete_echo
+        delete_echo(obj)
+
+    def delete_queryset(self, request, queryset):
+        from .echoes import delete_echo
+        for obj in queryset:
+            delete_echo(obj)
+
 
 @admin.register(DrillInstructorActivityReact)
 class DrillInstructorActivityReactAdmin(admin.ModelAdmin):

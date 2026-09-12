@@ -97,6 +97,31 @@
     0 1px 0 rgba(255, 255, 255, 0.1) inset;
 }
 
+/* Phones: skip 40px backdrop blur and orbiting point sparks. */
+@media (hover: none) {
+  .glass-card,
+  .glass-dock,
+  .glass-sheet,
+  .glass-well {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .glass-card { background: rgba(255, 253, 249, 0.92); }
+  .dark .glass-card { background: rgba(12, 12, 14, 0.88); }
+  .activity-photo-bg,
+  .dark .activity-photo-bg {
+    filter: saturate(1.1) brightness(0.75);
+  }
+  .points-chip-bob,
+  .points-chip--photo,
+  .points-spark,
+  .points-cam,
+  .photo-bonus-tag {
+    animation: none !important;
+  }
+  .points-spark { display: none; }
+}
+
 /* Portrait wash: a ghost of a face fills a glass card; the sharp
    avatar stays on top. Used on Coach (persona) and Home (user pic). */
 .portrait-wash-card {

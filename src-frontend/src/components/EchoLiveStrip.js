@@ -1,17 +1,14 @@
-import React, {useRef, useState} from "react";
-import {Camera, Crown, Share2, Trash2} from "lucide-react";
-import {BeatLoader} from "react-spinners";
+import React, {useState} from "react";
+import {Crown, Share2, Trash2} from "lucide-react";
 import {useDispatch} from "react-redux";
 import {FullImageSheet, PaneHead} from "./uiBits";
 import {useProtectedImage} from "../utils/protectedMedia";
-import {compressImage} from "../utils/imageCompress";
-import {isAcceptablePhoto, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
 import {
-    drillInstructorApi,
     useDeleteEchoMutation,
     useGetEchoesQuery,
-    useUploadEchoArtMutation,
 } from "../utils/reducers/drillInstructorSlice";
+import {usersApi} from "../utils/reducers/usersSlice";
+import {statsApi} from "../utils/reducers/statsSlice";
 import usePollingInterval from "../utils/usePollingInterval";
 import {confirmAction, notice} from "../utils/dialogs";
 import {sharePostCard} from "../utils/shareCard";
@@ -19,48 +16,9 @@ import {echoSfxItems, useSfxObserver} from "../utils/sfx";
 
 const LIVE = 3;
 
-function EchoArt({url, title, canUpload, echoId}) {
+function EchoArt({url, title}) {
     const {src} = useProtectedImage(url, "card");
-    const [uploadArt] = useUploadEchoArtMutation();
-    const dispatch = useDispatch();
-    const fileInput = useRef(null);
-    const [busy, setBusy] = useState(false);
     const [lightbox, setLightbox] = useState(false);
-
-    async function send(file) {
-        if (!file) return;
-        if (!isAcceptablePhoto(file)) {
-            notice("Please pick a photo (JPEG, PNG, WebP, GIF or HEIC).");
-            return;
-        }
-        setBusy(true);
-        try {
-            const compressed = await compressImage(file);
-            await uploadArt({id: echoId, image: compressed}).unwrap();
-            notice("The coach is painting this into Echo art — give it a few seconds.");
-            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(["DrillEcho"])), 8000);
-            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(["DrillEcho"])), 20000);
-        } catch (err) {
-            notice(err?.data?.image || err?.data?.detail || "Could not upload that picture.");
-        } finally {
-            setBusy(false);
-        }
-    }
-
-    async function openPicker() {
-        try {
-            const native = await pickNativePhoto();
-            if (native) {
-                await send(native);
-                return;
-            }
-        } catch (err) {
-            if (!isPhotoPickCancel(err)) notice("Could not open the camera.");
-            return;
-        }
-        fileInput.current?.click();
-    }
-
     return (
         <>
             <div className="relative overflow-hidden rounded-t-3xl">
@@ -68,33 +26,13 @@ function EchoArt({url, title, canUpload, echoId}) {
                     <button type="button" onClick={() => setLightbox(true)} className="block w-full">
                         <img src={src} alt="" className="h-28 w-full object-cover"/>
                     </button>
-                ) : canUpload ? (
-                    <button type="button" onClick={openPicker} disabled={busy}
-                            className="h-28 w-full bg-gradient-to-br from-ink-800 via-ink-900 to-black flex flex-col items-center justify-center gap-1">
-                        {busy ? <BeatLoader size={6} color="#d7ff3e"/> : (
-                            <>
-                                <Camera className="h-6 w-6 text-volt-400"/>
-                                <span className="text-[10px] font-extrabold uppercase tracking-wide text-volt-400">Add art</span>
-                            </>
-                        )}
-                    </button>
                 ) : (
                     <div className="h-28 w-full bg-gradient-to-br from-ink-800 via-ink-900 to-black flex items-center justify-center">
                         <Crown className="h-7 w-7 text-volt-400/70"/>
                     </div>
                 )}
-                {canUpload && src && (
-                    <button type="button" onClick={(e) => { e.stopPropagation(); openPicker(); }}
-                            disabled={busy}
-                            aria-label="Change Echo art"
-                            className="absolute bottom-2 right-2 z-10 inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full bg-ink-950/70 text-volt-400">
-                        {busy ? <BeatLoader size={4} color="#d7ff3e"/> : <Camera className="h-4 w-4"/>}
-                    </button>
-                )}
-                <input ref={fileInput} type="file" accept="image/*,image/heic,image/heif" className="hidden"
-                       onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; send(f); }}/>
             </div>
-            {lightbox && (
+            {lightbox && url && (
                 <FullImageSheet url={url} title={title || "Echo"} fallback={src}
                                 onClose={() => setLightbox(false)} zClass="z-[70]"/>
             )}
@@ -105,8 +43,7 @@ function EchoArt({url, title, canUpload, echoId}) {
 function EchoTile({echo, onDelete, busy}) {
     return (
         <article className="min-w-0 rounded-3xl glass-card overflow-hidden text-ink-950 dark:text-white">
-            <EchoArt url={echo.image} title={echo.title}
-                     canUpload={Boolean(echo.can_upload_art)} echoId={echo.id}/>
+            <EchoArt url={echo.image} title={echo.title}/>
             <div className="px-2.5 py-2">
                 <p className="text-[12px] font-bold leading-tight truncate">{echo.title}</p>
                 <p className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400 truncate">
@@ -136,6 +73,7 @@ function EchoTile({echo, onDelete, busy}) {
 }
 
 export default function EchoLiveStrip({competitionId, userId}) {
+    const dispatch = useDispatch();
     const poll = usePollingInterval(90000);
     const {data: echoes} = useGetEchoesQuery(
         {competition: competitionId},
@@ -154,6 +92,8 @@ export default function EchoLiveStrip({competitionId, userId}) {
         if (!ok) return;
         try {
             await removeEcho(echo.id).unwrap();
+            dispatch(usersApi.util.invalidateTags(["User"]));
+            dispatch(statsApi.util.invalidateTags(["Stats"]));
         } catch (err) {
             notice(err?.data?.detail || "Could not delete that Echo.");
         }

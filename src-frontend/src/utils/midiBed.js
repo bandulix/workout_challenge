@@ -282,7 +282,7 @@ export function duckMidiBed() {
 export function unlockMidiBed() {
     // Sync on the tap stack so Android actually starts the context.
     ensureAudioContext();
-    emitMidiUnlock();
+    if (sfxEnabled()) emitMidiUnlock();
 }
 
 export function installMidiUnlock() {
@@ -304,5 +304,6 @@ if (typeof window !== "undefined") {
     window.addEventListener("wc-sfx-play", () => duckMidiBed());
     window.addEventListener("wc-sfx", () => {
         if (sfxEnabled()) unlockMidiBed();
+        else stopMidiBed();
     });
 }

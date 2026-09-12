@@ -24,12 +24,29 @@ function EchoCrown({count, size}) {
     if (!count) return null;
     const badge = Math.max(16, Math.round(size * 0.38));
     const icon = Math.max(9, Math.round(badge * 0.55));
+    const stacked = size >= 56 ? Math.min(count, 3) : 1;
     const label = count === 1 ? "Holds a Legend Echo" : `Holds ${count} Legend Echoes`;
     return (
         <span title={label}
-              className="absolute -top-1 -right-1 z-10 rounded-full bg-volt-400 text-ink-950 border border-ink-950 flex items-center justify-center shadow-glow-volt"
-              style={{width: badge, height: badge}}>
-            <Crown style={{width: icon, height: icon}} strokeWidth={2.5}/>
+              className="absolute -top-1 -right-1 z-10 flex items-center"
+              style={{height: badge}}>
+            {Array.from({length: stacked}, (_, i) => (
+                <span key={i}
+                      className="rounded-full bg-volt-400 text-ink-950 border border-ink-950 flex items-center justify-center shadow-glow-volt"
+                      style={{
+                          width: badge,
+                          height: badge,
+                          marginLeft: i ? -Math.round(badge * 0.42) : 0,
+                          zIndex: stacked - i,
+                      }}>
+                    <Crown style={{width: icon, height: icon}} strokeWidth={2.5}/>
+                </span>
+            ))}
+            {count > 1 && (
+                <span className="relative z-20 -ml-0.5 min-w-[14px] rounded-full bg-ink-950 px-1 text-center text-[9px] font-extrabold leading-4 text-volt-400 border border-volt-400">
+                    {count}
+                </span>
+            )}
             <span className="sr-only">{label}</span>
         </span>
     );

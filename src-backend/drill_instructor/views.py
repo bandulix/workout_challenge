@@ -391,6 +391,8 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
                     queryset=Points.objects.select_related("goal", "award"),
                 ),
                 "config__competition__activitygoal_set",
+                "workout__echoes_originated",
+                "workout__echoes_held",
             )
             .order_by("-posted_at", "-pk")
         )
@@ -689,6 +691,12 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
                 grant_photo_bonus(parent.workout, config.competition)
             except Exception:
                 pass
+            try:
+                from .echoes import attach_echo_image
+                if parent.workout_id:
+                    attach_echo_image(parent.workout, config, message.image)
+            except Exception:
+                pass
 
         try:
             _notify_reply_audience(message)
@@ -781,7 +789,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["get"])
     def hall(self, request):
-        """Hottest roasted photos the caller can see (Hall of Roasts).
+        """Newest roasted photos the caller can see (Hall of Roasts).
 
         Optional ``competition`` limits the list to one challenge; omit it
         for every challenge the caller owns or is in (Coach page).
@@ -820,7 +828,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
                 last_hot_at=Max("photo_votes__created_at", filter=Q(photo_votes__hot=True)),
             )
             .distinct()
-            .order_by("-hot_votes", "-posted_at")[: self.HALL_SIZE]
+            .order_by("-posted_at")[: self.HALL_SIZE]
         )
         return Response(RoastCardSerializer(qs, many=True, context={"request": request}).data)
 
@@ -930,7 +938,7 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
     def destroy(self, request, *args, **kwargs):
         echo = self.get_object()
         competition = echo.config.competition
-        if competition.owner_id != request.user.id:
+        if competition.owner_id != request.user.id and not request.user.is_staff:
             raise PermissionDenied("Only the challenge owner can delete an Echo.")
         from .echoes import delete_echo
         delete_echo(echo)
@@ -944,75 +952,4 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
             return empty_picture_response()
         size = request.query_params.get("size")
         return serve_picture(echo.image, request=request, size=size)
-
-    MAX_ECHO_ART_BYTES = 5 * 1024 * 1024
-    MAX_ECHO_ART_PER_DAY = 8
-
-    @action(detail=True, methods=["post"])
-    def art(self, request, pk=None):
-        """Holder uploads a photo; we store it and remix it into Echo art.
-
-        Only the current holder may set the picture (staff included only
-        when they actually hold it). The raw upload is saved immediately
-        so the crown placeholder disappears; a background edit then
-        paints it to match the Echo title and sport. If no image-edit
-        model is configured the original photo stays.
-        """
-        echo = self.get_object()
-        user = request.user
-        if echo.holder_id != user.id:
-            return Response(
-                {"detail": "Only the athlete who holds this Echo can set its picture."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        image = request.FILES.get("image")
-        if image is None:
-            return Response({"image": "A picture file is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        from django.core.cache import cache
-        from rest_framework.exceptions import ValidationError as DrfValidationError
-        from workout_challenge.images import validate_and_reencode_image
-
-        try:
-            image = validate_and_reencode_image(image, max_bytes=self.MAX_ECHO_ART_BYTES, max_side=1600)
-        except DrfValidationError as exc:
-            detail = exc.detail
-            message = detail[0] if isinstance(detail, list) else detail
-            return Response({"image": str(message)}, status=status.HTTP_400_BAD_REQUEST)
-
-        day_key = f"echo-art-uploads:{user.id}:{timezone.now().date().isoformat()}"
-        try:
-            used = cache.incr(day_key)
-        except ValueError:
-            cache.add(day_key, 1, 86400)
-            used = cache.get(day_key) or 1
-        if used > self.MAX_ECHO_ART_PER_DAY:
-            return Response(
-                {"image": f"That's enough Echo art for today - max {self.MAX_ECHO_ART_PER_DAY} per day."},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
-
-        echo.image.save(f"echo-{echo.pk}.jpg", image, save=True)
-        try:
-            from .echoes import _name
-            from .tasks import _post_coach_line
-            persona = echo.config.persona
-            who = _name(echo.holder or user)
-            body = (
-                f"{persona.name}: @{who} just hung a picture on {echo.title}. "
-                "It's on the feed."
-            )
-            _post_coach_line(
-                echo.config, DrillInstructorMessage.KIND_ECHO, body,
-                send_push=False, image_field=echo.image,
-            )
-        except Exception as exc:  # noqa: BLE001 - upload still succeeded
-            logger.warning("Echo art feed post failed for %s: %s", echo.pk, exc)
-        from .tasks import remix_echo_art
-        remix_echo_art.delay(echo.id, uploaded_by_id=user.id)
-        echo.refresh_from_db()
-        return Response(
-            LegendEchoSerializer(echo, context={"request": request}).data,
-            status=status.HTTP_200_OK,
-        )
 

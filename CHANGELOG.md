@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-09-12
+
+### Changed
+- **Echoes live on the workout card.** Plant or claim shows as a volt ribbon on that activity — no separate Echo/Claim posts. Crowns stack with a count on feed avatars and profiles. Echo art is the activity photo; the Echo camera is gone.
+- **Hall of roasts stays on Coach** (not under Play), newest photos first.
+- **Vote next week's coach** only appears in the last 72 hours before Monday 07:15 handover.
+- **Share opens the phone share sheet** (messengers, etc.) instead of saving the picture. Maximized photos have a Share button too.
+
+### Fixed
+- **Trail Run vs Walk Echoes.** First flag is per sport family, so a Trail Run can plant a Run Echo even if a Walk Echo already exists. A run still cannot take a Walk relic.
+- **Deleting an Echo drops the profile crown immediately.** Challenge owner, staff, and Django admin all go through the same delete path; User and Stats refetch so avatars stay in sync.
+- **Coach mute control.** The portrait speaker is the only mute UI (no hint text). It matches the real on/off state; MIDI stops when muted.
+- **Smoother challenge feed on phones.** Drop 40px glass blur and orbiting point sparks on touch, stop a duplicate message poll, and refresh only the feed when the coach posts.
+
 ## [0.58.0] - 2026-09-12
 
 ### Added

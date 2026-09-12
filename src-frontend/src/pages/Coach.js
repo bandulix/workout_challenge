@@ -109,7 +109,7 @@ function PlayFold({children}) {
     return (
         <div>
             <button type="button" onClick={() => setOpen((v) => !v)} className="w-full text-left">
-                <PaneHead title="Play" hint={open ? "Hot or Not and the hall" : "Hot or Not and the hall — tap to open"}>
+                <PaneHead title="Play" hint={open ? "Hot or Not" : "Hot or Not — tap to open"}>
                     <ChevronDown className={"h-4 w-4 text-gray-400 transition-transform " + (open ? "rotate-180" : "")}/>
                 </PaneHead>
             </button>
@@ -121,12 +121,6 @@ function PlayFold({children}) {
 function CoachHero({persona, config, message: latest, ownedCompetitions, mood, lastOwnActivityId}) {
     const trained = trainedSummary(mood);
     const [sfxOn, setSfxOn] = useSfxEnabled();
-    const [sfxHint, setSfxHint] = useState(() => {
-        try { return window.localStorage.getItem("wc-sfx-hint") !== "1"; } catch { return true; }
-    });
-    useEffect(() => {
-        try { window.localStorage.setItem("wc-sfx-hint", "1"); } catch { /* ignore */ }
-    }, []);
 
     function activityCard(message, hero) {
         return (
@@ -164,19 +158,12 @@ function CoachHero({persona, config, message: latest, ownedCompetitions, mood, l
                         </span>
                     )}
                 </div>
-                {sfxHint && (
-                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        Coach makes noise — tap the portrait to mute.
-                    </p>
-                )}
 
                 <div className="mt-4 flex items-center gap-3 sm:gap-5">
                     <button type="button"
                             onClick={() => {
                                 const next = !sfxOn;
                                 setSfxOn(next);
-                                try { window.localStorage.setItem("wc-sfx-hint", "1"); } catch { /* ignore */ }
-                                setSfxHint(false);
                                 if (next) playSfx("vote");
                             }}
                             aria-pressed={sfxOn}
@@ -309,10 +296,11 @@ function CoachPage() {
 
                         <CoachVoteBox configs={configs} preferredConfigId={heroConfig?.id}/>
 
+                        {mediaReady && <HallOfRoasts cards={hall}/>}
+
                         {mediaReady && (
                             <PlayFold>
                                 <RoastSwipeBox/>
-                                <HallOfRoasts cards={hall}/>
                             </PlayFold>
                         )}
 

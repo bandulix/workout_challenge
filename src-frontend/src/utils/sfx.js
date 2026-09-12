@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {isNativeApp} from "./serverUrl";
 
 // Short in-app stings from Kenney Interface Sounds (CC0). On by default;
@@ -67,6 +67,7 @@ export function useSfxEnabled() {
     const [on, setOn] = useState(() => sfxEnabled());
     useEffect(() => {
         const sync = () => setOn(sfxEnabled());
+        sync();
         window.addEventListener(EVENT, sync);
         return () => window.removeEventListener(EVENT, sync);
     }, []);
@@ -187,13 +188,12 @@ export function observeSfx(scope, items) {
 
 export function useSfxObserver(scope, items, ready = true) {
     const primed = useRef(false);
-    const keyList = useMemo(
-        () => (items || []).map((i) => `${i.key}:${i.sound}`).join("|"),
-        [items],
-    );
+    const itemsRef = useRef(items);
+    itemsRef.current = items;
+    const keyList = (items || []).map((i) => `${i.key}:${i.sound}`).join("|");
     useEffect(() => {
         if (!ready) return;
-        const list = items || [];
+        const list = itemsRef.current || [];
         if (!primed.current) {
             list.forEach((item) => { if (item?.key) seenKeys.add(item.key); });
             primed.current = true;
@@ -204,7 +204,7 @@ export function useSfxObserver(scope, items, ready = true) {
             seenKeys.add(item.key);
             playSfx(item.sound);
         }
-    }, [scope, ready, keyList, items]);
+    }, [scope, ready, keyList]);
 }
 
 export function feedSfxItems(messages) {
@@ -214,6 +214,12 @@ export function feedSfxItems(messages) {
         // challenge page (feed + chamber both mounted) does not double-play.
         const remix = (m.replies || []).find((r) => r.is_coach && r.image);
         if (remix) items.push({key: `roast:${remix.id}`, sound: "roast_reveal"});
+        for (const echo of m.echoes || []) {
+            items.push({
+                key: `echo:${echo.id}:${echo.role || "earned"}`,
+                sound: echo.role === "claimed" ? "echo_claim" : "echo_plant",
+            });
+        }
     }
     return items;
 }

@@ -58,9 +58,7 @@ function useNowTick(active) {
 }
 
 export function CoachHandover({configId, enabled}) {
-    const poll = usePollingInterval(60000);
     const {data: ballot} = useGetCoachBallotQuery(configId, {
-        pollingInterval: poll,
         skip: !configId,
     });
     const until = ballot?.handover_until;
@@ -127,6 +125,11 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
     const shown = expanded ? candidates : candidates.slice(0, 3);
 
     if (!configId || !ballot) return null;
+    const switchAt = Date.parse(ballot.next_switch_at || "");
+    const votingOpen = ballot.voting_open ?? (
+        Number.isFinite(switchAt) && switchAt - now <= 72 * 60 * 60 * 1000
+    );
+    if (!votingOpen) return null;
 
     const countdown = formatCountdown(ballot.next_switch_at, now);
     const tiedLeaders = candidates.filter((c) => c.leading && c.votes > 0).length > 1;

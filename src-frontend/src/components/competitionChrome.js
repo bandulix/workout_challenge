@@ -1,7 +1,7 @@
 import React, {useEffect, useState} from "react";
 import {useNavigate, useSearchParams} from "react-router-dom";
 import {useDispatch} from "react-redux";
-import {Megaphone, Settings, Timer, UserRoundPlus} from "lucide-react";
+import {Crown, Megaphone, Settings, Timer, UserRoundPlus} from "lucide-react";
 import {competitionsApi} from "../utils/reducers/competitionsSlice";
 import {useLeaveCompetitionMutation} from "../utils/reducers/joinSlice";
 import {messageResults, useGetDrillConfigsQuery, useGetDrillMessageByIdQuery, useGetDrillMessagesQuery, useLazyGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
@@ -485,7 +485,11 @@ export function PointsChip({capped, raw, hasPhoto = false, size = "md", message 
     const starred = raw != null && Number(capped) !== Number(raw);
     const t = Math.min(1, n / 100);
     const large = size === "lg";
-    const sparkN = Math.max(1, Math.round(t * 7));
+    const cheapMotion = typeof window !== "undefined" && (
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        || window.matchMedia("(hover: none)").matches
+    );
+    const sparkN = cheapMotion ? 0 : Math.max(1, Math.round(t * 7));
     const sparks = [];
     for (let i = 0; i < sparkN; i += 1) {
         sparks.push(
@@ -643,7 +647,11 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
             <div className="relative p-3.5 sm:p-4">
                 <div className="grid grid-cols-[40px_minmax(0,1fr)] gap-x-2.5 gap-y-3 items-start">
                 <ProfileAvatar
-                    user={{profile_picture: message.athlete_profile_picture, first_name: message.athlete_name}}
+                    user={{
+                        profile_picture: message.athlete_profile_picture,
+                        first_name: message.athlete_name,
+                        echoes_held: message.athlete_echoes_held,
+                    }}
                     size={40}/>
                 <div className="min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
@@ -674,6 +682,25 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                     {!!message.order_ribbon && (
                         <div className="mt-1.5">
                             <OrderRibbon show/>
+                        </div>
+                    )}
+                    {(message.echoes || []).length > 0 && (
+                        <div className="mt-2 space-y-1.5">
+                            {message.echoes.map((echo) => (
+                                <div key={echo.id}
+                                     className="flex items-center gap-2 rounded-2xl bg-volt-400/20 px-2.5 py-1.5 text-ink-950 dark:text-white">
+                                    <Crown className="h-4 w-4 shrink-0 text-volt-700 dark:text-volt-300"/>
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-volt-800 dark:text-volt-300">
+                                            {echo.role === "claimed" ? "Claimed Echo" : "Legend Echo"}
+                                        </p>
+                                        <p className="text-xs font-bold truncate">{echo.title}</p>
+                                        {echo.metric_label && (
+                                            <p className="text-[10px] text-gray-600 dark:text-gray-400 truncate">{echo.metric_label}</p>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>
@@ -868,7 +895,7 @@ export function CoachCorner({competition, isOwner}) {
 
     const persona = config.persona_detail || {};
     const all = loaded;
-    const roots = all.filter((m) => m.kind !== "photo");
+    const roots = all.filter((m) => m.kind !== "photo" && m.kind !== "echo" && m.kind !== "claim");
     const hidden = Math.max(0, (page?.count || all.length) - all.length);
     const groups = groupByDay(roots);
     const lastOwnActivityId = all.find(

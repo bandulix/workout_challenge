@@ -97,7 +97,8 @@ def delete_echo(echo):
     """Erase an Echo: wars, art file, then the row. Holder counts refresh.
 
     Coach feed lines stay (they are the chronicle, not the trophy). Dog
-    tags earned from this Echo stay too.
+    tags earned from this Echo stay too. Holder crowns (echoes_held)
+    are recount from remaining live/immortal Echoes.
     """
     competition_id = echo.config.competition_id
     EchoChallenge = apps.get_model("drill_instructor", "EchoChallenge")
@@ -144,10 +145,19 @@ def _aware(dt):
     return dt
 
 
+def _same_echo_sport(workout_sport, echo_sport):
+    """Walk and TrailRun are different fights. Missing sport never matches."""
+    workout_family = echo_sport_family(workout_sport)
+    echo_family = echo_sport_family(echo_sport)
+    if not workout_family or not echo_family:
+        return False
+    return workout_family == echo_family
+
+
 def _beats(workout, echo, committed_at=None):
     if workout.user_id == echo.holder_id:
         return False
-    if echo.sport_type and echo_sport_family(workout.sport_type) != echo_sport_family(echo.sport_type):
+    if not _same_echo_sport(workout.sport_type, echo.sport_type):
         return False
     start = _aware(workout.start_datetime)
     anchor = committed_at or echo.last_claimed_at or echo.created_at
@@ -248,7 +258,12 @@ def judge_echo(workout, config):
     pb = _personal_best(workout, competition)
     overtake = _overtake(workout, competition)
     mythic = _mythic_size(workout)
-    first = not LegendEcho.objects.filter(config=config).exists() and _minutes(workout) >= 40
+    family = echo_sport_family(workout.sport_type)
+    first = (
+        bool(family)
+        and not LegendEcho.objects.filter(config=config, sport_type=family).exists()
+        and _minutes(workout) >= 40
+    )
     if not (pb or overtake or mythic or first):
         return None
     reasons = []
@@ -336,25 +351,19 @@ def mint_echo(workout, config, judgment=None):
     except IntegrityError:
         logger.info("Duplicate Echo mint suppressed for workout %s", workout.pk)
         return None
-    body = echo.narrative
-    try:
-        from .tasks import _post_coach_line
-        _post_coach_line(config, DrillInstructorMessage.KIND_ECHO, body, image_field=echo.image)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Echo mint post failed for workout %s: %s", workout.pk, exc)
     logger.info("Minted Legend Echo %s for workout %s in config %s", echo.pk, workout.pk, config.pk)
     bump_echo_holder_stats(config.competition_id)
     return echo
 
 
 def attach_echo_image(workout, config, image_field):
-    """Copy a roast poster onto the Echo minted from this workout, if any."""
+    """Copy the activity photo onto Echoes this workout currently holds."""
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
-    echo = LegendEcho.objects.filter(config=config, origin_workout=workout).first()
-    if echo is None or echo.image:
-        return echo
-    if not image_field:
-        return echo
+    if not image_field or workout is None:
+        return 0
+    echoes = list(LegendEcho.objects.filter(config=config, holder_workout=workout))
+    if not echoes:
+        return 0
     try:
         from django.core.files.base import ContentFile
         image_field.open("rb")
@@ -362,10 +371,17 @@ def attach_echo_image(workout, config, image_field):
             data = image_field.read()
         finally:
             image_field.close()
-        echo.image.save(f"echo-{echo.pk}.png", ContentFile(data), save=True)
     except Exception as exc:  # noqa: BLE001
-        logger.info("Echo image attach skipped for %s: %s", echo.pk, exc)
-    return echo
+        logger.info("Echo image read skipped for workout %s: %s", workout.pk, exc)
+        return 0
+    attached = 0
+    for echo in echoes:
+        try:
+            echo.image.save(f"echo-{echo.pk}.jpg", ContentFile(data), save=True)
+            attached += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Echo image attach skipped for %s: %s", echo.pk, exc)
+    return attached
 
 
 def process_echoes(workout, config):
@@ -399,7 +415,6 @@ def live_echo_lines(config, limit=3):
 
 def claim_echo(echo, winner, workout):
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
-    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
     previous = echo.holder
     metric, value = _metric_for(workout)
     unit = "km" if metric == "distance" else "min"
@@ -420,18 +435,6 @@ def claim_echo(echo, winner, workout):
     ])
     bump_echo_holder_stats(echo.config.competition_id)
     award_tag(winner, "echo_slayer")
-    persona = echo.config.persona
-    body = (
-        f"{persona.name}: @{_name(winner)} just silenced @{_name(previous)}'s "
-        f"Echo with {value:g} {unit} of {echo_sport_label(echo.sport_type)}. "
-        f"The bar is now {value:g} {unit}. Chain {echo.chain_length}. "
-        f"@{_name(previous)} — the bar moved."
-    )
-    try:
-        from .tasks import _post_coach_line
-        _post_coach_line(echo.config, DrillInstructorMessage.KIND_CLAIM, body, image_field=echo.image)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Echo claim post failed: %s", exc)
     return echo
 
 

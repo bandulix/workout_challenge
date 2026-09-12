@@ -326,8 +326,6 @@ function HotCount({count, light = false}) {
 
 function sortHallCards(cards) {
     return [...(cards || [])].sort((a, b) => {
-        const hot = (b.hot_votes || 0) - (a.hot_votes || 0);
-        if (hot) return hot;
         const bt = Date.parse(b.posted_at || "") || 0;
         const at = Date.parse(a.posted_at || "") || 0;
         return bt - at;
@@ -379,10 +377,10 @@ export function HallOfRoasts({cards}) {
     if (list.length === 0) {
         return (
             <div>
-                <PaneHead title="Hall of roasts" hint="Hottest remixed photos"/>
+                <PaneHead title="Hall of roasts" hint="Newest remixed photos"/>
                 <article className={paneCardClass}>
                     <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                        Empty for now. Post a photo under a workout — the coach remixes it, and the hottest shots land here.
+                        Empty for now. Post a photo under a workout — the coach remixes it, and the shots land here.
                     </p>
                 </article>
             </div>
@@ -390,7 +388,7 @@ export function HallOfRoasts({cards}) {
     }
     return (
         <div>
-            <PaneHead title="Hall of roasts" hint="Hottest remixed photos"/>
+            <PaneHead title="Hall of roasts" hint="Newest remixed photos"/>
             <div className="grid grid-cols-3 gap-3">
                 {shown.map((c) => (
                     <HallFrame key={c.id} card={c}

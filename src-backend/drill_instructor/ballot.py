@@ -13,6 +13,14 @@ SWITCH_HOUR = 7
 SWITCH_MINUTE = 15
 # New-coach info box: vote handover *or* a manual persona pick, then hide.
 HANDOVER_VISIBLE = datetime.timedelta(hours=24)
+# Vote UI: only the last 72 hours before Monday 07:15.
+VOTE_OPEN_BEFORE = datetime.timedelta(hours=72)
+
+
+def is_voting_open(now=None):
+    """True in the 72 hours before the next Monday handover."""
+    now = timezone.localtime(now or timezone.now())
+    return next_persona_switch_at(now) - now <= VOTE_OPEN_BEFORE
 
 
 def next_persona_switch_at(now=None):
@@ -132,6 +140,7 @@ def ballot_payload_for_request(config, request):
         "current_persona": config.persona_id,
         "my_vote": my_vote,
         "next_switch_at": next_at.isoformat(),
+        "voting_open": is_voting_open(),
         "persona_changed_at": changed_at.isoformat() if changed_at else None,
         "handover_until": until.isoformat() if until else None,
         "changed_recently": changed_recently,

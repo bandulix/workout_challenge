@@ -1,4 +1,7 @@
+import {Directory, Filesystem} from "@capacitor/filesystem";
+import {Share} from "@capacitor/share";
 import {fetchProtectedImage} from "./protectedMedia";
+import {isNativeApp} from "./platform";
 import {notice} from "./dialogs";
 
 const CARD_W = 1080;
@@ -83,6 +86,61 @@ async function composeCard({title, text, imageSrc}) {
     return new File([blob], "workout-share.jpg", {type: "image/jpeg"});
 }
 
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const dataUrl = String(reader.result || "");
+            const comma = dataUrl.indexOf(",");
+            resolve(comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+function shareCanceled(err) {
+    const name = err?.name || "";
+    const msg = String(err?.message || "").toLowerCase();
+    return name === "AbortError" || msg.includes("cancel") || msg.includes("abort");
+}
+
+async function shareOnNative({title, text, file}) {
+    const payload = {
+        title: title || "Workout Challenge",
+        text: text || "",
+        dialogTitle: "Share",
+    };
+    if (file) {
+        const base64 = await blobToBase64(file);
+        const saved = await Filesystem.writeFile({
+            path: `share/${file.name}`,
+            data: base64,
+            directory: Directory.Cache,
+            recursive: true,
+        });
+        if (saved?.uri) payload.files = [saved.uri];
+    }
+    await Share.share(payload);
+}
+
+async function shareOnWeb({title, text, file}) {
+    const shareTitle = title || "Workout Challenge";
+    if (file && navigator.share) {
+        try {
+            await navigator.share({title: shareTitle, text, files: [file]});
+            return;
+        } catch (err) {
+            if (shareCanceled(err)) throw err;
+        }
+    }
+    if (navigator.share) {
+        await navigator.share({title: shareTitle, text});
+        return;
+    }
+    throw new Error("no-share");
+}
+
 export async function sharePostCard({title, text, imageUrl}) {
     const caption = [title, text].filter(Boolean).join("\n");
     let file = null;
@@ -93,29 +151,17 @@ export async function sharePostCard({title, text, imageUrl}) {
     if (!file) file = await composeCard({title, text, imageSrc: null});
 
     try {
-        if (file && navigator.canShare?.({files: [file]})) {
-            await navigator.share({title: title || "Workout Challenge", text: caption, files: [file]});
+        if (isNativeApp()) {
+            await shareOnNative({title, text: caption, file});
             return;
         }
-        if (navigator.share) {
-            await navigator.share({title: title || "Workout Challenge", text: caption});
-            return;
-        }
-        if (file) {
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(file);
-            a.download = file.name;
-            a.click();
-            URL.revokeObjectURL(a.href);
-        }
-        if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(caption);
-        notice(file ? "Saved the picture." : "Copied the text.");
+        await shareOnWeb({title, text: caption, file});
     } catch (err) {
-        if (err && err.name === "AbortError") return;
+        if (shareCanceled(err)) return;
         try {
             if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(caption);
             notice("Copied the text.");
-        } catch (clipErr) {
+        } catch {
             notice("Could not share.");
         }
     }

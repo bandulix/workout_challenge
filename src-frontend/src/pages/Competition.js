@@ -355,7 +355,6 @@ export default function Competition() {
     const {id} = useParams();
     const [searchParams, setSearchParams] = useSearchParams();
     const pollSlow = usePollingInterval(90000);
-    const pollFast = usePollingInterval(60000);
     const tabParam = searchParams.get("tab");
     const tab = (tabParam === "feed" || tabParam === "board")
         ? tabParam
@@ -424,7 +423,7 @@ export default function Competition() {
     // Shares the messages cache with CoachCorner - no extra requests.
     const {data: drillMessages} = useGetDrillMessagesQuery(
         {competition: competition?.id, limit: 15, offset: 0},
-        {pollingInterval: pollFast, skip: !competition?.id}
+        {skip: !competition?.id},
     );
     const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: !competition?.id});
     const dunceUserId = (drillConfigs || []).find((c) => c.competition === competition?.id)?.dunce?.user_id ?? null;
@@ -438,7 +437,7 @@ export default function Competition() {
         }
         if (latest.id !== lastDrillMsgId.current) {
             lastDrillMsgId.current = latest.id;
-            refreshPage();
+            refreshFeed();
             dispatch(drillInstructorApi.util.invalidateTags(["DrillEcho"]));
         }
     }, [drillMessages]);

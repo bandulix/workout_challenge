@@ -3264,7 +3264,7 @@ class ArcadeGameTests(TestCase):
         slugs = [t["slug"] for t in response.json()["dog_tags"]]
         self.assertIn("first_blood", slugs)
 
-    def test_hall_lists_top_roasts_by_hot_votes(self):
+    def test_hall_lists_newest_roasts_first(self):
         a = DrillInstructorMessage.objects.create(
             config=self.config, kind=DrillInstructorMessage.KIND_REACTION, body="A", user=None,
         )
@@ -3276,9 +3276,8 @@ class ArcadeGameTests(TestCase):
         b.image = "message_pics/b.png"
         b.save()
         from .models import DrillInstructorPhotoVote
-        DrillInstructorPhotoVote.objects.create(message=b, user=self.alex, hot=True)
-        DrillInstructorPhotoVote.objects.create(message=b, user=self.nina, hot=True)
         DrillInstructorPhotoVote.objects.create(message=a, user=self.alex, hot=True)
+        DrillInstructorPhotoVote.objects.create(message=a, user=self.nina, hot=True)
         self.client.force_authenticate(self.alex)
         response = self.client.get(
             "/api/drill-instructor/message/hall/",
@@ -3287,8 +3286,9 @@ class ArcadeGameTests(TestCase):
         self.assertEqual(response.status_code, 200)
         ids = [row["id"] for row in response.json()]
         self.assertEqual(ids[0], b.id)
-        leader = next(row for row in response.json() if row["id"] == b.id)
-        self.assertIsNotNone(leader["last_hot_at"])
+        self.assertEqual(ids[1], a.id)
+        older = next(row for row in response.json() if row["id"] == a.id)
+        self.assertIsNotNone(older["last_hot_at"])
 
     def test_hall_without_competition_lists_membership_roasts(self):
         roast = DrillInstructorMessage.objects.create(
@@ -3399,6 +3399,14 @@ class PersonaVoteTests(TestCase):
         self.assertEqual(switch.minute, 15)
         nxt = next_persona_switch_at()
         self.assertEqual(nxt.weekday(), 0)
+        self.assertIn("voting_open", response.json())
+
+    def test_voting_open_only_72h_before_switch(self):
+        from .ballot import is_voting_open, next_persona_switch_at
+        nxt = next_persona_switch_at()
+        self.assertFalse(is_voting_open(nxt - datetime.timedelta(hours=73)))
+        self.assertTrue(is_voting_open(nxt - datetime.timedelta(hours=71)))
+        self.assertTrue(is_voting_open(nxt - datetime.timedelta(minutes=1)))
 
     def test_weekly_apply_seats_winner_and_resets_votes(self):
         from .ballot import apply_persona_votes
@@ -3665,9 +3673,23 @@ class LegendEchoTests(TestCase):
         self.assertEqual(echo.status, LegendEcho.STATUS_UNDEFEATED)
         self.assertEqual(echo.holder_id, self.alex.id)
         self.assertGreaterEqual(echo.power, 1)
-        self.assertTrue(DrillInstructorMessage.objects.filter(
+        self.assertFalse(DrillInstructorMessage.objects.filter(
             config=self.config, kind=DrillInstructorMessage.KIND_ECHO,
         ).exists())
+        activity = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
+            workout=echo.origin_workout, body="Nice.",
+        )
+        self.client.force_authenticate(self.alex)
+        listed = self.client.get("/api/drill-instructor/message/", {"competition": self.competition.id})
+        self.assertEqual(listed.status_code, 200, listed.content)
+        rows = listed.json()
+        if isinstance(rows, dict):
+            rows = rows.get("results") or []
+        card = next(row for row in rows if row["id"] == activity.id)
+        self.assertEqual(card["echoes"][0]["id"], echo.id)
+        self.assertEqual(card["echoes"][0]["role"], "earned")
+        self.assertGreaterEqual(card["athlete_echoes_held"], 1)
         self.client.force_authenticate(self.alex)
         me = self.client.get("/api/user/me/")
         self.assertEqual(me.status_code, 200, me.content)
@@ -3715,6 +3737,20 @@ class LegendEchoTests(TestCase):
         self.assertIsNotNone(echo)
         self.assertEqual(echo.sport_type, "Run")
 
+    def test_trail_run_does_not_touch_a_walk_echo(self):
+        from .echoes import claim_beaten_echoes, mint_echo
+        walk = mint_echo(self._workout(self.alex, minutes=45, sport="Walk"), self.config)
+        self.assertEqual(walk.sport_type, "Walk")
+        trail = self._workout(self.nina, minutes=45, sport="TrailRun")
+        self.assertEqual(claim_beaten_echoes(trail, self.config), [])
+        walk.refresh_from_db()
+        self.assertEqual(walk.holder_id, self.alex.id)
+        self.assertEqual(walk.sport_type, "Walk")
+        run_echo = mint_echo(trail, self.config)
+        self.assertIsNotNone(run_echo)
+        self.assertEqual(run_echo.sport_type, "Run")
+        self.assertNotEqual(run_echo.id, walk.id)
+
     def test_cooldown_blocks_a_second_flag(self):
         from .echoes import mint_echo
         first = mint_echo(self._workout(self.alex, minutes=95), self.config)
@@ -3736,7 +3772,7 @@ class LegendEchoTests(TestCase):
         self.assertGreater(echo.metric_value, 45)
         self.assertIsNone(mint_echo(beat, self.config))
         self.assertTrue(DogTag.objects.filter(user=self.nina, slug="echo_slayer").exists())
-        self.assertTrue(DrillInstructorMessage.objects.filter(
+        self.assertFalse(DrillInstructorMessage.objects.filter(
             config=self.config, kind=DrillInstructorMessage.KIND_CLAIM,
         ).exists())
 
@@ -3831,6 +3867,14 @@ class LegendEchoTests(TestCase):
         self.assertEqual(gone.status_code, 204)
         self.assertFalse(LegendEcho.objects.filter(pk=echo.id).exists())
         self.assertFalse(os.path.exists(art_path))
+        self.client.force_authenticate(self.alex)
+        me = self.client.get("/api/user/me/")
+        self.assertEqual(me.status_code, 200, me.content)
+        self.assertEqual(me.json().get("echoes_held") or 0, 0)
+        listed_users = self.client.get("/api/user/")
+        self.assertEqual(listed_users.status_code, 200, listed_users.content)
+        alex_row = next(row for row in listed_users.json() if row["id"] == self.alex.id)
+        self.assertEqual(alex_row.get("echoes_held") or 0, 0)
 
     def test_echoes_with_art_list_first(self):
         from django.core.files.base import ContentFile
@@ -3861,8 +3905,20 @@ class LegendEchoTests(TestCase):
         self.assertTrue(task.enabled)
         self.assertEqual(task.crontab.minute, "*/15")
 
-    def test_holder_can_upload_echo_art_non_holder_cannot(self):
+    def test_echo_art_upload_endpoint_is_gone(self):
         from .echoes import mint_echo
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        self.client.force_authenticate(self.alex)
+        gone = self.client.post(
+            f"/api/drill-instructor/echoes/{echo.id}/art/",
+            {"image": SimpleUploadedFile("pose.png", PNG_1PX, content_type="image/png")},
+            format="multipart",
+        )
+        self.assertEqual(gone.status_code, 404)
+
+    def test_activity_photo_becomes_echo_art(self):
+        from django.core.files.base import ContentFile
+        from .echoes import attach_echo_image, mint_echo
         from .models import LegendEcho
 
         media = tempfile.TemporaryDirectory()
@@ -3872,51 +3928,16 @@ class LegendEchoTests(TestCase):
         self.addCleanup(media_override.disable)
 
         echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
-        self.assertIsNotNone(echo)
-        self.assertFalse(echo.image)
-
-        upload = SimpleUploadedFile("pose.png", PNG_1PX, content_type="image/png")
-        with mock.patch("drill_instructor.tasks.remix_echo_art.delay") as queued:
-            self.client.force_authenticate(self.alex)
-            ok = self.client.post(
-                f"/api/drill-instructor/echoes/{echo.id}/art/",
-                {"image": upload},
-                format="multipart",
-            )
-        self.assertEqual(ok.status_code, 200, ok.content)
-        body = ok.json()
-        self.assertTrue(body["can_upload_art"])
-        self.assertTrue(body["image"])
-        queued.assert_called_once_with(echo.id, uploaded_by_id=self.alex.id)
-        art_posts = DrillInstructorMessage.objects.filter(
-            config=self.config, kind=DrillInstructorMessage.KIND_ECHO,
-        ).exclude(image="")
-        self.assertTrue(art_posts.exists())
-        self.assertIn("picture", art_posts.latest("posted_at").body.lower())
+        photo = DrillInstructorMessage(
+            config=self.config, kind=DrillInstructorMessage.KIND_PHOTO,
+            user=self.alex, body="Proof.",
+        )
+        photo.image.save("pose.png", ContentFile(PNG_1PX), save=True)
+        attached = attach_echo_image(echo.origin_workout, self.config, photo.image)
+        self.assertEqual(attached, 1)
         echo = LegendEcho.objects.get(pk=echo.id)
         self.assertTrue(echo.image)
-
-        self.client.force_authenticate(self.nina)
-        listed = self.client.get("/api/drill-instructor/echoes/", {"competition": self.competition.id})
-        self.assertFalse(listed.json()[0]["can_upload_art"])
-        denied = self.client.post(
-            f"/api/drill-instructor/echoes/{echo.id}/art/",
-            {"image": SimpleUploadedFile("x.png", PNG_1PX, content_type="image/png")},
-            format="multipart",
-        )
-        self.assertEqual(denied.status_code, 403)
-
-        self.nina.is_staff = True
-        self.nina.save(update_fields=["is_staff"])
-        listed = self.client.get("/api/drill-instructor/echoes/", {"competition": self.competition.id})
-        self.assertFalse(listed.json()[0]["can_upload_art"])
-        still_denied = self.client.post(
-            f"/api/drill-instructor/echoes/{echo.id}/art/",
-            {"image": SimpleUploadedFile("staff.png", PNG_1PX, content_type="image/png")},
-            format="multipart",
-        )
-        self.assertEqual(still_denied.status_code, 403)
-
+        self.client.force_authenticate(self.alex)
         pic = self.client.get(f"/api/drill-instructor/echoes/{echo.id}/picture/")
         self.assertEqual(pic.status_code, 200)
         self.assertTrue(pic["Content-Type"].startswith("image/"))
