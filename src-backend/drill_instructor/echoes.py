@@ -1,7 +1,7 @@
-"""Legend Echoes: mint, challenge, claim, immortalize.
+"""Legend Echoes: mint, auto-claim, immortalize.
 
-Standout workouts become claimable trophies. Detection is rule-based so
-a missing LLM still mints; the coach's voice is a best-effort overlay.
+Standout workouts become living trophies on the feed. A harder session
+in the same sport family takes the relic — no war button.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import logging
 
 from django.apps import apps
 from django.db import IntegrityError, transaction
-from django.db.models import Case, IntegerField, Max, Prefetch, Sum, Value, When
+from django.db.models import Case, IntegerField, Max, Sum, Value, When
 from django.utils import timezone
 
 from .game import _minutes, award_tag
@@ -150,7 +150,8 @@ def _beats(workout, echo, committed_at=None):
     if echo.sport_type and echo_sport_family(workout.sport_type) != echo_sport_family(echo.sport_type):
         return False
     start = _aware(workout.start_datetime)
-    if committed_at is not None and start is not None and start < _aware(committed_at):
+    anchor = committed_at or echo.last_claimed_at or echo.created_at
+    if start is not None and anchor is not None and start < _aware(anchor):
         return False
     competition = echo.config.competition if getattr(echo, "config_id", None) else None
     if competition is not None and start is not None:
@@ -241,8 +242,7 @@ def judge_echo(workout, config):
         return None
     if LegendEcho.objects.filter(origin_workout=workout, config=config).exists():
         return None
-    EchoChallenge = apps.get_model("drill_instructor", "EchoChallenge")
-    if EchoChallenge.objects.filter(resolving_workout=workout, echo__config=config).exists():
+    if LegendEcho.objects.filter(holder_workout=workout, config=config).exists():
         return None
 
     pb = _personal_best(workout, competition)
@@ -283,15 +283,15 @@ def mint_echo(workout, config, judgment=None):
     fallback = (
         f"{persona.name}: @{athlete} just planted a Legend Echo — "
         f"{value:g} {unit} of {sport}. Power {power}. "
-        f"It sits undefeated until someone silences it."
+        f"It sits undefeated until someone logs a harder session."
     )
     prompt = (
         f"Competition: {config.competition.name}. @{athlete} just earned a "
         f"LEGEND ECHO for a {sport} ({value:g} {unit}). "
         f"Reasons: {', '.join(judgment['reasons'])}. Power {power}. "
         "Write 2-4 sentences in your persona voice declaring this a living "
-        "trophy. Taunt the rest of the group to come claim it. Name @{athlete}. "
-        "Do not invent other names."
+        "trophy on the feed. The next athlete to beat that mark takes it. "
+        "Name @{athlete}. Do not invent other names."
     )
     narrative = None
     try:
@@ -368,6 +368,15 @@ def attach_echo_image(workout, config, image_field):
     return echo
 
 
+def process_echoes(workout, config):
+    """Claim any Echo this workout beats; otherwise mint if it is a standout."""
+    claimed = claim_beaten_echoes(workout, config)
+    if claimed:
+        return claimed
+    echo = mint_echo(workout, config)
+    return [echo] if echo else []
+
+
 def live_echo_lines(config, limit=3):
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
     rows = (
@@ -386,87 +395,6 @@ def live_echo_lines(config, limit=3):
             f"{echo.title} ({echo.metric_value:g} {unit}, power {echo.power})."
         )
     return lines
-
-
-def start_challenge(echo, user, now=None):
-    """Commit `user` to beating this Echo. Raises ValueError on refusal."""
-    now = now or timezone.now()
-    LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
-    EchoChallenge = apps.get_model("drill_instructor", "EchoChallenge")
-    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
-
-    expire_challenges(now)
-    with transaction.atomic():
-        echo = (
-            LegendEcho.objects.select_for_update()
-            .select_related("config", "config__competition", "config__persona", "holder")
-            .get(pk=echo.pk)
-        )
-        if echo.status not in (LegendEcho.STATUS_UNDEFEATED, LegendEcho.STATUS_CONTESTED):
-            raise ValueError("This Echo can no longer be challenged.")
-        if echo.config.competition.end_date < timezone.localdate():
-            raise ValueError("This challenge is over.")
-        if echo.holder_id == user.id:
-            raise ValueError("You already hold this Echo.")
-        if not echo.config.competition.user.filter(pk=user.id).exists():
-            raise ValueError("Only challenge members can contest an Echo.")
-        if EchoChallenge.objects.filter(echo=echo, status=EchoChallenge.STATUS_ACTIVE).exists():
-            raise ValueError("Someone is already coming for this Echo.")
-        if EchoChallenge.objects.filter(
-            challenger=user, status=EchoChallenge.STATUS_ACTIVE,
-            echo__config=echo.config,
-        ).exists():
-            raise ValueError("Finish your current challenge first.")
-
-        end = _aware(now + datetime.timedelta(days=CHALLENGE_DAYS))
-        comp_end = _aware(datetime.datetime.combine(
-            echo.config.competition.end_date, datetime.time.max,
-        ))
-        window_end = min(end, comp_end)
-        if window_end <= now:
-            raise ValueError("This challenge is over.")
-        challenge = EchoChallenge.objects.create(
-            echo=echo, challenger=user, window_end=window_end,
-        )
-        echo.status = LegendEcho.STATUS_CONTESTED
-        echo.save(update_fields=["status"])
-
-    persona = echo.config.persona
-    challenger = _prompt_text(_name(user), 40)
-    holder = _prompt_text(_name(echo.holder), 40)
-    title = _prompt_text(echo.title, 80)
-    sport = _prompt_text(echo_sport_label(echo.sport_type), 40)
-    unit = "km" if echo.metric == "distance" else "min"
-    fallback = (
-        f"@{challenger} just declared war on @{holder}'s {title}. "
-        f"Beat {echo.metric_value:g} {unit} of {sport} before the "
-        f"clock runs out. The group is watching."
-    )
-    prompt = (
-        f"Competition: {_prompt_text(echo.config.competition.name, 80)}. "
-        f"@{challenger} just declared war on @{holder}'s Legend Echo "
-        f"\"{title}\" ({echo.metric_value:g} {unit} of {sport}, "
-        f"power {echo.power}). They have {CHALLENGE_DAYS} days to beat that mark. "
-        "Write 1-3 sentences in your persona voice announcing the war to the "
-        "group. Name both athletes with @FirstName. Taunt, hype, or salute in "
-        "character. Do not invent other names."
-    )
-    body = fallback
-    try:
-        from .llm_client import generate_message
-        spoken, _err = generate_message(
-            system_prompt=persona.system_prompt, user_prompt=prompt,
-        )
-        if spoken:
-            body = spoken
-    except Exception as exc:  # noqa: BLE001
-        logger.info("Echo war comment fell back: %s", exc)
-    try:
-        from .tasks import _post_coach_line
-        _post_coach_line(echo.config, DrillInstructorMessage.KIND_WAR, body, image_field=echo.image)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Echo challenge post failed: %s", exc)
-    return challenge
 
 
 def claim_echo(echo, winner, workout):
@@ -497,7 +425,7 @@ def claim_echo(echo, winner, workout):
         f"{persona.name}: @{_name(winner)} just silenced @{_name(previous)}'s "
         f"Echo with {value:g} {unit} of {echo_sport_label(echo.sport_type)}. "
         f"The bar is now {value:g} {unit}. Chain {echo.chain_length}. "
-        f"@{_name(previous)} — your feat started a war. That is Legacy."
+        f"@{_name(previous)} — the bar moved."
     )
     try:
         from .tasks import _post_coach_line
@@ -523,7 +451,7 @@ def immortalize(echo):
     body = (
         f"{echo.config.persona.name}: {echo.title} is IMMORTAL. "
         f"@{_name(echo.origin_user)} planted it. Chain {echo.chain_length}. "
-        f"Nobody takes this one. It goes in the Book."
+        f"Nobody takes this one."
     )
     try:
         from .tasks import _post_coach_line
@@ -533,68 +461,53 @@ def immortalize(echo):
     return echo
 
 
-def resolve_workout_challenges(workout, config):
-    """If this workout beats an Echo the athlete challenged, they claim it."""
+def claim_beaten_echoes(workout, config):
+    """Anyone who beats a live Echo's mark takes it. No war to declare."""
+    LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
     EchoChallenge = apps.get_model("drill_instructor", "EchoChallenge")
-    now = timezone.now()
-    expire_challenges(now)
     claimed = []
     with transaction.atomic():
-        active = (
-            EchoChallenge.objects.select_for_update()
+        live = list(
+            LegendEcho.objects.select_for_update()
             .filter(
-                challenger=workout.user,
-                status=EchoChallenge.STATUS_ACTIVE,
-                echo__config=config,
-                echo__status__in=("undefeated", "contested"),
-                window_end__gte=now,
+                config=config,
+                status__in=(LegendEcho.STATUS_UNDEFEATED, LegendEcho.STATUS_CONTESTED),
             )
             .select_related(
-                "echo", "echo__holder", "echo__config",
-                "echo__config__persona", "echo__config__competition",
+                "holder", "config", "config__persona", "config__competition",
             )
         )
-        for challenge in active:
-            echo = challenge.echo
-            if not _beats(workout, echo, committed_at=challenge.committed_at):
+        for echo in live:
+            if not _beats(workout, echo):
                 continue
-            challenge.status = EchoChallenge.STATUS_WON
-            challenge.resolving_workout = workout
-            challenge.save(update_fields=["status", "resolving_workout"])
+            EchoChallenge.objects.filter(
+                echo=echo, status=EchoChallenge.STATUS_ACTIVE,
+            ).update(status=EchoChallenge.STATUS_LOST)
             claim_echo(echo, workout.user, workout)
             claimed.append(echo)
     return claimed
 
 
 def expire_challenges(now=None):
-    """Close windows that ran out; immortalize Echoes that have earned it."""
+    """Close leftover wars and immortalize Echoes when the season ends."""
     now = now or timezone.now()
     EchoChallenge = apps.get_model("drill_instructor", "EchoChallenge")
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
     expired = 0
     immortal = 0
-    held = []
     with transaction.atomic():
         due_rows = list(
             EchoChallenge.objects.select_for_update()
-            .filter(status=EchoChallenge.STATUS_ACTIVE, window_end__lt=now)
-            .select_related(
-                "echo", "echo__config", "echo__config__persona",
-                "echo__origin_user", "echo__holder", "challenger",
-            )
+            .filter(status=EchoChallenge.STATUS_ACTIVE)
+            .select_related("echo")
         )
         for challenge in due_rows:
             challenge.status = EchoChallenge.STATUS_EXPIRED
             challenge.save(update_fields=["status"])
             echo = challenge.echo
-            echo.defenses = (echo.defenses or 0) + 1
-            if echo.defenses >= DEFENSES_TO_IMMORTAL:
-                immortalize(echo)
-                immortal += 1
-            else:
+            if echo.status == LegendEcho.STATUS_CONTESTED:
                 echo.status = LegendEcho.STATUS_UNDEFEATED
-                echo.save(update_fields=["defenses", "status"])
-                held.append((echo, challenge))
+                echo.save(update_fields=["status"])
             expired += 1
 
         today = timezone.localdate()
@@ -609,62 +522,4 @@ def expire_challenges(now=None):
         for echo in finished:
             immortalize(echo)
             immortal += 1
-    for echo, challenge in held:
-        try:
-            from .tasks import _post_coach_line
-            DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
-            challenger = _name(challenge.challenger) if challenge.challenger_id else "Someone"
-            holder = _name(echo.holder) if echo.holder_id else "the holder"
-            body = (
-                f"{echo.config.persona.name}: @{challenger} ran out of time. "
-                f"@{holder} still holds {echo.title}. The Echo stands."
-            )
-            _post_coach_line(
-                echo.config, DrillInstructorMessage.KIND_ECHO, body,
-                send_push=False, image_field=echo.image,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Echo defense post failed for %s: %s", echo.pk, exc)
     return {"expired": expired, "immortal": immortal}
-
-
-def book_payload(competition):
-    """Season chronicle of every Echo in this challenge."""
-    LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
-    EchoChallenge = apps.get_model("drill_instructor", "EchoChallenge")
-    echoes = (
-        LegendEcho.objects.filter(config__competition=competition)
-        .select_related("origin_user", "holder")
-        .prefetch_related(Prefetch(
-            "challenges",
-            queryset=EchoChallenge.objects.select_related("challenger").order_by("committed_at"),
-        ))
-        .order_by("-chain_length", "-power", "created_at")
-    )
-    chapters = []
-    for echo in echoes:
-        wars = echo.challenges.all()
-        chapters.append({
-            "id": echo.id,
-            "title": echo.title,
-            "narrative": echo.narrative,
-            "power": echo.power,
-            "status": echo.status,
-            "chain_length": echo.chain_length,
-            "origin_name": _name(echo.origin_user),
-            "holder_name": _name(echo.holder),
-            "wars": [
-                {
-                    "challenger": _name(c.challenger),
-                    "status": c.status,
-                    "committed_at": c.committed_at.isoformat(),
-                }
-                for c in wars
-            ],
-        })
-    return {
-        "competition": competition.name,
-        "chapters": chapters,
-        "echo_count": len(chapters),
-        "immortal_count": sum(1 for c in chapters if c["status"] == "immortal"),
-    }

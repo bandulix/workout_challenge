@@ -25,6 +25,7 @@
   .animate-squad-pip-wave,
   .animate-squad-hop,
   .portrait-wash,
+  .roast-afterglow,
   .glass-sheen,
   .points-chip,
   .points-chip-bob,
@@ -113,13 +114,13 @@
   object-fit: cover;
   object-position: center 18%;
   filter: blur(44px) saturate(1.45) brightness(1.06);
-  opacity: 0.52;
+  opacity: 0.32;
   user-select: none;
   transform-origin: 62% 38%;
 }
 .dark .portrait-wash {
   filter: blur(48px) saturate(1.6) brightness(0.78);
-  opacity: 0.68;
+  opacity: 0.42;
 }
 .portrait-wash-tint {
   position: absolute;
@@ -620,6 +621,29 @@ body {
 }
 .coach-ballot-scroller { max-height: 19.75rem; }
 .hall-scroller { max-height: 23.5rem; }
+
+.roast-afterglow {
+  box-shadow: 0 0 0 1px rgba(251, 146, 60, 0.55), 0 0 16px rgba(244, 63, 94, 0.4);
+  animation: roast-ember 2.8s ease-in-out infinite;
+}
+.roast-hottest {
+  box-shadow: 0 0 0 2px #d7ff3e, 0 0 14px rgba(215, 255, 62, 0.45);
+}
+.roast-hottest.roast-afterglow {
+  animation: roast-ember-volt 2.8s ease-in-out infinite;
+}
+@keyframes roast-ember {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(244, 63, 94, 0.35), 0 0 10px rgba(251, 146, 60, 0.28); }
+  50% { box-shadow: 0 0 0 1.5px rgba(251, 146, 60, 0.75), 0 0 22px rgba(244, 63, 94, 0.55); }
+}
+@keyframes roast-ember-volt {
+  0%, 100% {
+    box-shadow: 0 0 0 2px #d7ff3e, 0 0 10px rgba(215, 255, 62, 0.35), 0 0 16px rgba(244, 63, 94, 0.28);
+  }
+  50% {
+    box-shadow: 0 0 0 2px #d7ff3e, 0 0 18px rgba(215, 255, 62, 0.55), 0 0 24px rgba(244, 63, 94, 0.45);
+  }
+}
 
 .no-scrollbar {
   -ms-overflow-style: none;

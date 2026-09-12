@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from "react";
 import {ChevronLeft, ChevronRight, Heart, Megaphone, ScrollText, Share2, Trophy} from "lucide-react";
 import {useProtectedImage} from "../utils/protectedMedia";
+import {roastHottestId, roastIsAfterglow} from "../utils/roastAfterglow";
 import {PaneHead, paneCardClass} from "./uiBits";
 import {OverlaySheet} from "../forms/basicComponents";
 import {sharePostCard} from "../utils/shareCard";
@@ -325,20 +326,24 @@ function HotCount({count, light = false}) {
 
 function sortHallCards(cards) {
     return [...(cards || [])].sort((a, b) => {
+        const hot = (b.hot_votes || 0) - (a.hot_votes || 0);
+        if (hot) return hot;
         const bt = Date.parse(b.posted_at || "") || 0;
         const at = Date.parse(a.posted_at || "") || 0;
         return bt - at;
     });
 }
 
-function HallFrame({card, onOpen}) {
+function HallFrame({card, onOpen, afterglow = false, hottest = false}) {
     const {src} = useProtectedImage(card.image, "card");
     const hot = card.hot_votes || 0;
     return (
-        <article className="min-w-0 rounded-3xl glass-card overflow-hidden text-ink-950 dark:text-white">
+        <article className={"min-w-0 rounded-3xl glass-card text-ink-950 dark:text-white " +
+            (hottest ? "roast-hottest " : "") +
+            (afterglow ? "roast-afterglow" : "")}>
             <button type="button" onClick={() => src && onOpen()}
                     className="block w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
-                <div className="relative">
+                <div className="relative overflow-hidden rounded-t-3xl">
                     {src ? (
                         <img src={src} alt="" className="h-36 w-full object-cover"/>
                     ) : (
@@ -360,16 +365,24 @@ function HallFrame({card, onOpen}) {
 
 export function HallOfRoasts({cards}) {
     const [openIndex, setOpenIndex] = useState(null);
+    const [expanded, setExpanded] = useState(false);
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const id = window.setInterval(() => setNow(Date.now()), 30000);
+        return () => window.clearInterval(id);
+    }, []);
     const list = sortHallCards(cards);
-    const many = list.length > 6;
+    const many = list.length > 3;
+    const shown = expanded ? list : list.slice(0, 3);
+    const hottestId = roastHottestId(list);
 
     if (list.length === 0) {
         return (
             <div>
-                <PaneHead title="Hall of roasts" hint="Newest remixed photos"/>
+                <PaneHead title="Hall of roasts" hint="Hottest remixed photos"/>
                 <article className={paneCardClass}>
                     <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                        Empty for now. Post a photo under a workout — the coach remixes it, and the shots land here.
+                        Empty for now. Post a photo under a workout — the coach remixes it, and the hottest shots land here.
                     </p>
                 </article>
             </div>
@@ -377,16 +390,20 @@ export function HallOfRoasts({cards}) {
     }
     return (
         <div>
-            <PaneHead title="Hall of roasts" hint="Newest remixed photos"/>
-            <div className={"grid grid-cols-3 gap-3 " + (many ? "hall-scroller" : "")}>
-                {list.map((c, i) => (
-                    <HallFrame key={c.id} card={c} onOpen={() => setOpenIndex(i)}/>
+            <PaneHead title="Hall of roasts" hint="Hottest remixed photos"/>
+            <div className="grid grid-cols-3 gap-3">
+                {shown.map((c) => (
+                    <HallFrame key={c.id} card={c}
+                               afterglow={roastIsAfterglow(c, now)}
+                               hottest={c.id === hottestId}
+                               onOpen={() => setOpenIndex(list.indexOf(c))}/>
                 ))}
             </div>
             {many ? (
-                <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">
-                    Scroll for more
-                </p>
+                <button type="button" onClick={() => setExpanded((v) => !v)}
+                        className="mt-2 w-full min-h-[40px] rounded-2xl text-sm font-semibold text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition">
+                    {expanded ? "Show less" : `Show all ${list.length}`}
+                </button>
             ) : null}
             {openIndex != null && list[openIndex] && (
                 <RoastGallery cards={list} index={openIndex} onIndex={setOpenIndex}

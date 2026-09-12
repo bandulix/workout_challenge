@@ -5,7 +5,7 @@ import mimetypes
 from django.conf import settings
 from django.core.cache import cache
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Exists, OuterRef, Prefetch, ProtectedError, Q
+from django.db.models import Count, Exists, Max, OuterRef, Prefetch, ProtectedError, Q
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -32,7 +32,6 @@ from .models import (
     DrillInstructorPersona,
     DrillInstructorPersonaVote,
     DrillInstructorPhotoVote,
-    EchoChallenge,
     LegendEcho,
 )
 from .serializers import (
@@ -771,6 +770,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             .annotate(
                 hot_votes=Count("photo_votes", filter=Q(photo_votes__hot=True), distinct=True),
                 not_votes=Count("photo_votes", filter=Q(photo_votes__hot=False), distinct=True),
+                last_hot_at=Max("photo_votes__created_at", filter=Q(photo_votes__hot=True)),
             )
             .distinct()
             .order_by("-posted_at")[: self.ROAST_BOX_LIMIT]
@@ -781,7 +781,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["get"])
     def hall(self, request):
-        """Newest roasted photos the caller can see (Hall of Roasts).
+        """Hottest roasted photos the caller can see (Hall of Roasts).
 
         Optional ``competition`` limits the list to one challenge; omit it
         for every challenge the caller owns or is in (Coach page).
@@ -817,9 +817,10 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             .annotate(
                 hot_votes=Count("photo_votes", filter=Q(photo_votes__hot=True), distinct=True),
                 not_votes=Count("photo_votes", filter=Q(photo_votes__hot=False), distinct=True),
+                last_hot_at=Max("photo_votes__created_at", filter=Q(photo_votes__hot=True)),
             )
             .distinct()
-            .order_by("-posted_at")[: self.HALL_SIZE]
+            .order_by("-hot_votes", "-posted_at")[: self.HALL_SIZE]
         )
         return Response(RoastCardSerializer(qs, many=True, context={"request": request}).data)
 
@@ -895,10 +896,10 @@ class DrillInstructorTestMessageView(APIView):
 
 
 class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
-    """The Echo Chamber: list living trophies, challenge one, read the Book.
+    """Living trophies on the feed. DELETE is owner-only.
 
-    DELETE is owner-only (the challenge owner). Members can still list,
-    challenge, and (holders) upload art.
+    Members can list and (holders) upload art. Succession is automatic:
+    a harder session in the same sport takes the relic.
     """
 
     serializer_class = LegendEchoSerializer
@@ -916,11 +917,6 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
             .select_related(
                 "origin_user", "holder", "config", "config__competition", "config__persona",
             )
-            .prefetch_related(Prefetch(
-                "challenges",
-                queryset=EchoChallenge.objects.filter(status=EchoChallenge.STATUS_ACTIVE).select_related("challenger"),
-                to_attr="active_challenges",
-            ))
             .distinct()
         )
         try:
@@ -930,52 +926,6 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
         if competition_id:
             qs = qs.filter(config__competition_id=competition_id)
         return pictured_first(qs)
-
-    @action(detail=False, methods=["get"])
-    def book(self, request):
-        """End-of-season (or live) chronicle of every Echo in a challenge."""
-        from competition.models import Competition
-        from .echoes import book_payload
-        try:
-            competition_id = int(request.query_params.get("competition") or 0)
-        except (TypeError, ValueError):
-            competition_id = 0
-        if not competition_id:
-            return Response({"competition": "required."}, status=status.HTTP_400_BAD_REQUEST)
-        competition = get_object_or_404(
-            Competition.objects.filter(Q(owner=request.user) | Q(user=request.user)).distinct(),
-            pk=competition_id,
-        )
-        return Response(book_payload(competition))
-
-    @action(detail=True, methods=["post"])
-    def challenge(self, request, pk=None):
-        from .echoes import start_challenge
-        echo = self.get_object()
-        try:
-            start_challenge(echo, request.user)
-        except ValueError as exc:
-            # Map to literals - never str(exc) (CodeQL py/stack-trace-exposure).
-            reason = exc.args[0] if exc.args else ""
-            if reason == "This Echo can no longer be challenged.":
-                detail = "This Echo can no longer be challenged."
-            elif reason == "This challenge is over.":
-                detail = "This challenge is over."
-            elif reason == "You already hold this Echo.":
-                detail = "You already hold this Echo."
-            elif reason == "Only challenge members can contest an Echo.":
-                detail = "Only challenge members can contest an Echo."
-            elif reason == "Someone is already coming for this Echo.":
-                detail = "Someone is already coming for this Echo."
-            elif reason == "Finish your current challenge first.":
-                detail = "Finish your current challenge first."
-            else:
-                detail = "Could not start that challenge."
-            raise ValidationError({"detail": detail})
-        except IntegrityError:
-            raise ValidationError({"detail": "Someone is already coming for this Echo."})
-        echo = self.get_object()
-        return Response(LegendEchoSerializer(echo, context={"request": request}).data)
 
     def destroy(self, request, *args, **kwargs):
         echo = self.get_object()
@@ -1050,7 +1000,7 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
             who = _name(echo.holder or user)
             body = (
                 f"{persona.name}: @{who} just hung a picture on {echo.title}. "
-                "It's in the Echo Chamber."
+                "It's on the feed."
             )
             _post_coach_line(
                 echo.config, DrillInstructorMessage.KIND_ECHO, body,

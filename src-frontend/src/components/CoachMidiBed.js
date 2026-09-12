@@ -4,7 +4,7 @@ import {useGetDrillConfigsQuery} from "../utils/reducers/drillInstructorSlice";
 import {hasAuthMarker} from "../utils/authTokens";
 import {isPublicPath} from "../utils/publicPath";
 import {useSfxEnabled} from "../utils/sfx";
-import {startMidiBed, stopMidiBed, unlockMidiBed} from "../utils/midiBed";
+import {startMidiBed, stopMidiBed} from "../utils/midiBed";
 
 function pickBedConfig(configs) {
     const withMidi = (configs || []).filter((c) => c.enabled && c.persona_detail?.midi);
@@ -36,15 +36,14 @@ export default function CoachMidiBed() {
             else if (!cancelled) startMidiBed(bed.midi).catch(() => {});
         }
         function onUnlock() {
-            unlockMidiBed();
             if (!cancelled) startMidiBed(bed.midi).catch(() => {});
         }
         document.addEventListener("visibilitychange", onVis);
-        window.addEventListener("pointerdown", onUnlock, {passive: true, once: true});
+        window.addEventListener("wc-midi-unlock", onUnlock);
         return () => {
             cancelled = true;
             document.removeEventListener("visibilitychange", onVis);
-            window.removeEventListener("pointerdown", onUnlock);
+            window.removeEventListener("wc-midi-unlock", onUnlock);
             stopMidiBed();
         };
     }, [publicPage, sfxOn, bed?.id, bed?.midi]);

@@ -23,7 +23,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import AthleteCard from "../components/AthleteCard";
 import usePollingInterval from "../utils/usePollingInterval";
 import {CompetitionHead, CoachCorner} from "../components/competitionChrome";
-import EchoChamber from "../components/EchoChamber";
+import EchoLiveStrip from "../components/EchoLiveStrip";
 
 
 function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
@@ -357,7 +357,7 @@ export default function Competition() {
     const pollSlow = usePollingInterval(90000);
     const pollFast = usePollingInterval(60000);
     const tabParam = searchParams.get("tab");
-    const tab = (tabParam === "feed" || tabParam === "trophies" || tabParam === "board")
+    const tab = (tabParam === "feed" || tabParam === "board")
         ? tabParam
         : "feed";
     // Stats stay skipped on Feed for first paint. A swipe mounts Board
@@ -370,7 +370,7 @@ export default function Competition() {
         setSearchParams(nextParams, {replace: true});
     }
     function peekTab(next) {
-        if (next === "board" || next === "trophies") setStatsPeeked(true);
+        if (next === "board") setStatsPeeked(true);
     }
 
     const {
@@ -469,6 +469,7 @@ export default function Competition() {
 
                 <SwipePages tab={tab} onChange={setTab} onPeek={peekTab}>
                 <div>
+                {competition && <EchoLiveStrip competitionId={competition.id} userId={user?.id}/>}
                 {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
                 </div>
 
@@ -501,10 +502,6 @@ export default function Competition() {
                     </div>
                     )}
                 </div>
-                </div>
-
-                <div>
-                {competition && <EchoChamber competitionId={competition.id} userId={user?.id}/>}
                 </div>
                 </SwipePages>
             </div>

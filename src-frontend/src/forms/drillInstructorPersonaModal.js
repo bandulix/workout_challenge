@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from "react";
-import {Camera} from "lucide-react";
+import {Camera, Music2} from "lucide-react";
 import {
     useAddPersonaMutation,
     useDeletePersonaMutation,
@@ -19,6 +19,7 @@ import PersonaAvatar from "../components/PersonaAvatar";
 import {invalidateProtectedImage} from "../utils/protectedMedia";
 import {confirmAction, notice} from "../utils/dialogs";
 import {clearBodyScrollLock} from "../utils/overlay";
+import {previewMidiBytes, startMidiBed, stopMidiBed, unlockMidiBed} from "../utils/midiBed";
 
 // Anyone can create a roaster of their own; staff still manage the
 // built-in library. The API rejects edits of someone else's persona.
@@ -47,6 +48,7 @@ export function PersonaEditModal({persona, setModalState}) {
     const [pictureError, setPictureError] = useState(null);
     const [midiFile, setMidiFile] = useState(null);
     const [clearMidi, setClearMidi] = useState(false);
+    const [previewOn, setPreviewOn] = useState(false);
     const fileInput = useRef(null);
 
     const [addPersona, {isLoading: addLoading, error: addError, isSuccess: addSuccess}] = useAddPersonaMutation();
@@ -70,6 +72,8 @@ export function PersonaEditModal({persona, setModalState}) {
             setPicturePreview(persona.profile_picture || null);
             setMidiFile(null);
             setClearMidi(false);
+            setPreviewOn(false);
+            stopMidiBed();
         }
     }, [persona]);
 
@@ -79,6 +83,24 @@ export function PersonaEditModal({persona, setModalState}) {
             if (picturePreview && picturePreview.startsWith("blob:")) URL.revokeObjectURL(picturePreview);
         };
     }, [picturePreview]);
+
+    useEffect(() => () => { stopMidiBed(); }, []);
+
+    async function playMidiPreview() {
+        unlockMidiBed();
+        try {
+            if (midiFile) {
+                await previewMidiBytes(await midiFile.arrayBuffer());
+            } else if (persona?.midi) {
+                await startMidiBed(persona.midi, {preview: true});
+            } else {
+                return;
+            }
+            setPreviewOn(true);
+        } catch {
+            setPreviewOn(false);
+        }
+    }
 
     useEffect(() => {
         if (addError) setFormError("Create Error: " + JSON.stringify(addError?.data || addError?.message));
@@ -245,21 +267,37 @@ export function PersonaEditModal({persona, setModalState}) {
                             e.target.value = "";
                             setMidiFile(file);
                             if (file) setClearMidi(false);
+                            setPreviewOn(false);
+                            stopMidiBed();
                         }}
                     />
-                    {midiFile && (
-                        <p className="text-xs text-volt-700 dark:text-volt-300 mt-1">Ready to save: {midiFile.name}</p>
-                    )}
-                    {!midiFile && persona?.midi && !clearMidi && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">A MIDI bed is already set for this coach.</p>
-                    )}
-                    {persona?.midi && (
-                        <button type="button"
-                                onClick={() => { setMidiFile(null); setClearMidi(true); }}
-                                className="mt-1 text-xs font-semibold text-red-500 dark:text-red-400 hover:underline">
-                            Remove MIDI
-                        </button>
-                    )}
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {midiFile
+                            ? midiFile.name
+                            : (!clearMidi && persona?.midi ? "A MIDI bed is set for this coach." : "No MIDI file yet.")}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                        {(midiFile || (persona?.midi && !clearMidi)) && (
+                            <button type="button"
+                                    onClick={() => previewOn ? (stopMidiBed(), setPreviewOn(false)) : playMidiPreview()}
+                                    className="inline-flex items-center gap-1 text-xs font-semibold text-volt-700 dark:text-volt-300 hover:underline">
+                                <Music2 className="h-3.5 w-3.5"/>
+                                {previewOn ? "Stop preview" : "Play preview"}
+                            </button>
+                        )}
+                        {(persona?.midi || midiFile) && (
+                            <button type="button"
+                                    onClick={() => {
+                                        setMidiFile(null);
+                                        setClearMidi(true);
+                                        setPreviewOn(false);
+                                        stopMidiBed();
+                                    }}
+                                    className="text-xs font-semibold text-red-500 dark:text-red-400 hover:underline">
+                                Remove
+                            </button>
+                        )}
+                    </div>
                     {clearMidi && !midiFile && (
                         <p className="text-xs text-gray-500 mt-1">MIDI will be removed when you save.</p>
                     )}

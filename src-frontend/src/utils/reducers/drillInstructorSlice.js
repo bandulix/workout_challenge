@@ -275,25 +275,6 @@ export const drillInstructorApi = createApi({
                 ? [...result.map(({id}) => ({type: "DrillEcho", id})), {type: "DrillEcho"}]
                 : [{type: "DrillEcho"}],
         }),
-        getEchoBook: builder.query({
-            query: (competition) => ({
-                url: "drill-instructor/echoes/book/",
-                method: "GET",
-                params: {competition},
-            }),
-            providesTags: ["DrillEcho"],
-        }),
-        challengeEcho: builder.mutation({
-            query: (id) => ({
-                url: `drill-instructor/echoes/${id}/challenge/`,
-                method: "POST",
-            }),
-            invalidatesTags: (result, error, id) => [
-                {type: "DrillEcho", id},
-                "DrillEcho",
-                "DrillMessage",
-            ],
-        }),
         deleteEcho: builder.mutation({
             query: (id) => ({
                 url: `drill-instructor/echoes/${id}/`,
@@ -358,8 +339,6 @@ export const {
     useGetCoachBallotQuery,
     useVoteCoachPersonaMutation,
     useGetEchoesQuery,
-    useGetEchoBookQuery,
-    useChallengeEchoMutation,
     useDeleteEchoMutation,
     useUploadEchoArtMutation,
     useRunTestMessageMutation,

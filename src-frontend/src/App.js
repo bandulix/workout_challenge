@@ -1,6 +1,7 @@
 import React, {Suspense, lazy, useEffect} from "react";
 import {BrowserRouter as Router, Routes, Route, useLocation, useNavigate} from "react-router-dom";
 import {rememberPath} from "./utils/lastPath";
+import {rememberLastCompetition} from "./utils/challenge";
 import {useDarkTheme} from "./utils/theme";
 import {useApkGate} from "./utils/apkUpdate";
 import {
@@ -16,12 +17,13 @@ import {
 import BottomNav from "./utils/bottomNav";
 import AppBackdrop from "./components/AppBackdrop";
 import WhatsNew from "./components/WhatsNew";
-import EchoArtNudge from "./components/EchoArtNudge";
+
 import VerifyEmailBanner from "./components/VerifyEmailBanner";
 import DialogHost from "./components/DialogHost";
 import ForceUpdateScreen, {ForceUpdateChecking} from "./components/ForceUpdateScreen";
 import {InitStravaLink, ReturnStravaLink} from "./pages/StravaLink";
 import {installSfxUnlock} from "./utils/sfx";
+import {installMidiUnlock} from "./utils/midiBed";
 import CoachMidiBed from "./components/CoachMidiBed";
 
 // Lazy-loaded heavy pages - keeps the initial bundle small on mobile.
@@ -35,6 +37,7 @@ function RememberPath() {
     const location = useLocation();
     useEffect(() => {
         rememberPath(location.pathname, location.search);
+        rememberLastCompetition(location.pathname);
     }, [location.pathname, location.search]);
     return null;
 }
@@ -42,7 +45,14 @@ function RememberPath() {
 
 function App() {
     useDarkTheme();
-    useEffect(() => installSfxUnlock(), []);
+    useEffect(() => {
+        const stopSfx = installSfxUnlock();
+        const stopMidi = installMidiUnlock();
+        return () => {
+            if (typeof stopSfx === "function") stopSfx();
+            if (typeof stopMidi === "function") stopMidi();
+        };
+    }, []);
     return (
         <Router>
             <AppShell/>
@@ -148,9 +158,9 @@ function AppShell() {
             <BottomNav/>
             <CoachMidiBed/>
             <DialogHost/>
-            {/* Release popup: one changelog + reload prompt per release. */}
+            {/* Release popup: changelog once per release. Web can reload;
+                the APK already passed the force-update gate, so no download. */}
             <WhatsNew/>
-            <EchoArtNudge/>
             <VerifyEmailBanner/>
             </div>
         </>

@@ -1,7 +1,7 @@
 import React, {useEffect, useState} from "react";
 import {useNavigate, useSearchParams} from "react-router-dom";
 import {useDispatch} from "react-redux";
-import {ChevronDown, DoorOpen, Megaphone, Settings, Timer, UserRoundPlus} from "lucide-react";
+import {Megaphone, Settings, Timer, UserRoundPlus} from "lucide-react";
 import {competitionsApi} from "../utils/reducers/competitionsSlice";
 import {useLeaveCompetitionMutation} from "../utils/reducers/joinSlice";
 import {messageResults, useGetDrillConfigsQuery, useGetDrillMessageByIdQuery, useGetDrillMessagesQuery, useLazyGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
@@ -28,7 +28,7 @@ import usePollingInterval from "../utils/usePollingInterval";
 import {confirmAction, notice} from "../utils/dialogs";
 import {feedSfxItems, useSfxObserver} from "../utils/sfx";
 import {pageResults, scoreGoals} from "../utils/queryPage";
-import {challengeDaysLeftLabel} from "../utils/challenge";
+import {challengeEndChip} from "../utils/challenge";
 
 export function HeaderIconButton({onClick, title, icon: Icon, danger = false, isLoading = false}) {
     return (
@@ -49,7 +49,6 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
     const [showDrillInstructorModal, setShowDrillInstructorModal] = useState(false);
     const [showModifyGoals, setShowModifyGoals] = useState(false);
     const [goalsOpen, setGoalsOpen] = useState(false);
-    const pullStart = React.useRef(null);
     const scoredGoals = React.useMemo(
         () => scoreGoals(goals, feed, user?.id, user),
         [goals, feed, user],
@@ -86,20 +85,9 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
 
 
 
-    const daysLeft = challengeDaysLeftLabel(competition.end_date);
-    const ended = daysLeft === "Ended";
-    const lastDay = daysLeft === "Last day";
+    const endChip = challengeEndChip(competition.end_date, competition.end_date_fmt);
 
     const showGoals = scoredGoals.length > 0 || isOwner;
-
-    function finishGoalsPull(event) {
-        const start = pullStart.current;
-        pullStart.current = null;
-        if (!start) return;
-        const dy = event.clientY - start.y;
-        if (start.dragged && Math.abs(dy) > 24) setGoalsOpen(dy > 0);
-        else if (!start.dragged) setGoalsOpen((v) => !v);
-    }
 
     return (
         <div className="mb-4 rounded-3xl glass-card overflow-hidden">
@@ -110,15 +98,15 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                 <p className="text-xl font-display uppercase tracking-wide">{competition.name}</p>
                 <div className="mt-0.5 flex items-center justify-between gap-3">
                     <p className="text-xs text-gray-500">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
-                    {daysLeft ? (
-                        <span className={"shrink-0 inline-flex items-center gap-1.5 text-sm font-extrabold uppercase tracking-[0.12em] " +
-                            (ended
-                                ? "text-gray-400"
-                                : lastDay
-                                    ? "text-amber-700 dark:text-amber-300"
-                                    : "text-volt-700 dark:text-volt-300")}>
-                            <Timer className="h-4 w-4"/>
-                            {daysLeft}
+                    {endChip && endChip.kind === "ended" ? (
+                        <span className="shrink-0 text-xs text-gray-400">{endChip.text}</span>
+                    ) : endChip ? (
+                        <span className={"shrink-0 inline-flex items-center gap-1.5 text-sm font-extrabold tracking-wide " +
+                            (endChip.kind === "last"
+                                ? "uppercase tracking-[0.12em] text-amber-700 dark:text-amber-300"
+                                : "text-volt-700 dark:text-volt-300")}>
+                            {endChip.kind === "last" ? <Timer className="h-4 w-4"/> : null}
+                            {endChip.text}
                         </span>
                     ) : null}
                 </div>
@@ -133,37 +121,36 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                             <span className="uppercase text-[10px] tracking-wide text-gray-500">{sportLabelShort(label)}</span>
                         </div>
                     ))}
-                    <div className="flex items-center shrink-0 ml-auto">
-                        {
-                            (isOwner) ? <HeaderIconButton title="Settings" icon={Settings} onClick={() => setShowEditCompetitionModal(competition.id)}/> :
-                                <HeaderIconButton title="Leave Competition" icon={DoorOpen} danger onClick={() => triggerLeaveCompetition()} isLoading={leaveIsLoading}/>
-                        }
+                    <div className="flex items-center shrink-0 ml-auto gap-1">
+                        {showGoals && (
+                            <button type="button" onClick={() => setGoalsOpen((v) => !v)}
+                                    aria-expanded={goalsOpen}
+                                    className={"rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide min-h-[36px] transition " +
+                                        (goalsOpen ? "bg-volt-400 text-ink-950 shadow-glow-volt" : "btn-glass")}>
+                                Goals
+                            </button>
+                        )}
+                        {isOwner && (
+                            <HeaderIconButton title="Settings" icon={Settings} onClick={() => setShowEditCompetitionModal(competition.id)}/>
+                        )}
                         {isOwner && (
                             <HeaderIconButton title="AI Drill Instructor" icon={Megaphone} onClick={() => setShowDrillInstructorModal(true)}/>
                         )}
                         <HeaderIconButton title="Invite Others" icon={UserRoundPlus} onClick={() => setShowInviteCompetitionModal(true)}/>
                     </div>
                 </div>
+                {!isOwner && (
+                    <div className="mt-3 flex justify-end">
+                        <button type="button" onClick={triggerLeaveCompetition} disabled={leaveIsLoading}
+                                className="text-xs text-gray-400 hover:text-red-500 transition min-h-[32px]">
+                            Leave challenge
+                        </button>
+                    </div>
+                )}
             </div>
 
             {showGoals && (
                 <>
-                    <button type="button"
-                            aria-expanded={goalsOpen}
-                            aria-label={goalsOpen ? "Hide challenge goals" : "Show challenge goals"}
-                            onPointerDown={(e) => { pullStart.current = {y: e.clientY, dragged: false}; }}
-                            onPointerMove={(e) => {
-                                const start = pullStart.current;
-                                if (!start) return;
-                                if (Math.abs(e.clientY - start.y) > 8) start.dragged = true;
-                            }}
-                            onPointerUp={finishGoalsPull}
-                            onPointerCancel={() => { pullStart.current = null; }}
-                            className="w-full h-7 bg-volt-400 text-ink-950 flex items-center justify-center gap-2 shadow-[0_4px_16px_rgba(215,255,62,0.35)] active:brightness-95">
-                        <span className="w-9 h-1 rounded-full bg-ink-950/30" aria-hidden="true"/>
-                        <span className="text-[10px] font-extrabold uppercase tracking-[0.18em]">Challenge goals</span>
-                        <ChevronDown className={"h-3.5 w-3.5 transition-transform duration-200 " + (goalsOpen ? "rotate-180" : "")}/>
-                    </button>
                     <div className={"grid transition-[grid-template-rows] duration-300 ease-out " +
                         (goalsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
                         <div className="overflow-hidden">

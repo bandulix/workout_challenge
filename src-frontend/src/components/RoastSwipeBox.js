@@ -184,7 +184,7 @@ export default function RoastSwipeBox() {
                 <span className="text-[11px] text-gray-400">{cards.length} left</span>
             </div>
 
-            <div className="relative mx-auto w-full max-w-sm" style={{height: 420}}>
+            <div className="relative mx-auto w-full max-w-sm" style={{height: 280}}>
                 {next && <RoastCard key={next.id} card={next} top={false} onVote={() => {}}/>}
                 <RoastCard key={top.id} card={top} top onVote={handleVote}/>
             </div>

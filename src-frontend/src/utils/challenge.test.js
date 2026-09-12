@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest";
-import {challengeDaysLeftLabel, daysUntilChallengeEnd} from "./challenge";
+import {challengeDaysLeftLabel, challengeEndChip, daysUntilChallengeEnd, lastChallenge, rememberLastCompetition} from "./challenge";
 
 const noon = (iso) => {
     const [y, m, d] = iso.split("-").map(Number);
@@ -30,5 +30,30 @@ describe("challengeDaysLeftLabel", () => {
         expect(challengeDaysLeftLabel("2026-09-12", noon("2026-09-11"))).toBe("1 day left");
         expect(challengeDaysLeftLabel("2026-09-11", noon("2026-09-11"))).toBe("Last day");
         expect(challengeDaysLeftLabel("2026-09-01", noon("2026-09-11"))).toBe("Ended");
+    });
+});
+
+describe("challengeEndChip", () => {
+    it("uses the end date, Last day, or Ended", () => {
+        expect(challengeEndChip("2026-09-20", "Sat, Sep 20", noon("2026-09-11")))
+            .toEqual({kind: "live", text: "Ends Sat, Sep 20"});
+        expect(challengeEndChip("2026-09-11", "Fri, Sep 11", noon("2026-09-11")))
+            .toEqual({kind: "last", text: "Last day"});
+        expect(challengeEndChip("2026-09-01", "Tue, Sep 1", noon("2026-09-11")))
+            .toEqual({kind: "ended", text: "Ended"});
+    });
+});
+
+describe("lastChallenge", () => {
+    it("returns the remembered challenge when the user still belongs", () => {
+        rememberLastCompetition("/competition/7");
+        const list = [{id: 3, name: "A"}, {id: 7, name: "B"}];
+        expect(lastChallenge(list).id).toBe(7);
+    });
+
+    it("falls back when the remembered id is gone", () => {
+        rememberLastCompetition("/competition/99");
+        const list = [{id: 3, name: "Only"}];
+        expect(lastChallenge(list).id).toBe(3);
     });
 });

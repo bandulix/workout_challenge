@@ -1,5 +1,9 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
+vi.mock("@capacitor/core", () => ({
+    CapacitorHttp: {get: vi.fn()},
+}));
+
 vi.mock("./platform", () => ({
     assetUrl: (path) => `https://challenge.example.com${path}`,
     isNativeApp: vi.fn(() => false),
@@ -34,6 +38,7 @@ vi.mock("js-synthesizer", () => {
     return api;
 });
 
+import {CapacitorHttp} from "@capacitor/core";
 import * as synthApi from "js-synthesizer";
 import {ensureFreshAccessToken, getAccessToken, refreshAccessToken} from "./authTokens";
 import {isNativeApp} from "./platform";
@@ -90,6 +95,7 @@ describe("startMidiBed", () => {
         getAccessToken.mockReturnValue("access-token");
         refreshAccessToken.mockResolvedValue("ok");
         isNativeApp.mockReturnValue(false);
+        CapacitorHttp.get.mockReset();
         synthApi.playPlayer.mockClear();
         synthApi.stopPlayer.mockClear();
         synthApi.isPlayerPlaying.mockReturnValue(false);
@@ -159,11 +165,31 @@ describe("startMidiBed", () => {
 
     it("loads the bundled soundfont even on native, not the API host", async () => {
         isNativeApp.mockReturnValue(true);
+        CapacitorHttp.get.mockResolvedValue({
+            status: 200,
+            data: MIDI_BYTES,
+        });
         await startMidiBed(MIDI_PATH);
         const fontUrls = fetchMock.mock.calls
             .map(([url]) => String(url))
             .filter((url) => url.includes("soundfonts"));
         expect(fontUrls).toEqual(["/soundfonts/GeneralUser-GS.sf2"]);
+        expect(synthApi.playPlayer).toHaveBeenCalled();
+    });
+
+    it("fetches MIDI through CapacitorHttp on native, not WebView fetch", async () => {
+        isNativeApp.mockReturnValue(true);
+        CapacitorHttp.get.mockResolvedValue({
+            status: 200,
+            data: MIDI_BYTES,
+        });
+        await startMidiBed(MIDI_PATH);
+        expect(CapacitorHttp.get).toHaveBeenCalledWith(expect.objectContaining({
+            url: `https://challenge.example.com${MIDI_PATH}`,
+            responseType: "arraybuffer",
+        }));
+        const midiFetches = fetchMock.mock.calls.filter(([url]) => String(url).includes("/midi"));
+        expect(midiFetches).toHaveLength(0);
         expect(synthApi.playPlayer).toHaveBeenCalled();
     });
 });

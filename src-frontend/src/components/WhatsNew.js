@@ -1,22 +1,23 @@
 import React, {useEffect, useState} from "react";
-import {Download, PartyPopper, RefreshCw, Shield, Server} from "lucide-react";
+import {PartyPopper} from "lucide-react";
 import {Modal} from "../forms/basicComponents";
 import {apiUrl, isNativeApp} from "../utils/platform";
-import {apkDownloadHref} from "../utils/apkUpdate";
 
-const HIGHLIGHTS = [
-    {icon: Shield, title: "Safer web sign-in", body: "Sign-in on the web is safer: refresh stays in an httpOnly cookie (you may need to log in once after this update)."},
-    {icon: RefreshCw, title: "No offline API cache", body: "API responses are no longer kept in the offline cache."},
-    {icon: Server, title: "Operators", body: "Secrets at rest are encrypted; deploys default to loopback + distinct Flower/Health passwords. See the release notes."},
-];
+function athleteBullets(notes) {
+    const skip = /operator|flower|loopback|secret at rest|crowdsec|nginx/i;
+    const items = [];
+    for (const sec of notes?.changelog?.sections || []) {
+        for (const item of sec.items || []) {
+            if (skip.test(item)) continue;
+            items.push(item);
+            if (items.length >= 5) return items;
+        }
+    }
+    return items;
+}
 
-// "What's new" release popup: after every release, the user gets one
-// popup with the changelog and a reload button.
-//
-// /api/version/ returns the release the SERVER is running (the git tag
-// baked into the image). localStorage remembers the last release the
-// user acknowledged; a mismatch means this device hasn't been told yet.
-// "dev" builds (local dev, source builds) never nag.
+// One popup per server release. Athletes see a few bullets from this
+// tag — not leftover operator notes from an older ship.
 
 const SEEN_KEY = "wc-release-version";
 const POLL_MS = 15 * 60 * 1000; // also catches tabs left open across a deploy
@@ -74,7 +75,7 @@ function WhatsNew() {
         window.location.reload();
     };
 
-    const sections = notes?.changelog?.sections || [];
+    const bullets = athleteBullets(notes);
 
     return (
         <Modal title={`What's new in ${version}`} landscape={false} setShowModal={close}>
@@ -83,63 +84,37 @@ function WhatsNew() {
                     <PartyPopper className="h-5 w-5 text-volt-500"/>
                 </span>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Web login got harder to steal from XSS or a stuck service-worker cache — you might need to sign in one more time after the update. Phones on the Android app keep working as usual.
+                    A few things that changed in this release.
                 </p>
             </div>
 
-            <ul className="space-y-3 px-1">
-                {HIGHLIGHTS.map((h) => (
-                    <li key={h.title} className="flex items-start gap-3 rounded-2xl glass-well p-3">
-                        <span className="h-9 w-9 rounded-xl bg-volt-400/15 flex items-center justify-center shrink-0">
-                            <h.icon className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
-                        </span>
-                        <div className="min-w-0">
-                            <p className="text-sm font-semibold">{h.title}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{h.body}</p>
-                        </div>
-                    </li>
-                ))}
-            </ul>
-
-            <div className="space-y-3 max-h-[32vh] overflow-y-auto px-1">
-                {sections.length > 0 && (
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Full notes</p>
-                )}
-                {sections.length === 0 ? (
+            <div className="px-1">
+                {bullets.length === 0 ? (
                     <p className="text-sm text-gray-600 dark:text-gray-300">Bug fixes and improvements under the hood.</p>
                 ) : (
-                    sections.map((sec, i) => (
-                        <div key={i}>
-                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">{sec.title}</p>
-                            <ul className="space-y-1 list-disc list-outside ml-4 text-sm text-gray-700 dark:text-gray-300">
-                                {sec.items.slice(0, 4).map((item, j) => <li key={j}>{item}</li>)}
-                            </ul>
-                        </div>
-                    ))
-                )}
-                {notes?.changelog?.truncated && (
-                    <p className="text-xs text-gray-400 italic">…and more under the hood.</p>
+                    <ul className="space-y-2 list-disc list-outside ml-4 text-sm text-gray-700 dark:text-gray-300">
+                        {bullets.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
                 )}
             </div>
 
             <div className="relative flex justify-center gap-3 pt-2">
-                <button onClick={close}
-                        className="px-5 py-2.5 rounded-full btn-glass text-sm font-semibold transition">
-                    Later
-                </button>
                 {isNativeApp() ? (
-                    <a href={apkDownloadHref()}
-                       rel="noopener noreferrer"
-                       onClick={close}
-                       className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt">
-                        <Download className="h-4 w-4"/>
-                        Download update
-                    </a>
-                ) : (
-                    <button onClick={reload}
+                    <button onClick={close}
                             className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt">
-                        Reload
+                        Got it
                     </button>
+                ) : (
+                    <>
+                        <button onClick={close}
+                                className="px-5 py-2.5 rounded-full btn-glass text-sm font-semibold transition">
+                            Later
+                        </button>
+                        <button onClick={reload}
+                                className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt">
+                            Reload
+                        </button>
+                    </>
                 )}
             </div>
         </Modal>

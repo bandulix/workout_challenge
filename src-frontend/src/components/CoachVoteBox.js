@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useRef, useState} from "react";
+import React, {useEffect, useMemo, useState} from "react";
 import {Timer} from "lucide-react";
 import PersonaAvatar from "./PersonaAvatar";
 import {PaneHead} from "./uiBits";
@@ -32,6 +32,19 @@ export function sortBallotCandidates(candidates) {
         if (aCreated !== bCreated) return bCreated - aCreated;
         return (a.persona?.name || "").localeCompare(b.persona?.name || "");
     });
+}
+
+export function pinBallotCandidates(candidates, myVote, currentPersona) {
+    const pinned = [];
+    const seen = new Set();
+    for (const id of [currentPersona, myVote]) {
+        if (!id || seen.has(id)) continue;
+        const row = (candidates || []).find((c) => c.persona?.id === id);
+        if (!row) continue;
+        pinned.push(row);
+        seen.add(id);
+    }
+    return [...pinned, ...(candidates || []).filter((c) => !seen.has(c.persona?.id))];
 }
 
 function useNowTick(active) {
@@ -101,24 +114,17 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
     });
     const [vote, {isLoading}] = useVoteCoachPersonaMutation();
     const now = useNowTick(Boolean(ballot?.next_switch_at));
+    const [expanded, setExpanded] = useState(false);
     const candidates = useMemo(
-        () => sortBallotCandidates(ballot?.candidates),
-        [ballot?.candidates],
+        () => pinBallotCandidates(
+            sortBallotCandidates(ballot?.candidates),
+            ballot?.my_vote,
+            ballot?.current_persona,
+        ),
+        [ballot?.candidates, ballot?.my_vote, ballot?.current_persona],
     );
-    const scroller = useRef(null);
-    const many = candidates.length > 6;
-
-    useEffect(() => {
-        const root = scroller.current;
-        if (!root || !many) return undefined;
-        const el = root.querySelector("[data-selected='true']");
-        if (!el) return undefined;
-        const er = el.getBoundingClientRect();
-        const rr = root.getBoundingClientRect();
-        if (er.top >= rr.top && er.bottom <= rr.bottom) return undefined;
-        root.scrollTop += er.top - rr.top - (rr.height - er.height) / 2;
-        return undefined;
-    }, [many, ballot?.my_vote, configId]);
+    const many = candidates.length > 3;
+    const shown = expanded ? candidates : candidates.slice(0, 3);
 
     if (!configId || !ballot) return null;
 
@@ -167,9 +173,8 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
                 {tiedLeaders ? " Tied coaches are drawn at random." : ""}
             </p>
 
-            <div ref={scroller}
-                 className={"grid grid-cols-3 gap-3 " + (many ? "coach-ballot-scroller" : "")}>
-                {candidates.map((c) => {
+            <div className="grid grid-cols-3 gap-3">
+                {shown.map((c) => {
                     const selected = ballot.my_vote === c.persona.id;
                     const onDuty = ballot.current_persona === c.persona.id;
                     const accent = c.persona.theme_color || "#d7ff3e";
@@ -200,9 +205,10 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
                 })}
             </div>
             {many ? (
-                <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">
-                    Scroll for more
-                </p>
+                <button type="button" onClick={() => setExpanded((v) => !v)}
+                        className="mt-2 w-full min-h-[40px] rounded-2xl text-sm font-semibold text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition">
+                    {expanded ? "Show less" : `Show all ${candidates.length}`}
+                </button>
             ) : null}
         </div>
     );

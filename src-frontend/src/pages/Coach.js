@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useState} from "react";
 import {Link} from "react-router-dom";
-import {Megaphone, ChevronRight, Radio, Volume2, VolumeX} from "lucide-react";
+import {Megaphone, ChevronDown, ChevronRight, Radio, Volume2, VolumeX} from "lucide-react";
 import {PageWrapper} from "../utils/miscellaneous";
 
 import {SectionLoader} from "../utils/loaders";
@@ -17,6 +17,8 @@ import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {timeAgo} from "../utils/time";
 import usePollingInterval from "../utils/usePollingInterval";
 import {feedSfxItems, hallSfxItems, playSfx, useSfxEnabled, useSfxObserver} from "../utils/sfx";
+import {hallAfterglowSfxItems} from "../utils/roastAfterglow";
+import {PaneHead} from "../components/uiBits";
 
 // ---------------------------------------------------------------------------
 // The Coach page: the Drill Instructor as the heart of the app.
@@ -102,9 +104,29 @@ function CoachHeroWash({persona, mood}) {
     );
 }
 
+function PlayFold({children}) {
+    const [open, setOpen] = useState(false);
+    return (
+        <div>
+            <button type="button" onClick={() => setOpen((v) => !v)} className="w-full text-left">
+                <PaneHead title="Play" hint={open ? "Hot or Not and the hall" : "Hot or Not and the hall — tap to open"}>
+                    <ChevronDown className={"h-4 w-4 text-gray-400 transition-transform " + (open ? "rotate-180" : "")}/>
+                </PaneHead>
+            </button>
+            {open ? <div className="flex flex-col gap-4">{children}</div> : null}
+        </div>
+    );
+}
+
 function CoachHero({persona, config, message: latest, ownedCompetitions, mood, lastOwnActivityId}) {
     const trained = trainedSummary(mood);
     const [sfxOn, setSfxOn] = useSfxEnabled();
+    const [sfxHint, setSfxHint] = useState(() => {
+        try { return window.localStorage.getItem("wc-sfx-hint") !== "1"; } catch { return true; }
+    });
+    useEffect(() => {
+        try { window.localStorage.setItem("wc-sfx-hint", "1"); } catch { /* ignore */ }
+    }, []);
 
     function activityCard(message, hero) {
         return (
@@ -141,29 +163,37 @@ function CoachHero({persona, config, message: latest, ownedCompetitions, mood, l
                             {trained.label}
                         </span>
                     )}
+                </div>
+                {sfxHint && (
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        Coach makes noise — tap the portrait to mute.
+                    </p>
+                )}
+
+                <div className="mt-4 flex items-center gap-3 sm:gap-5">
                     <button type="button"
                             onClick={() => {
                                 const next = !sfxOn;
                                 setSfxOn(next);
+                                try { window.localStorage.setItem("wc-sfx-hint", "1"); } catch { /* ignore */ }
+                                setSfxHint(false);
                                 if (next) playSfx("vote");
                             }}
                             aria-pressed={sfxOn}
                             aria-label={sfxOn ? "Mute coach sounds" : "Enable coach sounds"}
-                            title={sfxOn ? "Sounds on" : "Sounds off"}
-                            className={"ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.14em] min-h-[28px] transition " +
-                                (sfxOn
-                                    ? "bg-volt-400/25 text-volt-800 dark:text-volt-200"
-                                    : "text-gray-500 dark:text-gray-400 hover:text-volt-700 dark:hover:text-volt-300")}>
-                        {sfxOn ? <Volume2 className="h-3.5 w-3.5"/> : <VolumeX className="h-3.5 w-3.5"/>}
-                        {sfxOn ? "Sound" : "Muted"}
+                            title={sfxOn ? "Sounds on — tap to mute" : "Sounds off — tap to unmute"}
+                            className="relative shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
+                        <SquadOrbit mood={mood} accent={persona.theme_color} showCaption={false}>
+                            <PersonaAvatar persona={persona} size={80} ring={false} glow={false}
+                                           className="!w-full !h-full"/>
+                        </SquadOrbit>
+                        <span className={"pointer-events-none absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full shadow-md " +
+                            (sfxOn
+                                ? "bg-volt-400 text-ink-950"
+                                : "bg-ink-950/80 text-white")}>
+                            {sfxOn ? <Volume2 className="h-3.5 w-3.5"/> : <VolumeX className="h-3.5 w-3.5"/>}
+                        </span>
                     </button>
-                </div>
-
-                <div className="mt-4 flex items-center gap-3 sm:gap-5">
-                    <SquadOrbit mood={mood} accent={persona.theme_color} showCaption={false}>
-                        <PersonaAvatar persona={persona} size={80} ring={false} glow={false}
-                                       className="!w-full !h-full"/>
-                    </SquadOrbit>
                     <div className="min-w-0 flex-1">
                         <h1 className="font-display text-[1.35rem] sm:text-3xl uppercase leading-tight break-words">{persona.name}</h1>
                         {persona.tagline && <p className="mt-1.5 text-sm text-gray-600 dark:text-gray-300 italic break-words">“{persona.tagline}”</p>}
@@ -230,6 +260,7 @@ function CoachPage() {
     });
     useSfxObserver(`coach-feed:${heroConfigId || "none"}`, feedSfxItems(messages), Boolean(messagesPage));
     useSfxObserver("hall", hallSfxItems(hall), hall !== undefined);
+    useSfxObserver("hall-hot", hallAfterglowSfxItems(hall), hall !== undefined);
 
     const isLoading = userLoading || configsLoading || personasLoading;
 
@@ -276,13 +307,14 @@ function CoachPage() {
 
                         {heroConfig?.daily_order && <OrderCard order={heroConfig.daily_order}/>}
 
-                        {/* Hot-or-not over the coach's roasted photos.
-                            Hidden when there is nothing left to vote on. */}
-                        {mediaReady && <RoastSwipeBox/>}
-
-                        {mediaReady && <HallOfRoasts cards={hall}/>}
-
                         <CoachVoteBox configs={configs} preferredConfigId={heroConfig?.id}/>
+
+                        {mediaReady && (
+                            <PlayFold>
+                                <RoastSwipeBox/>
+                                <HallOfRoasts cards={hall}/>
+                            </PlayFold>
+                        )}
 
                         <PushOptInCard/>
                     </div>

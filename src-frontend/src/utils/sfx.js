@@ -1,4 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from "react";
+import {isNativeApp} from "./serverUrl";
 
 // Short in-app stings from Kenney Interface Sounds (CC0). On by default;
 // mute on Coach or in Account settings. Unlock on a real tap.
@@ -18,7 +19,7 @@ const FILES = {
     ring_full: "/sfx/ring_full.mp3",
 };
 
-let memory = "on";
+let memory = null;
 let sfxSessionUnlocked = false;
 const seenKeys = new Set();
 const primedScopes = new Set();
@@ -26,10 +27,12 @@ const lastPlayed = new Map();
 
 function storeGet() {
     try {
-        return window.localStorage.getItem(STORAGE);
+        const stored = window.localStorage.getItem(STORAGE);
+        if (stored === "on" || stored === "off") return stored;
     } catch {
-        return memory;
+        /* private mode / node tests */
     }
+    return memory;
 }
 
 function storeSet(value) {
@@ -42,7 +45,11 @@ function storeSet(value) {
 }
 
 export function sfxEnabled() {
-    return storeGet() !== "off";
+    const value = storeGet();
+    if (value === "off") return false;
+    if (value === "on") return true;
+    // Web can start noisy; phones in a bag should not.
+    return !isNativeApp();
 }
 
 export function setSfxEnabled(on) {
@@ -232,7 +239,7 @@ export function echoSfxItems(echoes, userId) {
 }
 
 export function _resetSfxForTests() {
-    memory = "on";
+    memory = null;
     sfxSessionUnlocked = false;
     seenKeys.clear();
     primedScopes.clear();

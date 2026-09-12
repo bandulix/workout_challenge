@@ -856,6 +856,7 @@ class RoastCardSerializer(serializers.ModelSerializer):
     athlete_name = serializers.SerializerMethodField()
     hot_votes = serializers.IntegerField(read_only=True)
     not_votes = serializers.IntegerField(read_only=True)
+    last_hot_at = serializers.DateTimeField(read_only=True, allow_null=True)
     my_vote = serializers.SerializerMethodField()
 
     class Meta:
@@ -870,6 +871,7 @@ class RoastCardSerializer(serializers.ModelSerializer):
             "athlete_name",
             "hot_votes",
             "not_votes",
+            "last_hot_at",
             "my_vote",
         ]
         read_only_fields = fields
@@ -907,7 +909,7 @@ class RoastCardSerializer(serializers.ModelSerializer):
 
 
 class LegendEchoSerializer(serializers.ModelSerializer):
-    """Public face of a Legend Echo for the Echo Chamber."""
+    """Public face of a Legend Echo on the feed."""
 
     origin_name = serializers.SerializerMethodField()
     origin_id = serializers.IntegerField(source="origin_user_id", read_only=True)
@@ -916,8 +918,6 @@ class LegendEchoSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
     can_upload_art = serializers.SerializerMethodField()
     can_delete = serializers.SerializerMethodField()
-    my_challenge = serializers.SerializerMethodField()
-    active_challenge = serializers.SerializerMethodField()
     metric_label = serializers.SerializerMethodField()
 
     class Meta:
@@ -928,7 +928,6 @@ class LegendEchoSerializer(serializers.ModelSerializer):
             "origin_name", "origin_id", "holder_name", "holder_id", "image",
             "can_upload_art", "can_delete",
             "created_at", "last_claimed_at", "immortalized_at",
-            "my_challenge", "active_challenge",
         ]
         read_only_fields = fields
 
@@ -964,32 +963,4 @@ class LegendEchoSerializer(serializers.ModelSerializer):
         from .echoes import echo_sport_label
         unit = "km" if obj.metric == "distance" else "min"
         return f"{obj.metric_value:g} {unit} {echo_sport_label(obj.sport_type)}"
-
-    def get_active_challenge(self, obj):
-        ch = getattr(obj, "open_challenge", None)
-        if ch is None:
-            challenges = getattr(obj, "active_challenges", None)
-            if challenges is not None:
-                ch = challenges[0] if challenges else None
-            else:
-                ch = obj.challenges.filter(status="active").select_related("challenger").first()
-        if ch is None:
-            return None
-        user = ch.challenger
-        return {
-            "id": ch.id,
-            "challenger_id": ch.challenger_id,
-            "challenger_name": (user.first_name or user.username) if user else None,
-            "window_end": ch.window_end.isoformat(),
-        }
-
-    def get_my_challenge(self, obj):
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-        active = self.get_active_challenge(obj)
-        if not active or not user or not user.is_authenticated:
-            return None
-        if active["challenger_id"] != user.id:
-            return None
-        return active
 

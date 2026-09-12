@@ -5,7 +5,6 @@ import {ChevronLeft, ChevronRight} from "lucide-react";
 export const CHALLENGE_TABS = [
     {id: "feed", label: "Feed"},
     {id: "board", label: "Board"},
-    {id: "trophies", label: "Trophies"},
 ];
 
 export function peekableTabIds(idx, dragging, seen) {

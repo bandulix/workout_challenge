@@ -28,6 +28,16 @@ export function challengeDaysLeftLabel(endDate, now = new Date()) {
     return "Ended";
 }
 
+/** Chip for the challenge header: a date, Last day, or Ended — not a day-count argument. */
+export function challengeEndChip(endDate, endDateFmt, now = new Date()) {
+    const days = daysUntilChallengeEnd(endDate, now);
+    if (days == null) return null;
+    if (days < 0) return {kind: "ended", text: "Ended"};
+    if (days === 0) return {kind: "last", text: "Last day"};
+    const when = String(endDateFmt || "").trim();
+    return {kind: "live", text: when ? `Ends ${when}` : `${days} day${days === 1 ? "" : "s"} left`};
+}
+
 /** A challenge is "running" from its start date through the end date (inclusive, plus the last calendar day). */
 export function isChallengeRunning(c) {
     if (!c) return false;
@@ -45,4 +55,31 @@ export function primaryChallenge(competitions) {
     if (running.length === 1) return running[0];
     if (list.length === 1) return list[0];
     return null;
+}
+
+const LAST_COMP_KEY = "wc_last_competition";
+let lastCompetitionMemory = "";
+
+export function rememberLastCompetition(pathname) {
+    const match = /^\/competition\/(\d+)/.exec(String(pathname || "").replace(/\/+$/, "") || "/");
+    if (!match) return;
+    lastCompetitionMemory = match[1];
+    try {
+        window.localStorage.setItem(LAST_COMP_KEY, match[1]);
+    } catch {
+        /* private mode */
+    }
+}
+
+/** Last opened challenge that the user still belongs to. */
+export function lastChallenge(competitions) {
+    const list = Array.isArray(competitions) ? competitions : Object.values(competitions || {});
+    if (list.length === 0) return null;
+    let stored = lastCompetitionMemory;
+    try {
+        stored = window.localStorage.getItem(LAST_COMP_KEY) || lastCompetitionMemory;
+    } catch {
+        /* keep memory */
+    }
+    return list.find((c) => String(c.id) === stored) || primaryChallenge(list) || list[0] || null;
 }

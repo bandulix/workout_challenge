@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest";
-import {sortBallotCandidates} from "./CoachVoteBox";
+import {pinBallotCandidates, sortBallotCandidates} from "./CoachVoteBox";
 
 function row({name, votes = 0, is_builtin = false, created_at, id}) {
     return {
@@ -30,5 +30,17 @@ describe("sortBallotCandidates", () => {
             "Roast",
             "Sergeant",
         ]);
+    });
+});
+
+describe("pinBallotCandidates", () => {
+    it("pins on-duty and your vote ahead of the ranked rest", () => {
+        const ranked = sortBallotCandidates([
+            row({name: "Leader", votes: 4, id: "l"}),
+            row({name: "Duty", votes: 0, is_builtin: true, id: "d"}),
+            row({name: "Mine", votes: 1, id: "m"}),
+        ]);
+        const pinned = pinBallotCandidates(ranked, "m", "d");
+        expect(pinned.map((c) => c.persona.name)).toEqual(["Duty", "Mine", "Leader"]);
     });
 });

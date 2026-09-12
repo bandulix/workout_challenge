@@ -18,7 +18,7 @@ import {useGetUserByIdQuery} from "./reducers/usersSlice";
 import {useGetCompetitionsQuery} from "./reducers/competitionsSlice";
 import {useGetDrillConfigsQuery} from "./reducers/drillInstructorSlice";
 import {ensureFreshAccessToken} from "./authTokens";
-import {primaryChallenge} from "./challenge";
+import {lastChallenge} from "./challenge";
 import {isPublicPath} from "./publicPath";
 import {onAppResume} from "./appLifecycle";
 
@@ -83,7 +83,7 @@ function DockPanel({title, children}) {
     );
 }
 
-function CompetitionPickerPanel({onClose, onCreate}) {
+function CompetitionPickerPanel({onClose, onCreate, currentId}) {
     const {data: competitions, isSuccess} = useGetCompetitionsQuery();
     const navigate = useNavigate();
 
@@ -93,7 +93,8 @@ function CompetitionPickerPanel({onClose, onCreate}) {
                 {(competitions || []).map((c) => (
                     <button key={c.id}
                             onClick={() => {onClose(); navigate(`/competition/${c.id}`);}}
-                            className="w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-2xl hover:bg-ink-950/8 dark:hover:bg-white/10 min-h-[48px]">
+                            className={"w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-2xl hover:bg-ink-950/8 dark:hover:bg-white/10 min-h-[48px] " +
+                                (String(c.id) === String(currentId) ? "bg-volt-400/15" : "")}>
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-volt-400/25 text-volt-800 dark:text-volt-300">
                             <Flag className="h-4 w-4"/>
                         </span>
@@ -256,6 +257,7 @@ export default function BottomNav() {
                     <span className="glass-sheen rounded-[inherit]" aria-hidden="true"/>
                     {showCompetitionPicker && (
                         <CompetitionPickerPanel onClose={closeSheets}
+                                                currentId={onCompetition ? location.pathname.split("/")[2] : null}
                                                 onCreate={() => setShowCreateChallenge(true)}/>
                     )}
                     {showSettingsSheet && (
@@ -277,9 +279,17 @@ export default function BottomNav() {
                         isActive={onCompetition || showCompetitionPicker}
                         onClick={() => {
                             setShowSettingsSheet(false);
-                            const one = primaryChallenge(competitions);
-                            if (one) navigate(`/competition/${one.id}`);
-                            else setShowCompetitionPicker((v) => !v);
+                            if (onCompetition) {
+                                setShowCompetitionPicker((open) => !open);
+                                return;
+                            }
+                            const dest = lastChallenge(competitions);
+                            if (dest) {
+                                setShowCompetitionPicker(false);
+                                navigate(`/competition/${dest.id}`);
+                            } else {
+                                setShowCompetitionPicker((open) => !open);
+                            }
                         }}
                     />
 

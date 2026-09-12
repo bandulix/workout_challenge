@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-09-12
+
+### Added
+- **Roast afterglow.** A hall tile smolders for an hour after a Hot vote. The unique hottest roast wears a volt frame until another shot beats it.
+- **Echoes on the feed.** Live relics sit in a three-tile strip on the challenge feed. Beat the mark in the same sport and you take it — no war button. Trophies tab is gone.
+
+### Changed
+- **Coach is quieter to scan.** Hot or Not and the hall sit under a Play fold. Vote and hall show three tiles plus Show all (no nested scroll). Hall is hottest-first again. Portrait wash stays on Coach only, without kenburns. Challenge header uses Ends date / Last day / Ended, a Goals chip, and Leave away from Invite. Sound defaults off on the APK.
+- **Compete goes to the last challenge** you opened. Tap it again on that challenge to open the selector.
+- **Mute lives on the coach portrait** (speaker badge) so the top chips stay on one line on a phone.
+
+### Fixed
+- **Coach MIDI on the Android APK.** The bed is fetched with native HTTP (same as profile pictures), not WebView `fetch` which CORS-blocks `https://localhost`. The first tap anywhere in the app unlocks audio so the bed can start without a second click. Roasters can preview before save.
+- **What's new** is five athlete bullets from this release and Got it on the APK — no leftover operator notes, no Download.
+
 ## [0.57.0] - 2026-09-11
 
 ### Added
