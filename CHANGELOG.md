@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Home numbers you can finally trust.** Lifetime totals, the 30-day summary and the week streak are computed on the server now — they used to count only the 40 newest loaded workouts, silently shortchanging active athletes.
+- **Quieter, kinder feedback.** Saves and syncs confirm with a small toast instead of a popup you must dismiss; errors are human sentences instead of status-code soup; and every destructive action (deleting a workout, unlinking Strava/Garmin/Health, leaving or deleting a challenge) asks first.
+- **One name for the coach.** The app said coach / Drill Instructor / roaster / persona — it's "Coach" everywhere now. The challenge's second tab is "Leaderboard", and challenges are called challenges.
+- **Echoes explain themselves.** A new "How Echoes work" card, an empty state so the mechanic is visible before the first relic exists, and an "All echoes" list instead of the silent 3-tile cap.
+- **The coach vote advertises itself.** Outside the 72-hour window a teaser counts down to when voting opens; the handover celebration now also shows on the Coach page where the voting happens.
+- **Dialogs behave.** Keyboard focus lands inside and returns to where you were, Escape closes only the topmost sheet, and closing a form with unsaved input asks before discarding it.
+- **Smoother first paint and sign-in.** Pages show a spinner while loading instead of a blank flash, the login form appears instantly for logged-out visitors (returning sessions still skip it), and email/password fields use the right keyboards and password-manager hints.
+- **Faster app.** The entry bundle is less than half its old size (modals load on demand), and the Home page stops polling each of your challenges separately — your ranks arrive with the challenge list.
+- **Sync buttons actually re-sync.** The second tap used to be silently swallowed by a cache.
+
+### Fixed
+- **Workouts with a photo bonus can be deleted again** — that delete used to crash with a server error.
+- **Fair points after edits.** Changing a workout recalculates its day/week caps with the full context — no more phantom cap room handing out extra points.
+- **Challenge goals reject zero or nonsense targets** instead of breaking scoring for everyone.
+- **The leaderboard forgets departed athletes immediately**, and your activity history reaches all the way back (load older activities until the very first one).
+- **The register page no longer half-logs-you-in** on a failed signup, and remembers your place if you detour through it.
+
+### Removed
+- **Runtime config overrides are gone.** AI models, API keys, Strava, Health and SMTP are read from the deployment's `.env` only — what you set there is what runs. The in-app Admin page keeps just the points-factor editor. (Operator note: migration `0010` drops the old override columns; make sure `.env` carries your values before upgrading.)
+
+### Operator notes
+- Echo "war" leftovers are removed (dead model, admin, and the read-side lock); the season-end immortalization sweep keeps running as `immortalize_finished_echoes`.
+- `--profile health` now requires `OW_SECRET_KEY` — Open Wearables no longer receives Django's `SECRET_KEY`. Generate one per `.env.example`.
+- Gunicorn serves with threaded workers (Garmin's HTTP client can't freeze the event loop anymore); Strava/Garmin syncs run in Celery with race-safe cooldowns.
+- `scripts/backup.sh` dumps Postgres + the data volume with retention — run it before every upgrade.
+- Django's `/admin/` is now explicitly 404'd at the edge (it was never proxied); rate budgets are shared across worker processes via Redis; audit logs actually reach the container log (root handler at INFO).
+- CI also gates on the frontend: `eslint` (hook rules) + `vitest`, and the component-test stack (jsdom) is wired up.
+
 ## [0.59.0] - 2026-09-12
 
 ### Changed

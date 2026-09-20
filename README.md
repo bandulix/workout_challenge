@@ -38,11 +38,11 @@ Image: [`ghcr.io/bandulix/workout_challenge`](https://github.com/bandulix/workou
 
 ## Optional setup
 
-**Accounts** — with `REGISTRATION_TOKEN` empty, anyone can sign up and the first account is staff. Set a token to close registration, then `docker compose exec workoutchallenge python manage.py createsuperuser` (or `promotetostaff user@example.com`). Challenge invite links (`?join=`) still work. LLM, Strava, and SMTP live at `/admin/site-settings`.
+**Accounts** — with `REGISTRATION_TOKEN` empty, anyone can sign up and the first account is staff. Set a token to close registration, then `docker compose exec workoutchallenge python manage.py createsuperuser` (or `promotetostaff user@example.com`). Challenge invite links (`?join=`) still work. Point factors live at `/admin/site-settings`; LLM, Strava, and SMTP are `.env`-only.
 
-**Email** — SMTP in `.env` or Site Settings. New accounts confirm the address before welcome / weekly mail.
+**Email** — SMTP in `.env`. New accounts confirm the address before welcome / weekly mail.
 
-**AI coach** — challenge owner: megaphone on the challenge page → pick a persona → activate. Any OpenAI-compatible LLM in Site Settings. Push: Coach page → Enable coach pings.
+**AI coach** — challenge owner: megaphone on the challenge page → pick a persona → activate. Any OpenAI-compatible LLM via `LLM_*` in `.env`. Push: Coach page → Enable coach pings.
 
 **Strava** — [create an API app](https://www.strava.com/settings/api). Since June 2026 Strava requires a paid subscription for Standard-Tier API access; Health Connect needs no Strava at all.
 
@@ -51,7 +51,8 @@ Image: [`ghcr.io/bandulix/workout_challenge`](https://github.com/bandulix/workou
 **Apple Health / Google Health Connect** — no cloud API, so this stack can run a self-hosted [Open Wearables](https://github.com/the-momentum/open-wearables) instance (MIT, © Momentum; not vendored here — see [NOTICE](NOTICE)):
 
 ```bash
-# .env: OW_POSTGRES_PASSWORD and OW_ADMIN_PASSWORD (must differ from SECRET_KEY)
+# .env: OW_POSTGRES_PASSWORD, OW_SECRET_KEY and OW_ADMIN_PASSWORD
+# (OW_SECRET_KEY / OW_ADMIN_PASSWORD must differ from Django's SECRET_KEY)
 docker compose --profile health up -d
 ```
 
@@ -59,7 +60,16 @@ Phones reach it at `MAIN_HOST/health` by default. In the Android app, Health Con
 
 **Android APK** — GitHub Releases, or `scripts/build_apk.sh`. One APK works on every instance: enter the server address on first start. After pulling a new image, publish the matching APK with `scripts/update_apk_from_release.sh`.
 
-Secrets at rest and backup notes: [docs/security-secrets-and-backups.md](docs/security-secrets-and-backups.md).
+Secrets at rest and backup notes: [docs/security-secrets-and-backups.md](docs/security-secrets-and-backups.md). Quick backups (DB + uploads): `scripts/backup.sh` — always before an upgrade.
+
+## Develop
+
+```bash
+cd src-backend && python manage.py test --settings=workout_challenge.test_settings   # backend suite
+cd src-frontend && npm test && npx eslint src                                        # frontend tests + lint
+```
+
+Backend migrations for `competition`, `workouts` and `custom_user` live in `src-backend/db_migrations/` (outside the runtime data volume so a named volume can't shadow them). CI gates every push on both suites and builds the Docker image + signed APK on release.
 
 ## Changes from the original
 

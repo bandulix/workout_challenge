@@ -54,6 +54,17 @@ jobs:
           DEBUG: "true"
           SECRET_KEY: ci-test-not-a-real-secret-32bytes-min
         run: python manage.py test --settings=workout_challenge.test_settings --top-level-directory=. -v 1
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: src-frontend/package-lock.json
+      - name: Frontend lint + unit tests
+        working-directory: src-frontend
+        # eslint gates on hook-order errors (warnings are reviewed
+        # separately); vitest runs the unit + component suites.
+        run: npm ci && npx eslint src && npx vitest run
 
   autotag:
     # Releases are deliberate. Push/PR only run `test`; cut a release
