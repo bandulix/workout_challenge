@@ -5,20 +5,21 @@ from rest_framework.test import APIClient
 
 from custom_user.models import CustomUser
 
-from custom_user.token_crypto import decrypt_token
-
-from .models import SiteSettings, resolve_llm_settings, resolve_strava_settings
+from .models import (
+    SiteSettings,
+    resolve_email_settings,
+    resolve_llm_settings,
+    resolve_strava_settings,
+)
 
 
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
-    OPENAI_API_KEY="env-key",
-    LLM_MODEL="env-model",
-    STRAVA_CLIENT_ID=111,
-    STRAVA_CLIENT_SECRET="env-strava",
 )
 class SiteSettingsApiTests(TestCase):
-    """DB-over-env resolution and write-only secrets."""
+    """The API exposes only the runtime-editable point factors - staff
+    read/write, everyone else locked out. Integration config (LLM/AI,
+    Strava, Health, SMTP) is env-only and has no API surface."""
 
     def setUp(self):
         for target in (
@@ -44,163 +45,70 @@ class SiteSettingsApiTests(TestCase):
         self.client.force_authenticate(self.user)
         self.assertEqual(self.client.get("/api/site-settings/").status_code, 403)
 
-    def test_admin_reads_masked_secrets(self):
-        solo = SiteSettings.get_solo()
-        solo.llm_api_key = "super-secret-key"
-        solo.save()
+    def test_admin_reads_and_updates_point_factors(self):
         self.client.force_authenticate(self.admin)
         response = self.client.get("/api/site-settings/")
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertNotIn("super-secret-key", str(body))
-        self.assertTrue(body["llm_api_key_masked"].endswith("key") or "*" in body["llm_api_key_masked"])
-        self.assertNotIn("llm_api_key", body)  # write-only
+        self.assertEqual(body["points_sport_factors"], {})
+        # No integration config leaks through the API - it is env-only.
+        for field in (
+            "llm_provider", "llm_api_key", "llm_base_url", "llm_model", "llm_email_model",
+            "strava_client_id", "strava_client_secret", "strava_limit_15min", "strava_limit_day",
+            "health_base_url", "health_public_url", "health_developer_email", "health_developer_password",
+            "email_host", "email_port", "email_host_user", "email_host_password",
+            "email_use_tls", "email_use_ssl", "email_from", "email_reply_to",
+        ):
+            self.assertNotIn(field, body)
 
-    def test_admin_can_update_model_and_blank_secret_keeps_existing(self):
-        solo = SiteSettings.get_solo()
-        solo.llm_api_key = "keep-me"
-        solo.llm_model = "old-model"
-        solo.save()
-        self.client.force_authenticate(self.admin)
-        response = self.client.put("/api/site-settings/", {"llm_model": "new-model"}, format="json")
-        self.assertEqual(response.status_code, 200, response.content)
-        solo.refresh_from_db()
-        self.assertEqual(solo.llm_model, "new-model")
-        self.assertEqual(decrypt_token(solo.llm_api_key), "keep-me")
-        self.assertTrue(solo.llm_api_key.startswith("gAAAA"))
-
-    def test_llm_base_url_rejects_private_http(self):
-        self.client.force_authenticate(self.admin)
         response = self.client.put(
-            "/api/site-settings/",
-            {"llm_base_url": "http://169.254.169.254/latest/meta-data/"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("llm_base_url", response.json())
-
-    def test_health_urls_reject_credentials_and_non_http(self):
-        self.client.force_authenticate(self.admin)
-        bad = self.client.put(
-            "/api/site-settings/",
-            {"health_public_url": "javascript:alert(1)"},
-            format="json",
-        )
-        self.assertEqual(bad.status_code, 400)
-        self.assertIn("health_public_url", bad.json())
-        creds = self.client.put(
-            "/api/site-settings/",
-            {"health_base_url": "https://user:pass@ow.example/"},
-            format="json",
-        )
-        self.assertEqual(creds.status_code, 400)
-        self.assertIn("health_base_url", creds.json())
-
-    def test_health_urls_allow_http_and_https_hosts(self):
-        self.client.force_authenticate(self.admin)
-        response = self.client.put(
-            "/api/site-settings/",
-            {
-                "health_base_url": "http://openwearables:8000",
-                "health_public_url": "https://challenge.example.com/health",
-            },
-            format="json",
+            "/api/site-settings/", {"points_sport_factors": {"Run": 1.5}}, format="json",
         )
         self.assertEqual(response.status_code, 200, response.content)
-        solo = SiteSettings.get_solo()
-        self.assertEqual(solo.health_base_url, "http://openwearables:8000")
-        self.assertEqual(solo.health_public_url, "https://challenge.example.com/health")
+        self.assertEqual(SiteSettings.get_solo().points_sport_factors, {"Run": 1.5})
 
-    def test_resolve_llm_prefers_db_over_env(self):
-        solo = SiteSettings.get_solo()
-        solo.llm_api_key = "db-key"
-        solo.llm_model = "db-model"
-        solo.save()
-        cfg = resolve_llm_settings()
-        self.assertEqual(cfg["api_key"], "db-key")
-        self.assertEqual(cfg["model"], "db-model")
 
-    def test_resolve_llm_falls_back_to_env_when_db_blank(self):
-        SiteSettings.get_solo()  # ensure row
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+    OPENAI_API_KEY="env-key",
+    LLM_PROVIDER="custom",
+    LLM_BASE_URL="https://llm.example.com/v1",
+    LLM_MODEL="env-model",
+    LLM_EMAIL_MODEL="env-email-model",
+    STRAVA_CLIENT_ID=111,
+    STRAVA_CLIENT_SECRET="env-strava",
+    STRAVA_LIMIT_15MIN=222,
+    STRAVA_LIMIT_DAY=333,
+    EMAIL_HOST="smtp.example.com",
+    EMAIL_PORT=587,
+)
+class EnvOnlyResolverTests(TestCase):
+    """The resolvers must answer straight from the environment - no DB
+    row can shadow .env anymore (that was the whole point of removing the
+    overrides)."""
+
+    def test_llm_settings_come_from_env(self):
+        SiteSettings.get_solo()  # a row existing must not matter
         cfg = resolve_llm_settings()
         self.assertEqual(cfg["api_key"], "env-key")
+        self.assertEqual(cfg["base_url"], "https://llm.example.com/v1")
         self.assertEqual(cfg["model"], "env-model")
+        self.assertEqual(cfg["email_model"], "env-email-model")
 
-    def test_resolve_strava_db_over_env(self):
-        solo = SiteSettings.get_solo()
-        solo.strava_client_id = 999
-        solo.strava_client_secret = "db-strava"
-        solo.save()
+    @override_settings(LLM_PROVIDER="MiniMax", LLM_BASE_URL=None, LLM_MODEL=None)
+    def test_llm_provider_preset_fills_base_url_and_model(self):
+        cfg = resolve_llm_settings()
+        self.assertEqual(cfg["base_url"], "https://api.minimax.io/v1")
+        self.assertEqual(cfg["model"], "MiniMax-M3")
+
+    def test_strava_settings_come_from_env(self):
         cfg = resolve_strava_settings()
-        self.assertEqual(cfg["client_id"], 999)
-        self.assertEqual(cfg["client_secret"], "db-strava")
+        self.assertEqual(cfg["client_id"], 111)
+        self.assertEqual(cfg["client_secret"], "env-strava")
+        self.assertEqual(cfg["limit_15min"], 222)
+        self.assertEqual(cfg["limit_day"], 333)
 
-
-class SiteSettingsSecretEncryptionTests(TestCase):
-    """Fernet-at-rest for Site Settings secrets + plaintext compatibility."""
-
-    def setUp(self):
-        for target in (
-            "competition.scorer.trigger_recalc_points",
-            "custom_user.models.verify_email.apply_async",
-        ):
-            patcher = mock.patch(target)
-            self.addCleanup(patcher.stop)
-            patcher.start()
-
-    def test_secrets_encrypted_on_save_and_transparent_to_resolvers(self):
-        solo = SiteSettings.get_solo()
-        solo.llm_api_key = "plain-llm-key"
-        solo.strava_client_secret = "plain-strava-secret"
-        solo.email_host_password = "plain-smtp-pw"
-        solo.health_developer_password = "plain-health-pw"
-        solo.save()
-        solo.refresh_from_db()
-        for field, expected in (
-            ("llm_api_key", "plain-llm-key"),
-            ("strava_client_secret", "plain-strava-secret"),
-            ("email_host_password", "plain-smtp-pw"),
-            ("health_developer_password", "plain-health-pw"),
-        ):
-            stored = getattr(solo, field)
-            self.assertTrue(stored.startswith("gAAAA"), field)
-            self.assertEqual(decrypt_token(stored), expected)
-            self.assertNotEqual(stored, expected)
-        self.assertEqual(resolve_llm_settings()["api_key"], "plain-llm-key")
-        self.assertEqual(resolve_strava_settings()["client_secret"], "plain-strava-secret")
-
-    def test_legacy_plaintext_readable_then_reencrypted(self):
-        solo = SiteSettings.get_solo()
-        # Simulate a pre-encryption row written straight to the column.
-        SiteSettings.objects.filter(pk=solo.pk).update(llm_api_key="legacy-plain")
-        solo.refresh_from_db()
-        self.assertEqual(solo.llm_api_key, "legacy-plain")
-        self.assertEqual(resolve_llm_settings()["api_key"], "legacy-plain")
-        solo.llm_model = "touch"
-        solo.save()
-        solo.refresh_from_db()
-        self.assertTrue(solo.llm_api_key.startswith("gAAAA"))
-        self.assertEqual(decrypt_token(solo.llm_api_key), "legacy-plain")
-
-    def test_blank_secret_in_api_preserves_encrypted_value(self):
-        solo = SiteSettings.get_solo()
-        solo.llm_api_key = "keep-encrypted"
-        solo.save()
-        solo.refresh_from_db()
-        stored = solo.llm_api_key
-        self.assertTrue(stored.startswith("gAAAA"))
-        admin = CustomUser.objects.create_user(
-            email="admin2@example.com", password="test-pw", first_name="Ada", last_name="",
-            is_staff=True, is_superuser=True,
-        )
-        client = APIClient()
-        client.force_authenticate(admin)
-        response = client.put(
-            "/api/site-settings/",
-            {"llm_api_key": "", "llm_model": "after-blank"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 200, response.content)
-        solo.refresh_from_db()
-        self.assertEqual(solo.llm_model, "after-blank")
-        self.assertEqual(solo.llm_api_key, stored)
+    def test_email_settings_come_from_env(self):
+        cfg = resolve_email_settings()
+        self.assertEqual(cfg["host"], "smtp.example.com")
+        self.assertEqual(cfg["port"], 587)

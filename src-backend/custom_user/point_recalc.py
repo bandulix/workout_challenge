@@ -13,10 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 def trigger_recalc_points():
-    last_recalc = cache.get('last_recalc_points', None)
-
-    if last_recalc is None or last_recalc < datetime.datetime.now() - datetime.timedelta(seconds=30):
-        cache.set('last_recalc_points', datetime.datetime.now(), 60 * 10)
+    # cache.add is atomic (Redis SET NX): exactly one caller wins the
+    # 30s window; the old get-then-set could double-enqueue on a race.
+    if cache.add('recalc_points_queued', True, 30):
         eta = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10)
         recalc_points.apply_async(eta=eta)
     else:
@@ -69,9 +68,21 @@ def recalc_points(self):
     # in_bulk: one query for all groups instead of one get() per group.
     goal_map = ActivityGoal.objects.in_bulk({t['goal'] for t in grouped_tasks})
     for task_group in grouped_tasks:
+        # The Scorer accumulates day AND week floor/cap buckets from zero,
+        # so a recap must start at the beginning of the ISO week (local
+        # time) containing the earliest affected workout - starting at the
+        # workout itself would forget the earlier same-day/same-week rows
+        # and hand the edited rows fresh cap room (points too high) or a
+        # misfiring floor (points too low).
+        local = timezone.localtime(task_group['start_datetime'])
+        week_monday = local.date() - datetime.timedelta(days=local.weekday())
+        recap_start = timezone.make_aware(
+            datetime.datetime.combine(week_monday, datetime.time.min),
+            timezone.get_current_timezone(),
+        )
         # select_related: Scorer dereferences points.workout several times
         # per row - without it every row costs an extra SELECT.
-        points_lst = Points.objects.filter(goal=task_group['goal'], workout__user=task_group['user'], workout__start_datetime__gte=task_group['start_datetime']).select_related('workout').order_by('workout__start_datetime')
+        points_lst = Points.objects.filter(goal=task_group['goal'], workout__user=task_group['user'], workout__start_datetime__gte=recap_start).select_related('workout').order_by('workout__start_datetime')
 
         goal = goal_map[task_group['goal']]
 

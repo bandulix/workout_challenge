@@ -7,7 +7,6 @@ from .models import (
     DrillInstructorConfig,
     DrillInstructorMessage,
     DrillInstructorPersona,
-    EchoChallenge,
     LegendEcho,
 )
 
@@ -74,8 +73,3 @@ class DrillInstructorActivityReactAdmin(admin.ModelAdmin):
     search_fields = ("user__email", "user__first_name", "message__body")
 
 
-@admin.register(EchoChallenge)
-class EchoChallengeAdmin(admin.ModelAdmin):
-    list_display = ("echo", "challenger", "status", "window_end", "committed_at")
-    list_filter = ("status",)
-    search_fields = ("echo__title", "challenger__email")

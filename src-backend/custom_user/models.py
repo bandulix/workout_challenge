@@ -70,9 +70,11 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     my_teams = models.ManyToManyField('competition.Team', blank=True, related_name='user')
 
     # personal 7 day goals
-    goal_active_days = models.IntegerField(null=True, blank=True, default=3)
-    goal_workout_minutes = models.IntegerField(null=True, blank=True, default=150)
-    goal_distance = models.IntegerField(null=True, blank=True, default=None)
+    # Personal goals: null = no goal; 0 would divide-by-zero in the weekly
+    # email and the dashboard progress bars.
+    goal_active_days = models.IntegerField(null=True, blank=True, default=3, validators=[MinValueValidator(1)])
+    goal_workout_minutes = models.IntegerField(null=True, blank=True, default=150, validators=[MinValueValidator(1)])
+    goal_distance = models.IntegerField(null=True, blank=True, default=None, validators=[MinValueValidator(1)])
 
     # personal scaling factors
     scaling_kcal = models.DecimalField(null=False, blank=False, default=1, max_digits=8, decimal_places=4, validators=[
@@ -106,7 +108,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     # Apple Health / Google Health Connect linkage via a self-hosted
     # Open Wearables instance (see custom_user/health.py). We store only
-    # the OW user UUID - credentials stay in Site Settings / env.
+    # the OW user UUID - credentials stay in the environment (HEALTH_*).
     health_user_id = models.CharField(max_length=40, null=True, blank=True)
     health_last_synced_at = models.DateTimeField(null=True, blank=True)
 
@@ -277,23 +279,42 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
 @receiver(m2m_changed, sender=CustomUser.my_competitions.through)
 def my_competitions_changed_handler(sender, instance, action, pk_set, **kwargs):
-    if 'post' in action:
+    # clear() sends pk_set=None at pre_clear/post_clear - capture the
+    # membership BEFORE it vanishes, then act after the change. (The old
+    # code crashed on list(None) after the DB change had already happened.)
+    if action == 'pre_clear':
         if isinstance(instance, CustomUser):
+            instance._pre_clear_comp_pks = set(instance.my_competitions.values_list('pk', flat=True))
+        else:
+            instance._pre_clear_user_pks = set(instance.customuser_set.values_list('pk', flat=True))
+        return
+    if 'post' not in action:
+        return
+    if pk_set is None:
+        if isinstance(instance, CustomUser):
+            pk_set = getattr(instance, '_pre_clear_comp_pks', set())
+        else:
+            pk_set = getattr(instance, '_pre_clear_user_pks', set())
+    if isinstance(instance, CustomUser):
+        if 'add' in action:
+            # instance user obj / pk_set comp id to add
+            trigger_user_change(instance=instance, new=False, changes={'my_competitions': (None, list(pk_set))})
+        elif 'remove' in action or 'clear' in action:
+            # instance user obj / pk_set comp id to remove
+            trigger_user_change(instance=instance, new=False, changes={'my_competitions': (list(pk_set), None)})
+    else: # is instance of Competition
+        # Bulk-fetch instead of one SELECT per added user.
+        user_map = {u.pk: u for u in CustomUser.objects.filter(pk__in=pk_set)}
+        for user_id in pk_set:
+            user_obj = user_map.get(user_id)
+            if user_obj is None:
+                continue
             if 'add' in action:
-                # instance user obj / pk_set comp id to add
-                trigger_user_change(instance=instance, new=False, changes={'my_competitions': (None, list(pk_set))})
+                # instance competition obj / pk_set user id to add
+                trigger_user_change(instance=user_obj, new=False, changes={'my_competitions': (None, [instance.pk])})
             elif 'remove' in action or 'clear' in action:
-                # instance user obj / pk_set comp id to remove
-                trigger_user_change(instance=instance, new=False, changes={'my_competitions': (list(pk_set), None)})
-        else: # is instance of Competition
-            for user_id in list(pk_set):
-                user_obj = CustomUser.objects.get(pk=user_id)
-                if 'add' in action:
-                    # instance competition obj / pk_set user id to add
-                    trigger_user_change(instance=user_obj, new=False, changes={'my_competitions': (None, [instance.pk])})
-                elif 'remove' in action or 'clear' in action:
-                    # instance competition obj / pk_set user id to remove
-                    trigger_user_change(instance=user_obj, new=False, changes={'my_competitions': ([instance.pk], None)})
+                # instance competition obj / pk_set user id to remove
+                trigger_user_change(instance=user_obj, new=False, changes={'my_competitions': ([instance.pk], None)})
 
 
 

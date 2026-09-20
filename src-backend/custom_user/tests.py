@@ -1750,6 +1750,33 @@ class SignupPrivacyAndAdminTests(TestCase):
         self.assertFalse(user.is_staff)
         self.assertFalse(user.is_superuser)
 
+    def test_clear_competitions_cleans_points_without_crashing(self):
+        """m2m clear() sends pk_set=None - it used to crash AFTER the
+        relation was cleared, leaving the user's points rows behind."""
+        from competition.models import Competition, Points
+        from workouts.models import Workout
+        import datetime as dt
+        from django.utils import timezone
+
+        user = CustomUser.objects.create_user(
+            email="clear@example.com", password="test-pw", first_name="Cleo", last_name="",
+        )
+        today = timezone.localdate()
+        cup = Competition.objects.create(
+            owner=user, name="Clear Cup",
+            start_date=today - dt.timedelta(days=1), end_date=today + dt.timedelta(days=7),
+        )
+        user.my_competitions.add(cup)
+        Workout.objects.create(
+            user=user, sport_type="Run", start_datetime=timezone.now().replace(microsecond=0),
+            duration=dt.timedelta(minutes=30), intensity_category=2,
+        )
+        self.assertTrue(Points.objects.filter(workout__user=user).exists())
+
+        user.my_competitions.clear()  # must not raise (and must clean up)
+
+        self.assertFalse(Points.objects.filter(workout__user=user, goal__competition=cup).exists())
+
 
 class ClientIpThrottleTests(TestCase):
     def test_loopback_uses_x_real_ip(self):

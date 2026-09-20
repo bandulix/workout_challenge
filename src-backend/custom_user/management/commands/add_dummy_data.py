@@ -1,4 +1,5 @@
-from django.core.management import BaseCommand
+from django.core.management import BaseCommand, CommandError
+from django.conf import settings
 import datetime, random
 from datetime import timedelta
 
@@ -15,6 +16,10 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         """Actual Commandline executed function when manage.py command is called"""
+        # This command creates superusers with the password "password" -
+        # it must never run against a production deployment.
+        if not settings.DEBUG:
+            raise CommandError("add_dummy_data is a development tool and refuses to run with DEBUG=false.")
         test_users = [
             {
                 "email": "user1@admin.local",

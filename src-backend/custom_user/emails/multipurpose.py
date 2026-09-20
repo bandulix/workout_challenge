@@ -12,8 +12,8 @@ from django.test.utils import override_settings
 def _effective_email_settings():
     """Resolve the SMTP settings to apply for the next email send.
 
-    Reads from SiteSettings (DB) with env-var fallback, so admins can
-    change the SMTP server at runtime without restarting workers.
+    Reads the environment (EMAIL_*); there is intentionally no DB
+    override - a container recreate applies SMTP changes.
     """
     from site_settings.models import resolve_email_settings
     cfg = resolve_email_settings()

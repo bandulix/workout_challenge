@@ -90,7 +90,7 @@ def send_all_log_workouts_email():
         eta = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10)
         for user_obj in user_lst:
             result = log_workouts_email.apply_async(args=[user_obj.pk], eta=eta)
-            task_log.append({"pk": user_obj.pk, "username": user_obj.username, "email": user_obj.email, "task_id": result.task_id, "eta": eta.isoformat()})
+            task_log.append({"pk": user_obj.pk, "task_id": result.task_id, "eta": eta.isoformat()})
             eta += datetime.timedelta(seconds=eta_steps)
     return task_log
 
@@ -128,7 +128,7 @@ def send_all_competition_start_email():
             eta_steps = max(min((60 * 60) // len(user_lst), 60), 10)
             for user_obj in user_lst:
                 result = competition_start_email.apply_async(args=[competition_obj.pk, user_obj.pk], eta=eta)
-                task_log.append({"user_pk": user_obj.pk, "username": user_obj.username, "email": user_obj.email, "competition_pk": competition_obj.pk, "competition_name": competition_obj.name, "task_id": result.task_id, "eta": eta.isoformat()})
+                task_log.append({"user_pk": user_obj.pk, "competition_pk": competition_obj.pk, "task_id": result.task_id, "eta": eta.isoformat()})
                 eta += datetime.timedelta(seconds=eta_steps)
     return task_log
 
@@ -171,12 +171,25 @@ def send_all_leaderboard_emails():
         eta = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10)
         for user_obj in user_lst:
             result = leaderboard_email.apply_async(args=[user_obj.pk], eta=eta)
-            task_log.append({"pk": user_obj.pk, "username": user_obj.username, "email": user_obj.email, "task_id": result.task_id, "eta": eta.isoformat()})
+            task_log.append({"pk": user_obj.pk, "task_id": result.task_id, "eta": eta.isoformat()})
             eta += datetime.timedelta(seconds=eta_steps)
     return task_log
 
 
 @app.task()
+def _competition_stats_cached(competition, last_seven_days):
+    """Stats snapshot per (competition, window) keyed on the stats
+    generation - the Monday sweep used to recompute the identical
+    snapshot twice per recipient per competition."""
+    generation = cache.get(f"stats-generation:{competition.pk}", 0)
+    key = f"competition-stats-mail:{competition.pk}:{int(last_seven_days)}:gen{generation}"
+    data = cache.get(key)
+    if data is None:
+        data = get_competition_stats(competition.pk, last_seven_days=last_seven_days)
+        cache.set(key, data, 600)
+    return data
+
+
 def leaderboard_email(user_pk):
     """Email to send users their leaderboard."""
     user = _user(user_pk)
@@ -187,12 +200,12 @@ def leaderboard_email(user_pk):
     competition_all_data = []
     competition_7d_data = []
     for competition in user.my_competitions.filter(start_date__lte=timezone.localdate(), end_date__gte=timezone.localdate()).order_by("-start_date"):
-        competition_all_stats = get_competition_stats(competition.pk)
+        competition_all_stats = _competition_stats_cached(competition, False)
         competition_all_data.append({
             "competition": competition_all_stats["competition"],
             "leaderboard": competition_all_stats["leaderboard"],
         })
-        competition_7d_stats = get_competition_stats(competition.pk, last_seven_days=True)
+        competition_7d_stats = _competition_stats_cached(competition, True)
         competition_7d_data.append({
             "competition": competition_7d_stats["competition"],
             "leaderboard": competition_7d_stats["leaderboard"],
@@ -221,7 +234,7 @@ def send_all_weekly_emails():
         eta = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10)
         for user_obj in user_lst:
             result = weekly_email.apply_async(args=[user_obj.pk], eta=eta)
-            task_log.append({"pk": user_obj.pk, "username": user_obj.username, "email": user_obj.email, "task_id": result.task_id, "eta": eta.isoformat()})
+            task_log.append({"pk": user_obj.pk, "task_id": result.task_id, "eta": eta.isoformat()})
             eta += datetime.timedelta(seconds=eta_steps)
     return task_log
 
@@ -340,10 +353,12 @@ def weekly_email(user_pk):
     extra = {
         "calendar": calendar,
         "week_streak": week_streak,
+        # Falsy guard (None/""/0): a zero goal would divide-by-zero here;
+        # the API rejects 0, but legacy rows and direct edits predate that.
         "goals": {
-            "active_days": None if user.goal_active_days is None or user.goal_active_days == "" else {"recorded": recorded_distinct_days, "target": user.goal_active_days, "percent": min(1, recorded_distinct_days / user.goal_active_days) * 100, "percent_vml": int(min(1, recorded_distinct_days / user.goal_active_days) * 100 * 2.5)},
-            "distance": None if user.goal_distance is None or user.goal_distance == "" else {"recorded": recorded_total_distance, "target": user.goal_distance, "percent": min(1, recorded_total_distance / user.goal_distance) * 100, "percent_vml": int(min(1, recorded_total_distance / user.goal_distance) * 100 * 2.5)},
-            "minutes": None if user.goal_workout_minutes is None or user.goal_workout_minutes == "" else {"recorded": recorded_total_duration, "target": user.goal_workout_minutes, "percent": min(1, recorded_total_duration / user.goal_workout_minutes) * 100, "percent_vml": int(min(1, recorded_total_duration / user.goal_workout_minutes) * 100 * 2.5)},
+            "active_days": None if not user.goal_active_days else {"recorded": recorded_distinct_days, "target": user.goal_active_days, "percent": min(1, recorded_distinct_days / user.goal_active_days) * 100, "percent_vml": int(min(1, recorded_distinct_days / user.goal_active_days) * 100 * 2.5)},
+            "distance": None if not user.goal_distance else {"recorded": recorded_total_distance, "target": user.goal_distance, "percent": min(1, recorded_total_distance / user.goal_distance) * 100, "percent_vml": int(min(1, recorded_total_distance / user.goal_distance) * 100 * 2.5)},
+            "minutes": None if not user.goal_workout_minutes else {"recorded": recorded_total_duration, "target": user.goal_workout_minutes, "percent": min(1, recorded_total_duration / user.goal_workout_minutes) * 100, "percent_vml": int(min(1, recorded_total_duration / user.goal_workout_minutes) * 100 * 2.5)},
         },
         "openai_quote": todays_ai_quote,
     }

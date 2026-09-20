@@ -1,21 +1,18 @@
 import datetime
 import logging
-import mimetypes
 import requests
 
 logger = logging.getLogger(__name__)
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import BasePermission, SAFE_METHODS, AllowAny
+from rest_framework.permissions import BasePermission, AllowAny
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.throttling import BaseThrottle
 from .throttles import client_ip, ClientIPScopedThrottle
 from django.db.models import Q
-from django.http import FileResponse, Http404, HttpResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from celery.exceptions import TimeoutError
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
@@ -55,33 +52,6 @@ def _blacklist_user_tokens(user):
         # (delete / unlink) still succeeds - the short access-token
         # lifetime is the next line of defence.
         pass
-
-class IsOwnerOrReadOnly(BasePermission):
-    """ Permission class to only allow admins and owner to edit or delete entry """
-    def has_permission(self, request, view):
-        # Only authenticated users
-        if request.user.is_authenticated:
-            return True
-        return False
-
-    def has_object_permission(self, request, view, obj):
-        # Read requests always allowed
-        if request.method in SAFE_METHODS:
-            return True  # allow GET, HEAD, OPTIONS (GET is filtered at viweset level to only show allowed entries)
-        # Only workout user can edit workout
-        if hasattr(obj, 'user') and obj.user == request.user:
-            return True
-        # Only owner of competition can modify
-        elif hasattr(obj, 'owner') and obj.owner == request.user:
-            return True
-        # Only owner can modify goals and awards
-        elif hasattr(obj, 'competition') and hasattr(obj.competition, 'owner') and obj.competition.owner == request.user:
-            return True
-        # If admin allow all requests
-        if bool(request.user and request.user.is_staff):
-            return True
-        return False
-
 
 class UserPermissionClass(BasePermission):
     """ Allow unauthenticated users to POST data - i.e. for registration.
@@ -321,6 +291,9 @@ class StravaStateView(APIView):
 
 
 class LinkStravaView(APIView):
+    # Expensive outbound OAuth/SSO calls get their own tighter bucket.
+    throttle_classes = [ClientIPScopedThrottle]
+    throttle_scope = 'provider_link'
     """ API post view for users to link with Strava. """
     permission_classes = [IsAuthenticated]
 
@@ -412,22 +385,16 @@ class LinkStravaView(APIView):
         if user.get_activity_source() != 'strava':
             return Response({"message": "Successfully linked Strava. Garmin is currently your activity source, so no Strava activities were imported - you can switch the source in the personal settings."}, status=status.HTTP_200_OK)
 
+        # Fire-and-forget: the initial import runs in celery (a .get() here
+        # blocked the web worker for up to 100s). The frontend picks up new
+        # activities on its regular polls.
         try:
-            running_task = sync_strava.delay(user__id=user.id, start_datetime=datetime.datetime.now() - datetime.timedelta(days=43))
-            try:
-                running_task.get(timeout=100)
-            except TimeoutError:
-                logger.info('Strava sync task still running (%s); returning without waiting', running_task.id)
-        except requests.exceptions.HTTPError as err:
-            if '401 Client Error: Unauthorized' in str(err):
-                return Response({'message': 'Access to activities denied by Strava. Not sufficient permissions to download activities.'}, status=status.HTTP_403_FORBIDDEN)
-            else:
-                return Response({'message': 'Failed to import Strava activities. Please try again later.'}, status=status.HTTP_502_BAD_GATEWAY)
+            sync_strava.delay(user__id=user.id, start_datetime=datetime.datetime.now() - datetime.timedelta(days=43))
         except Exception:
-            # Any other failure in the sync task (or reaching the worker)
-            # must not surface as a 500 HTML page - the frontend expects
-            # JSON and would otherwise show a bare "parsing error".
-            logger.exception("Strava activity import failed unexpectedly for user %s", user.id)
+            # A failure reaching the worker must not surface as a 500 HTML
+            # page - the frontend expects JSON and would otherwise show a
+            # bare "parsing error".
+            logger.exception("Strava activity import could not be queued for user %s", user.id)
             return Response({'message': 'Strava was linked, but the workout import failed. Please try the sync again later.'}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response({"message": "Successfully linked Strava."}, status=status.HTTP_200_OK)
@@ -488,13 +455,25 @@ class SyncStravaView(APIView):
         if user.get_activity_source() != 'strava':
             return Response({"message": "Garmin is your selected activity source - Strava import is disabled so activities don't get doubled. You can switch the source in the personal settings."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if user.strava_last_synced_at is None or user.strava_last_synced_at == '' or user.strava_last_synced_at < (timezone.now() - datetime.timedelta(minutes=59)):
-            sync_strava(user__id=user.id)
-            return Response({"message": f"Successfully synced Strava."}, status=status.HTTP_200_OK)
+        # Cooldown + stamp under a row lock (two parallel taps used to
+        # both pass the check and launch two full syncs), then hand the
+        # work to celery - a multi-minute Strava import must not pin a
+        # web worker.
+        from django.db import transaction
+        with transaction.atomic():
+            locked = type(user).objects.select_for_update().get(pk=user.pk)
+            if locked.strava_last_synced_at and locked.strava_last_synced_at > (timezone.now() - datetime.timedelta(minutes=59)):
+                return Response({"message": "Too many requests! You can only request a Strava sync every 60 minutes."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            locked.strava_last_synced_at = timezone.now()
+            locked.save(update_fields=["strava_last_synced_at"])
 
-        return Response({"message": "Too many requests! You can only request a Strava sync every 60 minutes."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        sync_strava.delay(user__id=user.id)
+        return Response({"message": "Strava sync started - new activities appear within a minute or two."}, status=status.HTTP_202_ACCEPTED)
 
 class LinkGarminView(APIView):
+    # Expensive outbound OAuth/SSO calls get their own tighter bucket.
+    throttle_classes = [ClientIPScopedThrottle]
+    throttle_scope = 'provider_link'
     """Link the user's Garmin Connect account.
 
     The password is used once to obtain OAuth tokens and is never
@@ -578,7 +557,7 @@ class SyncGarminView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from .garmin import GarminAuthError, GarminUnavailableError, sync_garmin
+        from .garmin import sync_garmin
 
         user = request.user
         if not user.garmin_tokens_enc:
@@ -588,26 +567,27 @@ class SyncGarminView(APIView):
             return Response({"message": "Strava is your selected activity source - Garmin import is disabled so activities don't get doubled. You can switch the source in the personal settings."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        if user.garmin_last_synced_at and user.garmin_last_synced_at > (timezone.now() - datetime.timedelta(minutes=59)):
-            return Response({"message": "Too many requests! You can only request a Garmin sync every 60 minutes."},
-                            status=status.HTTP_429_TOO_MANY_REQUESTS)
+        # Cooldown + stamp under a row lock, then celery - the Garmin
+        # import runs several seconds of blocking SSO/API calls that must
+        # not pin a web worker.
+        from django.db import transaction
+        with transaction.atomic():
+            locked = type(user).objects.select_for_update().get(pk=user.pk)
+            if locked.garmin_last_synced_at and locked.garmin_last_synced_at > (timezone.now() - datetime.timedelta(minutes=59)):
+                return Response({"message": "Too many requests! You can only request a Garmin sync every 60 minutes."},
+                                status=status.HTTP_429_TOO_MANY_REQUESTS)
+            locked.garmin_last_synced_at = timezone.now()
+            locked.save(update_fields=["garmin_last_synced_at"])
 
-        try:
-            result = sync_garmin(user__id=user.id, days_back=14)
-        except GarminAuthError:
-            logger.info("Garmin auth error during sync for user %s", user.pk, exc_info=True)
-            return Response({"message": "Garmin rejected the stored login - please re-link Garmin Connect."},
-                            status=status.HTTP_400_BAD_REQUEST)
-        except GarminUnavailableError:
-            logger.info("Garmin unavailable during sync for user %s", user.pk, exc_info=True)
-            return Response({"message": "Could not reach Garmin - please try again later."},
-                            status=status.HTTP_502_BAD_GATEWAY)
-
-        return Response({"message": f"Successfully synced Garmin ({result.get('created', 0)} new activities)."},
-                        status=status.HTTP_200_OK)
+        sync_garmin.delay(user__id=user.id, days_back=14)
+        return Response({"message": "Garmin sync started - new activities appear within a minute or two. (If your login expired, the app will ask you to re-link.)"},
+                        status=status.HTTP_202_ACCEPTED)
 
 
 class LinkHealthView(APIView):
+    # Expensive outbound OAuth/SSO calls get their own tighter bucket.
+    throttle_classes = [ClientIPScopedThrottle]
+    throttle_scope = 'provider_link'
     """Link the user to the Open Wearables instance (Apple/Google Health).
 
     Creates the OW user on first call and always returns a fresh
@@ -629,7 +609,7 @@ class LinkHealthView(APIView):
         try:
             invitation = generate_invitation(user)
         except HealthConfigError:
-            return Response({"message": "The Health connector is not configured on this server (Site Settings -> Health)."},
+            return Response({"message": "The Health connector is not configured on this server."},
                             status=status.HTTP_503_SERVICE_UNAVAILABLE)
         except HealthUnavailableError:
             logger.info("Open Wearables unreachable during health link for user %s", user.pk, exc_info=True)

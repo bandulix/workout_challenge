@@ -49,13 +49,18 @@ class CompetitionViewSet(viewsets.ModelViewSet):
         competition = self.get_object()
         if competition.owner_id != request.user.id and not request.user.is_staff:
             raise PermissionDenied("Only the owner can rotate the join code.")
+        # Retry only on a code collision - a swallowed real DB error would
+        # otherwise return a "successful" 200 with the old code intact.
+        from django.db import IntegrityError
         for _ in range(8):
             competition.join_code = generate_join_code()
             try:
                 competition.save(update_fields=["join_code"])
                 break
-            except Exception:
+            except IntegrityError:
                 continue
+        else:
+            raise IntegrityError("Could not allocate a fresh join code after 8 attempts.")
         return Response(CompetitionSerializer(competition, context={"request": request}).data)
 
 
@@ -127,6 +132,24 @@ class PointsViewSet(viewsets.ReadOnlyModelViewSet):
         # return all points the user is owner of, a participant of, or of his/her own workouts
         #time.sleep(3)  # throttle for testing
         return Points.objects.filter(Q(goal__competition__owner=self.request.user) | Q(goal__competition__user=self.request.user) | Q(workout__user=self.request.user)).distinct().order_by('-workout__start_datetime', '-workout__duration', '-workout', '-workout__user')
+
+    def list(self, request, *args, **kwargs):
+        # Bounded like the workout list: unbounded, this returned every
+        # Points row of every challenge the user touches (six figures over
+        # a season) as one JSON array.
+        queryset = self.filter_queryset(self.get_queryset())
+        limit_raw = request.query_params.get("limit")
+        offset_raw = request.query_params.get("offset")
+        try:
+            offset = max(0, int(offset_raw or 0))
+        except (TypeError, ValueError):
+            offset = 0
+        try:
+            limit = max(1, min(int(limit_raw), 500)) if limit_raw is not None else 100
+        except (TypeError, ValueError):
+            limit = 100
+        serializer = self.get_serializer(queryset[offset:offset + limit], many=True)
+        return Response(serializer.data)
 
 
 class StatsPermissions(BasePermission):
@@ -225,7 +248,7 @@ class CeleryQueryView(APIView):
         "drill_instructor.tasks.post_inactivity_nudges",
         "drill_instructor.tasks.post_random_pushes",
         "drill_instructor.tasks.apply_weekly_persona_votes",
-        "drill_instructor.tasks.resolve_echo_windows",
+        "drill_instructor.tasks.immortalize_finished_echoes",
         "custom_user.emails.celery_emails.send_all_log_workouts_email",
         "custom_user.emails.celery_emails.send_all_leaderboard_emails",
         "custom_user.emails.celery_emails.send_all_weekly_emails",

@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.core.validators import MinLengthValidator, RegexValidator
+from django.core.validators import MinLengthValidator, RegexValidator, MinValueValidator
 from django.core.exceptions import ValidationError
 
 from workouts.models import Workout, SPORT_TYPE_GROUPS, SPORT_TYPES
@@ -150,7 +150,10 @@ class ActivityGoal(models.Model):
     name = models.CharField(null=False, max_length=60)
 
     metric = models.CharField(null=False, max_length=4, choices=COMPETITION_METRCIS)
-    goal = models.DecimalField(null=False, max_digits=10, decimal_places=2)
+    # goal must be > 0: the scorer divides by it for every workout; a 0
+    # goal poisons scoring for the whole competition (ZeroDivisionError).
+    goal = models.DecimalField(null=False, max_digits=10, decimal_places=2,
+                               validators=[MinValueValidator(Decimal("0.01"))])
     period = models.CharField(null=False, max_length=12, default='day', choices=POINT_REF_PERIODS)
 
     count_steps_as_walks = models.BooleanField(default=True)
@@ -161,6 +164,27 @@ class ActivityGoal(models.Model):
     max_per_day = models.DecimalField(null=True, blank=True, max_digits=10, decimal_places=2)
     min_per_week = models.DecimalField(null=True, blank=True, max_digits=10, decimal_places=2)
     max_per_week = models.DecimalField(null=True, blank=True, max_digits=10, decimal_places=2)
+
+    def clean(self):
+        super().clean()
+        # A min above its max would make the floor/cap math self-
+        # contradictory (and the recalc quietly wrong).
+        for lo, hi in (
+            ("min_per_workout", "max_per_workout"),
+            ("min_per_day", "max_per_day"),
+            ("min_per_week", "max_per_week"),
+        ):
+            lo_v = getattr(self, lo)
+            hi_v = getattr(self, hi)
+            if lo_v is not None and hi_v is not None and lo_v > hi_v:
+                raise ValidationError({hi: "Must not be below the matching minimum."})
+
+    class Meta:
+        constraints = [
+            # DB backstop: scoring divides by goal; a zero/negative goal
+            # poisons the whole competition's points.
+            models.CheckConstraint(condition=models.Q(goal__gt=0), name="activitygoal_goal_positive"),
+        ]
 
     def __str__(self):
         """str print-out of model entry"""
@@ -210,6 +234,15 @@ class Award(models.Model):
     threshold = models.DecimalField(null=False, max_digits=10, decimal_places=2)
     period = models.CharField(null=False, max_length=12, default='day', choices=POINT_REF_PERIODS)
     reward_points = models.IntegerField(null=False)
+
+    class Meta:
+        constraints = [
+            # Bonus awards are get_or_create'd by (competition, name) on
+            # the hot photo/order path - without this, concurrent first
+            # posts could double-create and every later get_or_create
+            # would raise MultipleObjectsReturned.
+            models.UniqueConstraint(fields=["competition", "name"], name="unique_award_per_competition"),
+        ]
 
     def __str__(self):
         """str print-out of model entry"""

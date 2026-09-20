@@ -70,7 +70,7 @@ SPORT_TYPES = [
     ('VirtualRow', 'Rowing (Virtual)'),
     ('Run', 'Run'),
     ('TrailRun', 'Run (Trail)'),
-    ('VirtualRun', 'Run (Treadmill / Vitual)'),
+    ('VirtualRun', 'Run (Treadmill / Virtual)'),
     ('Volleyball', 'Volleyball'),
     ('Sail', 'Sail'),
     ('Skateboard', 'Skateboard'),
@@ -191,7 +191,8 @@ class Workout(models.Model):
 
     @property
     def duration_seconds(self):
-        return self.duration.seconds
+        # total_seconds: .seconds drops whole days (a 24h workout read as 0).
+        return self.duration.total_seconds()
 
     class Meta:
         indexes = [

@@ -119,6 +119,23 @@ class WorkoutApiTests(TestCase):
         page = self.client.get("/api/workout/?limit=2").json()
         self.assertEqual(len(page), 2)
 
+    def test_list_offset_pages_the_history(self):
+        # The dashboard history modal pages older workouts via offset.
+        self.client.force_authenticate(self.user)
+        ids = []
+        for i in range(5):
+            ids.append(Workout.objects.create(
+                user=self.user, sport_type="Run",
+                start_datetime=timezone.now() - datetime.timedelta(hours=i),
+                duration=datetime.timedelta(minutes=10), intensity_category=2,
+            ).id)
+        first = self.client.get("/api/workout/?limit=2").json()
+        second = self.client.get("/api/workout/?limit=2&offset=2").json()
+        self.assertEqual([w["id"] for w in first], ids[:2])
+        self.assertEqual([w["id"] for w in second], ids[2:4])
+        # A bad offset is ignored, not a 500.
+        self.assertEqual(self.client.get("/api/workout/?offset=banana").status_code, 200)
+
     def test_negative_duration_rejected(self):
         self.client.force_authenticate(self.user)
         response = self.client.post(
@@ -138,6 +155,105 @@ class WorkoutApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("steps", response.json())
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class WorkoutSummaryApiTests(TestCase):
+    """GET /api/workout/summary/ feeds the dashboard's lifetime counts,
+    30-day aggregates and week streak. The list endpoint caps at 100
+    rows, so these numbers must come from the server - the dashboard
+    used to compute them from the latest 40 loaded workouts."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "drill_instructor.tasks.post_workout_comment.delay",
+            "custom_user.models.verify_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            email="summary@example.com", password="test-pw", first_name="Sam", last_name="",
+        )
+        self.other = CustomUser.objects.create_user(
+            email="other@example.com", password="test-pw", first_name="Olive", last_name="",
+        )
+
+    def _workout(self, days_ago, **overrides):
+        # Noon UTC keeps the local-day bucket stable for any plausible
+        # server timezone.
+        midday = timezone.now().replace(hour=12, minute=0, second=0, microsecond=0)
+        fields = dict(
+            user=self.user,
+            sport_type="Yoga",
+            start_datetime=midday - datetime.timedelta(days=days_ago),
+            duration=datetime.timedelta(minutes=30),
+            intensity_category=1,
+            kcal=100,
+        )
+        fields.update(overrides)
+        return Workout.objects.create(**fields)
+
+    def test_anonymous_gets_401(self):
+        self.assertEqual(self.client.get("/api/workout/summary/").status_code, 401)
+
+    def test_summary_counts_and_aggregates(self):
+        self._workout(0)                                                    # today
+        self._workout(3, sport_type="Run", duration=datetime.timedelta(minutes=60), kcal=300, distance=10)
+        self._workout(40, kcal=50)                                          # outside the 30-day window
+        self._workout(0, sport_type="Steps", steps=5000)                    # excluded everywhere
+        self._workout(1, user=self.other)                                   # someone else's
+
+        self.client.force_authenticate(self.user)
+        data = self.client.get("/api/workout/summary/").json()
+
+        # Steps and other users are excluded from the lifetime count.
+        self.assertEqual(data["total_count"], 3)
+        self.assertEqual(data["by_sport"][0], ["Yoga", 2])
+        self.assertEqual(dict(data["by_sport"]), {"Yoga": 2, "Run": 1})
+
+        # 30-day window: today + 3 days ago (not the 40-day-old one).
+        self.assertEqual(data["d30"]["workouts"], 2)
+        self.assertEqual(data["d30"]["active_days"], 2)
+        self.assertEqual(data["d30"]["kcal"], 400)
+        self.assertEqual(data["d30"]["distance"], 10.0)
+        self.assertEqual(data["d30"]["seconds"], 90 * 60)
+
+        # 7-day window covers both recent workouts as well.
+        self.assertEqual(data["d7"]["active_days"], 2)
+        self.assertEqual(data["d7"]["seconds"], 90 * 60)
+        self.assertEqual(data["d7"]["distance"], 10.0)
+
+        # This week: today's session always lands here; the 3-day-old
+        # one only does when it is still inside the current Mon-Sun week.
+        today = timezone.localdate()
+        this_monday = today - datetime.timedelta(days=today.weekday())
+        same_week = (today - datetime.timedelta(days=3)) >= this_monday
+        expected_days = {today.weekday()}
+        if same_week:
+            expected_days.add((today - datetime.timedelta(days=3)).weekday())
+        self.assertEqual(data["week"]["days"], sorted(expected_days))
+        self.assertEqual(data["week"]["seconds"], (90 if same_week else 30) * 60)
+
+    def test_streak_counts_consecutive_weeks(self):
+        self.client.force_authenticate(self.user)
+        self.assertEqual(self.client.get("/api/workout/summary/").json()["streak_weeks"], 0)
+
+        self._workout(7)   # last week
+        self._workout(14)  # the week before
+        # Current week still empty - the streak survives on last week.
+        self.assertEqual(self.client.get("/api/workout/summary/").json()["streak_weeks"], 2)
+
+        self._workout(0)   # this week
+        self.assertEqual(self.client.get("/api/workout/summary/").json()["streak_weeks"], 3)
+
+        self._workout(28)  # trained 4 weeks ago, but week 3 was a gap
+        self.assertEqual(self.client.get("/api/workout/summary/").json()["streak_weeks"], 3)
 
 
 @override_settings(

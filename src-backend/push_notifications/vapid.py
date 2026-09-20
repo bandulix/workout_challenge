@@ -5,8 +5,8 @@ Resolution order:
      for production - generate once with ``openssl`` or ``py_vapid``).
   2. A persisted keypair in ``DATA_DIR/vapid.json`` (auto-generated on
      first startup and reused across restarts). The private key is
-     Fernet-encrypted at rest (same helpers as Site Settings / OAuth
-     tokens); plaintext legacy files are upgraded on the next write.
+     Fernet-encrypted at rest (same helpers as the OAuth tokens);
+     plaintext legacy files are upgraded on the next write.
   3. A freshly-generated keypair (development only).
 
 The public key is safe to expose; the private key stays on the server.

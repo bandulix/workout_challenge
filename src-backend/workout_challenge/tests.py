@@ -266,6 +266,88 @@ class SportPointsFactorTests(TestCase):
         self.assertTrue(all(v == 1.0 for v in factors.values()))
 
 
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class WorkoutDeleteWithBonusTests(TestCase):
+    """Deleting a workout that earned a photo/order bonus must not crash:
+    award-backed Points rows carry goal=None, and RecalcRequest.goal is
+    NOT NULL. Regression test for the IntegrityError that made such
+    workouts undeletable."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.verify_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.user = CustomUser.objects.create_user(
+            email="bonus@example.com", password="Sup3r-Secret!Pass", first_name="Bo",
+        )
+
+    def test_delete_workout_with_photo_bonus_succeeds(self):
+        import datetime as dt
+        from django.utils import timezone
+        from competition.models import Competition, Points
+        from competition.scorer import grant_photo_bonus
+        from custom_user.models import RecalcRequest
+        from workouts.models import Workout
+
+        today = timezone.localdate()
+        competition = Competition.objects.create(
+            owner=self.user, name="Bonus Cup",
+            start_date=today - dt.timedelta(days=1), end_date=today + dt.timedelta(days=7),
+        )
+        workout = Workout.objects.create(
+            user=self.user, sport_type="Run",
+            start_datetime=timezone.now().replace(microsecond=0),
+            duration=dt.timedelta(minutes=30), intensity_category=2,
+        )
+        grant_photo_bonus(workout, competition)
+        goal_rows = Points.objects.filter(workout=workout).exclude(goal=None).count()
+        self.assertGreaterEqual(goal_rows, 1)
+        self.assertTrue(Points.objects.filter(workout=workout, goal=None).exists())
+
+        workout.delete()  # must not raise IntegrityError
+
+        self.assertFalse(Points.objects.filter(workout_id=workout.id).exists())
+        # No recap request may ever carry goal=None (that was the crash).
+        self.assertTrue(RecalcRequest.objects.filter(user=self.user).exists())
+        self.assertFalse(RecalcRequest.objects.filter(goal=None).exists())
+
+
+class BeatScheduleParityTests(TestCase):
+    """The DatabaseScheduler reads PeriodicTask rows, not celery.py's
+    beat_schedule dict - but the dict is the documentation. A renamed
+    task without a matching row update silently kills the job."""
+
+    # PeriodicTasks seeded by migrations (others are operator-managed).
+    SEEDED = [
+        "health_sync",
+        "drill_instructor_inactivity_nudge",
+        "drill_instructor_random_push",
+        "drill_instructor_weekly_coach_vote",
+        "drill_instructor_echo_windows",
+        "drill_instructor_daily_order",
+        "drill_instructor_close_order",
+        "drill_instructor_assign_dunce",
+    ]
+
+    def test_seeded_rows_exist_enabled_and_match_static_schedule(self):
+        from django_celery_beat.models import PeriodicTask
+        from workout_challenge.celery import app
+        schedule = app.conf.beat_schedule
+        for name in self.SEEDED:
+            row = PeriodicTask.objects.filter(name=name).first()
+            self.assertIsNotNone(row, f"{name}: PeriodicTask row missing")
+            self.assertTrue(row.enabled, f"{name}: row disabled")
+            entry = schedule.get(name)
+            self.assertIsNotNone(entry, f"{name}: not documented in beat_schedule")
+            self.assertEqual(row.task, entry["task"], f"{name}: task path drifted")
+
+
 # DRF throttling reads the Django cache - LocMem so tests need no Redis.
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},

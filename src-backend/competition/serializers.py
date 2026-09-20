@@ -10,11 +10,12 @@ class CompetitionSerializer(serializers.ModelSerializer):
     )
     user_info = serializers.SerializerMethodField()
     goals = serializers.SerializerMethodField()
+    my_rank_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = Competition
-        fields = ['id', 'owner', 'user', 'user_info', 'name', 'start_date', 'start_date_fmt', 'start_date_epoch', 'end_date', 'end_date_fmt', 'end_date_epoch', 'has_teams', 'organizer_assigns_teams', 'join_code', 'goals']
-        read_only_fields = ['join_code', 'user', 'user_info', 'goals']
+        fields = ['id', 'owner', 'user', 'user_info', 'name', 'start_date', 'start_date_fmt', 'start_date_epoch', 'end_date', 'end_date_fmt', 'end_date_epoch', 'has_teams', 'organizer_assigns_teams', 'join_code', 'goals', 'my_rank_summary']
+        read_only_fields = ['join_code', 'user', 'user_info', 'goals', 'my_rank_summary']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -44,6 +45,27 @@ class CompetitionSerializer(serializers.ModelSerializer):
 
     def get_goals(self, obj):
         return ActivityGoalSerializer(obj.activitygoal_set.all(), many=True).data
+
+    def get_my_rank_summary(self, obj):
+        """Rank/team-rank chip for the dashboard row - same generation-
+        keyed cache entry as the stats summary endpoint, so the list and
+        the detail view share computations (and the dashboard needs no
+        per-row poller)."""
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return None
+        from django.core.cache import cache
+        generation = cache.get(f"stats-generation:{obj.pk}", 0)
+        cache_key = f"competition-summary:{obj.pk}:{user.id}:gen{generation}"
+        payload = cache.get(cache_key)
+        if payload is None:
+            from .stats import get_competition_rank_summary
+            payload = get_competition_rank_summary(obj.pk, user.id)
+            if payload is None:
+                return None
+            cache.set(cache_key, payload, 30)
+        return payload
 
 
 class TeamSerializer(serializers.ModelSerializer):
@@ -77,6 +99,23 @@ class ActivityGoalSerializer(serializers.ModelSerializer):
     class Meta:
         model = ActivityGoal
         fields = '__all__'
+
+    def validate(self, attrs):
+        # Model field validators (goal > 0) run automatically; the
+        # min<=max pair check needs the merged row, so do it here.
+        merged = {**{f: getattr(self.instance, f, None) for f in (
+            "min_per_workout", "max_per_workout", "min_per_day", "max_per_day",
+            "min_per_week", "max_per_week")}, **attrs} if self.instance else attrs
+        for lo, hi in (
+            ("min_per_workout", "max_per_workout"),
+            ("min_per_day", "max_per_day"),
+            ("min_per_week", "max_per_week"),
+        ):
+            lo_v = merged.get(lo)
+            hi_v = merged.get(hi)
+            if lo_v is not None and hi_v is not None and lo_v > hi_v:
+                raise serializers.ValidationError({hi: "Must not be below the matching minimum."})
+        return attrs
 
     def update(self, instance, validated_data):
         # Moving a goal onto another competition would let an owner

@@ -154,36 +154,44 @@ def ballot_payload_for_request(config, request):
 
 def apply_persona_votes(config, now=None):
     """Tally one challenge. Returns a result dict. Votes always reset."""
+    from django.db import transaction
     from .models import DrillInstructorMessage, DrillInstructorPersona, DrillInstructorPersonaVote
     from .tasks import _post_coach_line
 
     now = now or timezone.now()
-    incumbent_id = config.persona_id
-    tallies = list(
-        DrillInstructorPersonaVote.objects.filter(config=config)
-        .values("persona")
-        .annotate(n=Count("id"))
-        .order_by("-n", "persona")
-    )
-    winner_id = pick_winner(tallies, incumbent_id)
-    switched = winner_id != incumbent_id
-    result = {
-        "config": config.id,
-        "switched": switched,
-        "winner": winner_id,
-        "votes": {row["persona"]: row["n"] for row in tallies},
-    }
-    logger.info(
-        "Weekly coach vote config=%s incumbent=%s winner=%s switched=%s votes=%s",
-        config.id, incumbent_id, winner_id, switched, result["votes"],
-    )
+    # One lock for tally + switch + reset: a vote cast mid-handover is
+    # either counted or lands after the reset - never silently discarded.
+    # (The vote endpoint takes the same config-row lock when casting.)
+    with transaction.atomic():
+        config = type(config).objects.select_for_update().get(pk=config.pk)
+        incumbent_id = config.persona_id
+        tallies = list(
+            DrillInstructorPersonaVote.objects.filter(config=config)
+            .values("persona")
+            .annotate(n=Count("id"))
+            .order_by("-n", "persona")
+        )
+        winner_id = pick_winner(tallies, incumbent_id)
+        switched = winner_id != incumbent_id
+        result = {
+            "config": config.id,
+            "switched": switched,
+            "winner": winner_id,
+            "votes": {row["persona"]: row["n"] for row in tallies},
+        }
+        logger.info(
+            "Weekly coach vote config=%s incumbent=%s winner=%s switched=%s votes=%s",
+            config.id, incumbent_id, winner_id, switched, result["votes"],
+        )
+        if switched:
+            previous = config.persona
+            winner = DrillInstructorPersona.objects.get(pk=winner_id)
+            config.previous_persona = previous
+            config.persona = winner
+            config.persona_changed_at = now
+            config.save(update_fields=["previous_persona", "persona", "persona_changed_at", "updated_at"])
+        DrillInstructorPersonaVote.objects.filter(config=config).delete()
     if switched:
-        previous = config.persona
-        winner = DrillInstructorPersona.objects.get(pk=winner_id)
-        config.previous_persona = previous
-        config.persona = winner
-        config.persona_changed_at = now
-        config.save(update_fields=["previous_persona", "persona", "persona_changed_at", "updated_at"])
         prev_name = previous.name if previous else "the bench"
         body = (
             f"{winner.name} has taken the megaphone from {prev_name}. "
@@ -193,5 +201,4 @@ def apply_persona_votes(config, now=None):
             _post_coach_line(config, DrillInstructorMessage.KIND_HANDOVER, body)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Coach handover post failed for config %s: %s", config.pk, exc)
-    DrillInstructorPersonaVote.objects.filter(config=config).delete()
     return result

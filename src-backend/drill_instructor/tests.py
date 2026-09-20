@@ -2210,8 +2210,6 @@ class VisionCapabilityProbeTests(TestCase):
         )
         self.settings_override.enable()
         self.addCleanup(self.settings_override.disable)
-        from site_settings.models import SiteSettings
-        SiteSettings.get_solo()  # ensure the resolver has a row
         # The probe answer is cached per endpoint+model - every test
         # needs a clean slate or a cached result would skip the mock.
         from django.core.cache import cache
@@ -3792,12 +3790,12 @@ class LegendEchoTests(TestCase):
         self.assertEqual(echo.holder_id, self.alex.id)
 
     def test_season_end_immortalizes_survivors(self):
-        from .echoes import expire_challenges, mint_echo
+        from .echoes import immortalize_finished_echoes, mint_echo
         from .models import LegendEcho
         echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
         self.competition.end_date = timezone.localdate() - datetime.timedelta(days=1)
         self.competition.save()
-        result = expire_challenges()
+        result = immortalize_finished_echoes()
         self.assertGreaterEqual(result["immortal"], 1)
         echo.refresh_from_db()
         self.assertEqual(echo.status, LegendEcho.STATUS_IMMORTAL)
@@ -3901,7 +3899,7 @@ class LegendEchoTests(TestCase):
     def test_echo_windows_periodic_task_seeded(self):
         from django_celery_beat.models import PeriodicTask
         task = PeriodicTask.objects.get(name="drill_instructor_echo_windows")
-        self.assertEqual(task.task, "drill_instructor.tasks.resolve_echo_windows")
+        self.assertEqual(task.task, "drill_instructor.tasks.immortalize_finished_echoes")
         self.assertTrue(task.enabled)
         self.assertEqual(task.crontab.minute, "*/15")
 

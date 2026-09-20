@@ -104,6 +104,22 @@ def _recent_bodies(config, limit=2):
     )
 
 
+def _flag_message_failure(message, config, exc, label):
+    """Standard coach-message failure path: flag the message (best-effort
+    resave so the error is inspectable in the audit log), note the error
+    on the config, and log it. Never raises - a broken coach line must
+    not block workout saves or sweep the whole beat job."""
+    message.success = False
+    message.error = str(exc)[:2000]
+    try:
+        message.save()
+    except Exception:  # pragma: no cover
+        pass
+    config.last_error = str(exc)[:2000]
+    config.save(update_fields=["last_error", "updated_at"])
+    logger.warning("Drill Instructor: %s save failed for competition %s: %s", label, config.competition_id, exc)
+
+
 def _user_rank(workout, competition):
     """Compute this user's rank, totals and the leaderboard "target" user.
 
@@ -246,16 +262,8 @@ def post_workout_comment(self, workout_id):
             # the other one posted; nothing is actually wrong.
             logger.info("Drill Instructor: duplicate workout comment suppressed for competition %s.", competition.id)
             continue
-        except Exception as exc:  # noqa: BLE001 - never block workout saves
-            message.success = False
-            message.error = str(exc)[:2000]
-            try:
-                message.save()
-            except Exception:  # pragma: no cover
-                pass
-            config.last_error = str(exc)[:2000]
-            config.save(update_fields=["last_error", "updated_at"])
-            logger.warning("Drill Instructor: message save failed for competition %s: %s", competition.id, exc)
+        except Exception as exc:  # noqa: BLE001 - never block the caller
+            _flag_message_failure(message, config, exc, "message")
             continue
 
         config.last_posted_at = timezone.now()
@@ -457,16 +465,8 @@ def post_reply_reaction(self, reply_id):
         config.last_error = llm_error or ""
         config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
         logger.info("Drill Instructor: stored reaction %s for reply %s", message.id, reply_id)
-    except Exception as exc:  # noqa: BLE001 - reaction is nice-to-have
-        message.success = False
-        message.error = str(exc)[:2000]
-        try:
-            message.save()
-        except Exception:  # pragma: no cover
-            pass
-        config.last_error = str(exc)[:2000]
-        config.save(update_fields=["last_error", "updated_at"])
-        logger.warning("Drill Instructor: reaction save failed for reply %s: %s", reply_id, exc)
+    except Exception as exc:  # noqa: BLE001 - never block the caller
+        _flag_message_failure(message, config, exc, "message")
         return {"error": str(exc), "reply_id": reply_id}
 
     # Push ping to the replier only - it's a personal reaction, not a
@@ -560,16 +560,8 @@ def post_photo_reaction(self, photo_id):
         config.last_error = llm_error or ""
         config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
         logger.info("Drill Instructor: stored photo reaction %s for photo post %s", message.id, photo_id)
-    except Exception as exc:  # noqa: BLE001 - reaction is nice-to-have
-        message.success = False
-        message.error = str(exc)[:2000]
-        try:
-            message.save()
-        except Exception:  # pragma: no cover
-            pass
-        config.last_error = str(exc)[:2000]
-        config.save(update_fields=["last_error", "updated_at"])
-        logger.warning("Drill Instructor: photo reaction save failed for post %s: %s", photo_id, exc)
+    except Exception as exc:  # noqa: BLE001 - never block the caller
+        _flag_message_failure(message, config, exc, "message")
         return {"error": str(exc), "photo_id": photo_id}
 
     # Push ping to the poster only - it's a personal reaction, not a
@@ -880,16 +872,8 @@ def post_inactivity_nudges(self):
             config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
             posted += 1
             logger.info("Drill Instructor: stored inactivity nudge %s for competition %s", message.id, competition.id)
-        except Exception as exc:  # noqa: BLE001 - one bad competition must not kill the sweep
-            message.success = False
-            message.error = str(exc)[:2000]
-            try:
-                message.save()
-            except Exception:  # pragma: no cover
-                pass
-            config.last_error = str(exc)[:2000]
-            config.save(update_fields=["last_error", "updated_at"])
-            logger.warning("Drill Instructor: nudge save failed for competition %s: %s", competition.id, exc)
+        except Exception as exc:  # noqa: BLE001 - never block the caller
+            _flag_message_failure(message, config, exc, "message")
             continue
 
         # Optional web push to every participant (the nudge targets the
@@ -1029,16 +1013,8 @@ def post_random_pushes(self):
                 config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
                 posted += 1
                 logger.info("Drill Instructor: stored random push %s for competition %s", message.id, competition.id)
-            except Exception as exc:  # noqa: BLE001 - one bad competition must not kill the sweep
-                message.success = False
-                message.error = str(exc)[:2000]
-                try:
-                    message.save()
-                except Exception:  # pragma: no cover
-                    pass
-                config.last_error = str(exc)[:2000]
-                config.save(update_fields=["last_error", "updated_at"])
-                logger.warning("Drill Instructor: random push save failed for competition %s: %s", competition.id, exc)
+            except Exception as exc:  # noqa: BLE001 - never block the caller
+                _flag_message_failure(message, config, exc, "message")
                 break
 
             # Optional web push to every participant (the pep talk targets
@@ -1098,12 +1074,12 @@ def _post_coach_line(config, kind, body, llm_error="", send_push=True, image_fie
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=120)
-def resolve_echo_windows(self):
-    """Expire Echo challenges whose clock ran out; immortalize survivors."""
-    if is_task_already_executing("resolve_echo_windows"):
+def immortalize_finished_echoes(self):
+    """Immortalize live Echoes whose season has ended (15-min sweep)."""
+    if is_task_already_executing("immortalize_finished_echoes"):
         return "Task already executing. Skipping."
-    from .echoes import expire_challenges
-    return expire_challenges()
+    from .echoes import immortalize_finished_echoes as sweep
+    return sweep()
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)

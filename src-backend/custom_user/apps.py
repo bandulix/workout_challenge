@@ -1,4 +1,8 @@
+import logging
+
 from django.apps import AppConfig
+
+logger = logging.getLogger(__name__)
 
 
 class CustomUserConfig(AppConfig):
@@ -12,6 +16,29 @@ class CustomUserConfig(AppConfig):
         except Exception:
             return
         pre_save.connect(_hash_outstanding_token, sender=OutstandingToken)
+        _warn_open_registration()
+
+
+def _warn_open_registration():
+    """Open registration crowns the FIRST registrant staff+superuser.
+    Loud boot warning while that window is open (public deploys should
+    set REGISTRATION_TOKEN or pre-create the superuser before exposing
+    the app)."""
+    from django.conf import settings
+    if getattr(settings, "REGISTRATION_TOKEN", ""):
+        return
+    from django.db.utils import OperationalError, ProgrammingError
+    try:
+        from .models import CustomUser
+        if CustomUser.objects.filter(is_superuser=True).exists():
+            return
+    except (OperationalError, ProgrammingError):
+        return  # pre-migrate (collectstatic, makemigrations, ...)
+    logger.warning(
+        "REGISTRATION_TOKEN is empty and no superuser exists yet: the FIRST "
+        "registered account becomes admin. On a publicly reachable server, set "
+        "REGISTRATION_TOKEN or run createsuperuser before opening the app."
+    )
 
 
 def _hash_outstanding_token(sender, instance, **kwargs):

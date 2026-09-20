@@ -330,11 +330,17 @@ class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
         persona = get_object_or_404(DrillInstructorPersona, pk=persona_id)
         if not eligible_personas(config.competition, incumbent_id=config.persona_id).filter(pk=persona.pk).exists():
             raise ValidationError({"persona": "That coach is not on this challenge's ballot."})
-        DrillInstructorPersonaVote.objects.update_or_create(
-            config=config,
-            user=request.user,
-            defaults={"persona": persona},
-        )
+        # Serialize against the weekly tally: apply_persona_votes locks the
+        # config row while it reads and resets votes; take the same lock
+        # here so a vote can never land between its tally and its delete.
+        from django.db import transaction
+        with transaction.atomic():
+            type(config).objects.select_for_update().get(pk=config.pk)
+            DrillInstructorPersonaVote.objects.update_or_create(
+                config=config,
+                user=request.user,
+                defaults={"persona": persona},
+            )
         return Response(ballot_payload_for_request(config, request))
 
 
@@ -690,18 +696,20 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
                 from competition.scorer import grant_photo_bonus
                 grant_photo_bonus(parent.workout, config.competition)
             except Exception:
-                pass
+                # The photo post itself is saved; a failed bonus must not
+                # 500 it - but it must be visible in the logs.
+                logger.warning("Photo bonus grant failed for message %s", message.pk, exc_info=True)
             try:
                 from .echoes import attach_echo_image
                 if parent.workout_id:
                     attach_echo_image(parent.workout, config, message.image)
             except Exception:
-                pass
+                logger.warning("Echo image attach failed for message %s", message.pk, exc_info=True)
 
         try:
             _notify_reply_audience(message)
         except Exception:
-            pass
+            logger.warning("Reply-audience notify failed for message %s", message.pk, exc_info=True)
 
         try:
             from .game import evaluate_photo_game
@@ -914,11 +922,9 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        from .echoes import expire_challenges, pictured_first
-        try:
-            expire_challenges()
-        except Exception:  # noqa: BLE001
-            pass
+        # No writes on a read endpoint: season-end immortalization runs
+        # from the beat sweep (drill_instructor.tasks.immortalize_finished_echoes).
+        from .echoes import pictured_first
         user = self.request.user
         qs = (
             LegendEcho.objects.filter(_competition_member(user))

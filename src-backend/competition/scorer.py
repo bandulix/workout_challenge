@@ -151,7 +151,12 @@ def unscore_workout(instance):
 def trigger_workout_delete(instance):
     RecalcRequest = apps.get_model('custom_user', 'RecalcRequest')
     for points in instance.points_set.all():
-        RecalcRequest(user=instance.user, goal=points.goal, start_datetime=instance.start_datetime).save()
+        # Award-backed rows (photo/order bonus) have goal=None - they need
+        # no cap recap, and RecalcRequest.goal is NOT NULL, so creating one
+        # would crash the whole delete with an IntegrityError.
+        if points.goal_id is None:
+            continue
+        RecalcRequest(user=instance.user, goal_id=points.goal_id, start_datetime=instance.start_datetime).save()
     logger.info("Workout %s deletion triggered point cap recalc after %s", instance.pk, instance.start_datetime.isoformat())
 
     _bust_stats_cache_for(instance.user)
@@ -493,6 +498,9 @@ def trigger_user_change(instance, new, changes):
                 Q(goal__competition__in=left) | Q(award__competition__in=left),
                 workout__user=instance,
             ).delete()
+            # The departed user must vanish from the cached leaderboard
+            # now, not at the next 30s TTL expiry.
+            bump_stats_generation(left)
             logger.info("User %s left competitions %s, not triggering cap recalc", instance.pk, changes['my_competitions'][0])
 
         trigger_recalc_points()
@@ -526,6 +534,28 @@ ORDER_BONUS_POINTS = 5
 ORDER_AWARD_NAME = "Order"
 
 
+def _get_or_create_bonus_award(competition, name, reward_points):
+    """get_or_create the flat-bonus award, safe against concurrent first
+    grants (unique constraint on (competition, name)): on a collision the
+    other process already created it - refetch instead of crashing."""
+    from django.db import IntegrityError
+    Award = apps.get_model("competition", "Award")
+    try:
+        award, _ = Award.objects.get_or_create(
+            competition=competition,
+            name=name,
+            defaults={
+                "sport": "GROUP_ANY",
+                "threshold": 1,
+                "period": "day",
+                "reward_points": reward_points,
+            },
+        )
+    except IntegrityError:
+        award = Award.objects.get(competition=competition, name=name)
+    return award
+
+
 def grant_photo_bonus(workout, competition):
     """Add a flat +10 to a workout when the athlete posts a photo on it.
 
@@ -534,18 +564,8 @@ def grant_photo_bonus(workout, competition):
     """
     if workout is None or competition is None:
         return None
-    Award = apps.get_model("competition", "Award")
+    award = _get_or_create_bonus_award(competition, PHOTO_AWARD_NAME, PHOTO_BONUS_POINTS)
     Points = apps.get_model("competition", "Points")
-    award, _ = Award.objects.get_or_create(
-        competition=competition,
-        name=PHOTO_AWARD_NAME,
-        defaults={
-            "sport": "GROUP_ANY",
-            "threshold": 1,
-            "period": "day",
-            "reward_points": PHOTO_BONUS_POINTS,
-        },
-    )
     row, created = Points.objects.get_or_create(
         award=award,
         workout=workout,
@@ -569,18 +589,8 @@ def grant_order_bonus(workout, competition):
     """
     if workout is None or competition is None:
         return None
-    Award = apps.get_model("competition", "Award")
+    award = _get_or_create_bonus_award(competition, ORDER_AWARD_NAME, ORDER_BONUS_POINTS)
     Points = apps.get_model("competition", "Points")
-    award, _ = Award.objects.get_or_create(
-        competition=competition,
-        name=ORDER_AWARD_NAME,
-        defaults={
-            "sport": "GROUP_ANY",
-            "threshold": 1,
-            "period": "day",
-            "reward_points": ORDER_BONUS_POINTS,
-        },
-    )
     row, created = Points.objects.get_or_create(
         award=award,
         workout=workout,

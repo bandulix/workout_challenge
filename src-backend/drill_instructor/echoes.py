@@ -101,8 +101,6 @@ def delete_echo(echo):
     are recount from remaining live/immortal Echoes.
     """
     competition_id = echo.config.competition_id
-    EchoChallenge = apps.get_model("drill_instructor", "EchoChallenge")
-    EchoChallenge.objects.filter(echo=echo).delete()
     if echo.image:
         name = echo.image.name
         try:
@@ -445,10 +443,6 @@ def immortalize(echo):
     echo.status = LegendEcho.STATUS_IMMORTAL
     echo.immortalized_at = timezone.now()
     echo.save(update_fields=["status", "immortalized_at"])
-    EchoChallenge = apps.get_model("drill_instructor", "EchoChallenge")
-    EchoChallenge.objects.filter(
-        echo=echo, status=EchoChallenge.STATUS_ACTIVE,
-    ).update(status=EchoChallenge.STATUS_LOST)
     award_tag(echo.origin_user, "echo_immortal")
     DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
     body = (
@@ -467,7 +461,6 @@ def immortalize(echo):
 def claim_beaten_echoes(workout, config):
     """Anyone who beats a live Echo's mark takes it. No war to declare."""
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
-    EchoChallenge = apps.get_model("drill_instructor", "EchoChallenge")
     claimed = []
     with transaction.atomic():
         live = list(
@@ -483,36 +476,22 @@ def claim_beaten_echoes(workout, config):
         for echo in live:
             if not _beats(workout, echo):
                 continue
-            EchoChallenge.objects.filter(
-                echo=echo, status=EchoChallenge.STATUS_ACTIVE,
-            ).update(status=EchoChallenge.STATUS_LOST)
             claim_echo(echo, workout.user, workout)
             claimed.append(echo)
     return claimed
 
 
-def expire_challenges(now=None):
-    """Close leftover wars and immortalize Echoes when the season ends."""
+def immortalize_finished_echoes(now=None):
+    """Immortalize live Echoes whose competition's season has ended.
+
+    (This used to be ``expire_challenges``, which also closed war
+    "windows" - the war mechanic is gone; succession is immediate.)
+    Runs from the 15-minute beat sweep.
+    """
     now = now or timezone.now()
-    EchoChallenge = apps.get_model("drill_instructor", "EchoChallenge")
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
-    expired = 0
     immortal = 0
     with transaction.atomic():
-        due_rows = list(
-            EchoChallenge.objects.select_for_update()
-            .filter(status=EchoChallenge.STATUS_ACTIVE)
-            .select_related("echo")
-        )
-        for challenge in due_rows:
-            challenge.status = EchoChallenge.STATUS_EXPIRED
-            challenge.save(update_fields=["status"])
-            echo = challenge.echo
-            if echo.status == LegendEcho.STATUS_CONTESTED:
-                echo.status = LegendEcho.STATUS_UNDEFEATED
-                echo.save(update_fields=["status"])
-            expired += 1
-
         today = timezone.localdate()
         finished = list(
             LegendEcho.objects.select_for_update()
@@ -525,4 +504,4 @@ def expire_challenges(now=None):
         for echo in finished:
             immortalize(echo)
             immortal += 1
-    return {"expired": expired, "immortal": immortal}
+    return {"immortal": immortal}

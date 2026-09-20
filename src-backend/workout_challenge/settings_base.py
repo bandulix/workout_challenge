@@ -256,6 +256,10 @@ REST_FRAMEWORK = {
         # logged users out whenever the app was used regularly.
         'auth_refresh': '300/hour',
         'join': '60/hour',
+        # Provider link/unlink endpoints make expensive outbound
+        # OAuth/SSO calls - tighter than the loose per-user default so an
+        # account can't burn the operator's Strava/Garmin quota.
+        'provider_link': '30/hour',
     },
 }
 
@@ -362,9 +366,12 @@ FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o755
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-# Strava API
-STRAVA_CLIENT_ID = int(os.environ.get("STRAVA_CLIENT_ID", 1234321))
-STRAVA_CLIENT_SECRET = os.environ.get("STRAVA_CLIENT_SECRET", "ReplaceWithClientSecret")
+# Strava API. Empty defaults on purpose: the link flow's "not
+# configured" guard checks truthiness, and truthy placeholders used to
+# send users into a confusing Strava error instead.
+_strava_client_id_raw = os.environ.get("STRAVA_CLIENT_ID", "")
+STRAVA_CLIENT_ID = int(_strava_client_id_raw) if _strava_client_id_raw.strip().isdigit() else None
+STRAVA_CLIENT_SECRET = os.environ.get("STRAVA_CLIENT_SECRET", "")
 STRAVA_LIMIT_15MIN = int(os.environ.get("STRAVA_LIMIT_15MIN", 100))
 STRAVA_LIMIT_DAY = int(os.environ.get("STRAVA_LIMIT_DAY", 1000))
 
@@ -387,7 +394,8 @@ if (sentry_sdk_url := os.environ.get("SENTRY_DSN", None)) is not None:
         send_default_pii=False,
         enable_tracing=True,
         traces_sample_rate=0.25,
-        profiles_sample_rate=1.0,
+        # Profiling every traced transaction is heavy on a small VPS.
+        profiles_sample_rate=0.1,
         integrations=[
             DjangoIntegration(),
             CeleryIntegration(monitor_beat_tasks=True),
@@ -422,6 +430,13 @@ LOGGING = {
             "formatter": "verbose",
         },
     },
+    # Root handler at INFO: the app logs deliberate audit lines (sync
+    # results, scorer triggers, recalc summaries, echo mints) - without a
+    # root handler they were silently dropped in production.
+    "root": {
+        "handlers": ["console"],
+        "level": os.environ.get("LOG_LEVEL", "INFO"),
+    },
     "loggers": {
         # This is where Django logs DisallowedHost errors
         "django.security.DisallowedHost": {
@@ -435,9 +450,9 @@ LOGGING = {
 # OpenAI for AI quotes
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", None)
 # Provider preset: "custom" (default OpenAI-compatible), "MiniMax",
-# "openai". Used as a fallback when the Site Settings DB row hasn't
-# picked one. Resolved base_url + model are derived from this preset
-# unless the DB row overrides them.
+# "openai". These LLM_* values are env-only by design - the app has no
+# runtime override for them. A provider preset fills base_url + model
+# unless LLM_BASE_URL / LLM_MODEL set them explicitly.
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", None)
 # Any OpenAI-compatible provider can be used by setting LLM_BASE_URL
 # (e.g. https://openrouter.ai/api/v1, https://api.groq.com/openai/v1,

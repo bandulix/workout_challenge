@@ -54,7 +54,7 @@ def _ow_config():
     from site_settings.models import resolve_health_settings
     cfg = resolve_health_settings()
     if not cfg["enabled"]:
-        raise HealthConfigError("Open Wearables is not configured (Site Settings -> Health).")
+        raise HealthConfigError("Open Wearables is not configured (HEALTH_* env vars).")
     return cfg
 
 
@@ -706,8 +706,6 @@ def daily_health_sync(self):
             continue
         try:
             sync_health(user__id=user.id)
-        except (HealthConfigError, HealthUnavailableError) as exc:
-            logger.exception('Health sync failed for user %s', user.pk)
         except Exception as exc:  # noqa: BLE001 - never sink the whole sweep
             logger.exception('Health sync failed for user %s', user.pk)
 

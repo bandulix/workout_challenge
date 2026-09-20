@@ -56,8 +56,10 @@ class CookieTokenRefreshView(TokenRefreshView):
         serializer = self.get_serializer(data={"refresh": refresh})
         try:
             serializer.is_valid(raise_exception=True)
-        except (TokenError, InvalidToken, Exception):
+        except (TokenError, InvalidToken):
             # Dead / blacklisted / malformed refresh: drop the cookie.
+            # (No bare `except Exception` here: a DB outage must surface as
+            # a 500, not a misleading 401 that logs the user out.)
             response = Response(
                 {"detail": "Token is invalid or expired", "code": "token_not_valid"},
                 status=status.HTTP_401_UNAUTHORIZED,

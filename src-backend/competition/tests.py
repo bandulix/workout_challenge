@@ -1,6 +1,7 @@
 import datetime
 from unittest import mock
 
+from django.db import transaction
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -253,6 +254,48 @@ class StatsCacheTests(TestCase):
         self.assertEqual(float(row.points_capped), 50.0)
         self.assertFalse(RecalcRequest.objects.filter(done=False).exists())
 
+    def test_partial_window_recap_respects_the_day_bucket(self):
+        """Editing the second of two same-day workouts must recap against
+        the whole day, not a fresh bucket: the recap starts at the
+        beginning of the affected week so earlier rows still count toward
+        day/week caps."""
+        goal = ActivityGoal.objects.create(
+            competition=self.competition, name="Daily Cap", metric="min",
+            goal=100, period="week", max_per_day=60,  # cap: 60 pts/day
+        )
+        noon = timezone.now().replace(hour=12, minute=0, second=0, microsecond=0)
+        w1 = Workout.objects.create(
+            user=self.owner, sport_type="Run", start_datetime=noon - datetime.timedelta(hours=2),
+            duration=datetime.timedelta(minutes=60), intensity_category=2,
+        )
+        w2 = Workout.objects.create(
+            user=self.owner, sport_type="Run", start_datetime=noon,
+            duration=datetime.timedelta(minutes=60), intensity_category=2,
+        )
+        row1 = Points.objects.get(goal=goal, workout=w1)
+        row2 = Points.objects.get(goal=goal, workout=w2)
+        # Apply the cap (the inline save scores raw; caps land via recap).
+        with mock.patch("custom_user.point_recalc.is_task_already_executing", return_value=False):
+            recalc_points()
+        row1.refresh_from_db()
+        row2.refresh_from_db()
+        self.assertEqual(float(row1.points_capped), 60.0)
+        self.assertEqual(float(row2.points_capped), 0.0)  # day cap already full
+
+        # Shorten the second workout: its raw points drop, but the day cap
+        # is still fully consumed by the first - the edit must not grant
+        # fresh cap room (the old bug recalced from the edited workout
+        # onward with an empty bucket, yielding 50 capped points here).
+        w2.duration = datetime.timedelta(minutes=50)
+        w2.save()
+        with mock.patch("custom_user.point_recalc.is_task_already_executing", return_value=False):
+            recalc_points()
+
+        row1.refresh_from_db()
+        row2.refresh_from_db()
+        self.assertEqual(float(row1.points_capped), 60.0)
+        self.assertEqual(float(row2.points_capped), 0.0)
+
 
 class _Dummy:
     """Stand-in for Goal / Workout / Points in the pure cap-math tests.
@@ -439,6 +482,56 @@ class GoalCompetitionImmutableTests(TestCase):
         self.goal.refresh_from_db()
         self.assertEqual(self.goal.competition_id, self.a_cup.id)
         self.assertEqual(self.goal.name, "Still Alice's")
+
+
+class GoalValidationTests(TestCase):
+    """goal must be > 0 (the scorer divides by it) and min must not exceed
+    max - both used to be writable and poisoned scoring for the whole
+    competition with a ZeroDivisionError / contradictory caps."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.verify_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.client = APIClient()
+        today = timezone.localdate()
+        self.alice = CustomUser.objects.create_user(
+            email="alice-gv@example.com", password="test-pw", first_name="Alice", last_name="",
+        )
+        self.cup = Competition.objects.create(
+            owner=self.alice, name="Validation Cup",
+            start_date=today, end_date=today + datetime.timedelta(days=7),
+        )
+        self.goal = self.cup.activitygoal_set.first()
+
+    def test_api_rejects_zero_and_negative_goal(self):
+        self.client.force_authenticate(self.alice)
+        for bad in (0, -5):
+            response = self.client.patch(f"/api/goal/{self.goal.id}/", {"goal": bad}, format="json")
+            self.assertEqual(response.status_code, 400, response.content)
+        self.goal.refresh_from_db()
+        self.assertGreater(self.goal.goal, 0)
+
+    def test_db_constraint_rejects_zero_goal(self):
+        from django.db import IntegrityError
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                ActivityGoal.objects.create(
+                    competition=self.cup, name="Broken", metric="min", goal=0, period="week",
+                )
+
+    def test_api_rejects_min_above_max(self):
+        self.client.force_authenticate(self.alice)
+        response = self.client.patch(
+            f"/api/goal/{self.goal.id}/",
+            {"min_per_day": 100, "max_per_day": 50},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
 
 
 class LeaderboardAthleteCardTests(TestCase):

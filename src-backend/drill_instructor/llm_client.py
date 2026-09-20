@@ -7,8 +7,9 @@ workout / competition context is sent as a user message.
 Re-uses the existing ``OPENAI_API_KEY`` setting and the same SDK that
 already powers the weekly email fitness fact. The active API key, base
 URL and model are resolved at call time via
-:func:`site_settings.models.resolve_llm_settings`, so admins can change
-the provider from the Site Settings page without restarting workers.
+:func:`site_settings.models.resolve_llm_settings`, which reads the
+environment only (``LLM_*`` / ``OPENAI_API_KEY``) - a container
+recreate applies changes; there is deliberately no runtime override.
 
 Vision: :func:`check_vision_capability` probes the configured model with
 a tiny test image (OpenAI-compatible providers give no reliable metadata
@@ -134,7 +135,7 @@ def _resolved_client(timeout=None, max_retries=None):
     config = resolve_llm_settings()
     api_key = config["api_key"]
     if not api_key:
-        return None, config, "no LLM API key configured (Site Settings / OPENAI_API_KEY) - static fallback used"
+        return None, config, "no LLM API key configured (OPENAI_API_KEY env) - static fallback used"
 
     base_url = _safe_base_url(config["base_url"])
     if config["base_url"] and not base_url:
