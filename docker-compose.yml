@@ -51,6 +51,19 @@ services:
       #        binds loopback inside the container for nginx only.
     volumes:
       - django_data:/workout_challenge/src-backend/data
+    # Healthcheck so a wedged worker is visible to Docker; cap container
+    # logs so stdout can't fill a small VPS disk. (restart policy above.)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/api/version/ || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     environment:
       # --- Core Django ---
       # SECRET_KEY is required (like POSTGRES_PASSWORD): a known default
@@ -127,8 +140,8 @@ services:
       - EMAIL_REPLY_TO=${EMAIL_REPLY_TO:-}
 
       # --- LLM / AI provider (Drill Instructor + weekly email fact) ---
-      # Either paste your API key here (and optionally pick a preset), or
-      # leave blank and set it via the admin Site Settings UI later.
+      # Set here only - the app has no runtime override for these; a
+      # container recreate applies changes.
       # Examples:
       #   OpenAI:        OPENAI_API_KEY=sk-...                        (default)
       #   MiniMax:       LLM_PROVIDER=MiniMax + OPENAI_API_KEY=...    (preset auto-fills base URL + model)
@@ -259,7 +272,10 @@ services:
       - DB_PASSWORD=${OW_POSTGRES_PASSWORD:?OW_POSTGRES_PASSWORD env var is required - see .env.example}
       - REDIS_HOST=openwearables-redis
       - REDIS_PORT=6379
-      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY env var is required}
+      # OW gets its OWN secret - never Django's SECRET_KEY (it signs the
+      # app's JWTs and derives the token-encryption key; a leak from the
+      # third-party container must not compromise them).
+      - SECRET_KEY=${OW_SECRET_KEY:?OW_SECRET_KEY env var is required - see .env.example}
       # Initial developer login (used once to mint the API key for
       # HEALTH_API_KEY). OW_ADMIN_PASSWORD is REQUIRED and must differ
       # from SECRET_KEY - never reuse Django's secret as the OW password.
@@ -301,7 +317,10 @@ services:
       - DB_PASSWORD=${OW_POSTGRES_PASSWORD:?OW_POSTGRES_PASSWORD env var is required - see .env.example}
       - REDIS_HOST=openwearables-redis
       - REDIS_PORT=6379
-      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY env var is required}
+      # OW gets its OWN secret - never Django's SECRET_KEY (it signs the
+      # app's JWTs and derives the token-encryption key; a leak from the
+      # third-party container must not compromise them).
+      - SECRET_KEY=${OW_SECRET_KEY:?OW_SECRET_KEY env var is required - see .env.example}
     depends_on:
       - openwearables
     restart: unless-stopped
@@ -324,7 +343,10 @@ services:
       - DB_PASSWORD=${OW_POSTGRES_PASSWORD:?OW_POSTGRES_PASSWORD env var is required - see .env.example}
       - REDIS_HOST=openwearables-redis
       - REDIS_PORT=6379
-      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY env var is required}
+      # OW gets its OWN secret - never Django's SECRET_KEY (it signs the
+      # app's JWTs and derives the token-encryption key; a leak from the
+      # third-party container must not compromise them).
+      - SECRET_KEY=${OW_SECRET_KEY:?OW_SECRET_KEY env var is required - see .env.example}
     depends_on:
       - openwearables
     restart: unless-stopped
