@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Foldable phones welcome.** Galaxy Z Fold/Flip-class devices get a resizable app window, fold/unfold without losing your place, and a dock that never hides under the hinge when the app spans both panes.
+
+## [0.60.0] - 2026-09-20
+
 ### Changed
 - **Home numbers you can finally trust.** Lifetime totals, the 30-day summary and the week streak are computed on the server now — they used to count only the 40 newest loaded workouts, silently shortchanging active athletes.
 - **Quieter, kinder feedback.** Saves and syncs confirm with a small toast instead of a popup you must dismiss; errors are human sentences instead of status-code soup; and every destructive action (deleting a workout, unlinking Strava/Garmin/Health, leaving or deleting a challenge) asks first.
