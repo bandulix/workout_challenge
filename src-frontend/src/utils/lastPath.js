@@ -10,7 +10,9 @@ function normalizePath(pathname) {
 
 export function isRestorablePath(pathname) {
     const p = normalizePath(pathname);
-    return p === "/dashboard" || p === "/coach" || p === "/admin/site-settings"
+    // /admin/* is deliberately not restorable: a non-staff user (or a
+    // lapsed session) would cold-start onto an "Admin only" dead end.
+    return p === "/dashboard" || p === "/coach"
         || /^\/competition\/\d+$/.test(p);
 }
 

@@ -29,7 +29,11 @@ export const linkApi = createApi({
                 method: 'POST',
             }),
         }),
-        syncStrava: builder.query({
+        // Mutations, not queries: a GET with side effects fired via a lazy
+        // query gets deduped by RTK after the first click ("Re-Sync" did
+        // nothing the second time). Mutations fire every time. (Still GET
+        // on the wire for compatibility with older app builds.)
+        syncStrava: builder.mutation({
             query: () => ({
                 url: `strava/sync/`,
                 method: 'GET',
@@ -49,7 +53,7 @@ export const linkApi = createApi({
                 method: 'POST',
             }),
         }),
-        syncGarmin: builder.query({
+        syncGarmin: builder.mutation({
             query: () => ({
                 url: `garmin/sync/`,
                 method: 'GET',
@@ -67,7 +71,7 @@ export const linkApi = createApi({
                 method: 'POST',
             }),
         }),
-        syncHealth: builder.query({
+        syncHealth: builder.mutation({
             query: () => ({
                 url: `health/sync/`,
                 method: 'GET',
@@ -81,11 +85,11 @@ export const {
     useLinkStravaMutation,
     useUnlinkStravaMutation,
     useResetStravaMutation,
-    useLazySyncStravaQuery,
+    useSyncStravaMutation,
     useLinkGarminMutation,
     useUnlinkGarminMutation,
-    useLazySyncGarminQuery,
+    useSyncGarminMutation,
     useLinkHealthMutation,
     useUnlinkHealthMutation,
-    useLazySyncHealthQuery,
+    useSyncHealthMutation,
 } = linkApi;

@@ -2,19 +2,23 @@ import React, {useEffect, useState} from "react";
 import {OverlaySheet} from "../forms/basicComponents";
 
 export default function DialogHost() {
-    const [dialog, setDialog] = useState(null);
+    // A queue, not a single slot: with only one slot, a second dialog
+    // overwrote the first and its promise never resolved - callers
+    // awaiting `confirmAction(...)` hung forever.
+    const [queue, setQueue] = useState([]);
 
     useEffect(() => {
-        const onDialog = (event) => setDialog(event.detail);
+        const onDialog = (event) => setQueue((cur) => [...cur, event.detail]);
         window.addEventListener("wc-dialog", onDialog);
         return () => window.removeEventListener("wc-dialog", onDialog);
     }, []);
 
+    const dialog = queue[0];
     if (!dialog) return null;
 
     const close = (value) => {
         dialog.resolve(value);
-        setDialog(null);
+        setQueue((cur) => cur.slice(1));
     };
 
     const dismiss = () => close(dialog.kind === "confirm" ? false : undefined);

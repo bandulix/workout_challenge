@@ -5,7 +5,7 @@ import {PlusIcon, UsersRound, Trash2} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {FormInput, Modal} from "./basicComponents";
 import {Chip} from "../components/uiBits";
-import {notice} from "../utils/dialogs";
+import {toast} from "../utils/toasts";
 
 const pill =
     "inline-flex items-center gap-2 px-4 py-2 min-h-[44px] rounded-full btn-glass text-sm font-semibold transition";
@@ -43,7 +43,7 @@ export default function JoinTeamForm({competition, setModalState, user, isOwner}
             // Without this check result.data.id threw on failure -
             // an unhandled rejection with zero user feedback.
             console.error('Create Team failed:', result?.error);
-            await notice('Could not create the team. Please try again.');
+            toast.error('Could not create the team. Please try again.');
             return;
         }
         e.target.reset();

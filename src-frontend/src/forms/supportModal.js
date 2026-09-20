@@ -36,8 +36,8 @@ const AccordionItem = ({title, content, link}) => {
 
 function AccordionMenu() {
     const items = [
-        {title: "How are points calculated?", content: "Each 1% towards an Activity Goal earns you 1 point. E.g. if the workout goal is 100 minutes, working out 50 minutes earns you 50 points. However, there can be upper and lower limits above/below which you don't earn any points (activities that were capped/floored are indicated with an *asterix). Hover with the mouse above a goal to see its limits or above the workout's asterix for more details."},
-        {title: "My workouts don't show up in the Strava App!", content: "This ia a Strava app automatic import error (e.g. due to no internet connection when finishing a workout). Go to the Strava App -> You -> Settings -> Manage an app or device -> e.g. for an Apple Watch click on the 'Service: Health' App -> click 'Add' next to the workout that wasn't automatically imported."},
+        {title: "How are points calculated?", content: "Each 1% towards an Activity Goal earns you 1 point. E.g. if the workout goal is 100 minutes, working out 50 minutes earns you 50 points. However, there can be upper and lower limits above/below which you don't earn any points (activities that were capped/floored are indicated with an *asterisk). Tap a workout's points chip for the full breakdown, or hover over a goal to see its limits."},
+        {title: "My workouts don't show up in the Strava App!", content: "This is a Strava app automatic import error (e.g. due to no internet connection when finishing a workout). Go to the Strava App -> You -> Settings -> Manage an app or device -> e.g. for an Apple Watch click on the 'Service: Health' App -> click 'Add' next to the workout that wasn't automatically imported."},
         {title: "See Source Code", link: "https://github.com/bandulix/workout_challenge"},
         {title: "Suggest a Feature", link: "https://github.com/bandulix/workout_challenge/discussions/categories/ideas"},
         {title: "Report a Bug", link: "https://github.com/bandulix/workout_challenge/issues"},

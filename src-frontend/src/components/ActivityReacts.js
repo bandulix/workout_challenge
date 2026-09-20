@@ -86,12 +86,12 @@ function useAnchorPos(anchor, width) {
     return pos;
 }
 
-function Sheet({pos, children, panelRef, role}) {
+function Sheet({pos, children, panelRef, role, label}) {
     // `.glass-sheet` is `position: relative` (after Tailwind utilities),
     // so `fixed` must live on a wrapper — otherwise the picker paints at
     // the end of <body> and looks like a no-op.
     return (
-        <div ref={panelRef} role={role}
+        <div ref={panelRef} role={role} aria-label={label} tabIndex={-1}
              className="fixed z-[90] animate-pop-in"
              style={{left: pos.left, top: pos.top, bottom: pos.bottom, width: pos.width}}>
             <div className="glass-sheet rounded-2xl p-2 shadow-glow-volt overflow-hidden">
@@ -102,7 +102,7 @@ function Sheet({pos, children, panelRef, role}) {
     );
 }
 
-function Popover({anchor, children, onClose, width = 220}) {
+function Popover({anchor, children, onClose, width = 220, label = "Menu"}) {
     const pos = useAnchorPos(anchor, width);
     const panelRef = useRef(null);
     useEffect(() => {
@@ -120,10 +120,30 @@ function Popover({anchor, children, onClose, width = 220}) {
             document.removeEventListener("pointerdown", onPointer);
         };
     }, [anchor, onClose]);
+    // Escape closes; focus moves into the popover on open and returns to
+    // the anchor on close.
+    useEffect(() => {
+        if (!anchor) return undefined;
+        const onKey = (e) => {
+            if (e.key === "Escape") {
+                e.preventDefault();
+                onClose();
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [anchor, onClose]);
+    useEffect(() => {
+        if (!anchor || !pos) return undefined;
+        panelRef.current?.focus({preventScroll: true});
+        return () => {
+            if (document.contains(anchor)) anchor.focus({preventScroll: true});
+        };
+    }, [anchor, pos]);
     if (!anchor || !pos) return null;
     return (
         <OverlayPortal>
-            <Sheet pos={pos} panelRef={panelRef} role="dialog">{children}</Sheet>
+            <Sheet pos={pos} panelRef={panelRef} role="dialog" label={label}>{children}</Sheet>
         </OverlayPortal>
     );
 }
@@ -198,6 +218,7 @@ function ReactChip({row, onToggle, onWho, delay, bursting, showWho}) {
                 type="button"
                 aria-pressed={row.me}
                 aria-label={`${spec.label}${row.count ? `, ${row.count}` : ""}${whoLabel}`}
+                title={names.length ? names.join(", ") : undefined}
                 onPointerDown={() => {
                     held.current = false;
                     hold.current = setTimeout(() => {
@@ -223,7 +244,7 @@ function ReactChip({row, onToggle, onWho, delay, bursting, showWho}) {
                     if (row.me) return;
                     onToggle();
                 }}
-                className={"react-chip relative inline-flex items-center gap-0.5 rounded-full pl-1 pr-1.5 py-0.5 min-h-[32px] text-[12px] font-bold tabular-nums transition " +
+                className={"react-chip relative inline-flex items-center gap-1 rounded-full pl-1.5 pr-2 py-1 min-h-[44px] text-[12px] font-bold tabular-nums transition " +
                     (row.me ? "react-chip-mine" : "btn-glass active:scale-95") +
                     (bursting ? " react-chip-burst" : "")}
                 style={{"--react-glow": spec.glow, animationDelay: `${delay}s`}}>
@@ -335,7 +356,8 @@ export function ActivityStampIcons() {
                 </span>
             ))}
             {whoRow && (
-                <Popover anchor={api.chipRefs.current[api.who]} onClose={() => api.setWho(null)} width={220}>
+                <Popover anchor={api.chipRefs.current[api.who]} onClose={() => api.setWho(null)} width={220}
+                         label={whoRow ? `Who stamped ${BY_ID[whoRow.emoji]?.label}` : "Who reacted"}>
                     <p className="px-2 pt-1 pb-1.5 text-[10px] font-extrabold uppercase tracking-[0.18em] flex items-center gap-1.5"
                        style={{color: BY_ID[whoRow.emoji]?.glow}}>
                         <StampGlyph id={whoRow.emoji} size={16} glow={BY_ID[whoRow.emoji]?.glow}/>
@@ -389,7 +411,8 @@ export function ActivityStampButton() {
             </button>
 
             {api.picker && (
-                <Popover anchor={api.plusRef.current} onClose={() => api.setPicker(false)} width={268}>
+                <Popover anchor={api.plusRef.current} onClose={() => api.setPicker(false)} width={268}
+                         label="Pick a stamp">
                     <p className="px-2 pt-1 pb-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-volt-700 dark:text-volt-400">
                         Stamp it
                     </p>

@@ -7,7 +7,7 @@ import {
     Timer,
     Ruler,
 } from 'lucide-react';
-import {useGetWorkoutsQuery, workoutsApi} from "../utils/reducers/workoutsSlice";
+import {useGetWorkoutsQuery, useGetWorkoutSummaryQuery, workoutsApi} from "../utils/reducers/workoutsSlice";
 import WorkoutForm, {sportLabelShort} from "../forms/workoutForm";
 import lodFilter from 'lodash/filter';
 import lodFind from 'lodash/find';
@@ -34,17 +34,18 @@ import {
 import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
 import {SectionLoader} from "../utils/loaders";
 import {useDispatch} from "react-redux";
-import {useLazySyncGarminQuery, useLazySyncStravaQuery, useLazySyncHealthQuery} from "../utils/reducers/linkSlice";
+import {useSyncGarminMutation, useSyncStravaMutation, useSyncHealthMutation} from "../utils/reducers/linkSlice";
 import {nativeHealthKickSync} from "../utils/nativeHealth";
-import {statsApi, useGetStatsSummaryByIdQuery} from "../utils/reducers/statsSlice";
+import {statsApi} from "../utils/reducers/statsSlice";
 import {feedApi} from "../utils/reducers/feedSlice";
-import {BeatLoader} from "react-spinners";
 import {clearBodyScrollLock} from "../utils/overlay";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {DogTagRow} from "../components/gameBits";
-import {Chip, EmptyState, SectionHead, SyncChip, rowClass, VOLT} from "../components/uiBits";
+import {Chip, EmptyState, SectionHead, SyncChip, rowClass} from "../components/uiBits";
 import usePollingInterval from "../utils/usePollingInterval";
-import {notice} from "../utils/dialogs";
+import {toast} from "../utils/toasts";
+import {errText} from "../utils/errors";
+import {ReleaseSpark} from "../components/WhatsNew";
 
 
 const HAND_LOG_KEY = "wc_log_by_hand";
@@ -63,8 +64,8 @@ function GettingStarted({user, competitions, workouts, configs, onJoin, onCreate
     const coachDone = coachOn || !owns;
     if (hasChallenge && sourceDone && coachDone) return null;
 
-    const btn = "inline-flex items-center rounded-full bg-volt-400 text-ink-950 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide hover:bg-volt-300 transition min-h-[36px]";
-    const ghost = "inline-flex items-center rounded-full border border-volt-500/40 text-volt-700 dark:text-volt-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide hover:bg-volt-400/10 transition min-h-[36px]";
+    const btn = "inline-flex items-center rounded-full bg-volt-400 text-ink-950 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition min-h-[44px]";
+    const ghost = "inline-flex items-center rounded-full border border-volt-500/40 text-volt-700 dark:text-volt-300 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-400/10 transition min-h-[44px]";
 
     function Step({done, n, title, body, children}) {
         return (
@@ -120,11 +121,13 @@ function GettingStarted({user, competitions, workouts, configs, onJoin, onCreate
 }
 
 
-function WelcomeBox({user, workouts}) {
-    const {total: countTotal, groups: countGroups} = useMemo(
-        () => topSportCounts(workouts, "sport_type"),
-        [workouts],
-    );
+function WelcomeBox({user, workouts, summary}) {
+    // Lifetime counts come from the server-side summary endpoint - the
+    // loaded workouts page (latest 40) is only the fallback while it
+    // loads, so the total is never silently under-counted.
+    const fallback = useMemo(() => topSportCounts(workouts, "sport_type"), [workouts]);
+    const countTotal = summary?.total_count ?? fallback.total;
+    const countGroups = summary?.by_sport ? Object.fromEntries(summary.by_sport) : fallback.groups;
     return (
         <BoxSection additionalClasses={"mb-4"}>
             {/* Compact header: small avatar with the name beside it,
@@ -136,17 +139,18 @@ function WelcomeBox({user, workouts}) {
                 <ProfileAvatar user={user} size={64} editable className="shrink-0"/>
                 <div className="flex-1 min-w-0 basis-40">
                     <p className="text-xs text-gray-600 dark:text-gray-400">Welcome back,</p>
-                    <p className="text-xl font-display uppercase tracking-wide truncate">{user.first_name}</p>
+                    <h1 className="text-xl font-display uppercase tracking-wide truncate">{user.first_name}</h1>
                     <DogTagRow tags={user.dog_tags}/>
+                    <div className="mt-1 empty:hidden"><ReleaseSpark/></div>
                 </div>
                 <div className="flex items-baseline gap-1.5 shrink-0 ml-auto sm:ml-0">
                     <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
-                    <span className="uppercase text-[10px] tracking-wide text-gray-500">workouts</span>
+                    <span className="uppercase text-xs tracking-wide text-gray-500">workouts</span>
                 </div>
                 {Object.entries(countGroups).map(([label, count], index) => (
                     <div key={"stat" + index} className="hidden lg:flex lg:flex-col lg:items-center shrink-0 px-1">
                         <span className="text-lg font-semibold leading-tight">{count}</span>
-                        <span className="uppercase text-[10px] tracking-wide text-gray-500">{sportLabelShort(label)}</span>
+                        <span className="uppercase text-xs tracking-wide text-gray-500">{sportLabelShort(label)}</span>
                     </div>
                 ))}
             </div>
@@ -191,14 +195,14 @@ function WorkoutRow({workout, onOpen, showDate = true}) {
                 </div>
                 <div className="min-w-0 flex-1">
                     <p className="font-semibold truncate">{sportLabelShort(workout.sport_type)} · {primary}</p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
                         {showDate
                             ? workout.start_datetime_fmt?.date_readable
                             : workout.start_datetime_fmt?.time_24h}
                     </p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                    {!isSteps && workout.distance ? <Chip>{workout.distance} km</Chip> : null}
+                    {!isSteps && workout.distance ? <Chip>{Math.round(workout.distance * 10) / 10} km</Chip> : null}
                     {!isSteps && workout.kcal ? <Chip>{Math.round(workout.kcal).toLocaleString()} kcal</Chip> : null}
                 </div>
             </button>
@@ -206,12 +210,46 @@ function WorkoutRow({workout, onOpen, showDate = true}) {
     );
 }
 
-function WorkoutHistory({items, onOpen}) {
+function WorkoutHistory({initialItems, onOpen}) {
+    // The dashboard loads only the latest 40 workouts; the history pages
+    // the rest from the server so every activity stays reachable.
+    const dispatch = useDispatch();
+    const [extra, setExtra] = useState([]);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
+
+    const items = useMemo(() => {
+        const seen = new Set();
+        return [...initialItems, ...extra].filter((w) => {
+            if (seen.has(w.id)) return false;
+            seen.add(w.id);
+            return true;
+        });
+    }, [initialItems, extra]);
+
+    async function loadMore() {
+        setLoadingMore(true);
+        try {
+            const page = await dispatch(
+                workoutsApi.endpoints.getWorkouts.initiate(
+                    {limit: 100, offset: items.length},
+                    {forceRefetch: true},
+                )
+            ).unwrap();
+            setExtra((cur) => [...cur, ...page]);
+            if (page.length < 100) setHasMore(false);
+        } catch (err) {
+            toast.error(errText(err, "Could not load older activities. Please try again."));
+        } finally {
+            setLoadingMore(false);
+        }
+    }
+
     return (
         <div className="max-h-[70vh] overflow-y-auto -mx-1 px-1">
             {groupWorkoutsByDay(items).map((group) => (
                 <section key={group.key} className="mb-2">
-                    <h3 className="sticky top-0 z-10 bg-[#efece4]/85 dark:bg-ink-850/95 backdrop-blur px-1 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                    <h3 className="sticky top-0 z-10 bg-[#efece4]/85 dark:bg-ink-850/95 backdrop-blur px-1 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                         {group.label}
                     </h3>
                     <ul className="divide-y divide-gray-100 dark:divide-ink-700/60">
@@ -221,11 +259,17 @@ function WorkoutHistory({items, onOpen}) {
                     </ul>
                 </section>
             ))}
+            {hasMore && (
+                <button type="button" onClick={loadMore} disabled={loadingMore}
+                        className="mt-3 w-full min-h-[44px] rounded-2xl btn-glass text-sm font-bold uppercase tracking-wide transition disabled:opacity-50">
+                    {loadingMore ? "Loading…" : "Load older activities"}
+                </button>
+            )}
         </div>
     );
 }
 
-function WorkoutsBox({workouts, user, setLinkStrava}) {
+function WorkoutsBox({workouts, user, setLinkStrava, summary}) {
 
     const [showEditWorkoutModal, setShowEditWorkoutModal] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
@@ -240,9 +284,11 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
     const activeSource = user?.activity_source_effective;
     const showSourceButton = (linked, source) => linked && (activeSource === undefined || activeSource === source);
     const dispatch = useDispatch();
-    const [triggerStravaSync, { isFetching: stravaSyncIsFetching, error: stravaSyncError, isSuccess: stravaSyncIsSuccess }] = useLazySyncStravaQuery();
-    const [triggerGarminSync, { isFetching: garminSyncIsFetching, error: garminSyncError, isSuccess: garminSyncIsSuccess }] = useLazySyncGarminQuery();
-    const [triggerHealthSync, { isFetching: healthSyncIsFetching, error: healthSyncError, isSuccess: healthSyncIsSuccess }] = useLazySyncHealthQuery();
+    // Syncs are mutations (they must fire on EVERY tap) handled with plain
+    // async/await - no effect mirroring of RTK flags.
+    const [triggerStravaSync, {isLoading: stravaSyncIsFetching}] = useSyncStravaMutation();
+    const [triggerGarminSync, {isLoading: garminSyncIsFetching}] = useSyncGarminMutation();
+    const [triggerHealthSync, {isLoading: healthSyncIsFetching}] = useSyncHealthMutation();
     const [healthKickBusy, setHealthKickBusy] = useState(false);
 
     const sortedWorkouts = useMemo(
@@ -258,48 +304,38 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
         setShowEditWorkoutModal(id);
     }
 
-    function handleSyncResult(isSuccess, error, provider) {
-        if (isSuccess) {
+    async function runSync(trigger, provider) {
+        try {
+            const result = await trigger().unwrap();
             dispatch(workoutsApi.util.invalidateTags(['Workout']));
             dispatch(usersApi.util.invalidateTags(['User']));
             dispatch(statsApi.util.invalidateTags(['Stats']));
             dispatch(feedApi.util.invalidateTags(['Feed']));
-        } else if (error) {
+            toast.success(result?.message || `${provider} sync started.`);
+        } catch (error) {
             dispatch(workoutsApi.util.invalidateTags(['Workout']));
             dispatch(usersApi.util.invalidateTags(['User']));
             if (error?.status === 429) {
-                notice(`${error?.data?.message}`);
+                toast.error(`${error?.data?.message}`);
             } else {
-                notice(`${provider} sync failed! ${error?.data?.message || "Unknown error. Please try again later."}`);
+                toast.error(`${provider} sync failed. ${errText(error, "Please try again later.")}`);
             }
         }
     }
-
-    useEffect(() => {
-        if (stravaSyncIsFetching === false) handleSyncResult(stravaSyncIsSuccess, stravaSyncError, "Strava");
-    }, [stravaSyncIsFetching]);
-
-    useEffect(() => {
-        if (garminSyncIsFetching === false) handleSyncResult(garminSyncIsSuccess, garminSyncError, "Garmin");
-    }, [garminSyncIsFetching]);
-
-    useEffect(() => {
-        if (healthSyncIsFetching === false) handleSyncResult(healthSyncIsSuccess, healthSyncError, "Health");
-    }, [healthSyncIsFetching]);
 
     return (
         <BoxSection>
 
             <SectionHead title="Latest workouts"
-                         hint={sortedWorkouts.length > WORKOUT_PREVIEW ? `Latest ${WORKOUT_PREVIEW} of ${sortedWorkouts.length}` : null}>
+                         hint={sortedWorkouts.length > WORKOUT_PREVIEW ? `Latest ${WORKOUT_PREVIEW} of ${(summary?.total_count ?? sortedWorkouts.length)}` : null}>
                 {!stravaLinked && !garminLinked && !healthLinked && (
                     <SyncChip onClick={() => setShowSettings(true)} short="Link" long="Link a service"/>
                 )}
                 {showSourceButton(stravaLinked, 'strava') && (
-                    <SyncChip onClick={() => triggerStravaSync()} isLoading={stravaSyncIsFetching} short="Sync" long="Sync Strava"/>
+                    <SyncChip onClick={() => runSync(triggerStravaSync, "Strava")} isLoading={stravaSyncIsFetching} short="Sync" long="Sync Strava"/>
                 )}
                 {showSourceButton(garminLinked, 'garmin') && (
-                    <SyncChip onClick={() => triggerGarminSync()} isLoading={garminSyncIsFetching} short="Sync" long="Sync Garmin"/>
+                    <SyncChip onClick={() => runSync(triggerGarminSync, "Garmin")} isLoading={garminSyncIsFetching} short="Sync" long="Sync Garmin"/>
                 )}
                 {showSourceButton(healthLinked, 'health') && (
                     <SyncChip onClick={async () => {
@@ -307,13 +343,10 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
                                   try {
                                       const kick = await nativeHealthKickSync({daysBack: 14, publicUrl: user?.health_public_url});
                                       if (kick?.reason === "no-session") {
-                                          notice("Health Connect is not linked in this app - open Settings and reconnect.");
+                                          toast.error("Health Connect is not linked in this app - open Settings and reconnect.");
                                           return;
                                       }
-                                      const result = await triggerHealthSync().unwrap();
-                                      if (result?.message) notice(result.message);
-                                  } catch {
-                                      // Error toast is handled by the healthSyncIsFetching effect.
+                                      await runSync(triggerHealthSync, "Health");
                                   } finally {
                                       setHealthKickBusy(false);
                                   }
@@ -345,7 +378,7 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
 
             {showHistory && (
                 <Modal title="Activity history" setShowModal={setShowHistory}>
-                    <WorkoutHistory items={sortedWorkouts} onOpen={openWorkout}/>
+                    <WorkoutHistory initialItems={sortedWorkouts} onOpen={openWorkout}/>
                 </Modal>
             )}
 
@@ -365,15 +398,9 @@ function WorkoutsBox({workouts, user, setLinkStrava}) {
 
 
 function CompetitionRow({competition, user}) {
-    const pollSlow = usePollingInterval(90000);
-
-    const {
-        data: summary,
-        isLoading: statsLoading,
-        error: statsError,
-    } = useGetStatsSummaryByIdQuery(competition.id, {
-        pollingInterval: pollSlow,
-    });
+    // Rank arrives embedded in the competitions payload (my_rank_summary)
+    // - no per-row poller for N challenges anymore.
+    const summary = competition?.my_rank_summary || null;
 
     const navigate = useNavigate();
     const handleClick = (id) => {
@@ -388,15 +415,13 @@ function CompetitionRow({competition, user}) {
             <button type="button" onClick={() => handleClick(competition.id)} className={rowClass}>
                 <div className="min-w-0 flex-1">
                     <p className="font-semibold truncate">{competition.name}</p>
-                    <p className="text-xs text-gray-400">{competition.start_date_fmt} – {competition.end_date_fmt}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{competition.start_date_fmt} – {competition.end_date_fmt}</p>
                 </div>
                 <div className="shrink-0 text-right">
-                    {statsLoading ? (
-                        <BeatLoader color={VOLT} size={6}/>
-                    ) : (statsError || !summary) ? (
-                        <span className="text-gray-400 text-sm">—</span>
+                    {!summary ? (
+                        <span className="text-gray-500 dark:text-gray-400 text-sm">—</span>
                     ) : !started ? (
-                        <span className="text-xs text-gray-400">Not started</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Not started</span>
                     ) : rank == null ? (
                         <span className="text-xs font-semibold text-volt-600 dark:text-volt-300">Time to work out!</span>
                     ) : (
@@ -544,7 +569,23 @@ function SevenDayStats({sevenDayStats, user}) {
 
     const [showEditGoalsModal, setShowEditGoalsModal] = useState(false);
 
-    if (sevenDayStats.length === 0) return null;
+    // No goals yet: show the entry point instead of vanishing - goal
+    // setting was undiscoverable unless you already had goals.
+    if (sevenDayStats.length === 0) {
+        return (
+            <div className="w-full mt-5">
+                <div className="rounded-2xl glass-well p-4 flex flex-wrap items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-gray-700 dark:text-gray-300">No personal goals yet</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Set weekly goals for active days, minutes or distance - only you see them.</p>
+                    </div>
+                    <ModifyGoalsButton additionalClasses="sm:my-0" onClick={() => setShowEditGoalsModal(true)}
+                                       label={"Set goals"}/>
+                </div>
+                {(showEditGoalsModal) && <PersonalGoalsForm user={user} setModalState={setShowEditGoalsModal}/>}
+            </div>
+        );
+    }
 
     return (
         <div className="w-full mt-5">
@@ -564,7 +605,10 @@ function SevenDayStats({sevenDayStats, user}) {
                             <div className="text-2xl font-display text-volt-500 dark:text-volt-400 text-left mb-2">
                                 {goal.value.toLocaleString()} <span className="text-lg text-gray-400">/ {goal.target.toLocaleString()}{goal.unit}</span>
                             </div>
-                            <div className="w-full bg-ink-950/10 dark:bg-ink-700 rounded-full h-2.5">
+                            <div className="w-full bg-ink-950/10 dark:bg-ink-700 rounded-full h-2.5"
+                                 role="progressbar" aria-valuemin={0} aria-valuemax={goal.target}
+                                 aria-valuenow={Math.min(goal.value, goal.target)}
+                                 aria-label={`${goal.name}: ${goal.value} of ${goal.target}${goal.unit}`}>
                                 <div className="h-2.5 rounded-full bg-volt-500 dark:bg-volt-400 transition-all" style={{
                                     width: Math.min(goal.value / goal.target * 100, 100) + '%',
                                 }}></div>
@@ -581,13 +625,24 @@ function SevenDayStats({sevenDayStats, user}) {
 }
 
 
-function StreakCard({workouts}) {
+// WHO recommendation: 150 minutes of moderate activity per week.
+const WHO_WEEKLY_MINUTES = 150;
 
-    const [weekStreak, setWeekStreak] = useState(0);
-    const [activeWeekdays, setActiveWeekdays] = useState(new Set());
-    const [weekMinutes, setWeekMinutes] = useState(0);
+function StreakCard({workouts, summary}) {
 
-    useEffect(() => {
+    // Derived state via useMemo (not effect+setState): one render, no
+    // stale-window between prop change and effect run.
+    const {weekStreak, activeWeekdays, weekMinutes} = useMemo(() => {
+        // Server-computed streak (truthful beyond the latest 40 loaded
+        // workouts); the client computation below is only a fallback
+        // while the summary is unavailable.
+        if (summary) {
+            return {
+                weekStreak: summary.streak_weeks ?? 0,
+                activeWeekdays: new Set(summary.week?.days || []),
+                weekMinutes: Math.round((summary.week?.seconds || 0) / 60),
+            };
+        }
         const filteredWorkouts = lodFilter(workouts || [], item => item.sport_type !== 'Steps');
         const workoutsPerWeek = lodMapvalues(lodGroupby(filteredWorkouts || [], 'start_datetime_fmt.weeksAgo'), items => lodSumby(items, 'duration_seconds'));
 
@@ -603,15 +658,17 @@ function StreakCard({workouts}) {
             }
             i++;
         }
-        setWeekStreak(streak + 1);
 
         // this week's active weekdays + minutes
         const thisWeek = lodFilter(filteredWorkouts, item => item.start_datetime_fmt.weeksAgo === 0);
-        setActiveWeekdays(new Set(thisWeek.map(w => (new Date(w.start_datetime).getDay() + 6) % 7))); // Mon=0 .. Sun=6
-        setWeekMinutes(Math.round(lodSumby(thisWeek, item => +item.duration_seconds || 0) / 60));
-    }, [workouts]);
+        return {
+            weekStreak: streak + 1,
+            activeWeekdays: new Set(thisWeek.map(w => (new Date(w.start_datetime).getDay() + 6) % 7)), // Mon=0 .. Sun=6
+            weekMinutes: Math.round(lodSumby(thisWeek, item => +item.duration_seconds || 0) / 60),
+        };
+    }, [workouts, summary]);
 
-    const whoGoalHit = weekMinutes >= 150;
+    const whoGoalHit = weekMinutes >= WHO_WEEKLY_MINUTES;
 
     return (
         <div className="relative overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white p-5 w-full xl:w-72 shrink-0">
@@ -651,12 +708,15 @@ function StreakCard({workouts}) {
                     <span className="text-gray-600 dark:text-gray-400">This week</span>
                     <span className={"inline-flex items-center gap-1 font-bold " + (whoGoalHit ? "text-volt-700 dark:text-volt-400" : "text-gray-700 dark:text-gray-300")}>
                         {whoGoalHit && <CheckCheck className="h-3.5 w-3.5"/>}
-                        {weekMinutes} / 150 min
+                        {weekMinutes} / {WHO_WEEKLY_MINUTES} min
                     </span>
                 </div>
-                <div className="mt-1.5 h-1.5 rounded-full bg-ink-950/10 dark:bg-ink-700/60 overflow-hidden">
+                <div className="mt-1.5 h-1.5 rounded-full bg-ink-950/10 dark:bg-ink-700/60 overflow-hidden"
+                     role="progressbar" aria-valuemin={0} aria-valuemax={WHO_WEEKLY_MINUTES}
+                     aria-valuenow={Math.min(weekMinutes, WHO_WEEKLY_MINUTES)}
+                     aria-label={`This week: ${weekMinutes} of ${WHO_WEEKLY_MINUTES} recommended minutes`}>
                     <div className="h-full rounded-full bg-volt-400 transition-all"
-                         style={{width: Math.min(weekMinutes / 150 * 100, 100) + "%"}}/>
+                         style={{width: Math.min(weekMinutes / WHO_WEEKLY_MINUTES * 100, 100) + "%"}}/>
                 </div>
             </div>
         </div>
@@ -664,38 +724,56 @@ function StreakCard({workouts}) {
 }
 
 
-function StatsBox({workouts, user}) {
+function StatsBox({workouts, user, summary}) {
 
-    const [thirtyDayStats, setThirtyDayStats] = useState({activeDays: 0, workouts: 0, distance: 0, kcal: 0, time: 0});
-    const [sevenDayStats, setSevenDayStats] = useState([]);
     const last5WeeksList = useMemo(getLast5WeeksRange, []);
 
-    useEffect(() => {
-        // 30 day stats
+    // 30 day stats - server aggregates when available (the loaded page of
+    // 40 workouts under-counts anyone with more history). Derived via
+    // useMemo: no extra render pass, no stale state.
+    const thirtyDayStats = useMemo(() => {
+        const startDate = lodFind(last5WeeksList, {offset: -29})?.dateObj?.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric'
+        });
+        const endDate = lodFind(last5WeeksList, {offset: 0})?.dateObj?.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric'
+        });
+        if (summary?.d30) {
+            return {
+                activeDays: summary.d30.active_days,
+                workouts: summary.d30.workouts,
+                distance: summary.d30.distance,
+                kcal: summary.d30.kcal,
+                time: summary.d30.seconds,
+                startDate,
+                endDate,
+            };
+        }
         const filtered30Days = lodFilter(workouts || [], item => item.start_datetime_fmt.days_ago < 30 && item.sport_type !== 'Steps');
-        setThirtyDayStats({
+        return {
             activeDays: lodUniqby(filtered30Days, 'start_datetime_fmt.date_iso').length,
             workouts: filtered30Days.length,
             distance: Math.round(lodSumby(filtered30Days, item => +item.distance || 0) * 10) / 10,
             kcal: Math.round(lodSumby(filtered30Days, item => +item.kcal || 0)),
             time: Math.round(lodSumby(filtered30Days, item => +item.duration_seconds || 0)),
-            startDate: lodFind(last5WeeksList, {offset: -29})?.dateObj?.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric'
-            }),
-            endDate: lodFind(last5WeeksList, {offset: 0})?.dateObj?.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric'
-            }),
-        })
+            startDate,
+            endDate,
+        };
+    }, [workouts, summary, last5WeeksList]);
 
-        // 7 day goals
+    // 7 day goals
+    const sevenDayStats = useMemo(() => {
         const filtered7Days = lodFilter(workouts || [], item => item.start_datetime_fmt.days_ago < 7 && item.sport_type !== 'Steps');
+        const d7ActiveDays = summary?.d7?.active_days ?? lodUniqby(filtered7Days, 'start_datetime_fmt.date_iso').length;
+        const d7Minutes = summary?.d7 ? Math.round(summary.d7.seconds / 60) : Math.round(lodSumby(filtered7Days, item => +item.duration_seconds || 0) / 60);
+        const d7Distance = summary?.d7?.distance ?? Math.round(lodSumby(filtered7Days, item => +item.distance || 0));
         let newGoals = [];
         if (user.goal_active_days !== null) {
             newGoals.push({
                 name: 'Active Days',
-                value: lodUniqby(filtered7Days, 'start_datetime_fmt.date_iso').length,
+                value: d7ActiveDays,
                 target: user.goal_active_days,
                 unit: ''
             });
@@ -703,7 +781,7 @@ function StatsBox({workouts, user}) {
         if (user.goal_workout_minutes !== null) {
             newGoals.push({
                 name: 'Time Goal',
-                value: Math.round(lodSumby(filtered7Days, item => +item.duration_seconds || 0) / 60),
+                value: d7Minutes,
                 target: user.goal_workout_minutes,
                 unit: 'min'
             });
@@ -711,13 +789,13 @@ function StatsBox({workouts, user}) {
         if (user.goal_distance !== null) {
             newGoals.push({
                 name: 'Distance',
-                value: Math.round(lodSumby(filtered7Days, item => +item.distance || 0)),
+                value: d7Distance,
                 target: user.goal_distance,
                 unit: 'km'
             });
         }
-        setSevenDayStats(newGoals);
-    }, [workouts, user]);
+        return newGoals;
+    }, [workouts, user, summary]);
 
     return (
         <div className="w-full flex flex-col xl:flex-row gap-4">
@@ -725,7 +803,7 @@ function StatsBox({workouts, user}) {
                 <ThirtyDayStats thirtyDayStats={thirtyDayStats}/>
                 <SevenDayStats sevenDayStats={sevenDayStats} user={user}/>
             </div>
-            <StreakCard workouts={workouts}/>
+            <StreakCard workouts={workouts} summary={summary}/>
         </div>
     )
 }
@@ -755,6 +833,12 @@ export default function MySpace() {
         pollingInterval: pollSlow,
     });
 
+    // Lifetime/30-day aggregates from the server - the loaded page of
+    // 40 workouts is too short to compute them truthfully.
+    const {data: workoutSummary} = useGetWorkoutSummaryQuery(undefined, {
+        pollingInterval: pollSlow,
+    });
+
     const {
         data: competitions,
         error: competitionError,
@@ -779,18 +863,29 @@ export default function MySpace() {
     const [quickLog, setQuickLog] = useState(query.get('action') === 'log');
 
     useEffect(() => {
+        // Consume one-shot URL params so a refresh does not reopen the
+        // modals. ?join=CODE opens the join form, ?action=log the workout
+        // form (PWA home-screen shortcut). Work on a fresh copy - the
+        // useSearchParams object is shared across effects.
+        const next = new URLSearchParams(search);
+        let changed = false;
         if (searchTermJoin !== null && joinCompetition === false) {
             setJoinCompetition(searchTermJoin);
-            searchParams.delete('join');
-            setSearchParams(searchParams);
+            next.delete('join');
+            changed = true;
         }
+        if (next.get('action') !== null) {
+            next.delete('action');
+            changed = true;
+        }
+        if (changed) setSearchParams(next, {replace: true});
     }, [searchTermJoin, joinCompetition])
 
 
     if (userError) {
         console.error('Error retrieving user:', userError);
         return <PageWrapper additionClasses="h-screen flex items-center justify-center"><ErrorBoxSection
-            errorMsg={userError?.status + ' / ' + (userError?.error || userError?.message || userError?.data?.detail)}/></PageWrapper>;
+            errorMsg={errText(userError, 'Could not load your account. Please try again.')}/></PageWrapper>;
     }
 
     return (
@@ -816,9 +911,9 @@ export default function MySpace() {
                             <SectionLoader height={"h-48 mb-4"}/>
                         ) : (userError) ? (
                             <ErrorBoxSection additionalClasses="mb-4"
-                                             errorMsg={userError?.status + ' / ' + (userError?.error || userError?.message || userError?.data?.detail)}/>
+                                             errorMsg={errText(userError, 'Could not load your account. Please try again.')}/>
                         ) : (
-                            <WelcomeBox user={user} workouts={workouts}/>
+                            <WelcomeBox user={user} workouts={workouts} summary={workoutSummary}/>
                         )
                     }
 
@@ -835,10 +930,10 @@ export default function MySpace() {
                                 <SectionLoader height={"w-full h-80 mb-4"}/>
                             ) : (workoutsError) ? (
                                 <ErrorBoxSection additionalClasses="mb-4"
-                                                 errorMsg={workoutsError?.status + ' / ' + (workoutsError?.error || workoutsError?.message || workoutsError?.data?.detail)}/>
+                                                 errorMsg={errText(workoutsError, 'Could not load your workouts. Please try again.')}/>
                             ) : (
                                 <BoxSection additionalClasses="h-full">
-                                    <StatsBox workouts={workouts} user={user}/>
+                                    <StatsBox workouts={workouts} user={user} summary={workoutSummary}/>
                                 </BoxSection>
                             )
                         }
@@ -851,7 +946,7 @@ export default function MySpace() {
                                 <SectionLoader/>
                             ) : (competitionError) ? (
                                 <ErrorBoxSection additionalClasses="mb-4"
-                                                 errorMsg={competitionError?.status + ' / ' + (competitionError?.error || competitionError?.message || competitionError?.data?.detail)}/>
+                                                 errorMsg={errText(competitionError, 'Could not load your challenges. Please try again.')}/>
                             ) : (
                                 <CompetitionsBox user={user} competitions={competitions} setJoinCompetition={setJoinCompetition}/>
                             )
@@ -867,9 +962,9 @@ export default function MySpace() {
                             <SectionLoader height={"h-80"}/>
                         ) : (workoutsError) ? (
                             <ErrorBoxSection
-                                errorMsg={workoutsError?.status + ' / ' + (workoutsError?.error || workoutsError?.message || workoutsError?.data?.detail)}/>
+                                errorMsg={errText(workoutsError, 'Could not load your workouts. Please try again.')}/>
                         ) : (
-                            <WorkoutsBox workouts={workouts} user={user} setLinkStrava={setLinkStrava}/>
+                            <WorkoutsBox workouts={workouts} user={user} setLinkStrava={setLinkStrava} summary={workoutSummary}/>
                         )
                     }
                 </div>

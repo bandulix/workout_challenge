@@ -7,6 +7,8 @@ import {Modal, SaveButton, SingleForm} from "./basicComponents";
 import {useGetUsersQuery} from "../utils/reducers/usersSlice";
 import {useDispatch} from "react-redux";
 import {clearBodyScrollLock} from "../utils/overlay";
+import {toast} from "../utils/toasts";
+import {errText} from "../utils/errors";
 
 
 const fields = {
@@ -16,7 +18,7 @@ const fields = {
         "required": true,
         "read_only": false,
         "placeholder": false,
-        "label": "New Competition Owner",
+        "label": "New challenge owner",
         "width": "max-sm:w-full w-2/3",
         "autoFocus": true,
     },
@@ -40,10 +42,10 @@ export default function TransferOwnershipForm({competition, setModalState}) {
         isLoading: updateIsLoading,
     }] = useUpdateCompetitionMutation();
 
-    // Overall form error message
+    // Overall form error message - human sentence, never status soup.
     useEffect(() => {
         if (updateError !== undefined) {
-            setFormError('Update Error (' + updateError?.status?.toLocaleString() + ' ' + updateError?.originalStatus?.toLocaleString() + '): ' + updateError?.message);
+            setFormError(errText(updateError, "Could not transfer the challenge. Please try again."));
         }
     }, [updateError])
 
@@ -70,16 +72,17 @@ export default function TransferOwnershipForm({competition, setModalState}) {
             setModalState(false);
             clearBodyScrollLock();
             dispatch(competitionsApi.util.invalidateTags(['Competition']));
+            toast.success("Ownership transferred.");
         } catch (err) {
             console.error('Update Competition Ownership failed', err);
-            setFieldErrors(err.data);
+            setFieldErrors(err?.data || {});
         }
     }
 
     return (
-        <Modal title="Transfer Competition Ownership" landscape={true} setShowModal={setModalState} isLoading={updateIsLoading}>
+        <Modal title="Transfer challenge ownership" landscape={true} setShowModal={setModalState} isLoading={updateIsLoading}>
             <SingleForm fields={finalFields} values={values} setValues={setValues} errors={fieldErrors}/>
-            <div className="text-center text-red-500 text-xs italic">{formError}</div>
+            <div className="text-center text-danger-text text-xs italic">{formError}</div>
             <div className="relative flex justify-end items-center">
               <SaveButton onClick={handleSubmit} label={"Update"} highlighted={true} larger={true} />
             </div>

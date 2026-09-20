@@ -2,14 +2,12 @@ import React, {useState} from "react";
 import {Calculator, Settings} from "lucide-react";
 import {SectionLoader} from "../utils/loaders";
 import {BoxSection, PageWrapper} from "../utils/miscellaneous";
-import SiteSettingsForm from "../forms/siteSettingsForm";
 import SportFactorsForm from "../forms/sportFactorsForm";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 
 
 export default function AdminSettings() {
     const {data: user, isLoading: userLoading} = useGetUserByIdQuery('me');
-    const [showEditModal, setShowEditModal] = useState(false);
     const [showFactorsModal, setShowFactorsModal] = useState(false);
 
     if (userLoading) {
@@ -44,25 +42,6 @@ export default function AdminSettings() {
                 <BoxSection additionalClasses="mb-4">
                     <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center sm:gap-6 sm:py-4">
                         <div className="space-y-1 pl-0 sm:pl-6 pb-3 sm:pb-0 text-center sm:text-left">
-                            <p className="text-2xl font-display uppercase tracking-wide">Site Settings</p>
-                            <p className="font-small text-gray-500">
-                                LLM provider configuration used by the AI Drill Instructor and the weekly email.
-                            </p>
-                        </div>
-                        <div className="p-3">
-                            <button
-                                onClick={() => setShowEditModal(true)}
-                                className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 font-bold text-sm flex items-center gap-2 transition"
-                            >
-                                <Settings className="h-4 w-4"/> Edit Settings
-                            </button>
-                        </div>
-                    </div>
-                </BoxSection>
-
-                <BoxSection additionalClasses="mb-4">
-                    <div className="flex flex-col items-center justify-between sm:flex-row sm:items-center sm:gap-6 sm:py-4">
-                        <div className="space-y-1 pl-0 sm:pl-6 pb-3 sm:pb-0 text-center sm:text-left">
                             <p className="text-2xl font-display uppercase tracking-wide">Points Calculation</p>
                             <p className="font-small text-gray-500">
                                 Per-activity-type point multipliers applied to every challenge on this server.
@@ -76,6 +55,18 @@ export default function AdminSettings() {
                                 <Calculator className="h-4 w-4"/> Edit Points Factors
                             </button>
                         </div>
+                    </div>
+                </BoxSection>
+
+                <BoxSection additionalClasses="mb-4">
+                    <div className="text-sm text-gray-600 dark:text-gray-400 p-4 space-y-2">
+                        <p>
+                            AI provider, model and API keys are read from the server environment
+                            (<code>OPENAI_API_KEY</code>, <code>LLM_PROVIDER</code>, <code>LLM_BASE_URL</code>,&nbsp;
+                            <code>LLM_MODEL</code>, <code>LLM_EMAIL_MODEL</code>) - edit them in the
+                            deployment's <code>.env</code> and recreate the container. The same goes for
+                            Strava, Health and SMTP settings.
+                        </p>
                     </div>
                 </BoxSection>
 
@@ -94,7 +85,6 @@ export default function AdminSettings() {
                 </BoxSection>
             </div>
 
-            {showEditModal && <SiteSettingsForm setModalState={setShowEditModal}/>}
             {showFactorsModal && <SportFactorsForm setModalState={setShowFactorsModal}/>}
         </PageWrapper>
     );

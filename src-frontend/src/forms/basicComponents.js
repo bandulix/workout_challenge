@@ -1,4 +1,4 @@
-import React, {useEffect, useId, useRef, useState} from "react";
+import React, {useCallback, useEffect, useId, useRef, useState} from "react";
 import {
     Plus,
     Trash2,
@@ -66,6 +66,8 @@ export function GlassSelect({
     autoFocus = false,
     className = "",
     "aria-label": ariaLabel,
+    "aria-invalid": ariaInvalid,
+    "aria-describedby": ariaDescribedBy,
 }) {
     const uid = useId();
     const listId = `${id || "glass-select"}-${uid}`;
@@ -185,6 +187,8 @@ export function GlassSelect({
                 aria-expanded={open}
                 aria-controls={listId}
                 aria-label={ariaLabel}
+                aria-invalid={ariaInvalid || undefined}
+                aria-describedby={ariaDescribedBy || undefined}
                 onClick={() => { if (!disabled) setOpen((v) => !v); }}
                 onKeyDown={onTriggerKey}
                 className={FIELD_INPUT_CLASS + " flex items-center justify-between gap-2 text-left cursor-pointer " +
@@ -264,34 +268,111 @@ const SHEET_PANEL =
     PANEL_MAX_CLASS;
 
 
-export function OverlaySheet({title = null, onClose, children, isLoading = false, zClass = "z-50", labelledBy}) {
+// Stack of open sheets: only the topmost reacts to Escape/backdrop, so a
+// confirm dialog over a form doesn't close the form underneath it.
+const SHEET_STACK = [];
+
+export function OverlaySheet({title = null, onClose, children, isLoading = false, zClass = "z-50", labelledBy, confirmDiscard = false}) {
     useBodyScrollLock();
+    const stackRef = useRef(null);
+    if (stackRef.current === null) stackRef.current = {};
     useEffect(() => {
-        if (!onClose) return undefined;
+        const me = stackRef.current;
+        SHEET_STACK.push(me);
+        return () => {
+            const i = SHEET_STACK.indexOf(me);
+            if (i >= 0) SHEET_STACK.splice(i, 1);
+        };
+    }, []);
+    // Every dialog needs an accessible name: the visible title when there
+    // is one, a generic label otherwise.
+    const autoId = useId();
+    const labelId = labelledBy || (title ? autoId : undefined);
+    const panelRef = useRef(null);
+
+    // Focus management: move focus into the sheet on open (unless a field
+    // already auto-focused inside it) and back to the invoker on close.
+    useEffect(() => {
+        const panel = panelRef.current;
+        const previous = document.activeElement;
+        if (panel && !panel.contains(document.activeElement)) {
+            panel.focus({preventScroll: true});
+        }
+        return () => {
+            if (previous && typeof previous.focus === "function" && document.contains(previous)) {
+                previous.focus({preventScroll: true});
+            }
+        };
+    }, []);
+
+    // Dirty guard: forms pass confirmDiscard when they hold unsaved
+    // input; closing then asks first instead of silently discarding.
+    const confirmDiscardRef = useRef(confirmDiscard);
+    confirmDiscardRef.current = confirmDiscard;
+    const requestClose = useCallback(async () => {
+        if (!onClose) return;
+        if (confirmDiscardRef.current) {
+            const {confirmAction} = await import("../utils/dialogs");
+            const ok = await confirmAction("Discard your unsaved changes?");
+            if (!ok) return;
+        }
+        onClose();
+    }, [onClose]);
+    const requestCloseRef = useRef(requestClose);
+    requestCloseRef.current = requestClose;
+
+    useEffect(() => {
         function onKey(e) {
-            if (e.key === "Escape") onClose();
+            const topmost = SHEET_STACK[SHEET_STACK.length - 1] === stackRef.current;
+            if (e.key === "Escape") {
+                if (topmost) requestCloseRef.current();
+                return;
+            }
+            if (e.key !== "Tab" || !topmost) return;
+            // Minimal focus trap: keep Tab/Shift-Tab cycling inside the panel.
+            const panel = panelRef.current;
+            if (!panel) return;
+            const focusables = panel.querySelectorAll(
+                'a[href], button:not([disabled]), input:not([disabled]), textarea, select, [tabindex]:not([tabindex="-1"])'
+            );
+            if (focusables.length === 0) {
+                e.preventDefault();
+                return;
+            }
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            if (e.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
         }
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
     }, [onClose]);
+
     return (
         <OverlayPortal>
-            <div className={SHEET_BACKDROP + " " + zClass} onClick={onClose}
-                 role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
-                <div className={SHEET_PANEL} onClick={(e) => e.stopPropagation()}>
+            <div className={SHEET_BACKDROP + " " + zClass} onClick={requestClose}>
+                <div className={SHEET_PANEL} onClick={(e) => e.stopPropagation()}
+                     ref={panelRef} tabIndex={-1}
+                     role="dialog" aria-modal="true"
+                     aria-labelledby={labelId} aria-label={labelId ? undefined : "Dialog"}>
                     <span className="glass-sheen rounded-[inherit]" aria-hidden="true"/>
                     <div className="relative flex shrink-0 items-center justify-between gap-3 px-4 pt-4 pb-2 sm:px-8 sm:pt-5">
-                        <h2 id={labelledBy} className="font-display text-sm uppercase tracking-wider">{title}</h2>
+                        <h2 id={labelId} className="font-display text-sm uppercase tracking-wider">{title}</h2>
                         <button type="button"
                                 className="text-gray-400 hover:text-gray-600 dark:hover:text-volt-300 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                                onClick={onClose}
+                                onClick={requestClose}
                                 aria-label="Close">
                             <X className="h-5 w-5"/>
                         </button>
                     </div>
                     <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6 sm:px-8 sm:pb-8 space-y-4">
                         {isLoading ? (
-                            <div className="w-full h-64 flex items-center justify-center">
+                            <div className="w-full h-64 flex items-center justify-center" role="status" aria-label="Loading">
                                 <BeatLoader color="#d7ff3e"/>
                             </div>
                         ) : children}
@@ -303,11 +384,23 @@ export function OverlaySheet({title = null, onClose, children, isLoading = false
 }
 
 
-export function Modal({setShowModal, title = null, landscape = false, isLoading = false, children}) {
+export function Modal({setShowModal, title = null, landscape = false, isLoading = false, children, confirmDiscard = false}) {
     return (
-        <OverlaySheet title={title} onClose={() => setShowModal(false)} isLoading={isLoading}>
+        <OverlaySheet title={title} onClose={() => setShowModal(false)} isLoading={isLoading} confirmDiscard={confirmDiscard}>
             {children}
         </OverlaySheet>
+    );
+}
+
+
+/** True when the current form values differ from the loaded snapshot -
+ * drives the Modal's confirmDiscard guard. JSON compare is plenty for
+ * the flat scalar field bags these forms use. */
+export function useFormDirty(values, initial) {
+    return React.useMemo(
+        () => initial !== null && initial !== undefined
+            && JSON.stringify(values) !== JSON.stringify(initial),
+        [values, initial],
     );
 }
 
@@ -370,7 +463,7 @@ export function FormInput({
                             readOnly={readOnly}
                             disabled={disabled}
                             autoFocus={!isMobile && autoFocus}
-                            checked={value}
+                            checked={!!value}
                             onChange={(e) => setValue(!value)}
                         />
                     ) : null
@@ -381,7 +474,7 @@ export function FormInput({
                     htmlFor={name}
                     className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4"
                 >{label}{(required) ? "*" : null}{(errorMsg) ?
-                    <span className="text-red-600 font-normal italic"> ({errorMsg})</span> : null}</label> : null}
+                    <span id={name + "-error"} className="text-red-600 font-normal italic" role="alert"> ({errorMsg})</span> : null}</label> : null}
 
                 {/* Input Element */}
                 {
@@ -428,6 +521,8 @@ export function FormInput({
                             disabled={disabled || readOnly}
                             tabIndex={tabIndex}
                             autoFocus={!isMobile && autoFocus}
+                            aria-invalid={errorMsg ? true : undefined}
+                            aria-describedby={errorMsg ? name + "-error" : undefined}
                             className={(highlight ? " bg-volt-400/15 dark:bg-volt-400/10 border-volt-500/50 " : "") + additionalClasses}
                         />
                     ) :
@@ -450,6 +545,8 @@ export function FormInput({
                                 step={step ?? (type === "number" ? "any" : undefined)}
                                 inputMode={inputMode || (type === "number" ? "decimal" : type === "email" ? "email" : undefined)}
                                 enterKeyHint={type === "number" ? "next" : type === "email" ? "next" : "done"}
+                                aria-invalid={errorMsg ? true : undefined}
+                                aria-describedby={errorMsg ? name + "-error" : undefined}
                                 value={type === "number" ? numberFieldValue(value) : ((value === null) ? '' : value)}
                                 list={name + "-suggestions"}
                                 onChange={(e) => setValue(e.target.value)}
@@ -511,16 +608,11 @@ export function MultiForm({fields, values, setValues, errors = {}}) {
     };
 
     const handleChange = (index, field, value) => {
+        // Copy the row too - the array spread alone shares row references.
         const updated = [...values];
-        updated[index][field] = value;
+        updated[index] = {...updated[index], [field]: value};
         setValues(updated);
     };
-
-    useEffect(() => {
-        if (values?.length === 0) {
-            //addRow();
-        }
-    })
 
     return (
         <div>

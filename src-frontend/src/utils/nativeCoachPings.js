@@ -1,6 +1,6 @@
 import {LocalNotifications} from "@capacitor/local-notifications";
-import {apiUrl, isNativeApp} from "./platform";
-import {ensureFreshAccessToken, getAccessToken} from "./authTokens";
+import {isNativeApp} from "./platform";
+import {ensureFreshAccessToken} from "./authTokens";
 import {onAppResume} from "./appLifecycle";
 
 // Coach pings in the Android app. Web Push (VAPID) does not work inside
@@ -25,15 +25,22 @@ const NOTIFY_ID = 71001;
 async function fetchLatestCoachMessage() {
     const status = await ensureFreshAccessToken();
     if (status === "dead" || status === "none") return null;
-    const token = getAccessToken();
-    if (!token) return null;
-    const resp = await fetch(apiUrl("/drill-instructor/message/"), {
-        headers: {Authorization: `Bearer ${token}`},
-        cache: "no-store",
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    const roots = Array.isArray(data) ? data : (data.results || []);
+    // Go through the RTK layer (shared reauth + cache) instead of a raw
+    // fetch - the feed polls the same endpoint on its own copy otherwise.
+    const {store} = await import("./store");
+    const {drillInstructorApi} = await import("./reducers/drillInstructorSlice");
+    let roots;
+    try {
+        const data = await store.dispatch(
+            drillInstructorApi.endpoints.getDrillMessages.initiate(
+                {limit: 10},
+                {forceRefetch: true},
+            )
+        ).unwrap();
+        roots = data?.results || [];
+    } catch {
+        return null; // offline / server error - next tick retries
+    }
 
     // Candidates: coach-authored roots plus coach reactions and (for
     // native) participant replies on your post / @mentions.

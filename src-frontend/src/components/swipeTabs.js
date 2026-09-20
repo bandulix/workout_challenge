@@ -4,7 +4,7 @@ import {ChevronLeft, ChevronRight} from "lucide-react";
 
 export const CHALLENGE_TABS = [
     {id: "feed", label: "Feed"},
-    {id: "board", label: "Board"},
+    {id: "board", label: "Leaderboard"},
 ];
 
 export function peekableTabIds(idx, dragging, seen) {
@@ -43,7 +43,7 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0}) {
             <div className="flex items-center justify-center gap-1">
                 <button type="button" aria-label="Previous page" disabled={idx === 0}
                         onClick={() => onChange(CHALLENGE_TABS[idx - 1].id)}
-                        className={"shrink-0 h-8 w-8 rounded-full flex items-center justify-center transition " +
+                        className={"shrink-0 h-11 w-11 rounded-full flex items-center justify-center transition " +
                             (idx === 0
                                 ? "text-gray-300/80 dark:text-ink-600 cursor-default"
                                 : "text-gray-400 hover:text-volt-600 dark:hover:text-volt-400")}>
@@ -55,7 +55,7 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0}) {
                     {CHALLENGE_TABS.map((t, i) => (
                         <button key={t.id} type="button" role="tab" aria-selected={tab === t.id}
                                 onClick={() => onChange(t.id)}
-                                className={"relative px-3 py-1 min-h-[36px] text-[11px] font-bold uppercase tracking-[0.16em] transition " +
+                                className={"relative px-3.5 py-2 min-h-[44px] text-[11px] font-bold uppercase tracking-[0.16em] transition " +
                                     (tab === t.id
                                         ? "text-volt-700 dark:text-volt-400"
                                         : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300")}>
@@ -72,7 +72,7 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0}) {
 
                 <button type="button" aria-label="Next page" disabled={idx === last}
                         onClick={() => onChange(CHALLENGE_TABS[idx + 1].id)}
-                        className={"shrink-0 h-8 w-8 rounded-full flex items-center justify-center transition " +
+                        className={"shrink-0 h-11 w-11 rounded-full flex items-center justify-center transition " +
                             (idx === last
                                 ? "text-gray-300/80 dark:text-ink-600 cursor-default"
                                 : "text-gray-400 hover:text-volt-600 dark:hover:text-volt-400")}>

@@ -4,11 +4,14 @@ import {
     useUpdateWorkoutMutation
 } from "../utils/reducers/workoutsSlice";
 import React, {useEffect, useState} from "react";
-import {AddButton, DeleteButton, Modal, SaveButton, SingleForm} from "./basicComponents";
+import {AddButton, DeleteButton, Modal, SaveButton, SingleForm, useFormDirty} from "./basicComponents";
 import {statsApi} from "../utils/reducers/statsSlice";
 import {feedApi} from "../utils/reducers/feedSlice";
 import {useDispatch} from "react-redux";
 import {clearBodyScrollLock} from "../utils/overlay";
+import {confirmAction} from "../utils/dialogs";
+import {toast} from "../utils/toasts";
+import {errText} from "../utils/errors";
 
 // After a workout save the challenge page must catch up without a manual
 // refresh: feed/stats are invalidated immediately, and the server's
@@ -63,7 +66,7 @@ export const workoutTypes = {
     "VirtualRow": {"label": "Rowing (Virtual)", "label_short": "Rowing"},
     "Run": {"label": "Run", "label_short": "Run"},
     "TrailRun": {"label": "Run (Trail)", "label_short": "Run"},
-    "VirtualRun": {"label": "Run (Treadmill / Vitual)", "label_short": "Run"},
+    "VirtualRun": {"label": "Run (Treadmill / Virtual)", "label_short": "Run"},
     "Volleyball": {"label": "Volleyball", "label_short": "Volleyball"},
     "Sail": {"label": "Sail", "label_short": "Sail"},
     "Skateboard": {"label": "Skateboard", "label_short": "Skateboard"},
@@ -205,14 +208,19 @@ const steps_fields = {
 export default function WorkoutForm({id = true, setModalState, scaling_distance}) {
     const dispatch = useDispatch();
 
+    // Local date, not toISOString() (UTC): near midnight the UTC date is
+    // already tomorrow and the form would prefill the day before yesterday.
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayString = yesterday.toISOString();
+    const pad2 = (n) => String(n).padStart(2, "0");
+    const yesterdayString = `${yesterday.getFullYear()}-${pad2(yesterday.getMonth() + 1)}-${pad2(yesterday.getDate())}`;
+    // "Log a workout" opens a real workout (Run) - not the Steps form,
+    // which is for the daily-step totals that sync automatically.
     const defaultValues = {
-        "sport_type": "Steps",
+        "sport_type": "Run",
         "start_date": yesterdayString.substring(0, 10),
         "start_datetime": yesterdayString.substring(0, 10) + "T20:00",
-        "duration": "00:30:10",
+        "duration": "00:30:00",
         "intensity_category": 1,
     };
 
@@ -241,36 +249,47 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
         isLoading: deleteIsLoading,
     }] = useDeleteWorkoutMutation();
 
-    // Overall form error message
+    // Overall form error message - human sentences, never raw status
+    // codes or server HTML.
     useEffect(() => {
         if (initError !== undefined) {
-            setFormError('Get Error (' + initError?.status?.toLocaleString() + ' ' + initError?.originalStatus?.toLocaleString() + '): ' + initError?.message);
+            setFormError(errText(initError, "Could not load this workout. Close and try again."));
         } else if (updateError !== undefined) {
-            setFormError('Update Error (' + updateError?.status?.toLocaleString() + ' ' + updateError?.originalStatus?.toLocaleString() + '): ' + updateError?.message);
+            setFormError(errText(updateError, "Could not save the workout. Please try again."));
         } else if (createError !== undefined) {
-            setFormError('Create Error (' + createError?.status?.toLocaleString() + ' ' + createError?.originalStatus?.toLocaleString() + '): ' + createError?.message);
+            setFormError(errText(createError, "Could not save the workout. Please try again."));
         } else if (deleteError !== undefined) {
-            setFormError('Delete Error (' + deleteError?.status?.toLocaleString() + ' ' + deleteError?.originalStatus?.toLocaleString() + '): ' + deleteError?.message);
+            setFormError(errText(deleteError, "Could not delete the workout. Please try again."));
         }
     }, [initError, updateError, createError, deleteError])
 
-    // load current form values
+    // load current form values - and snapshot them for the dirty guard
+    const [initialValues, setInitialValues] = useState({...defaultValues});
     useEffect(() => {
         if (initWorkout !== undefined) {
-            setValues({...initWorkout, start_date: initWorkout.start_datetime.substring(0, 10)});
+            const loaded = {...initWorkout, start_date: initWorkout.start_datetime.substring(0, 10)};
+            setValues(loaded);
+            setInitialValues(loaded);
         }
     }, [initWorkout])
 
     // form action button left
     async function handleDiscard() {
         if (id !== true) {
-            // delete workout
+            // delete workout - destructive and points are recalculated,
+            // so confirm first. (Challenge/account deletes already do.)
+            const confirmed = await confirmAction(
+                "Delete this workout? Its points are removed from every challenge. This cannot be undone.");
+            if (!confirmed) return;
             try {
                 await deleteEntry(values.id).unwrap();
                 setModalState(false);
                 clearBodyScrollLock();
             } catch (err) {
+                // Surface the failure - this used to only console.error.
                 console.error('Delete Workout failed', err);
+                setFormError(errText(err, "Could not delete the workout. Please try again."));
+                return;
             }
         } else {
             // save and add another
@@ -286,6 +305,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
                 }
                 await createEntry(tmpValues).unwrap();
                 setValues({...defaultValues});
+                toast.success("Workout saved - ready for the next one.");
             } catch (err) {
                 console.error('Create Workout failed', err);
                 setFieldErrors(err.data);
@@ -313,6 +333,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
                 await updateEntry(tmpValues).unwrap();
                 setModalState(false);
                 clearBodyScrollLock();
+                toast.success("Workout updated.");
             } catch (err) {
                 console.error('Update Workout failed', err);
                 setFieldErrors(err.data);
@@ -323,6 +344,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
                 await createEntry(tmpValues).unwrap();
                 setModalState(false);
                 clearBodyScrollLock();
+                toast.success("Workout logged. Points recalculate in the background.");
             } catch (err) {
                 console.error('Create Workout failed', err);
                 setFieldErrors(err.data);
@@ -344,15 +366,20 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
         }
     }, [values.sport_type])
 
+    const dirty = useFormDirty(values, initialValues);
+
     return (
-        <Modal title="Workout" landscape={true} setShowModal={setModalState} isLoading={iniLoading || updateIsLoading || createIsLoading || deleteIsLoading}>
+        <Modal title="Workout" landscape={true} setShowModal={setModalState}
+               isLoading={iniLoading || updateIsLoading || createIsLoading || deleteIsLoading}
+               confirmDiscard={dirty}>
             <SingleForm fields={activeFields} values={values} setValues={setValues} errors={fieldErrors}/>
-            <div className="text-center text-red-500 text-xs italic">{formError}</div>
+            <div className="text-center text-danger-text text-xs italic">{formError}</div>
             {(id !== true && values.sport_type !== "Steps" && (values?.strava_id === null || values?.strava_id === '')) ? <div className="text-center text-orange-500 text-xs italic"><b>Note:</b> Empty the kcal field to re-calculate after changes to the workout type, duration, or intensity.</div> : null}
             <div className="relative flex justify-between items-center">
                 {
                     (id !== true) ? (
-                        <DeleteButton onClick={handleDiscard} label="Delete" highlighted={false} larger={true}/>
+                        <DeleteButton onClick={handleDiscard} label="Delete" highlighted={false} larger={true}
+                                      additionalClasses=" text-red-600 dark:text-red-400 "/>
                     ) : (
                         <AddButton additionalClasses=" hover:text-green-800 " onClick={handleDiscard} label="Save and add another" highlighted={false} larger={true}/>
                     )

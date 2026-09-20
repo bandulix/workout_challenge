@@ -136,9 +136,11 @@ store.subscribe(() => {
         if (!getAccessToken() && !hasAuthMarker()) return;
         const full = persistableState(store.getState());
         if (!saveState(full)) {
+            // Quota exceeded: retry without the heaviest persisted slices
+            // (feed/stats are already excluded in persistableState).
             const slim = {...full};
-            delete slim.feedApi;
-            delete slim.statsApi;
+            delete slim.drillInstructorApi;
+            delete slim.workoutsApi;
             saveState(slim);
         }
     }, 2000);

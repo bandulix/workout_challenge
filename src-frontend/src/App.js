@@ -1,9 +1,12 @@
 import React, {Suspense, lazy, useEffect} from "react";
-import {BrowserRouter as Router, Routes, Route, useLocation, useNavigate} from "react-router-dom";
+import {BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate} from "react-router-dom";
+import {BeatLoader} from "react-spinners";
 import {rememberPath} from "./utils/lastPath";
 import {rememberLastCompetition} from "./utils/challenge";
 import {useDarkTheme} from "./utils/theme";
 import {useApkGate} from "./utils/apkUpdate";
+import {getAccessToken, hasAuthMarker} from "./utils/authTokens";
+import {sanitizeRedirect} from "./utils/authClient";
 import {
     WelcomePage,
     RegisterPage,
@@ -20,6 +23,7 @@ import WhatsNew from "./components/WhatsNew";
 
 import VerifyEmailBanner from "./components/VerifyEmailBanner";
 import DialogHost from "./components/DialogHost";
+import ToastHost from "./components/ToastHost";
 import ForceUpdateScreen, {ForceUpdateChecking} from "./components/ForceUpdateScreen";
 import {InitStravaLink, ReturnStravaLink} from "./pages/StravaLink";
 import {installSfxUnlock} from "./utils/sfx";
@@ -40,6 +44,32 @@ function RememberPath() {
         rememberLastCompetition(location.pathname);
     }, [location.pathname, location.search]);
     return null;
+}
+
+
+// Client-side gate for protected pages: without it a logged-out visit
+// paints the page's error box until the API layer's 401 redirect fires
+// - a terrible first impression. Send them to /login first (with the
+// destination attached); the login page's refresh-token race brings
+// still-authenticated users straight through.
+function RequireAuth({children}) {
+    const location = useLocation();
+    if (!hasAuthMarker() && !getAccessToken()) {
+        const dest = sanitizeRedirect(location.pathname + location.search) || "/coach";
+        return <Navigate to={`/login?redirect=${encodeURIComponent(dest)}`} replace/>;
+    }
+    return children;
+}
+
+
+// Lazy pages used to render `fallback={null}` - a blank screen over the
+// backdrop on every cold navigation.
+function RouteFallback() {
+    return (
+        <div className="flex items-center justify-center min-h-[60vh]" role="status" aria-label="Loading page">
+            <BeatLoader color="#d7ff3e"/>
+        </div>
+    );
 }
 
 
@@ -135,17 +165,17 @@ function AppShell() {
                 <Route path="email/verify/:id/:token" element={<VerifyEmailPage />} />
 
                 <Route path="dashboard" element={
-                    <Suspense fallback={null}><MySpace/></Suspense>
+                    <RequireAuth><Suspense fallback={<RouteFallback/>}><MySpace/></Suspense></RequireAuth>
                 } />
                 <Route path="competition/:id" element={
-                    <Suspense fallback={null}><Competition/></Suspense>
+                    <RequireAuth><Suspense fallback={<RouteFallback/>}><Competition/></Suspense></RequireAuth>
                 } />
                 <Route path="coach" element={
-                    <Suspense fallback={null}><Coach/></Suspense>
+                    <RequireAuth><Suspense fallback={<RouteFallback/>}><Coach/></Suspense></RequireAuth>
                 } />
 
                 <Route path="admin/site-settings" element={
-                    <Suspense fallback={null}><AdminSettings/></Suspense>
+                    <RequireAuth><Suspense fallback={<RouteFallback/>}><AdminSettings/></Suspense></RequireAuth>
                 } />
 
                 <Route path="strava/link" element={<InitStravaLink />} />
@@ -158,6 +188,7 @@ function AppShell() {
             <BottomNav/>
             <CoachMidiBed/>
             <DialogHost/>
+            <ToastHost/>
             {/* Release popup: changelog once per release. Web can reload;
                 the APK already passed the force-update gate, so no download. */}
             <WhatsNew/>

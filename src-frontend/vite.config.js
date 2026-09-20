@@ -10,8 +10,19 @@ export default defineConfig(({mode}) => ({
     publicDir: "public",
     build: {
         outDir: "build",
+        // 'hidden' once CI uploads maps to Sentry; until then emitting
+        // them would just publish readable source under guessable names.
         sourcemap: false,
         emptyOutDir: true,
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    "vendor-react": ["react", "react-dom", "react-router-dom"],
+                    "vendor-redux": ["@reduxjs/toolkit", "react-redux"],
+                    "vendor-icons": ["lucide-react"],
+                },
+            },
+        },
     },
     server: {
         port: 3000,
@@ -36,7 +47,12 @@ export default defineConfig(({mode}) => ({
         },
     },
     test: {
+        // node stays the default (pure-logic tests); component tests opt
+        // in per-file via `// @vitest-environment jsdom` so the API layer
+        // never drags a DOM into the fast suite.
         environment: "node",
+        environmentMatchGlobs: [],
+        setupFiles: ["src/setupTests.js"],
         include: ["src/**/*.test.js"],
     },
 }));

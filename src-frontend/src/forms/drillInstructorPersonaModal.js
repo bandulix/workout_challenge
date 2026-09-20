@@ -14,10 +14,13 @@ import {
     EditButton,
     Modal,
     SaveButton,
+    useFormDirty,
 } from "./basicComponents";
 import PersonaAvatar from "../components/PersonaAvatar";
 import {invalidateProtectedImage} from "../utils/protectedMedia";
-import {confirmAction, notice} from "../utils/dialogs";
+import {confirmAction} from "../utils/dialogs";
+import {toast} from "../utils/toasts";
+import {errText} from "../utils/errors";
 import {clearBodyScrollLock} from "../utils/overlay";
 import {previewMidiBytes, startMidiBed, stopMidiBed, unlockMidiBed} from "../utils/midiBed";
 
@@ -58,9 +61,10 @@ export function PersonaEditModal({persona, setModalState}) {
     const {data: users} = useGetUsersQuery();
     const [handOffTo, setHandOffTo] = useState("");
 
+    const [initialValues, setInitialValues] = useState(null);
     useEffect(() => {
         if (persona) {
-            setValues({
+            const loaded = {
                 name: persona.name || "",
                 tagline: persona.tagline || "",
                 description: persona.description || "",
@@ -68,7 +72,9 @@ export function PersonaEditModal({persona, setModalState}) {
                 theme_color: persona.theme_color || PERSONA_COLORS[0],
                 system_prompt: persona.system_prompt || "",
                 is_shared: Boolean(persona.is_shared),
-            });
+            };
+            setValues(loaded);
+            setInitialValues(loaded);
             setPicturePreview(persona.profile_picture || null);
             setMidiFile(null);
             setClearMidi(false);
@@ -103,8 +109,8 @@ export function PersonaEditModal({persona, setModalState}) {
     }
 
     useEffect(() => {
-        if (addError) setFormError("Create Error: " + JSON.stringify(addError?.data || addError?.message));
-        if (updateError) setFormError("Update Error: " + JSON.stringify(updateError?.data || updateError?.message));
+        if (addError) setFormError(errText(addError, "Could not create the coach. Please try again."));
+        if (updateError) setFormError(errText(updateError, "Could not save the coach. Please try again."));
     }, [addError, updateError]);
 
     useEffect(() => {
@@ -166,7 +172,9 @@ export function PersonaEditModal({persona, setModalState}) {
     const inputClass = "w-full shadow border rounded-xl py-2 px-3 text-gray-700 dark:bg-ink-900 dark:text-gray-300 leading-tight focus:outline-none focus:border-volt-500";
 
     return (
-        <Modal title={isNew ? "New Persona" : "Edit Persona"} setShowModal={setModalState} isLoading={addLoading || updateLoading}>
+        <Modal title={isNew ? "New coach" : "Edit coach"} setShowModal={setModalState}
+               isLoading={addLoading || updateLoading}
+               confirmDiscard={useFormDirty(values, initialValues) || Boolean(pictureFile) || Boolean(midiFile)}>
             {/* identity preview - click the picture to upload a custom one */}
             <div className="flex items-center gap-4 px-4 pb-2">
                 <button type="button" onClick={() => fileInput.current?.click()}
@@ -347,7 +355,7 @@ export function PersonaEditModal({persona, setModalState}) {
                                             await transferPersona({id: persona.id, user: Number(handOffTo)}).unwrap();
                                             setModalState(false);
                                         } catch (err) {
-                                            setFormError(JSON.stringify(err?.data || err?.message));
+                                            setFormError(errText(err, "Could not hand over this coach. Please try again."));
                                         }
                                     }}
                                     className="min-h-[44px] px-4 rounded-full btn-glass text-sm font-bold uppercase tracking-wide disabled:opacity-40">
@@ -357,7 +365,7 @@ export function PersonaEditModal({persona, setModalState}) {
                     </div>
                 )}
             </div>
-            <div className="text-center text-red-500 text-xs italic">{formError}</div>
+            <div className="text-center text-danger-text text-xs italic">{formError}</div>
             <div className="relative flex justify-end items-center">
                 <SaveButton onClick={handleSubmit} label={isNew ? "Create" : "Save"} highlighted={true} larger={true}/>
             </div>
@@ -381,20 +389,20 @@ export default function DrillInstructorPersonaModal({setModalState}) {
         try {
             await deletePersona(persona.id).unwrap();
         } catch (err) {
-            await notice("Could not delete persona: " + JSON.stringify(err?.data || err?.message));
+            toast.error(errText(err, "Could not delete that coach."));
         }
     }
 
     return (
-        <Modal title={isStaff ? "AI Drill Instructor Personas" : "Your roasters"} landscape={true} setShowModal={setModalState} isLoading={isLoading || deleteLoading}>
+        <Modal title={isStaff ? "All coaches" : "Your coaches"} landscape={true} setShowModal={setModalState} isLoading={isLoading || deleteLoading}>
             <div className="text-sm text-gray-600 dark:text-gray-400 px-4 pb-2">
                 {isStaff
-                    ? "You can add, edit or delete every roaster - built-ins and ones people made. Anyone else can only change the roasters they created."
+                    ? "You can add, edit or delete every coach - built-ins and ones people made. Anyone else can only change the coaches they created."
                     : "Create a coach in your voice. Release it so teammates can pick it in their challenges, or hand it to someone. Built-ins are the shared lineup."}
             </div>
             <div className="grid gap-2 sm:grid-cols-2 px-2">
                 {visible.length === 0 ? (
-                    <p className="py-2 px-4 text-center text-gray-500 sm:col-span-2">No roasters yet - create the first one.</p>
+                    <p className="py-2 px-4 text-center text-gray-500 sm:col-span-2">No coaches yet - create the first one.</p>
                 ) : (
                     visible.map((persona) => {
                         const canEdit = isStaff || persona.mine;
@@ -426,7 +434,7 @@ export default function DrillInstructorPersonaModal({setModalState}) {
                 )}
             </div>
             <div className="relative flex justify-between items-center">
-                <AddButton onClick={() => setEditing({})} label="New roaster" highlighted={true} larger={true}/>
+                <AddButton onClick={() => setEditing({})} label="New coach" highlighted={true} larger={true}/>
                 <button className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-volt-300" onClick={() => refetch()}>Refresh</button>
             </div>
             {editing !== null && (

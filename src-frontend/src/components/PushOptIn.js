@@ -4,6 +4,7 @@ import {useGetPushStatusQuery, useSubscribePushMutation, useUnsubscribePushMutat
 import {subscribeToPush, unsubscribeFromPush, promptInstall} from "../index";
 import usePollingInterval from "../utils/usePollingInterval";
 import {notice} from "../utils/dialogs";
+import {errText} from "../utils/errors";
 
 // Platform-aware push opt-in card. Handles the iOS "install to home
 // screen first" dance, the Android/desktop native install prompt, and
@@ -102,7 +103,7 @@ function PushOptInCard({compact = false}) {
                 await notice(`Ping sent to ${results.length} device(s). If nothing shows up, the block is on the device (notification permission / battery optimization / Brave push setting).`);
             }
         } catch (err) {
-            await notice("Test ping failed: " + JSON.stringify(err?.data || err?.message));
+            await notice(errText(err, "Test ping failed. Please try again."));
         } finally {
             setBusy(false);
         }
@@ -121,7 +122,7 @@ function PushOptInCard({compact = false}) {
                 <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                     On iPhone, notifications work from the installed app. It takes 10 seconds:
                 </p>
-                <ol className="mt-3 space-y-2 text-sm text-gray-200">
+                <ol className="mt-3 space-y-2 text-sm text-muted">
                     <li className="flex items-center gap-2">
                         <span className="text-volt-700 dark:text-volt-400 font-bold">1.</span> Tap <Share className="inline h-4 w-4 -mt-0.5"/> <b>Share</b> in Safari
                     </li>
@@ -149,7 +150,7 @@ function PushOptInCard({compact = false}) {
                     <p className="text-xs text-gray-600 dark:text-gray-400">
                         {subscribed
                             ? `Active on ${status?.count || 1} device${(status?.count || 1) > 1 ? "s" : ""}`
-                            : "Get the Drill Instructor on your lock screen"}
+                            : "Get the coach on your lock screen"}
                     </p>
                 </div>
             </div>
@@ -164,7 +165,7 @@ function PushOptInCard({compact = false}) {
             )}
 
             {permission === "denied" ? (
-                <p className="mt-3 text-sm text-amber-300">
+                <p className="mt-3 text-sm text-warning-text">
                     Notifications are blocked in your browser settings. Allow them for this site, then come back.
                 </p>
             ) : subscribed ? (
@@ -194,7 +195,7 @@ function PushOptInCard({compact = false}) {
                 </button>
             )}
 
-            {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+            {error && <p className="mt-2 text-xs text-danger-text" role="alert">{error}</p>}
             {!compact && platform.isIOS && (
                 <p className="mt-3 text-xs text-gray-500">Requires iOS 16.4 or newer.</p>
             )}

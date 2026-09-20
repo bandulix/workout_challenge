@@ -2,6 +2,25 @@ import {createApi} from '@reduxjs/toolkit/query/react';
 import {baseQueryWithReauth} from './baseQueryWithReauth';
 import {liveQueryDefaults} from './rtkDefaults';
 
+/** Feed pagination stitcher for getDrillMessages: page 0 replaces the
+ * head and keeps older loaded pages; later pages append, id-deduped.
+ * Exported for unit tests. */
+export function drillMessagesMerge(current, incoming, {arg}) {
+    const incomingRows = incoming?.results || [];
+    if (!arg?.offset) {
+        const ids = new Set(incomingRows.map((m) => m.id));
+        const pageSize = incoming.limit || incomingRows.length;
+        const rest = (current?.results || []).slice(pageSize).filter((m) => !ids.has(m.id));
+        return {...incoming, results: [...incomingRows, ...rest]};
+    }
+    const seen = new Set((current?.results || []).map((m) => m.id));
+    return {
+        ...incoming,
+        count: incoming.count ?? current?.count,
+        results: [...(current?.results || []), ...incomingRows.filter((m) => !seen.has(m.id))],
+    };
+}
+
 export const drillInstructorApi = createApi({
     reducerPath: 'drillInstructorApi',
     baseQuery: baseQueryWithReauth,
@@ -128,21 +147,7 @@ export const drillInstructorApi = createApi({
                 const competition = queryArgs?.competition;
                 return competition == null ? "all" : String(competition);
             },
-            merge: (current, incoming, {arg}) => {
-                const incomingRows = incoming?.results || [];
-                if (!arg?.offset) {
-                    const ids = new Set(incomingRows.map((m) => m.id));
-                    const pageSize = incoming.limit || incomingRows.length;
-                    const rest = (current?.results || []).slice(pageSize).filter((m) => !ids.has(m.id));
-                    return {...incoming, results: [...incomingRows, ...rest]};
-                }
-                const seen = new Set((current?.results || []).map((m) => m.id));
-                return {
-                    ...incoming,
-                    count: incoming.count ?? current?.count,
-                    results: [...(current?.results || []), ...incomingRows.filter((m) => !seen.has(m.id))],
-                };
-            },
+            merge: drillMessagesMerge,
             forceRefetch({currentArg, previousArg}) {
                 return currentArg?.offset !== previousArg?.offset
                     || currentArg?.competition !== previousArg?.competition;

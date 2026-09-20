@@ -5,8 +5,10 @@ import {
     useUpdateCompetitionMutation
 } from "../utils/reducers/competitionsSlice";
 import {useNavigate} from "react-router-dom";
-import {ChangeOwnerButton, DeleteButton, Modal, SaveButton, SingleForm} from "./basicComponents";
-import {confirmAction, notice} from "../utils/dialogs";
+import {ChangeOwnerButton, DeleteButton, Modal, SaveButton, SingleForm, useFormDirty} from "./basicComponents";
+import {confirmAction} from "../utils/dialogs";
+import {toast} from "../utils/toasts";
+import {errText} from "../utils/errors";
 import {clearBodyScrollLock} from "../utils/overlay";
 
 
@@ -74,21 +76,24 @@ export default function CompetitionForm({competition, setModalState, setShowTran
         isLoading: deleteIsLoading,
     }] = useDeleteCompetitionMutation();
 
-    // Overall form error message
+    // Overall form error message - human sentences via errText, never
+    // raw status codes or server HTML.
     useEffect(() => {
         if (updateError !== undefined) {
-            setFormError('Update Error (' + updateError?.status?.toLocaleString() + ' ' + updateError?.originalStatus?.toLocaleString() + '): ' + updateError?.message);
+            setFormError(errText(updateError, "Could not save the challenge. Please try again."));
         } else if (createError !== undefined) {
-            setFormError('Create Error (' + createError?.status?.toLocaleString() + ' ' + createError?.originalStatus?.toLocaleString()  + '): ' + createError?.message);
+            setFormError(errText(createError, "Could not create the challenge. Please try again."));
         } else if (deleteError !== undefined) {
-            setFormError('Delete Error (' + deleteError?.status?.toLocaleString() + ' ' + deleteError?.originalStatus?.toLocaleString()  + '): ' + deleteError?.message);
+            setFormError(errText(deleteError, "Could not delete the challenge. Please try again."));
         }
     }, [updateError, createError, deleteError])
 
-    // load current form values
+    // load current form values - and snapshot them for the dirty guard
+    const [initialValues, setInitialValues] = useState(competition ?? {});
     useEffect(() => {
         if (competition !== undefined) {
             setValues(competition);
+            setInitialValues(competition);
         }
     }, [])
     
@@ -111,7 +116,9 @@ export default function CompetitionForm({competition, setModalState, setShowTran
                     navigate('/dashboard/');
                 }
             } catch (err) {
+                // Surface the failure - this used to only console.error.
                 console.error('Delete Competition failed', err);
+                setFormError(errText(err, "Could not delete the challenge. Please try again."));
             }
         } else {
             // discard competition
@@ -129,7 +136,7 @@ export default function CompetitionForm({competition, setModalState, setShowTran
                 await updateEntry(values).unwrap();
                 setModalState(false);
                 clearBodyScrollLock();
-                await notice('Saved. Changes might take up to 10 minutes to reflect on the challenge page for all users.');
+                toast.success('Saved. Points recalculate in the background - the page updates itself, usually within a minute.');
             } catch (err) {
                 console.error('Update Competition failed', err);
                 setFieldErrors(err.data);
@@ -143,7 +150,8 @@ export default function CompetitionForm({competition, setModalState, setShowTran
                 // The new challenge page is interesting for about one
                 // second - there is nothing on it yet. Land back on the
                 // dashboard instead, where the challenge now shows up in
-                // "My Competitions" (visible feedback that it worked).
+                // "My challenges" (visible feedback that it worked).
+                toast.success("Challenge created. Invite your rivals from its page.");
                 navigate('/dashboard');
             } catch (err) {
                 console.error('Create Competition failed', err);
@@ -153,9 +161,11 @@ export default function CompetitionForm({competition, setModalState, setShowTran
     }
 
     return (
-        <Modal title="Challenge" landscape={true} setShowModal={setModalState} isLoading={updateIsLoading || createIsLoading || deleteIsLoading}>
+        <Modal title="Challenge" landscape={true} setShowModal={setModalState}
+               isLoading={updateIsLoading || createIsLoading || deleteIsLoading}
+               confirmDiscard={useFormDirty(values, initialValues)}>
             <SingleForm fields={finalFields} values={values} setValues={setValues} errors={fieldErrors}/>
-            <div className="text-center text-red-500 text-xs italic">{formError}</div>
+            <div className="text-center text-danger-text text-xs italic">{formError}</div>
             <div className="relative flex justify-between items-center">
                 <DeleteButton onClick={handleDiscard} label={(competition !== undefined) ? "Delete" : "Discard"} highlighted={false} larger={true} />
                 {(competition !== undefined) && <ChangeOwnerButton onClick={() => {setModalState(false); setShowTransferCompetitionModal(true);}} label={"Transfer Ownership"} highlighted={false} larger={true} />}

@@ -6,6 +6,7 @@ import {fetchProtectedImage} from "../utils/protectedMedia";
 import {timeAgo} from "../utils/time";
 import usePollingInterval from "../utils/usePollingInterval";
 import {playSfx} from "../utils/sfx";
+import {prefersReducedMotion} from "../utils/motion";
 
 // The coach's roasted photos as a hot-or-not swipe game: drag (or tap a
 // button) right for HOT, left for NOPE. One card at a time, the next one
@@ -39,6 +40,12 @@ function RoastCard({card, top, onVote}) {
     }, []);
 
     const settle = useCallback((hot) => {
+        playSfx(hot ? "roast_hot" : "roast_nope");
+        if (prefersReducedMotion()) {
+            // No fly-off, no vibration - the vote lands immediately.
+            onVote(hot);
+            return;
+        }
         setLeaving(hot ? "hot" : "not");
         const el = nodeRef.current;
         if (el) {
@@ -46,7 +53,6 @@ function RoastCard({card, top, onVote}) {
             el.style.transition = `transform ${FLY_OFF_MS}ms ease-in`;
             el.style.transform = `translateX(${dx}px) rotate(${(hot ? 1 : -1) * 22}deg)`;
         }
-        playSfx(hot ? "roast_hot" : "roast_nope");
         navigator.vibrate?.(30);
         setTimeout(() => onVote(hot), FLY_OFF_MS);
     }, [onVote]);
@@ -142,6 +148,7 @@ export default function RoastSwipeBox() {
     // Cards already judged leave the stack (server also omits them).
     const [doneIds, setDoneIds] = useState([]);
     const [tallies, setTallies] = useState({});
+    const boxRef = useRef(null);
 
     const cards = (roasts || [])
         .map((c) => ({...c, ...(tallies[c.id] || {})}))
@@ -165,6 +172,10 @@ export default function RoastSwipeBox() {
 
     useEffect(() => {
         function onKey(e) {
+            // Only while the user is actually interacting with this box -
+            // a global arrow-key listener hijacks scrolling elsewhere.
+            const target = document.activeElement;
+            if (!boxRef.current || !boxRef.current.contains(target)) return;
             if (e.key === "ArrowRight") { e.preventDefault(); playSfx("roast_hot"); handleVote(true); }
             else if (e.key === "ArrowLeft") { e.preventDefault(); playSfx("roast_nope"); handleVote(false); }
         }
@@ -177,6 +188,7 @@ export default function RoastSwipeBox() {
 
     return (
         <BoxSection>
+            <div ref={boxRef}>
             <div className="flex items-center justify-between mb-2">
                 <h2 className="font-display text-sm uppercase tracking-wider flex items-center gap-2">
                     <Flame className="h-4 w-4 text-volt-500"/> Hot or Not: Roast Edition
@@ -199,7 +211,8 @@ export default function RoastSwipeBox() {
                     <Flame className="h-6 w-6"/>
                 </button>
             </div>
-            <p className="mt-2 text-center text-[11px] text-gray-400">Drag the card or tap: flame = hot, X = nope.</p>
+            <p className="mt-2 text-center text-[11px] text-gray-400">Drag the card or tap: flame = hot, X = nope. Arrow keys work too.</p>
+            </div>
         </BoxSection>
     );
 }

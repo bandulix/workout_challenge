@@ -1,11 +1,18 @@
-import {fetchBaseQuery} from '@reduxjs/toolkit/query/react';
+import {fetchBaseQuery, retry} from '@reduxjs/toolkit/query/react';
 import {throwErrorWithCode} from '../miscellaneous';
 import {getServerUrl} from '../serverUrl';
-import {ensureFreshAccessToken, getAccessToken, hasAuthMarker, refreshAccessToken} from '../authTokens';
+import {ensureFreshAccessToken, getAccessToken, refreshAccessToken} from '../authTokens';
 import {isPublicPath} from '../publicPath';
 import {isNativeApp} from '../platform';
 
+// Gate on the runtime DSN: without it the first API hiccup would still
+// download the (heavy) Sentry chunk for nothing. (typeof guard: the unit
+// tests run in node, where no window exists.)
+const SENTRY_ENABLED = typeof window !== "undefined"
+    && Boolean(window.RUNTIME_CONFIG?.REACT_APP_SENTRY_DSN);
+
 function getSentry() {
+    if (!SENTRY_ENABLED) return Promise.resolve(null);
     return import('@sentry/react').catch(() => null);
 }
 
@@ -15,7 +22,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 const requestTimings = new Map();
 
-const baseQuery = fetchBaseQuery({
+const rawBaseQuery = fetchBaseQuery({
     baseUrl: getServerUrl() + '/api/',
     cache: 'no-store',
     // Send httpOnly refresh cookie on same-origin / credentialed calls.
@@ -39,12 +46,26 @@ const baseQuery = fetchBaseQuery({
     },
 });
 
+// One transparent retry on transient failures (mobile lie-fi blips used
+// to bounce users straight into a full-page error box). Retry only GETs
+// (idempotent); RTK's default already skips 4xx-ish client errors.
+const baseQuery = retry(rawBaseQuery, {
+    maxRetries: 1,
+    retryCondition: (error, args, {attempt}) =>
+        attempt === 1 && (args?.method || 'GET') === 'GET'
+        && ['FETCH_ERROR', 'TIMEOUT_ERROR'].includes(error?.status),
+});
+
+// PII and credentials must never reach the error tracker: a failed
+// register/login POST otherwise ships the user's email/name and the
+// shared invite token to a third party.
 const REDACTED_FIELDS = new Set([
     'password', 'current_password', 'new_password',
     'llm_api_key', 'strava_client_secret', 'email_host_password',
     'health_developer_password',
     'token', 'access_token', 'refresh_token',
     'p256dh', 'auth',
+    'email', 'first_name', 'last_name', 'invite_token', 'join_code',
 ]);
 
 function _redact(value) {
@@ -80,7 +101,10 @@ export function sentryError({result, errorSource, endpointName = undefined, quer
                 .pop();
             if (entry) requestTimings.set(requestUrl, entry);
         }
+        // Read-then-delete: this map is a per-URL memo, not an archive -
+        // leaving entries in it grows memory for the whole session.
         const resourceTimings = requestTimings.get(requestUrl);
+        requestTimings.delete(requestUrl);
         if (resourceTimings) {
             scope.setContext('Request Timing', {
                 duration: resourceTimings.duration,
@@ -148,12 +172,9 @@ export const baseQueryWithReauth = async (args, api, extraOptions) => {
             return result;
         }
 
-        // Web: httpOnly cookie may still be present even without a marker.
-        // Native: secure store / marker. Always attempt one shared refresh.
-        if (!getAccessToken() && !hasAuthMarker()) {
-            // Still try cookie-based refresh once before giving up.
-        }
-
+        // Web: the httpOnly cookie may still be present even without a
+        // marker; native: secure store / marker. Always attempt one shared
+        // refresh - even when both look empty (the cookie is invisible).
         const refreshStatus = await refreshAccessToken();
 
         if (refreshStatus === 'ok') {

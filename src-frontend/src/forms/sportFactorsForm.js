@@ -2,7 +2,8 @@ import React, {useEffect, useState} from "react";
 import {FIELD_INPUT_CLASS, Modal, SaveButton} from "./basicComponents";
 import {useGetSiteSettingsQuery, useUpdateSiteSettingsMutation} from "../utils/reducers/siteSettingsSlice";
 import {workoutTypes} from "./workoutForm";
-import {confirmAction, notice} from "../utils/dialogs";
+import {toast} from "../utils/toasts";
+import {errText} from "../utils/errors";
 import {clearBodyScrollLock} from "../utils/overlay";
 
 // Admin editor for the site-wide per-activity-type point multipliers.
@@ -47,9 +48,9 @@ export default function SportFactorsForm({setModalState}) {
             await updateSettings({points_sport_factors: sparse}).unwrap();
             setModalState(false);
             clearBodyScrollLock();
-            await notice('Saved. The re-calculation of all competition points runs in the background and might take a few minutes.');
+            toast.success('Saved. Points recalculate in the background - the page updates itself, usually within a minute.');
         } catch (err) {
-            setFormError('Save failed (' + (err?.status ?? '') + ') - please try again.');
+            setFormError(errText(err, 'Save failed - please try again.'));
         }
     }
 
@@ -87,7 +88,7 @@ export default function SportFactorsForm({setModalState}) {
                     </tbody>
                 </table>
             </div>
-            <div className="text-center text-red-500 text-xs italic">{formError}</div>
+            <div className="text-center text-danger-text text-xs italic">{formError}</div>
             <div className="relative flex justify-end items-center">
                 <SaveButton onClick={handleSubmit} label="Update" highlighted={true} larger={true}/>
             </div>

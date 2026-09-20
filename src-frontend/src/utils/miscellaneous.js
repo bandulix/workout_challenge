@@ -1,6 +1,5 @@
 import React from "react";
 import {AlertCircle} from "lucide-react";
-import { createAsyncThunk } from '@reduxjs/toolkit';
 import {useDispatch} from "react-redux";
 
 
@@ -62,15 +61,11 @@ function BoxSection({additionalClasses = '', children}) {
 }
 
 
-export const resetStoreAsync = createAsyncThunk('store/reset', async (_, {dispatch}) => {
-    dispatch({type: 'RESET_STORE'});
-});
-
 function ErrorBoxSection({errorMsg, additionalClasses = ''}) {
     const dispatch = useDispatch();
 
-    async function handleReload() {
-        await dispatch(resetStoreAsync());
+    function handleReload() {
+        dispatch({type: 'RESET_STORE'});
         window.location.reload();
     }
 

@@ -7,7 +7,7 @@ import {SectionLoader} from "../utils/loaders";
 import PersonaAvatar, {usePersonaImageSrc} from "../components/PersonaAvatar";
 import PortraitWash from "../components/PortraitWash";
 import RoastSwipeBox from "../components/RoastSwipeBox";
-import CoachVoteBox from "../components/CoachVoteBox";
+import CoachVoteBox, {CoachHandover} from "../components/CoachVoteBox";
 import PushOptInCard from "../components/PushOptIn";
 import {ActivityCoachPost} from "../components/competitionChrome";
 import {messageResults, useGetPersonasQuery, useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
@@ -143,7 +143,7 @@ function CoachHero({persona, config, message: latest, ownedCompetitions, mood, l
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400">
                         <Radio className="h-3.5 w-3.5"/>
-                        {config ? "On duty" : "Drill Instructor"}
+                        {config ? "On duty" : "Coach"}
                     </span>
                     {config && mood?.label && (
                         <span className={"rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.16em] " +
@@ -157,9 +157,8 @@ function CoachHero({persona, config, message: latest, ownedCompetitions, mood, l
                             {trained.label}
                         </span>
                     )}
-                </div>
-
-                <div className="mt-4 flex items-center gap-3 sm:gap-5">
+                    {/* Explicit sound control - the avatar is decoration, not
+                        a secret button (it gates ALL app SFX + the MIDI bed). */}
                     <button type="button"
                             onClick={() => {
                                 const next = !sfxOn;
@@ -167,9 +166,15 @@ function CoachHero({persona, config, message: latest, ownedCompetitions, mood, l
                                 if (next) playSfx("vote");
                             }}
                             aria-pressed={sfxOn}
-                            aria-label={sfxOn ? "Mute coach sounds" : "Enable coach sounds"}
-                            title={sfxOn ? "Sounds on — tap to mute" : "Sounds off — tap to unmute"}
-                            className="relative shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
+                            title="All app sounds and the coach music bed"
+                            className="ml-auto inline-flex min-h-[44px] items-center gap-1.5 rounded-full btn-glass px-3.5 py-2 text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 transition">
+                        {sfxOn ? <Volume2 className="h-4 w-4"/> : <VolumeX className="h-4 w-4"/>}
+                        {sfxOn ? "Sound on" : "Sound off"}
+                    </button>
+                </div>
+
+                <div className="mt-4 flex items-center gap-3 sm:gap-5">
+                    <div className="relative shrink-0">
                         <SquadOrbit mood={mood} accent={persona.theme_color} showCaption={false}>
                             <PersonaAvatar persona={persona} size={80} ring={false} glow={false}
                                            className="!w-full !h-full"/>
@@ -177,10 +182,11 @@ function CoachHero({persona, config, message: latest, ownedCompetitions, mood, l
                         <span className={"pointer-events-none absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full shadow-md " +
                             (sfxOn
                                 ? "bg-volt-400 text-ink-950"
-                                : "bg-ink-950/80 text-white")}>
+                                : "bg-ink-950/80 text-white")}
+                              aria-hidden="true">
                             {sfxOn ? <Volume2 className="h-3.5 w-3.5"/> : <VolumeX className="h-3.5 w-3.5"/>}
                         </span>
-                    </button>
+                    </div>
                     <div className="min-w-0 flex-1">
                         <h1 className="font-display text-[1.35rem] sm:text-3xl uppercase leading-tight break-words">{persona.name}</h1>
                         {persona.tagline && <p className="mt-1.5 text-sm text-gray-600 dark:text-gray-300 italic break-words">“{persona.tagline}”</p>}
@@ -200,8 +206,8 @@ function CoachHero({persona, config, message: latest, ownedCompetitions, mood, l
                             ) : (
                                 <p className="text-[15px] leading-relaxed text-gray-700 dark:text-gray-300">
                                     No coach assigned yet. {ownedCompetitions.length > 0
-                                        ? "Pick a persona and unleash them on your challenge."
-                                        : "Once your challenge's organizer enables the Drill Instructor, the banter lands here."}
+                                        ? "Pick a coach and unleash them on your challenge."
+                                        : "Once your challenge's organizer enables the coach, the banter lands here."}
                                 </p>
                             )}
                         />
@@ -209,7 +215,9 @@ function CoachHero({persona, config, message: latest, ownedCompetitions, mood, l
                 </div>
 
                 {!config && ownedCompetitions.length > 0 && (
-                    <Link to={`/competition/${ownedCompetitions[0].id}?tab=feed`}
+                    /* coach=setup auto-opens the coach config modal on the
+                       challenge page - no hunting for the megaphone icon. */
+                    <Link to={`/competition/${ownedCompetitions[0].id}?tab=feed&coach=setup`}
                           className="mt-5 inline-flex items-center gap-2 rounded-full bg-volt-400 text-ink-950 px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
                         <Megaphone className="h-4 w-4"/> Set up your coach <ChevronRight className="h-4 w-4"/>
                     </Link>
@@ -291,6 +299,10 @@ function CoachPage() {
                                    ownedCompetitions={ownedCompetitions}
                                    mood={heroConfig?.mood}
                                    lastOwnActivityId={lastOwnActivityId}/>
+
+                        {/* The handover celebration belongs where the voting
+                            happens, not only on the challenge feed. */}
+                        {heroConfig && <CoachHandover configId={heroConfig.id} enabled={heroConfig.enabled}/>}
 
                         {heroConfig?.daily_order && <OrderCard order={heroConfig.daily_order}/>}
 

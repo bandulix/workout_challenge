@@ -2,10 +2,11 @@ import React, {useEffect, useState} from "react";
 import {Link, useLocation, useNavigationType, useParams} from "react-router-dom";
 import {useDispatch} from 'react-redux';
 import {useNavigate} from 'react-router-dom';
-import {BarLoader} from "react-spinners";
+import {BarLoader, BeatLoader} from "react-spinners";
 import ServerField from '../components/ServerField';
 import {PageWrapper} from "../utils/miscellaneous";
 import {notice} from "../utils/dialogs";
+import {toast} from "../utils/toasts";
 import {
     apiCreateAccount,
     apiLogin,
@@ -233,8 +234,16 @@ function LogInPage() {
         let cancelled = false;
         dispatch({type: "RESET_STORE"});
 
+        // Only a returning session (marker or in-memory token) justifies
+        // hiding the form behind a spinner. Without one, show the form
+        // immediately and try the refresh in the background - a valid
+        // httpOnly cookie still brings them straight in, and a logged-out
+        // visitor never waits on a doomed request (previously: up to 8s
+        // of spinner for everyone).
+        const likelyLoggedIn = Boolean(getAccessToken()) || hasAuthMarker();
+
         (async () => {
-            setIsLoading(true);
+            if (likelyLoggedIn) setIsLoading(true);
             try {
                 if (getAccessToken() && !accessTokenNeedsRefresh()) {
                     if (!cancelled) goAfterLogin(navigate, location, params);
@@ -256,7 +265,7 @@ function LogInPage() {
             } catch {
                 // Show the form so the user can sign in by password.
             }
-            if (!cancelled) setIsLoading(false);
+            if (!cancelled && likelyLoggedIn) setIsLoading(false);
         })();
 
         return () => { cancelled = true; };
@@ -285,7 +294,7 @@ function LogInPage() {
                                     </label>
                                     <input
                                         className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                        id="email" type="text" placeholder="Email" autoFocus="True" tabIndex="1"
+                                        id="email" type="email" placeholder="Email" autoComplete="email" autoFocus tabIndex="1"
                                         required={true}/>
                                 </div>
                                 <div className="mb-6">
@@ -294,7 +303,7 @@ function LogInPage() {
                                     </label>
                                     <input
                                         className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                        id="password" type="password" placeholder="******************" tabIndex="2"
+                                        id="password" type="password" placeholder="******************" autoComplete="current-password" tabIndex="2"
                                         required={true}/>
                                     <Link to={`/password/`} className="button italic text-sm text-volt-400 hover:text-volt-300"
                                           tabIndex="3">
@@ -313,7 +322,7 @@ function LogInPage() {
                                         Create Account
                                     </Link>
                                 </div>
-                                <p className="text-red-500 text-xs italic mt-5">{errorMessage}</p>
+                                <p className="text-danger-text text-xs italic mt-5">{errorMessage}</p>
                             </form>
                             <ServerField/>
                         </div>
@@ -357,17 +366,22 @@ function RegisterPage() {
             setIsLoading(true);
             try {
                 const [success_register, msg_register] = await apiCreateAccount(email, first_name, last_name, gender, password1, invite_token, joinCode);
+                if (!success_register) {
+                    setErrorMessage(msg_register.split(", "));
+                    return;
+                }
+                // Only log in after a successful registration.
                 const [success_login, msg_login] = await apiLogin(email, password1);
                 const params = new URLSearchParams(location.search);
-                if (success_register && success_login) {
+                if (success_login) {
                     dispatch({type: "RESET_STORE"});
                     await notice("Account created. Confirm your email — we sent a link. Coach emails start after that.");
                     navigate(params.get("join") ? `/dashboard/?${params.toString()}` : `/coach`);
-                } else if (!success_register) {
-                    setErrorMessage(msg_register.split(", "));
-                } else if (!success_login) {
-                    setErrorMessage(["Successful Registration", "Login " + msg_login]);
-                    navigate(params.get("join") ? `/dashboard/?${params.toString()}` : `/coach`);
+                } else {
+                    // Account exists but auto-login failed - send them to
+                    // the login form instead of a confusing error pair.
+                    await notice("Account created. Confirm your email, then log in.");
+                    navigate(`/login/${location.search}`);
                 }
             } catch (err) {
                 console.error("Registration failed", err);
@@ -383,15 +397,17 @@ function RegisterPage() {
     useEffect(() => {
         dispatch({type: 'RESET_STORE'});
         // Preserve the native app's server address - wiping it here
-        // stranded the registration API calls on the WebView origin.
-        const serverUrl = localStorage.getItem('wc_server_url');
-        const healthHost = localStorage.getItem('wc_health_host');
-        localStorage.clear();
-        if (serverUrl !== null) {
-            localStorage.setItem('wc_server_url', serverUrl);
+        // stranded the registration API calls on the WebView origin. Also
+        // keep the remembered path: a returning user detouring through
+        // /signup must not lose it.
+        const keep = {};
+        for (const key of ['wc_server_url', 'wc_health_host', 'wc_last_path']) {
+            const val = localStorage.getItem(key);
+            if (val !== null) keep[key] = val;
         }
-        if (healthHost !== null) {
-            localStorage.setItem('wc_health_host', healthHost);
+        localStorage.clear();
+        for (const [key, val] of Object.entries(keep)) {
+            localStorage.setItem(key, val);
         }
     }, []);
 
@@ -410,7 +426,7 @@ function RegisterPage() {
                                 </label>
                                 <input
                                     className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="email" type="text" placeholder="Email" autoFocus="True" tabIndex="1"/>
+                                    id="email" type="email" placeholder="Email" autoComplete="email" autoFocus tabIndex="1"/>
                             </div>
                             <div className="mb-4">
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="first_name">
@@ -418,7 +434,7 @@ function RegisterPage() {
                                 </label>
                                 <input
                                     className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="first_name" type="text" placeholder="First Name" tabIndex="2"/>
+                                    id="first_name" type="text" placeholder="First Name" autoComplete="given-name" tabIndex="2"/>
                             </div>
                             <div className="mb-4">
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="last_name">
@@ -426,7 +442,7 @@ function RegisterPage() {
                                 </label>
                                 <input
                                     className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="last_name" type="text" placeholder="Last Name" tabIndex="3"/>
+                                    id="last_name" type="text" placeholder="Last Name" autoComplete="family-name" tabIndex="3"/>
                             </div>
                             <div className="mb-4">
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="gender">
@@ -437,11 +453,10 @@ function RegisterPage() {
                                     name="gender"
                                     value={gender}
                                     tabIndex="4"
-                                    placeholder="--Please choose an option--"
+                                    placeholder="Please choose"
                                     onChange={setGender}
                                     includeBlank={false}
                                     options={[
-                                        {value: "", label: "--Please choose an option--"},
                                         {value: "M", label: "Male"},
                                         {value: "F", label: "Female"},
                                         {value: "O", label: "Other"},
@@ -454,7 +469,7 @@ function RegisterPage() {
                                 </label>
                                 <input
                                     className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="password1" type="password" placeholder="******************" tabIndex="5"/>
+                                    id="password1" type="password" placeholder="******************" autoComplete="new-password" tabIndex="5"/>
                             </div>
                             <div className="mb-6">
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="password2">
@@ -462,7 +477,7 @@ function RegisterPage() {
                                 </label>
                                 <input
                                     className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="password2" type="password" placeholder="******************" tabIndex="6"/>
+                                    id="password2" type="password" placeholder="******************" autoComplete="new-password" tabIndex="6"/>
                             </div>
                             <div className="mb-6">
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="invite_token">
@@ -473,7 +488,7 @@ function RegisterPage() {
                                     id="invite_token" type="text" placeholder="Ask your inviter for the token" tabIndex="7"/>
                                 <p className="text-xs text-gray-500 mt-1">
                                     {joinCode
-                                        ? "You opened a competition invite link - no token needed."
+                                        ? "You opened a challenge invite link - no token needed."
                                         : "Registration is by invitation only."}
                                 </p>
                             </div>
@@ -486,10 +501,10 @@ function RegisterPage() {
                                 <Link to={`/login/${location.search}`}
                                       className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300 ml-2"
                                       tabIndex="9">
-                                    Go to SignIn
+                                    Go to sign in
                                 </Link>
                             </div>
-                            <p id="errors" className="text-red-500 text-xs italic mt-5">
+                            <p id="errors" className="text-danger-text text-xs italic mt-5">
                                 {errorMessage.map((item, index) => (
                                     <span key={'error' + index}>{item}<br/></span>
                                 ))}
@@ -531,12 +546,12 @@ function ResetPasswordPage() {
                     isLoading ? <LoadingForm/> : (
                     <form onSubmit={handleSubmit} className="glass-card rounded-3xl px-8 pt-6 pb-8 mb-4" style={{minWidth: '310px'}}>
                         <div className="mb-4">
-                            <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="email" autoFocus="True">
+                            <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="email">
                                 Email
                             </label>
                             <input
                                 className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                id="email" type="text" placeholder="Email" autoFocus="True" tabIndex="1"/>
+                                id="email" type="email" placeholder="Email" autoComplete="email" autoFocus tabIndex="1"/>
                         </div>
                         <div className="flex items-center justify-between">
                             <button
@@ -547,10 +562,10 @@ function ResetPasswordPage() {
                             <Link to="/login"
                                   className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300 ml-2"
                                   tabIndex="3">
-                                Back to SignIn
+                                Back to sign in
                             </Link>
                         </div>
-                        <p className="text-red-500 text-xs italic mt-5">{ errorMessage }</p>
+                        <p className="text-danger-text text-xs italic mt-5">{ errorMessage }</p>
                     </form>
                 )}
             </div>
@@ -573,16 +588,17 @@ function SetNewPasswordPage() {
         const password1 = e.target.password1.value;
         const password2 = e.target.password2.value;
         if (typeof (password1) === "undefined" || password1 === null || password1 === "") {
-            setErrorMessage(['Please enter a password.']);
+            setErrorMessage('Please enter a password.');
             setIsLoading(false);
         } else if (password1 !== password2) {
-            setErrorMessage(['Passwords do not match.']);
+            setErrorMessage('Passwords do not match.');
             setIsLoading(false);
         } else {
             const [success, msg] = await apiSetNewPassword(id, token, password1);
             if (success) {
                 setIsLoading(false);
-                    navigate(`/login/`);
+                toast.success("Password updated - log in with your new password.");
+                navigate(`/login/`);
             } else {
                 setErrorMessage(msg);
                 setIsLoading(false);
@@ -602,7 +618,7 @@ function SetNewPasswordPage() {
                             </label>
                             <input
                                 className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                id="password1" type="password" placeholder="******************" tabIndex="1" autoFocus={true}/>
+                                id="password1" type="password" placeholder="******************" autoComplete="new-password" tabIndex="1" autoFocus/>
                         </div>
                         <div className="mb-6">
                             <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="password2">
@@ -610,7 +626,7 @@ function SetNewPasswordPage() {
                             </label>
                             <input
                                 className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                id="password2" type="password" placeholder="******************" tabIndex="2"/>
+                                id="password2" type="password" placeholder="******************" autoComplete="new-password" tabIndex="2"/>
                         </div>
                         <div className="flex items-center justify-between">
                             <button
@@ -619,7 +635,7 @@ function SetNewPasswordPage() {
                                 Reset Password
                             </button>
                         </div>
-                        <p className="text-red-500 text-xs italic mt-5">{ errorMessage }</p>
+                        <p className="text-danger-text text-xs italic mt-5">{ errorMessage }</p>
                     </form>
                 )}
             </div>
@@ -662,7 +678,11 @@ function VerifyEmailPage() {
         <BaseHome children={
             <div className="flex justify-center">
                 <div className="glass-card rounded-3xl px-8 pt-6 pb-8 mb-4 text-left" style={{minWidth: "310px"}}>
-                    {status === "working" && <p className="text-gray-300">Confirming your email…</p>}
+                    {status === "working" && (
+                        <p className="text-gray-300 flex items-center gap-3" role="status">
+                            <BeatLoader size={8} color="#d7ff3e"/> Confirming your email…
+                        </p>
+                    )}
                     {status === "ok" && (
                         <>
                             <p className="text-gray-100 font-bold mb-2">Email confirmed.</p>
@@ -677,7 +697,7 @@ function VerifyEmailPage() {
                     {status === "err" && (
                         <>
                             <p className="text-gray-100 font-bold mb-2">This link is invalid or has expired.</p>
-                            <p className="text-gray-400 text-sm mb-5">Log in and tap Resend on the yellow bar to get a new one.</p>
+                            <p className="text-gray-400 text-sm mb-5">Log in and tap Resend on the banner at the top to get a new one.</p>
                             <Link to="/login" className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300">
                                 Back to sign in
                             </Link>

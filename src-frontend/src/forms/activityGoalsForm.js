@@ -11,7 +11,7 @@ import {
 import {compareDictLists} from "../utils/miscellaneous";
 import {refreshChallengeSoon} from "./workoutForm";
 import {clearBodyScrollLock} from "../utils/overlay";
-import {confirmAction, notice} from "../utils/dialogs";
+import {toast} from "../utils/toasts";
 
 const fields = {
 
@@ -256,7 +256,7 @@ export default function ActivityGoalsForm({competitionId, setModalState}) {
             refreshChallengeSoon(dispatch);
             clearBodyScrollLock();
             setModalState(false);
-            await notice('Saved. Points are being recalculated - the challenge page updates itself within a minute.');
+            toast.success('Saved. Points are being recalculated - the challenge page updates itself within a minute.');
         } else {
             // Partial failure: rows created above now exist server-side
             // but their local copies still have no id - a retry would
@@ -284,7 +284,7 @@ export default function ActivityGoalsForm({competitionId, setModalState}) {
     return (
         <Modal title="Challenge Goals" landscape={false} setShowModal={setModalState} isLoading={goalsLoading || createGoalIsLoading || deleteGoalIsLoading ||updateGoalIsLoading}>
             <MultiForm fields={fields} values={values} setValues={setValues} errors={fieldErrors}/>
-            <div className="text-center text-red-500 text-xs italic">{formError}</div>
+            <div className="text-center text-danger-text text-xs italic">{formError}</div>
             <div className="relative flex justify-between items-center">
               <DeleteButton onClick={handleDiscard} highlighted={false} label={"Discard Changes"} larger={true} />
               <SaveButton onClick={handleSubmit} highlighted={true} larger={true} />

@@ -16,13 +16,6 @@ export const teamsApi = createApi({
             }),
             providesTags: (result = []) => result.length ? [...result.map(({id}) => ({ type: 'Team', id })), { type: 'Team' }] : [{ type: 'Team' }],
         }),
-        getTeamById: builder.query({
-            query: (id) => ({
-                url: `team/${id}/`,
-                method: 'GET',
-            }),
-            providesTags: (result, error, id) => [{type: 'Team', id}],
-        }),
         addTeam: builder.mutation({
             query: (newTeam) => ({
                 url: 'team/',

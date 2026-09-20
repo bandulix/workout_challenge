@@ -5,6 +5,8 @@ import {PaneHead} from "./uiBits";
 import {useGetCoachBallotQuery, useVoteCoachPersonaMutation} from "../utils/reducers/drillInstructorSlice";
 import usePollingInterval from "../utils/usePollingInterval";
 import {playSfx} from "../utils/sfx";
+import {toast} from "../utils/toasts";
+import {errText} from "../utils/errors";
 
 function formatCountdown(iso, now) {
     if (!iso) return "";
@@ -129,7 +131,25 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
     const votingOpen = ballot.voting_open ?? (
         Number.isFinite(switchAt) && switchAt - now <= 72 * 60 * 60 * 1000
     );
-    if (!votingOpen) return null;
+
+    // Outside the window: a quiet teaser, so the weekly vote is
+    // discoverable before it opens (the box used to vanish entirely).
+    if (!votingOpen) {
+        const opensAt = Number.isFinite(switchAt) ? switchAt - 72 * 60 * 60 * 1000 : null;
+        const opensIn = opensAt && opensAt > now ? formatCountdown(new Date(opensAt).toISOString(), now) : null;
+        return (
+            <div className="rounded-3xl glass-card px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                    <Timer className="h-3.5 w-3.5"/> Coach vote
+                </p>
+                <p className="mt-1.5 text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                    {opensIn
+                        ? <>Voting for next week's coach opens in <b className="text-volt-700 dark:text-volt-300">{opensIn}</b>.</>
+                        : "Voting for next week's coach opens in the last 72 hours before the Monday switch."}
+                </p>
+            </div>
+        );
+    }
 
     const countdown = formatCountdown(ballot.next_switch_at, now);
     const tiedLeaders = candidates.filter((c) => c.leading && c.votes > 0).length > 1;
@@ -141,6 +161,7 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
             playSfx("vote");
         } catch (err) {
             console.error("Coach vote failed", err);
+            toast.error(errText(err, "Your vote didn't land. Please try again."));
         }
     }
 
@@ -161,7 +182,8 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
                         const on = c.id === configId;
                         return (
                             <button key={c.id} type="button" onClick={() => setPickedId(c.id)}
-                                    className={"shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide min-h-[36px] transition " +
+                                    aria-pressed={on}
+                                    className={"shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide min-h-[44px] transition " +
                                         (on ? "bg-volt-400 text-ink-950 shadow-glow-volt" : "btn-glass")}>
                                 {c.competition_name || "Challenge"}
                             </button>
@@ -184,6 +206,8 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
                     return (
                         <button key={c.persona.id} type="button" onClick={() => pick(c.persona.id)}
                                 disabled={isLoading}
+                                aria-pressed={selected}
+                                aria-label={`Vote for ${c.persona.name}`}
                                 data-selected={selected ? "true" : undefined}
                                 className={"min-w-0 rounded-3xl glass-card p-3 text-center transition active:scale-[0.97] disabled:opacity-60 " +
                                     (selected ? "" : "hover:bg-white/5")}
@@ -209,7 +233,7 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
             </div>
             {many ? (
                 <button type="button" onClick={() => setExpanded((v) => !v)}
-                        className="mt-2 w-full min-h-[40px] rounded-2xl text-sm font-semibold text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition">
+                        className="mt-2 w-full min-h-[44px] rounded-2xl text-sm font-semibold text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition">
                     {expanded ? "Show less" : `Show all ${candidates.length}`}
                 </button>
             ) : null}

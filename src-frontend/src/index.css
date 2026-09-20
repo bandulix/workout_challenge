@@ -2,6 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+   Design system ground rules (keep these when adding UI):
+
+   COLOR ROLES
+   - volt (#d7ff3e)   = primary action + earned value (points, streaks).
+                        The only green anywhere; never decoration.
+   - ink (charcoal)   = surfaces; the app is dark-only (utils/theme.js).
+   - persona accent   = identity of one coach (avatar rings, their chips).
+   - rainbow gradient = photo bonus only (points-chip--photo/photo-bonus-tag).
+   - rose/ember       = roast heat only. Strava orange = Strava brand only.
+   - text-muted / text-warning-text / text-danger-text = semantic text
+     tokens; use them instead of hard-coded gray/amber/red shades.
+
+   TYPE
+   - 12px floor for anything the user must read (eyebrows, meta, hints).
+     Sub-12px only for decorative badges/chart axes with a text equivalent.
+   - Archivo Black = display/headings (uppercase); Inter = everything else.
+
+   MOTION BUDGET
+   - Max 1-2 ambient loops per screen (sheen, breathe, orbit). Celebrations
+     (react bursts, echo claims, fly-offs) are event rewards, not wallpaper.
+   - JS-driven motion and vibration must check utils/motion.js
+     prefersReducedMotion(); CSS animations are gated below.
+
+   TARGETS & ICONS
+   - Interactive targets >= 44px. Button icons >= h-4 w-4.
+--------------------------------------------------------------------------- */
+
 :root {
   --volt: #d7ff3e;
   --ink: #0b0b0c;
@@ -533,6 +561,16 @@ body {
   color: #0b0b0c;
 }
 
+/* Semantic text tokens - theme-aware and contrast-checked over glass.
+   Use these instead of hard-coded gray/amber/red shades, which tend to
+   be picked for dark mode and then go invisible on the light theme. */
+.text-muted { color: #4b5563; }
+.dark .text-muted { color: #9ca3af; }
+.text-warning-text { color: #b45309; }
+.dark .text-warning-text { color: #fbbf24; }
+.text-danger-text { color: #dc2626; }
+.dark .text-danger-text { color: #f87171; }
+
 /* Slim, theme-aware scrollbars (mainly desktop) */
 * {
   scrollbar-width: thin;
@@ -676,17 +714,9 @@ body {
 }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
-/* Installed PWA (standalone display mode): hide all scrollbars for a
-   native-app feel. Desktop/browser mode keeps the slim scrollbars. */
-@media (display-mode: standalone) {
-  * {
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* legacy Edge */
-  }
-  *::-webkit-scrollbar {
-    display: none; /* Chrome / Safari / Brave */
-  }
-}
+/* Installed PWA (standalone display mode) keeps the slim themed
+   scrollbars - hiding them entirely removed the scroll affordance on
+   long feeds. */
 
 .bg-strava, .hover\:bg-strava:hover {
   background-color: #fc4c02;

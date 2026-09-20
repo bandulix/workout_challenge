@@ -2,6 +2,8 @@ import React, {useEffect, useState} from "react";
 import {useUpdateUserMutation} from "../utils/reducers/usersSlice";
 import {Modal, SaveButton, SingleForm} from "./basicComponents";
 import {clearBodyScrollLock} from "../utils/overlay";
+import {toast} from "../utils/toasts";
+import {errText} from "../utils/errors";
 
 const fields = {
 
@@ -9,7 +11,7 @@ const fields = {
         "type": "number",
         "required": false,
         "read_only": false,
-        "label": "Active Days (num)",
+        "label": "Active days per week",
         "placeholder": "Leave empty for no goal",
         "width": "max-sm:w-full w-1/3",
     },
@@ -18,7 +20,7 @@ const fields = {
         "type": "number",
         "required": false,
         "read_only": false,
-        "label": "Workout Minutes (min)",
+        "label": "Workout minutes per week",
         "placeholder": "Leave empty for no goal",
         "width": "max-sm:w-full w-1/3",
     },
@@ -27,7 +29,7 @@ const fields = {
         "type": "number",
         "required": false,
         "read_only": false,
-        "label": "Distance (km)",
+        "label": "Distance per week (km)",
         "placeholder": "Leave empty for no goal",
         "width": "max-sm:w-full w-1/3",
     },
@@ -47,10 +49,10 @@ export default function PersonalGoalsForm({user, setModalState}) {
         isLoading: updateIsLoading,
     }] = useUpdateUserMutation();
 
-    // Overall form error message
+    // Overall form error message - human sentence, never status soup.
     useEffect(() => {
         if (updateError !== undefined) {
-            setFormError('Update Error (' + updateError?.status?.toLocaleString() + ' ' + updateError?.originalStatus?.toLocaleString() + '): ' + updateError?.message);
+            setFormError(errText(updateError, "Could not save your goals. Please try again."));
         }
     }, [updateError])
 
@@ -69,17 +71,18 @@ export default function PersonalGoalsForm({user, setModalState}) {
             await updateEntry({id: 'me', ...cleanedValues}).unwrap();
             setModalState(false);
             clearBodyScrollLock();
+            toast.success("Goals saved.");
         } catch (err) {
             console.error('Update Personal Goals failed', err);
-            setFieldErrors(err.data);
+            setFieldErrors(err?.data || {});
         }
     }
 
     return (
         <Modal title="Personal Goals" landscape={true} setShowModal={setModalState} isLoading={updateIsLoading}>
             <SingleForm fields={fields} values={values} setValues={setValues} errors={fieldErrors}/>
-            <div className="text-center text-red-500 text-xs italic">{formError}</div>
-            <div className="text-xs text-center italic text-gray-500"><b>Note:</b> These personal goals are only visible to you and they do not impact any competition you are taking part of.</div>
+            <div className="text-center text-danger-text text-xs italic">{formError}</div>
+            <div className="text-xs text-center italic text-gray-500"><b>Note:</b> These personal goals are only visible to you and do not affect any challenge you're in.</div>
             <div className="relative flex justify-end items-end">
                 <SaveButton onClick={handleSubmit} label="Update" highlighted={true} larger={true} />
             </div>

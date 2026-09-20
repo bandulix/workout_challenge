@@ -12,7 +12,7 @@ function Kpi({icon: Icon, value, label}) {
         <div className="rounded-2xl glass-inset px-2.5 py-2 text-center min-w-0">
             <Icon className="h-3.5 w-3.5 mx-auto text-volt-600 dark:text-volt-400"/>
             <p className="mt-1 font-display text-lg leading-none tabular-nums text-ink-950 dark:text-white">{value}</p>
-            <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">{label}</p>
+            <p className="mt-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
         </div>
     );
 }

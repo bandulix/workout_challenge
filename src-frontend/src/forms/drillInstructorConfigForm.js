@@ -8,12 +8,15 @@ import {
     useUpdateDrillConfigMutation,
 } from "../utils/reducers/drillInstructorSlice";
 import {BeatLoader} from "react-spinners";
-import {FIELD_INPUT_CLASS, Modal, SaveButton} from "./basicComponents";
+import {FIELD_INPUT_CLASS, Modal, SaveButton, useFormDirty} from "./basicComponents";
 import PersonaAvatar from "../components/PersonaAvatar";
 import {confirmAction, notice} from "../utils/dialogs";
+import {toast} from "../utils/toasts";
+import {errText} from "../utils/errors";
 import {clearBodyScrollLock} from "../utils/overlay";
+import {PersonaEditModal} from "./drillInstructorPersonaModal";
 
-const PLACEHOLDER_BODY = "AI Drill Instructor standing by. Drop a workout to see me in action.";
+const PLACEHOLDER_BODY = "Your coach standing by. Drop a workout to see me in action.";
 
 
 function SettingsGroup({title, hint, children}) {
@@ -49,7 +52,7 @@ function ToggleRow({on, onChange, label, hint, error}) {
 
 
 export default function DrillInstructorConfigForm({competition, setModalState}) {
-    const {data: personas, isLoading: personasLoading} = useGetPersonasQuery();
+    const {data: personas, isLoading: personasLoading, refetch: refetchPersonas} = useGetPersonasQuery();
     const {data: configs, isLoading: configsLoading, refetch: refetchConfigs} = useGetDrillConfigsQuery();
     const [addDrillConfig, {isLoading: addLoading, error: addError}] = useAddDrillConfigMutation();
     const [updateDrillConfig, {isLoading: updateLoading, error: updateError}] = useUpdateDrillConfigMutation();
@@ -65,6 +68,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
     // config so the owner is not asked twice, then left with a benched coach.
     const [enabled, setEnabled] = useState(true);
     const [persona, setPersona] = useState("");
+    const [showPersonaEditor, setShowPersonaEditor] = useState(false);
     const [commentOnActivity, setCommentOnActivity] = useState(true);
     const [nudgeOnInactivity, setNudgeOnInactivity] = useState(true);
     const [randomPush, setRandomPush] = useState(true);
@@ -73,6 +77,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
     const [fieldErrors, setFieldErrors] = useState({});
     const [formError, setFormError] = useState("");
 
+    const [initialSnapshot, setInitialSnapshot] = useState(null);
     useEffect(() => {
         if (existing) {
             setEnabled(!!existing.enabled);
@@ -81,12 +86,20 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             setNudgeOnInactivity(existing.nudge_on_inactivity !== false);
             setRandomPush(existing.random_push !== false);
             setSendPushOnActivity(!!existing.send_push_on_activity);
+            setInitialSnapshot({
+                enabled: !!existing.enabled,
+                persona: existing.persona ?? "",
+                commentOnActivity: !!existing.comment_on_activity,
+                nudgeOnInactivity: existing.nudge_on_inactivity !== false,
+                randomPush: existing.random_push !== false,
+                sendPushOnActivity: !!existing.send_push_on_activity,
+            });
         }
     }, [existing]);
 
     useEffect(() => {
-        if (addError) setFormError("Create Error: " + JSON.stringify(addError?.data || addError?.message));
-        if (updateError) setFormError("Update Error: " + JSON.stringify(updateError?.data || updateError?.message));
+        if (addError) setFormError(errText(addError, "Could not create the coach. Please try again."));
+        if (updateError) setFormError(errText(updateError, "Could not save the coach. Please try again."));
     }, [addError, updateError]);
 
     async function handleSubmit() {
@@ -111,20 +124,20 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             await refetchConfigs();
             setModalState(false);
             clearBodyScrollLock();
-            await notice(existing ? "Saved." : "Drill Instructor created.");
+            toast.success(existing ? "Saved." : "Coach created.");
         } catch (err) {
             console.error("Config save failed", err);
             setFieldErrors(err?.data || {});
             // A failed save must be unmistakable - e.g. enabling without
             // picking a persona only showed a small inline error before,
             // which read as "the app forgot my activation".
-            await notice("Could not save the Drill Instructor config: " + JSON.stringify(err?.data || err?.message));
+            await notice(errText(err, "Could not save the coach. Pick a persona and try again."));
         }
     }
 
     async function handleDelete() {
         if (!existing) return;
-        const confirmation = await confirmAction("Remove the Drill Instructor from this competition?");
+        const confirmation = await confirmAction("Remove the coach from this challenge?");
         if (!confirmation) return;
         try {
             await deleteDrillConfig(existing.id).unwrap();
@@ -132,7 +145,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             setModalState(false);
             clearBodyScrollLock();
         } catch (err) {
-            await notice("Could not delete: " + JSON.stringify(err?.data || err?.message));
+            await notice(errText(err, "Could not remove the coach. Please try again."));
         }
     }
 
@@ -144,19 +157,24 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
         try {
             const res = await runTestMessage({config_id: existing.id, body: testBody || PLACEHOLDER_BODY}).unwrap();
             if (res?.error) {
-                await notice("Drill Instructor could not save the test message: " + res.error);
+                await notice("The coach could not save the test message: " + res.error);
             } else {
                 await notice("Test message saved to the audit log (id " + (res?.id || "n/a") + ").");
             }
         } catch (err) {
-            await notice("Failed to run test task: " + JSON.stringify(err?.data || err?.message));
+            await notice(errText(err, "Failed to run the test message. Please try again."));
         }
     }
 
     const personasList = personas || [];
 
     return (
-        <Modal title="AI Drill Instructor" landscape={true} setShowModal={setModalState} isLoading={configsLoading || personasLoading || addLoading || updateLoading || deleteLoading}>
+        <Modal title="Coach" landscape={true} setShowModal={setModalState}
+               isLoading={configsLoading || personasLoading || addLoading || updateLoading || deleteLoading}
+               confirmDiscard={useFormDirty(
+                   {enabled, persona, commentOnActivity, nudgeOnInactivity, randomPush, sendPushOnActivity},
+                   initialSnapshot,
+               )}>
             <SettingsGroup title="On duty"
                            hint="Pick the starting coach. Everyone in the challenge can vote for next week's instructor — the winner takes over each Monday. Comments land in the feed, and optionally as a push.">
                 <ToggleRow
@@ -179,7 +197,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
 
             <SettingsGroup title="Starting coach" hint="Built-ins, coaches you made, and any a teammate released for others to use.">
                 {fieldErrors.persona && (
-                    <p className="text-xs text-red-500">Persona {String(fieldErrors.persona)}</p>
+                    <p className="text-xs text-red-500" role="alert">Coach: {String(fieldErrors.persona)}</p>
                 )}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {personasList.map((p) => {
@@ -212,7 +230,15 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                     })}
                 </div>
                 {personasList.length === 0 && (
-                    <p className="text-sm text-gray-500">No personas available yet.</p>
+                    /* Dead end no more: creating a coach from here keeps the
+                       activation flow alive. */
+                    <div className="rounded-2xl glass-well p-4 text-center">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">No coaches yet.</p>
+                        <button type="button" onClick={() => setShowPersonaEditor(true)}
+                                className="mt-2 inline-flex min-h-[44px] items-center rounded-full bg-volt-400 text-ink-950 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition">
+                            Create your coach
+                        </button>
+                    </div>
                 )}
             </SettingsGroup>
 
@@ -221,7 +247,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                     on={commentOnActivity}
                     onChange={setCommentOnActivity}
                     label="Comment on each workout"
-                    hint="A persona-voiced line after every activity logged in this challenge."
+                    hint="A coach-voiced line after every activity logged in this challenge."
                     error={fieldErrors.comment_on_activity}
                 />
                 <ToggleRow
@@ -235,7 +261,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                     on={randomPush}
                     onChange={setRandomPush}
                     label="Pep talks at random times"
-                    hint="One persona-voiced ping per day between 07:00 and 22:00, whether anyone trained or not."
+                    hint="One coach-voiced ping per day between 07:00 and 22:00, whether anyone trained or not."
                     error={fieldErrors.random_push}
                 />
                 <ToggleRow
@@ -265,13 +291,13 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                     </div>
                     {testError && (
                         <p className="text-xs text-red-500 italic">
-                            {JSON.stringify(testError?.data || testError?.message)}
+                            {errText(testError, "The test message failed. Please try again.")}
                         </p>
                     )}
                 </SettingsGroup>
             )}
 
-            {formError && <p className="text-center text-red-500 text-xs italic">{formError}</p>}
+            {formError && <p className="text-center text-danger-text text-xs italic">{formError}</p>}
 
             <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
                 {existing ? (
@@ -284,6 +310,14 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                 )}
                 <SaveButton onClick={handleSubmit} label={existing ? "Save" : "Activate"} highlighted={true} larger={true}/>
             </div>
+            {showPersonaEditor && (
+                <PersonaEditModal persona={{}} setModalState={(open) => {
+                    if (open === false) {
+                        setShowPersonaEditor(false);
+                        refetchPersonas();
+                    }
+                }}/>
+            )}
         </Modal>
     );
 }

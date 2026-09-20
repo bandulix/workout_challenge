@@ -36,12 +36,12 @@ function PersonaDetail({persona, canEdit, onEdit}) {
             {persona.tagline && <p className="mt-3 text-sm italic text-gray-500 dark:text-gray-400">“{persona.tagline}”</p>}
             {persona.mine && (
                 <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
-                    Your roaster
+                    Your coach
                 </span>
             )}
             {persona.is_builtin && (
                 <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
-                    <Sparkles className="h-3 w-3"/> Built-in persona
+                    <Sparkles className="h-3 w-3"/> Built-in coach
                 </span>
             )}
             <p className="mt-4 text-sm leading-relaxed text-gray-600 dark:text-gray-300 max-w-md">{persona.description}</p>
@@ -110,12 +110,12 @@ export default function RoasterModal({setShowModal}) {
     }
 
     return (
-        <Modal title={detailPersona ? detailPersona.name : "The roaster"} setShowModal={setShowModal} isLoading={isLoading}>
+        <Modal title={detailPersona ? detailPersona.name : "Coaches"} setShowModal={setShowModal} isLoading={isLoading}>
             {detailPersona ? (
                 <>
                     <button type="button" onClick={() => setDetailPersona(null)}
                             className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-300 hover:text-volt-600 dark:hover:text-volt-300 transition">
-                        ← Back to the roaster
+                        ← Back to coaches
                     </button>
                     <PersonaDetail
                         persona={detailPersona}
@@ -131,7 +131,7 @@ export default function RoasterModal({setShowModal}) {
                     <div className="flex items-center justify-end">
                         <button type="button" onClick={() => setShowPersonaManager(true)}
                                 className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-300 hover:text-volt-600 dark:hover:text-volt-300 transition">
-                            <PencilLine className="h-3.5 w-3.5"/> Manage
+                            <PencilLine className="h-3.5 w-3.5"/> Manage coaches
                         </button>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -148,7 +148,7 @@ export default function RoasterModal({setShowModal}) {
                         </button>
                     </div>
                     <div className="rounded-2xl glass-inset px-3 py-2 text-xs text-gray-600 dark:text-gray-400">
-                        <span className="font-bold text-gray-600 dark:text-gray-300">Anyone can add a roaster</span> — built-ins plus the ones you create. Challenge owners pick a coach from this list in the AI Drill Instructor settings on their challenge page.
+                        <span className="font-bold text-gray-600 dark:text-gray-300">Anyone can create a coach</span> — built-ins plus the ones you make. Challenge owners pick one in the coach settings on their challenge page (megaphone icon).
                     </div>
                 </>
             )}

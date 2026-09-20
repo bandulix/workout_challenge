@@ -1,7 +1,8 @@
 import React, {useState} from "react";
-import {Crown, Share2, Trash2} from "lucide-react";
+import {Crown, Info, Share2, Trash2} from "lucide-react";
 import {useDispatch} from "react-redux";
 import {FullImageSheet, PaneHead} from "./uiBits";
+import {Modal} from "../forms/basicComponents";
 import {useProtectedImage} from "../utils/protectedMedia";
 import {
     useDeleteEchoMutation,
@@ -10,11 +11,36 @@ import {
 import {usersApi} from "../utils/reducers/usersSlice";
 import {statsApi} from "../utils/reducers/statsSlice";
 import usePollingInterval from "../utils/usePollingInterval";
-import {confirmAction, notice} from "../utils/dialogs";
+import {confirmAction} from "../utils/dialogs";
+import {toast} from "../utils/toasts";
 import {sharePostCard} from "../utils/shareCard";
 import {echoSfxItems, useSfxObserver} from "../utils/sfx";
 
 const LIVE = 3;
+
+const STATUS_LABEL = {
+    undefeated: "Live",
+    contested: "Contested",
+    immortal: "Immortal",
+    retired: "Retired",
+};
+
+function EchoExplainer() {
+    return (
+        <div className="text-sm leading-relaxed text-gray-700 dark:text-gray-300 space-y-3 px-1">
+            <p>
+                <b>Echoes are relics for legendary sessions.</b> Log a standout mark -
+                the longest ride, the hardest climb, the biggest day - and the coach
+                casts it into a relic with its own artwork.
+            </p>
+            <p>
+                <b>Beat the mark, take the relic.</b> Anyone who tops it in the same
+                sport claims the Echo from its holder. Defend it long enough and it
+                becomes <b>immortal</b>. Holders wear the crown on their avatar.
+            </p>
+        </div>
+    );
+}
 
 function EchoArt({url, title}) {
     const {src} = useProtectedImage(url, "card");
@@ -23,7 +49,8 @@ function EchoArt({url, title}) {
         <>
             <div className="relative overflow-hidden rounded-t-3xl">
                 {src ? (
-                    <button type="button" onClick={() => setLightbox(true)} className="block w-full">
+                    <button type="button" onClick={() => setLightbox(true)} className="block w-full"
+                            aria-label={`View artwork of ${title || "the echo"}`}>
                         <img src={src} alt="" className="h-28 w-full object-cover"/>
                     </button>
                 ) : (
@@ -56,14 +83,14 @@ function EchoTile({echo, onDelete, busy}) {
                                 text: echo.narrative,
                                 imageUrl: echo.image,
                             })}
-                            className="inline-flex items-center gap-1 rounded-full btn-glass px-2 py-1 text-[10px] font-bold uppercase tracking-wide">
-                        <Share2 className="h-3 w-3"/> Share
+                            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full btn-glass px-3 py-1 text-[10px] font-bold uppercase tracking-wide">
+                        <Share2 className="h-3.5 w-3.5"/> Share
                     </button>
                     {echo.can_delete && (
                         <button type="button" onClick={() => onDelete(echo)} disabled={busy}
                                 aria-label={`Delete ${echo.title}`}
-                                className="ml-auto inline-flex min-h-[32px] min-w-[32px] items-center justify-center rounded-full text-gray-400 hover:text-red-500">
-                            <Trash2 className="h-3.5 w-3.5"/>
+                                className="ml-auto inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-gray-400 hover:text-red-500">
+                            <Trash2 className="h-4 w-4"/>
                         </button>
                     )}
                 </div>
@@ -80,33 +107,92 @@ export default function EchoLiveStrip({competitionId, userId}) {
         {pollingInterval: poll, skip: !competitionId},
     );
     const [removeEcho, {isLoading: busy}] = useDeleteEchoMutation();
+    const [showExplainer, setShowExplainer] = useState(false);
+    const [showAll, setShowAll] = useState(false);
     const live = (echoes || [])
         .filter((e) => e.status === "undefeated" || e.status === "contested")
         .slice(0, LIVE);
     useSfxObserver(`echoes:${competitionId}`, echoSfxItems(echoes, userId), echoes !== undefined);
 
-    if (live.length === 0) return null;
-
     async function onDelete(echo) {
-        const ok = await confirmAction(`Delete ${echo.title}? The trophy and its art are gone.`);
+        const ok = await confirmAction(`Delete ${echo.title}? The relic and its art are gone.`);
         if (!ok) return;
         try {
             await removeEcho(echo.id).unwrap();
             dispatch(usersApi.util.invalidateTags(["User"]));
             dispatch(statsApi.util.invalidateTags(["Stats"]));
         } catch (err) {
-            notice(err?.data?.detail || "Could not delete that Echo.");
+            toast.error(err?.data?.detail || "Could not delete that Echo.");
         }
     }
 
+    const head = (
+        <PaneHead title="Live Echoes" hint="Beat the mark, take the relic">
+            <button type="button" onClick={() => setShowExplainer(true)}
+                    aria-label="How echoes work"
+                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition">
+                <Info className="h-4 w-4"/>
+            </button>
+            {(echoes || []).length > live.length && (
+                <button type="button" onClick={() => setShowAll(true)}
+                        className="inline-flex min-h-[44px] items-center rounded-full btn-glass px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide transition">
+                    All {(echoes || []).length}
+                </button>
+            )}
+        </PaneHead>
+    );
+
     return (
         <div className="mb-4">
-            <PaneHead title="Live Echoes" hint="Beat the mark, take the relic"/>
-            <div className="grid grid-cols-3 gap-3">
-                {live.map((echo) => (
-                    <EchoTile key={echo.id} echo={echo} onDelete={onDelete} busy={busy}/>
-                ))}
-            </div>
+            {head}
+            {live.length === 0 ? (
+                /* Empty state doubles as the explainer - otherwise the
+                   mechanic is invisible until the first relic exists. */
+                <div className="rounded-3xl glass-card p-4 flex items-center gap-3 text-ink-950 dark:text-white">
+                    <div className="h-11 w-11 shrink-0 rounded-2xl bg-volt-400/15 flex items-center justify-center">
+                        <Crown className="h-5 w-5 text-volt-600 dark:text-volt-400"/>
+                    </div>
+                    <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+                        No relics yet. Log a standout session and the coach casts it into
+                        an <b>Echo</b> - beat someone's mark in the same sport and the
+                        relic is yours. Holders wear the crown.
+                    </p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-3 gap-3">
+                    {live.map((echo) => (
+                        <EchoTile key={echo.id} echo={echo} onDelete={onDelete} busy={busy}/>
+                    ))}
+                </div>
+            )}
+
+            {showExplainer && (
+                <Modal title="How Echoes work" setShowModal={setShowExplainer}>
+                    <EchoExplainer/>
+                </Modal>
+            )}
+            {showAll && (
+                <Modal title="All Echoes" setShowModal={setShowAll}>
+                    <ul className="divide-y divide-gray-100 dark:divide-ink-700/60">
+                        {(echoes || []).map((echo) => (
+                            <li key={echo.id} className="flex items-center gap-3 py-2.5 px-1">
+                                <span className="h-9 w-9 shrink-0 rounded-xl bg-volt-400/15 flex items-center justify-center">
+                                    <Crown className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-bold truncate">{echo.title}</p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                        {echo.holder_name || "Held"} · {echo.metric_label}
+                                    </p>
+                                </div>
+                                <span className="shrink-0 rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">
+                                    {STATUS_LABEL[echo.status] || echo.status}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </Modal>
+            )}
         </div>
     );
 }

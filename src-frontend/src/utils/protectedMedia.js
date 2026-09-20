@@ -32,6 +32,28 @@ export function pictureResponseIsBanRisk(status) {
 const cache = new Map(); // url -> Promise<localURL | null>
 const failedAt = new Map(); // url -> timestamp of 4xx/204
 const FAIL_TTL_MS = 10 * 60 * 1000;
+// LRU caps: a long session otherwise accumulates every avatar / remix /
+// echo artwork as a blob URL forever. 200 is far beyond any screen.
+const MAX_CACHED_IMAGES = 200;
+const MAX_FAILED = 200;
+
+function evictOldest(map, max, onEvict) {
+    while (map.size > max) {
+        const oldest = map.keys().next().value;
+        if (oldest === undefined) break;
+        const entry = map.get(oldest);
+        map.delete(oldest);
+        onEvict?.(entry);
+    }
+}
+
+function revokeBlob(entry) {
+    Promise.resolve(entry).then((localUrl) => {
+        if (typeof localUrl === "string" && localUrl.startsWith("blob:")) {
+            URL.revokeObjectURL(localUrl);
+        }
+    }).catch(() => { /* best effort */ });
+}
 
 // Cap concurrent picture fetches so a feed of avatars doesn't look like
 // an HTTP crawl (CrowdSec http-crawl-non_statics counts distinct paths).
@@ -174,10 +196,12 @@ export function fetchProtectedImage(url, size) {
                 const status = match ? parseInt(match[1], 10) : 0;
                 if (status === 204 || pictureResponseIsBanRisk(status)) {
                     failedAt.set(path, Date.now());
+                    evictOldest(failedAt, MAX_FAILED);
                 }
                 return null;
             });
         cache.set(path, promise);
+        evictOldest(cache, MAX_CACHED_IMAGES, revokeBlob);
     }
     return cache.get(path);
 }

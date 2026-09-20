@@ -1,7 +1,8 @@
 import {useUpdateUserMutation} from "../utils/reducers/usersSlice";
-import React, {useEffect, useState} from "react";
+import React, {useEffect, useMemo, useState} from "react";
 import {Modal, SaveButton, SingleForm} from "./basicComponents";
-import {confirmAction, notice} from "../utils/dialogs";
+import {toast} from "../utils/toasts";
+import {errText} from "../utils/errors";
 import {clearBodyScrollLock} from "../utils/overlay";
 
 
@@ -122,10 +123,10 @@ export default function GoalEqualizerForm({user, setModalState}) {
         isLoading: updateIsLoading,
     }] = useUpdateUserMutation();
 
-    // Overall form error message
+    // Overall form error message - human sentence, never status soup.
     useEffect(() => {
         if (updateError !== undefined) {
-            setFormError('Update Error (' + updateError?.status?.toLocaleString() + ' ' + updateError?.originalStatus?.toLocaleString() + '): ' + updateError?.message);
+            setFormError(errText(updateError, "Could not save the equalizer. Please try again."));
         }
     }, [updateError])
 
@@ -142,21 +143,13 @@ export default function GoalEqualizerForm({user, setModalState}) {
         }));
     }, [])
 
-    // calculate factors
-    useEffect(() => {
+    // Derived factors via useMemo (the old effect wrote them back into
+    // `values` from a stale closure - one keystroke behind the display).
+    const derived = useMemo(() => {
         const gender = (values.gender === undefined || values.gender === '') ? 'M' : values.gender;
-        const age = (values.age === undefined || values.age === '') ? 35 : values.age;
-        const height = (values.height === undefined || values.height === '') ? 180 : values.height;
-        const weight = (values.weight === undefined || values.weight === '') ? 75 : values.weight;
-
-        // Persist the raw inputs on this device once anything was typed -
-        // never before (the mount run sees empty values and must not wipe
-        // the saved inputs before the load effect's setState lands).
-        if (values.age || values.height || values.weight) {
-            localStorage.setItem(INPUTS_STORAGE_KEY, JSON.stringify({
-                age: values.age, height: values.height, weight: values.weight,
-            }));
-        }
+        const age = (values.age === undefined || values.age === '') ? 35 : Number(values.age);
+        const height = (values.height === undefined || values.height === '') ? 180 : Number(values.height);
+        const weight = (values.weight === undefined || values.weight === '') ? 75 : Number(values.weight);
 
         let bmr;
         let step_length;
@@ -168,19 +161,34 @@ export default function GoalEqualizerForm({user, setModalState}) {
             bmr = (10 * weight + 6.25 * height - 5 * age + 5) * 1.2;
             step_length = 0.65 * height / 100;
         }
-        setValues({...values, bmr_kcal: Math.round(bmr), scaling_kcal: Math.round( bmr / 2046 * 100 * 100) / 100, step_length: Math.round(step_length * 100) / 100, scaling_distance: Math.round(step_length / 1.17 * 100 * 10) / 10});
-
+        return {
+            bmr_kcal: Math.round(bmr),
+            scaling_kcal: Math.round(bmr / 2046 * 100 * 100) / 100,
+            step_length: Math.round(step_length * 100) / 100,
+            scaling_distance: Math.round(step_length / 1.17 * 100 * 10) / 10,
+        };
     }, [values.gender, values.age, values.height, values.weight])
+
+    // Persist the raw inputs on this device once anything was typed -
+    // never before (the mount run sees empty values and must not wipe
+    // the saved inputs before the load effect's setState lands).
+    useEffect(() => {
+        if (values.age || values.height || values.weight) {
+            localStorage.setItem(INPUTS_STORAGE_KEY, JSON.stringify({
+                age: values.age, height: values.height, weight: values.weight,
+            }));
+        }
+    }, [values.age, values.height, values.weight])
 
 
     // form action button right
     async function handleSubmit() {
         // update personal scaling factors
         try {
-            await updateEntry({id: 'me', scaling_kcal: Math.round(values.scaling_kcal * 100) / 10000, scaling_distance: Math.round(values.scaling_distance * 100) / 10000}).unwrap();
+            await updateEntry({id: 'me', scaling_kcal: Math.round(derived.scaling_kcal * 100) / 10000, scaling_distance: Math.round(derived.scaling_distance * 100) / 10000}).unwrap();
             setModalState(false);
             clearBodyScrollLock();
-            await notice('Saved. The re-calculation of your competition points might take a few minutes.');
+            toast.success('Saved. Points recalculate in the background - the page updates itself, usually within a minute.');
         } catch (err) {
             console.error('Update Personal Scaling Factors failed', err);
             setFieldErrors(err.data);
@@ -195,18 +203,23 @@ export default function GoalEqualizerForm({user, setModalState}) {
                     Everyone has a unique <b>basal metabolic rate</b>. These factors scale your goals so a fair fight is possible.
                     Age, height and weight <u>stay on this device</u> — only the two highlighted percent factors are saved.
                 </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                    The formula's gender constant has two variants (male/female). If you picked "Other"
+                    or left it unset in your profile, the male constant is used — adjust the result with
+                    the factors below if that doesn't fit you.
+                </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                     Currently applied: <b>{Math.round(user.scaling_kcal * 100)}%</b> effort
                     {" · "}
                     <b>{Math.round(user.scaling_distance * 100)}%</b> distance
                 </p>
             </div>
-            <SingleForm fields={fields} values={values} setValues={setValues} errors={fieldErrors}/>
-            {formError && <p className="text-center text-red-500 text-xs italic">{formError}</p>}
+            <SingleForm fields={fields} values={{...values, ...derived}} setValues={setValues} errors={fieldErrors}/>
+            {formError && <p className="text-center text-danger-text text-xs italic">{formError}</p>}
             <p className="text-xs text-gray-500 dark:text-gray-400">
                 Want to verify the math? The formula is in the{" "}
                 <a className="text-volt-700 dark:text-volt-300 font-semibold hover:underline" target="_blank" rel="noopener noreferrer"
-                   href="https://github.com/vanalmsick/workout_challenge/blob/main/src-frontend/src/forms/equalizerForm.js#L149">
+                   href="https://github.com/vanalmsick/workout_challenge/blob/main/src-frontend/src/forms/equalizerForm.js">
                     public source
                 </a>.
             </p>

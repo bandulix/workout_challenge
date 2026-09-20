@@ -47,6 +47,11 @@ export const addLocalTimezone = (dateString) => {
 
 
 export const dateFormatter = (dateString, convertEoD = false) => {
+    // Null/empty timestamps (e.g. never-synced providers) get a neutral
+    // shape instead of NaN epochs and "Invalid Date" strings.
+    if (!dateString) {
+        return {epoch: 0, date_iso: "", date_readable: "", time_24h: "", days_ago: null, weeksAgo: null};
+    }
     const date = new Date(dateString);
 
     // overwrite timestamp for workout "steps"
@@ -132,6 +137,17 @@ export const workoutsApi = createApi({
             },
             providesTags: (result, error, id) => [{type: 'Workout', id}],
         }),
+        // Server-side aggregates for the dashboard. The list endpoint
+        // caps at 100 rows, so lifetime counts / 30-day stats / streak
+        // must come from here - computing them from the loaded page
+        // silently under-reported active users.
+        getWorkoutSummary: builder.query({
+            query: () => ({
+                url: `workout/summary/`,
+                method: 'GET',
+            }),
+            providesTags: ['Workout'],
+        }),
         addWorkout: builder.mutation({
             query: (newWorkout) => ({
                 url: 'workout/',
@@ -155,14 +171,14 @@ export const workoutsApi = createApi({
                     }),
                 },
             }),
-            invalidatesTags: (result, error, {id}) => [{type: 'Workout', id}],
+            invalidatesTags: (result, error, {id}) => [{type: 'Workout', id}, 'Workout'],
         }),
         deleteWorkout: builder.mutation({
             query: (id) => ({
                 url: `workout/${id}/`,
                 method: 'DELETE',
             }),
-            invalidatesTags: (result, error, id) => [{type: 'Workout', id}],
+            invalidatesTags: (result, error, id) => [{type: 'Workout', id}, 'Workout'],
         }),
     }),
 });
@@ -170,6 +186,7 @@ export const workoutsApi = createApi({
 export const {
     useGetWorkoutsQuery,
     useGetWorkoutByIdQuery,
+    useGetWorkoutSummaryQuery,
     useAddWorkoutMutation,
     useUpdateWorkoutMutation,
     useDeleteWorkoutMutation,

@@ -1,13 +1,15 @@
 import {useDeleteUserMutation, usersApi, useUpdateUserMutation} from "../utils/reducers/usersSlice";
 import React, {useEffect, useState} from "react";
-import {FIELD_INPUT_CLASS, Modal, SaveButton, SingleForm, StravaButton} from "./basicComponents";
+import {FIELD_INPUT_CLASS, Modal, SaveButton, SingleForm, StravaButton, useFormDirty} from "./basicComponents";
 import {useNavigate} from "react-router-dom";
 import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, useUnlinkGarminMutation, useLinkHealthMutation, useUnlinkHealthMutation} from "../utils/reducers/linkSlice";
 import {useDispatch} from "react-redux";
 import {Watch, Smartphone, Download, Volume2, VolumeX} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {isNativeHealthAvailable, nativeHealthConnect, nativeHealthDisconnect, nativeHealthSetSource} from "../utils/nativeHealth";
-import {confirmAction, notice} from "../utils/dialogs";
+import {confirmAction} from "../utils/dialogs";
+import {toast} from "../utils/toasts";
+import {errText} from "../utils/errors";
 import {assetUrl} from "../utils/platform";
 import {clearBodyScrollLock} from "../utils/overlay";
 import {playSfx, useSfxEnabled} from "../utils/sfx";
@@ -133,6 +135,9 @@ function HealthSection({user, onChanged}) {
         setMessage(null);
         setError(null);
         setInvitation(null);
+        const confirmed = await confirmAction(
+            "Unlink Health? Workouts stop syncing until you connect again. Existing workouts are kept.");
+        if (!confirmed) return;
         try {
             if (isNative) await nativeHealthDisconnect();
             const res = await unlinkHealth().unwrap();
@@ -244,6 +249,9 @@ function GarminSection({user, onChanged}) {
     async function handleUnlink() {
         setMessage(null);
         setError(null);
+        const confirmed = await confirmAction(
+            "Unlink Garmin? New workouts stop syncing until you link a source again. Existing workouts are kept.");
+        if (!confirmed) return;
         try {
             const res = await unlinkGarmin().unwrap();
             setMessage(res?.message || "Garmin unlinked.");
@@ -405,23 +413,26 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
         isLoading: resetIsLoading,
     }] = useResetStravaMutation();
 
-    // Overall form error message
+    // Overall form error message - human sentences via errText, never
+    // raw status codes or server HTML.
     useEffect(() => {
         if (updateError !== undefined) {
-            setFormError('Update Error (' + updateError?.status?.toLocaleString() + ' ' + updateError?.originalStatus?.toLocaleString() + '): ' + updateError?.message);
+            setFormError(errText(updateError, "Could not save your settings. Please try again."));
         } else if (deleteError !== undefined) {
-            setFormError('Delete Error (' + deleteError?.status?.toLocaleString() + ' ' + deleteError?.originalStatus?.toLocaleString() + '): ' + deleteError?.message);
+            setFormError(errText(deleteError, "Could not delete the account. Please try again."));
         } else if (unlinkError !== undefined) {
-            setFormError('Strava Unlink Error (' + unlinkError?.status?.toLocaleString() + ' ' + unlinkError?.originalStatus?.toLocaleString() + '): ' + unlinkError?.message);
+            setFormError(errText(unlinkError, "Could not unlink Strava. Please try again."));
         } else if (resetError !== undefined) {
-            setFormError('Strava Reset Error (' + resetError?.status?.toLocaleString() + ' ' + resetError?.originalStatus?.toLocaleString() + '): ' + resetError?.message);
+            setFormError(errText(resetError, "Could not reset the Strava connection. Please try again."));
         }
     }, [updateError, deleteError, unlinkError, resetError])
 
-    // load current form values
+    // load current form values - and snapshot them for the dirty guard
+    const [initialValues, setInitialValues] = useState(null);
     useEffect(() => {
         if (user !== undefined) {
             setValues(user);
+            setInitialValues(user);
         }
     }, [])
 
@@ -441,30 +452,45 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
         }
     }
 
+    // Only these keys may ever leave this form - never the whole user
+    // object (stale-clobbers edits from other devices, and keeps any
+    // privilege/read-only field out of the payload for good).
+    const EDITABLE_KEYS = [
+        "first_name", "last_name", "username", "email", "gender",
+        "email_mid_week", "strava_allow_follow", "current_password",
+    ];
+
     // form action button right
     async function handleSubmit() {
         // update personal details
         try {
             // The import source is changed exclusively via its own
-            // selector (which saves immediately). `values` is a snapshot
-            // from mount time - sending its stale copy here would
-            // silently revert a source switch made in between.
-            const {activity_source, activity_source_effective, current_password, ...profileValues} = values;
+            // selector (which saves immediately) - it is not part of the
+            // whitelist below.
+            const whitelisted = Object.fromEntries(
+                EDITABLE_KEYS.filter((k) => k in values).map((k) => [k, values[k]])
+            );
+            const current_password = values.current_password;
             const emailChanged = user?.email && values.email
                 && values.email.toLowerCase() !== String(user.email).toLowerCase();
             if (emailChanged && !current_password) {
                 setFieldErrors({current_password: "Current password is required to change email."});
                 return;
             }
+            if (!emailChanged) delete whitelisted.current_password;
             await updateEntry({
                 id: 'me',
-                ...profileValues,
+                ...whitelisted,
                 email: values.email.toLowerCase(),
-                ...(emailChanged ? {current_password} : {}),
             }).unwrap();
             setModalState(false);
             clearBodyScrollLock();
-            await notice('Saved. Strava and username changes might take up to 10 minutes to reflect on the competition page for all users.');
+            // Mention the background refresh only when a public-facing
+            // field actually changed - not on every unrelated save.
+            const publicChanged = values.username !== user?.username;
+            toast.success(publicChanged
+                ? 'Saved. Name changes update for everyone in the background, usually within a minute.'
+                : 'Saved.');
         } catch (err) {
             console.error('Update Personal Settings failed', err);
             setFieldErrors(err.data);
@@ -481,7 +507,7 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
             dispatch(usersApi.util.invalidateTags(['User']));
             setModalState(false);
             clearBodyScrollLock();
-            await notice('Strava connection reset. Open the settings again and use "Link Strava Account" to connect from scratch.');
+            toast.success('Strava connection reset. Open the settings again and use "Link Strava" to connect from scratch.');
         } catch (err) {
             console.error('Reset Strava failed', err);
             setFieldErrors(err.data);
@@ -491,7 +517,10 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
     // form action button Strava linkage
     async function handleStravaLinkage({linked}) {
         if (linked) {
-            // currently linked - unlink
+            // currently linked - unlink (destructive: confirm first)
+            const confirmed = await confirmAction(
+                "Unlink Strava? New workouts stop syncing until you link a source again. Existing workouts are kept.");
+            if (!confirmed) return;
             try {
                 await unlinkStrava().unwrap();
                 setModalState(false);
@@ -510,16 +539,19 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
     }
 
     const stravaLinked = user.strava_athlete_id !== null && user.strava_athlete_id !== undefined && user.strava_athlete_id !== '';
+    const dirty = useFormDirty(values, initialValues);
 
     return (
-        <Modal title="Account" landscape={true} setShowModal={setModalState} isLoading={updateIsLoading || deleteIsLoading || unlinkIsLoading || resetIsLoading}>
+        <Modal title="Account" landscape={true} setShowModal={setModalState}
+               isLoading={updateIsLoading || deleteIsLoading || unlinkIsLoading || resetIsLoading}
+               confirmDiscard={dirty}>
             <SettingsGroup title="Profile" hint="How you appear on the board and in the feed.">
                 <div className="-mx-2">
                     <SingleForm fields={profileFields} values={values} setValues={setValues} errors={fieldErrors}/>
                 </div>
             </SettingsGroup>
 
-            <SettingsGroup title="Emails" hint={user.is_verified ? "Weekly mail only goes to a confirmed address." : "This address is not confirmed yet. Use the yellow bar to resend the link."}>
+            <SettingsGroup title="Emails" hint={user.is_verified ? "Weekly mail only goes to a confirmed address." : "This address is not confirmed yet. Use the banner at the top to resend the link."}>
                 <div className="-mx-2">
                     <SingleForm fields={notifyFields} values={values} setValues={setValues} errors={fieldErrors}/>
                 </div>
@@ -565,7 +597,7 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
 
             <SoundSettings/>
 
-            {formError && <p className="text-center text-red-500 text-xs italic">{formError}</p>}
+            {formError && <p className="text-center text-danger-text text-xs italic">{formError}</p>}
 
             <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
                 <button type="button" onClick={handleDelete}

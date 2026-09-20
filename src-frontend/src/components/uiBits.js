@@ -19,16 +19,17 @@ export function SectionHead({title, hint, children}) {
     );
 }
 
-/** Feed-style section label: hairline rule, no wrapping box. */
+/** Feed-style section label: hairline rule, no wrapping box. 12px floor
+ * for anything a user must actually read (eyebrows included). */
 export function PaneHead({title, hint, children}) {
     return (
         <div className="mb-3 px-1">
             <div className="flex items-center gap-3">
-                <h2 className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-gray-400 shrink-0">{title}</h2>
+                <h2 className="text-xs font-extrabold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 shrink-0">{title}</h2>
                 <span className="flex-1 h-px bg-ink-950/10 dark:bg-white/10" aria-hidden="true"/>
                 {children && <div className="flex items-center gap-2 shrink-0">{children}</div>}
             </div>
-            {hint && <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{hint}</p>}
+            {hint && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</p>}
         </div>
     );
 }
@@ -50,7 +51,7 @@ export function FullImageSheet({url, title, fallback, onClose, zClass = "z-[80]"
                             imageUrl: url,
                         })}
                         className="mx-auto flex min-h-[44px] items-center justify-center gap-1.5 rounded-full btn-glass px-4 py-2 text-[11px] font-bold uppercase tracking-wide">
-                    <Share2 className="h-3.5 w-3.5"/> Share
+                    <Share2 className="h-4 w-4"/> Share
                 </button>
             ) : null}
         </OverlaySheet>
@@ -85,7 +86,7 @@ export function SyncChip({onClick, isLoading, short, long}) {
     return (
         <button type="button" onClick={onClick} disabled={isLoading}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full btn-glass text-ink-950 dark:text-gray-200 text-sm font-semibold min-h-[44px] transition disabled:opacity-50">
-            <RefreshCw className={"h-3.5 w-3.5 " + (isLoading ? "animate-spin" : "")}/>
+            <RefreshCw className={"h-4 w-4 " + (isLoading ? "animate-spin" : "")}/>
             <span className="sm:hidden">{isLoading ? "…" : short}</span>
             <span className="hidden sm:inline">{isLoading ? "Syncing…" : long}</span>
         </button>

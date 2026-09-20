@@ -1,14 +1,17 @@
-import React, {useEffect, useState} from "react";
+import React, {Suspense, lazy, useEffect, useState} from "react";
 import {Link, useLocation, useNavigate} from "react-router-dom";
 import {Flag, Home, Plus, User2, Settings, Scale, BadgeHelp, Shield, LogOut, ChevronRight, Bot} from "lucide-react";
-import WorkoutForm from "../forms/workoutForm";
-import CompetitionForm from "../forms/competitionForm";
+// The dock's modal forms are heavy (forms + qrcode + persona editor) and
+// only ever render on demand - lazy-load them out of the entry chunk.
+const WorkoutForm = lazy(() => import("../forms/workoutForm"));
+const CompetitionForm = lazy(() => import("../forms/competitionForm"));
+const SettingsForm = lazy(() => import("../forms/settingsForm"));
+const GoalEqualizerForm = lazy(() => import("../forms/equalizerForm"));
+const SupportModal = lazy(() => import("../forms/supportModal"));
+const RoasterModal = lazy(() => import("../components/RoasterBox"));
+const LinkStravaScreen = lazy(() => import("../pages/HowTo").then((m) => ({default: m.LinkStravaScreen})));
 import {Modal} from "../forms/basicComponents";
-import SettingsForm from "../forms/settingsForm";
-import GoalEqualizerForm from "../forms/equalizerForm";
-import SupportModal from "../forms/supportModal";
-import {LinkStravaScreen} from "../pages/HowTo";
-import RoasterModal from "../components/RoasterBox";
+import {BeatLoader} from "react-spinners";
 import PersonaAvatar from "../components/PersonaAvatar";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {DogTagRow} from "../components/gameBits";
@@ -148,7 +151,7 @@ function SettingsPanel({onClose, user, isStaff, onAccount, onEqualizer, onRoaste
             <div className="space-y-0.5">
                 <SettingsSheetRow icon={User2} label="Account" onClick={() => {onClose(); onAccount();}}/>
                 <SettingsSheetRow icon={Scale} label="Goal Equalizer" onClick={() => {onClose(); onEqualizer();}}/>
-                <SettingsSheetRow icon={Bot} label="The roaster" onClick={() => {onClose(); onRoaster();}}/>
+                <SettingsSheetRow icon={Bot} label="Coaches" onClick={() => {onClose(); onRoaster();}}/>
                 <SettingsSheetRow icon={BadgeHelp} label="Help & Support" onClick={() => {onClose(); onSupport();}}/>
                 {isStaff && (
                     <SettingsSheetRow icon={Shield} label="Admin" onClick={() => {onClose(); navigate("/admin/site-settings");}}/>
@@ -218,8 +221,10 @@ export default function BottomNav() {
     }, [user?.id]);
     const onDashboard = location.pathname === "/dashboard" || location.pathname === "/dashboard/";
     const onCompetition = location.pathname.startsWith("/competition/");
-    const onCoach = location.pathname.startsWith("/coach");
-    const onAdmin = location.pathname.startsWith("/admin/");
+    // Exact path or slash boundary - a bare startsWith("/coach") would
+    // also light up on unrelated paths like "/coachella".
+    const onCoach = location.pathname === "/coach" || location.pathname.startsWith("/coach/");
+    const onAdmin = location.pathname === "/admin" || location.pathname.startsWith("/admin/");
 
     // The coach's face in the centre of the bar: persona of the most
     // recently active enabled Drill Instructor config.
@@ -314,7 +319,7 @@ export default function BottomNav() {
                                 <PersonaAvatar persona={coachPersona} size={58} glow/>
                             </span>
                         </span>
-                        <span className="text-[10px] font-bold leading-none mt-1.5 tracking-widest uppercase md:hidden"
+                        <span className="text-[10px] font-bold leading-none mt-1.5 tracking-widest uppercase"
                               style={{color: coachAccent(coachPersona), opacity: onCoach ? 1 : 0.75}}>
                             Coach
                         </span>
@@ -342,32 +347,36 @@ export default function BottomNav() {
                 </div>
             </nav>
 
-            {showLogWorkout && user && (
-                <WorkoutForm setModalState={setShowLogWorkout}
-                             scaling_distance={parseFloat(user?.scaling_distance || "1.0")}/>
-            )}
-            {showCreateChallenge && <CompetitionForm setModalState={setShowCreateChallenge}/>}
+            {/* Lazy modals: one boundary, a lightweight centered loader
+                while the chunk downloads (page content stays visible). */}
+            <Suspense fallback={<div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40" role="status" aria-label="Loading"><BeatLoader color="#d7ff3e"/></div>}>
+                {showLogWorkout && user && (
+                    <WorkoutForm setModalState={setShowLogWorkout}
+                                 scaling_distance={parseFloat(user?.scaling_distance || "1.0")}/>
+                )}
+                {showCreateChallenge && <CompetitionForm setModalState={setShowCreateChallenge}/>}
 
-            {/* Account form needs the profile. While it is still loading
-                (or after a failed fetch) show feedback inside the modal
-                instead of the tap on "Account" silently doing nothing. */}
-            {showSettings && (user ? (
-                <SettingsForm user={user} setModalState={setShowSettings} setLinkStrava={setLinkStrava}/>
-            ) : (
-                <Modal title="Account" landscape={true} setShowModal={setShowSettings} isLoading={!userError}>
-                    <div className="text-center space-y-3 px-4">
-                        <p className="text-red-500 text-sm">Your profile could not be loaded.</p>
-                        <button onClick={() => refetchUser()}
-                                className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition">
-                            Try again
-                        </button>
-                    </div>
-                </Modal>
-            ))}
-            {showEqualizer && user && <GoalEqualizerForm user={user} setModalState={setShowEqualizer}/>}
-            {showRoaster && <RoasterModal setShowModal={setShowRoaster}/>}
-            {showSupport && <SupportModal setModalState={setShowSupport}/>}
-            {linkStrava && <LinkStravaScreen setModal={setLinkStrava}/>}
+                {/* Account form needs the profile. While it is still loading
+                    (or after a failed fetch) show feedback inside the modal
+                    instead of the tap on "Account" silently doing nothing. */}
+                {showSettings && (user ? (
+                    <SettingsForm user={user} setModalState={setShowSettings} setLinkStrava={setLinkStrava}/>
+                ) : (
+                    <Modal title="Account" landscape={true} setShowModal={setShowSettings} isLoading={!userError}>
+                        <div className="text-center space-y-3 px-4">
+                            <p className="text-red-500 text-sm">Your profile could not be loaded.</p>
+                            <button onClick={() => refetchUser()}
+                                    className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition">
+                                Try again
+                            </button>
+                        </div>
+                    </Modal>
+                ))}
+                {showEqualizer && user && <GoalEqualizerForm user={user} setModalState={setShowEqualizer}/>}
+                {showRoaster && <RoasterModal setShowModal={setShowRoaster}/>}
+                {showSupport && <SupportModal setModalState={setShowSupport}/>}
+                {linkStrava && <LinkStravaScreen setModal={setLinkStrava}/>}
+            </Suspense>
         </>
     );
 }

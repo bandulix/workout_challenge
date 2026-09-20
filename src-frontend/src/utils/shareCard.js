@@ -2,7 +2,7 @@ import {Directory, Filesystem} from "@capacitor/filesystem";
 import {Share} from "@capacitor/share";
 import {fetchProtectedImage} from "./protectedMedia";
 import {isNativeApp} from "./platform";
-import {notice} from "./dialogs";
+import {toast} from "./toasts";
 
 const CARD_W = 1080;
 const CARD_H = 1350;
@@ -160,9 +160,9 @@ export async function sharePostCard({title, text, imageUrl}) {
         if (shareCanceled(err)) return;
         try {
             if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(caption);
-            notice("Copied the text.");
+            toast("Copied the text.");
         } catch {
-            notice("Could not share.");
+            toast.error("Could not share.");
         }
     }
 }

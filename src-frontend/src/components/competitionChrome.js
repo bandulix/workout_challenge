@@ -25,7 +25,8 @@ import {OverlaySheet} from "../forms/basicComponents";
 import {elapsedSince, timeAgo} from "../utils/time";
 import {useProtectedImage} from "../utils/protectedMedia";
 import usePollingInterval from "../utils/usePollingInterval";
-import {confirmAction, notice} from "../utils/dialogs";
+import {confirmAction} from "../utils/dialogs";
+import {toast} from "../utils/toasts";
 import {feedSfxItems, useSfxObserver} from "../utils/sfx";
 import {pageResults, scoreGoals} from "../utils/queryPage";
 import {challengeEndChip} from "../utils/challenge";
@@ -77,7 +78,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                 navigate('/dashboard');
             } catch (err) {
                 console.error('Error leaving completion:', err);
-                await notice('Error leaving competition. Please try again.');
+                toast.error('Could not leave the challenge. Please try again.');
             }
 
         }
@@ -95,9 +96,10 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                 width first (it used to truncate between the counts and
                 the action buttons), counts + icon actions sit below. */}
             <div className="p-5 sm:p-6">
-                <p className="text-xl font-display uppercase tracking-wide">{competition.name}</p>
+                {/* The challenge name is the page's actual heading. */}
+                <h1 className="text-xl font-display uppercase tracking-wide">{competition.name}</h1>
                 <div className="mt-0.5 flex items-center justify-between gap-3">
-                    <p className="text-xs text-gray-500">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
                     {endChip && endChip.kind === "ended" ? (
                         <span className="shrink-0 text-xs text-gray-400">{endChip.text}</span>
                     ) : endChip ? (
@@ -113,19 +115,19 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                 <div className="mt-2.5 flex items-center gap-3">
                     <div className="flex items-baseline gap-1.5 shrink-0">
                         <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
-                        <span className="uppercase text-[10px] tracking-wide text-gray-500">workouts</span>
+                        <span className="uppercase text-xs tracking-wide text-gray-500">workouts</span>
                     </div>
                     {Object.entries(countGroups).map(([label, count], index) => (
                         <div key={"stat" + index} className="hidden lg:flex lg:flex-col lg:items-center shrink-0 px-1">
                             <span className="text-lg font-semibold leading-tight">{count}</span>
-                            <span className="uppercase text-[10px] tracking-wide text-gray-500">{sportLabelShort(label)}</span>
+                            <span className="uppercase text-xs tracking-wide text-gray-500">{sportLabelShort(label)}</span>
                         </div>
                     ))}
                     <div className="flex items-center shrink-0 ml-auto gap-1">
                         {showGoals && (
                             <button type="button" onClick={() => setGoalsOpen((v) => !v)}
                                     aria-expanded={goalsOpen}
-                                    className={"rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide min-h-[36px] transition " +
+                                    className={"rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide min-h-[44px] transition " +
                                         (goalsOpen ? "bg-volt-400 text-ink-950 shadow-glow-volt" : "btn-glass")}>
                                 Goals
                             </button>
@@ -134,7 +136,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                             <HeaderIconButton title="Settings" icon={Settings} onClick={() => setShowEditCompetitionModal(competition.id)}/>
                         )}
                         {isOwner && (
-                            <HeaderIconButton title="AI Drill Instructor" icon={Megaphone} onClick={() => setShowDrillInstructorModal(true)}/>
+                            <HeaderIconButton title="Coach settings" icon={Megaphone} onClick={() => setShowDrillInstructorModal(true)}/>
                         )}
                         <HeaderIconButton title="Invite Others" icon={UserRoundPlus} onClick={() => setShowInviteCompetitionModal(true)}/>
                     </div>
@@ -142,7 +144,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                 {!isOwner && (
                     <div className="mt-3 flex justify-end">
                         <button type="button" onClick={triggerLeaveCompetition} disabled={leaveIsLoading}
-                                className="text-xs text-gray-400 hover:text-red-500 transition min-h-[32px]">
+                                className="text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 transition min-h-[44px] px-2">
                             Leave challenge
                         </button>
                     </div>
@@ -159,7 +161,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                                     <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Challenge goals</p>
                                     {isOwner && (
                                         <button type="button" onClick={() => setShowModifyGoals(true)}
-                                                className="text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[32px]">
+                                                className="text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] px-2">
                                             Edit
                                         </button>
                                     )}
@@ -181,7 +183,10 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                                                         </p>
                                                     </div>
                                                     <div className="mt-1.5 flex items-center gap-2">
-                                                        <div className="flex-1 h-2 rounded-full bg-ink-950/10 dark:bg-white/10 overflow-hidden">
+                                                        <div className="flex-1 h-2 rounded-full bg-ink-950/10 dark:bg-white/10 overflow-hidden"
+                                                             role="progressbar" aria-valuemin={0} aria-valuemax={100}
+                                                             aria-valuenow={Math.round(pct)}
+                                                             aria-label={`${goal.name}: ${Math.round(pct)} of 100 points`}>
                                                             <div className={"h-full rounded-full transition-all " +
                                                                 (empty ? "bg-ink-950/10 dark:bg-white/15" : complete ? "bg-volt-400" : "bg-gradient-to-r from-volt-600 to-volt-400")}
                                                                  style={{width: pct + "%"}}/>
@@ -638,6 +643,14 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                     <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-white/18 to-white/10 dark:from-ink-950/60 dark:via-ink-950/40 dark:to-ink-950/28"/>
                 </div>
             )}
+            {bgSrc && (
+                /* The card body opens the lightbox on click for mouse users;
+                   keyboard/AT users get this explicit control instead. */
+                <button type="button" onClick={(e) => { e.stopPropagation(); setLightbox("remix"); }}
+                        className="absolute top-3 left-3 z-10 inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-ink-950/60 text-white px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide backdrop-blur-sm transition hover:bg-ink-950/80">
+                    View photo
+                </button>
+            )}
             {hero && (
                 <div className="absolute -top-3.5 right-4 z-20 flex items-center gap-3">
                     <ActivityStampIcons/>
@@ -855,8 +868,18 @@ export function CoachCorner({competition, isOwner}) {
     // Deep link from the Coach page's "Respond" button
     // (/competition/<id>?reply=<messageId>): scroll Coach's Corner into
     // view and open the matching thread (defaultOpen below).
-    const [searchParams] = useSearchParams();
+    // ?coach=setup (from the Coach page's "Set up your coach") opens the
+    // config modal directly for owners.
+    const [searchParams, setSearchParams] = useSearchParams();
     const replyTargetId = parseInt(searchParams.get("reply") || "", 10) || null;
+    useEffect(() => {
+        if (searchParams.get("coach") !== "setup" || !isOwner) return;
+        setShowConfigModal(true);
+        const next = new URLSearchParams(searchParams);
+        next.delete("coach");
+        setSearchParams(next, {replace: true});
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams, isOwner]);
     const cornerRef = React.useRef(null);
     const loaded = messageResults(page);
     useSfxObserver(`feed:${competition.id}`, feedSfxItems(loaded), Boolean(page));
@@ -880,7 +903,7 @@ export function CoachCorner({competition, isOwner}) {
                 <div className="relative flex flex-wrap items-center gap-4 p-5">
                     <img src="/personas/megaphone.svg" alt="" className="h-14 w-14 rounded-full animate-float-slow shrink-0"/>
                     <div className="flex-1 min-w-0">
-                        <p className="font-display text-sm uppercase tracking-wider">Unleash the Drill Instructor</p>
+                        <p className="font-display text-sm uppercase tracking-wider">Unleash the coach</p>
                         <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">An AI coach that comments on every workout - with push pings to keep everyone honest.</p>
                     </div>
                     <button onClick={() => setShowConfigModal(true)}

@@ -14,6 +14,7 @@ import {
     ChangeTeamButton,
 } from "../forms/basicComponents";
 import {ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
+import {errText} from "../utils/errors";
 import {EmptyState, PaneHead, paneCardClass} from "../components/uiBits";
 import {useDispatch} from "react-redux";
 import {teamsApi} from "../utils/reducers/teamsSlice";
@@ -125,8 +126,13 @@ function dayTotal(series, id, offset) {
 function WeekBars({values, labels, showLabels = false, tall = false}) {
     const max = Math.max(1, ...values.map((n) => Number(n) || 0));
     const h = tall ? 36 : 18;
+    const total = values.reduce((acc, n) => acc + (Number(n) || 0), 0);
     return (
         <div className="min-w-0">
+            {/* Text equivalent for screen readers - the bars are aria-hidden. */}
+            <span className="sr-only">
+                {"Points this week: " + values.map((n, i) => `${labels?.[i] || `Day ${i + 1}`} ${Math.round(Number(n) || 0)}`).join(", ") + ` - total ${Math.round(total)}`}
+            </span>
             <div className="flex items-end gap-[3px]" style={{height: h}} aria-hidden="true">
                 {values.map((v, i) => {
                     const n = Number(v) || 0;
@@ -143,7 +149,7 @@ function WeekBars({values, labels, showLabels = false, tall = false}) {
             {showLabels && labels && (
                 <div className="flex gap-[3px] mt-1">
                     {labels.map((label, i) => (
-                        <span key={i} className="flex-1 text-center text-[8px] font-bold uppercase tracking-wide text-gray-400">
+                        <span key={i} className="flex-1 text-center text-[10px] font-bold uppercase tracking-wide text-gray-400">
                             {label}
                         </span>
                     ))}
@@ -167,7 +173,14 @@ function TrendSpark({series, compare}) {
             return `${x.toFixed(1)},${y.toFixed(1)}`;
         }).join(" ");
     };
+    const first = Number(series?.[0]) || 0;
+    const last = Number(series?.[series.length - 1]) || 0;
+    const trendText = series && series.length > 1
+        ? `Cumulative points trend: from ${Math.round(first)} to ${Math.round(last)}${last >= first ? ", rising" : ", falling"} versus the field average.`
+        : "No trend data yet.";
     return (
+        <>
+        <span className="sr-only">{trendText}</span>
         <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-10" aria-hidden="true" preserveAspectRatio="none">
             {compare && compare.length > 1 && (
                 <polyline fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"
@@ -178,10 +191,13 @@ function TrendSpark({series, compare}) {
                           className="text-volt-500 dark:text-volt-400" points={toPts(series)}/>
             )}
         </svg>
+        </>
     );
 }
 
 function IndividualLeaderboardBox({stats, userId, dunceUserId, feed}) {
+    // getWeekDates() ignores `stats`; the dep just re-anchors the week
+    // labels whenever fresh stats land (a day rollover shows up on poll).
     const weekDays = React.useMemo(() => getWeekDates(), [stats]);
     const weekLabels = weekDays.map((d) => d.dateObj.toLocaleDateString("en-US", {weekday: "narrow"}));
     const range = React.useMemo(
@@ -402,20 +418,12 @@ export default function Competition() {
 
     const isOwner = (user !== undefined) && (user?.id === competition?.owner);
 
-    const [teamId, setTeamId] = useState(undefined);
-    useEffect(() => {
+    const teamId = useMemo(() => {
         if (stats?.teams && user?.my_teams) {
-            const tmpTeamId = Object.keys(stats?.teams).find(item => user?.my_teams.includes(parseInt(item)));
-            setTeamId(tmpTeamId);
+            return Object.keys(stats.teams).find(item => user.my_teams.includes(parseInt(item)));
         }
-    }, [stats, user])
-
-    function refreshPage() {
-        refreshCompetition();
-        refreshFeed();
-        refreshStats();
-        dispatch(teamsApi.util.invalidateTags(['Team']));
-    }
+        return undefined;
+    }, [stats, user]);
 
     // Auto-refresh: when the Drill Instructor posts a new comment (which
     // happens right after a workout is logged and scored), pull the fresh
@@ -447,7 +455,7 @@ export default function Competition() {
         // format position of console.log (CodeQL js/tainted-format-string).
         console.error('Error retrieving competition:', id, competitionError);
         return <PageWrapper additionClasses="h-screen flex items-center justify-center"><ErrorBoxSection
-            errorMsg={competitionError?.status + ' / ' + (competitionError?.error || competitionError?.message || competitionError?.data?.detail)}/></PageWrapper>;
+            errorMsg={errText(competitionError, 'Could not load this challenge. Please try again.')}/></PageWrapper>;
     }
 
 
@@ -460,7 +468,7 @@ export default function Competition() {
                     (competitionLoading) ? (
                         <SectionLoader height={"h-48 mb-4"} />
                     ) : (tab !== "feed" && statsError) ? (
-                        <ErrorBoxSection additionalClasses='mb-4' errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
+                        <ErrorBoxSection additionalClasses='mb-4' errorMsg={errText(statsError, 'Could not load the leaderboard. Please try again.')}/>
                     ) : (
                         <CompetitionHead competition={competition} feed={feed} isOwner={isOwner} goals={competition?.goals || stats?.competition?.goals} user={user} />
                     )
@@ -473,13 +481,13 @@ export default function Competition() {
                 </div>
 
                 <div>
+                {/* A stats failure is shown ONCE in the header position above
+                    - not repeated inside each leaderboard column. */}
+                {statsError ? null : (
                 <div className="flex flex-col md:flex-row mb-4">
                     <div className={"w-full mb-4 md:mb-0 " + (competition?.has_teams === false ? "" : "md:w-1/2 md:pr-2")}>
                         {
-                            (statsError) ? (
-                                <ErrorBoxSection
-                                    errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
-                            ) : (statsLoading || !stats) ? (
+                            (statsLoading || !stats) ? (
                                 <SectionLoader/>
                             ) : (
                                 <IndividualLeaderboardBox stats={stats} userId={user?.id} dunceUserId={dunceUserId} feed={feed}/>
@@ -489,10 +497,7 @@ export default function Competition() {
                     {(competition?.has_teams === false) ? null : (
                     <div className="w-full md:w-1/2 md:pl-2">
                         {
-                            (statsError) ? (
-                                <ErrorBoxSection
-                                    errorMsg={statsError?.status + ' / ' + (statsError?.error || statsError?.message || statsError?.data?.detail)}/>
-                            ) : (statsLoading || competitionLoading || !stats) ? (
+                            (statsLoading || competitionLoading || !stats) ? (
                                 <SectionLoader/>
                             ) : (
                                 <TeamLeaderboardBox stats={stats} competition={competition} user={user} teamId={teamId} isOwner={isOwner}/>
@@ -501,6 +506,7 @@ export default function Competition() {
                     </div>
                     )}
                 </div>
+                )}
                 </div>
                 </SwipePages>
             </div>
