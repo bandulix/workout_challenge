@@ -58,7 +58,7 @@ docker compose --profile health up -d
 
 Phones reach it at `MAIN_HOST/health` by default. In the Android app, Health Connect is one tap. In a browser, Settings shows a connection code for a health app on the phone.
 
-**Android APK** — GitHub Releases, or `scripts/build_apk.sh`. One APK works on every instance: enter the server address on first start. After pulling a new image, publish the matching APK with `scripts/update_apk_from_release.sh`.
+**Android APK** — GitHub Releases, or `scripts/build_apk.sh`. One APK works on every instance: enter the server address on first start. After pulling a new image, publish the matching APK with `scripts/update_apk_from_release.sh`. Foldables (Galaxy Z Fold/Flip class) are supported: the activity is resizable, survives fold/unfold without losing state, draws around cutouts, and the dock avoids the hinge in dual-screen posture.
 
 Secrets at rest and backup notes: [docs/security-secrets-and-backups.md](docs/security-secrets-and-backups.md). Quick backups (DB + uploads): `scripts/backup.sh` — always before an upgrade.
 

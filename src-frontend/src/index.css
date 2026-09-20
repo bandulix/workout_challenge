@@ -518,6 +518,21 @@ body, #root {
   background: transparent;
 }
 
+/* Foldables (Galaxy Z Fold class, dual-screen posture): when the app
+   spans two side-by-side panes (hinge vertical), keep the bottom dock on
+   the left pane so the capsule never sits under the hinge. The env()
+   viewport-segment variables only exist while spanning; the fallbacks
+   make the rule a no-op elsewhere, and the media query itself is false
+   on single-screen devices. */
+@media (vertical-viewport-segments: 2) {
+  .wc-dock {
+    left: env(viewport-segment-left 0 0, 0px);
+    right: calc(100% - env(viewport-segment-right 0 0, 100%));
+  }
+}
+/* Tabletop posture (hinge horizontal): the dock already lives on the
+   bottom pane's edge - nothing to do. */
+
 /* Gym plate stays put while the page scrolls. Size to the large
    viewport so collapsing browser chrome does not recrop object-cover. */
 .app-backdrop {

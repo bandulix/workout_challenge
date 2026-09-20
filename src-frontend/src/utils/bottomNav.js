@@ -251,7 +251,7 @@ export default function BottomNav() {
                 <div className="fixed inset-0 z-40 bg-ink-950/30 dark:bg-black/45 backdrop-blur-[2px]"
                      onClick={closeSheets} aria-hidden="true"/>
             )}
-            <nav className="fixed inset-x-0 bottom-0 z-40 overflow-visible animate-nav-rise pointer-events-none pb-[max(0.5rem,env(safe-area-inset-bottom))] md:bottom-5 md:pb-0"
+            <nav className="wc-dock fixed inset-x-0 bottom-0 z-40 overflow-visible animate-nav-rise pointer-events-none pb-[max(0.5rem,env(safe-area-inset-bottom))] md:bottom-5 md:pb-0"
                  aria-label="Primary navigation">
                 {/* One glass capsule: the dock, and when open the panel
                     grows up from it as the same piece of frost. */}
