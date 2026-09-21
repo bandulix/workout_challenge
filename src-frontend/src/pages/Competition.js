@@ -1,5 +1,5 @@
 import {useNavigationType, useParams, useSearchParams} from 'react-router-dom';
-import React, {useEffect, useState} from "react";
+import React, {useEffect, useMemo, useState} from "react";
 import {useGetCompetitionByIdQuery} from "../utils/reducers/competitionsSlice";
 import {
     UsersRound,
