@@ -4,7 +4,7 @@ import {FIELD_INPUT_CLASS, Modal, SaveButton, SingleForm, StravaButton, useFormD
 import {useNavigate} from "react-router-dom";
 import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, useUnlinkGarminMutation, useLinkHealthMutation, useUnlinkHealthMutation} from "../utils/reducers/linkSlice";
 import {useDispatch} from "react-redux";
-import {Watch, Smartphone, Download, Volume2, VolumeX} from "lucide-react";
+import {Watch, Smartphone, Download, Volume2, VolumeX, KeyRound} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {isNativeHealthAvailable, nativeHealthConnect, nativeHealthDisconnect, nativeHealthSetSource} from "../utils/nativeHealth";
 import {confirmAction} from "../utils/dialogs";
@@ -304,6 +304,61 @@ function GarminSection({user, onChanged}) {
 }
 
 
+// In-app password change (no email roundtrip): current password + the
+// new one twice. The server verifies the current password, runs the
+// Django password validators and blacklists every refresh token - so
+// on success every session (including this one) is logged out and the
+// athlete signs back in with the new password.
+export function PasswordSection() {
+    const navigate = useNavigate();
+    const [current, setCurrent] = useState("");
+    const [next, setNext] = useState("");
+    const [repeat, setRepeat] = useState("");
+    const [error, setError] = useState(null);
+    const [updateUser, {isLoading}] = useUpdateUserMutation();
+
+    async function handleChange() {
+        setError(null);
+        if (next !== repeat) {
+            setError("The new passwords do not match.");
+            return;
+        }
+        try {
+            await updateUser({id: 'me', current_password: current, password: next}).unwrap();
+            toast.success("Password changed - please log in again with your new password.");
+            navigate('/logout');
+        } catch (err) {
+            const data = err?.data || {};
+            const first = data.current_password || data.password || data.detail;
+            setError(Array.isArray(first) ? first[0] : (first || "Could not change the password. Please try again."));
+        }
+    }
+
+    return (
+        <div className="rounded-2xl glass-card p-4 space-y-3">
+            <div className="flex items-center gap-2">
+                <KeyRound className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                <span className="font-display text-xs uppercase tracking-wider">Change password</span>
+            </div>
+            <input type="password" className={FIELD_INPUT_CLASS} placeholder="Current password"
+                   autoComplete="current-password" aria-label="Current password"
+                   value={current} onChange={(e) => setCurrent(e.target.value)}/>
+            <input type="password" className={FIELD_INPUT_CLASS} placeholder="New password"
+                   autoComplete="new-password" aria-label="New password"
+                   value={next} onChange={(e) => setNext(e.target.value)}/>
+            <input type="password" className={FIELD_INPUT_CLASS} placeholder="New password (repeat)"
+                   autoComplete="new-password" aria-label="New password (repeat)"
+                   value={repeat} onChange={(e) => setRepeat(e.target.value)}/>
+            <button onClick={handleChange} disabled={isLoading || !current || !next || !repeat}
+                    className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
+                {isLoading ? <BeatLoader size={6} color="#0b0b0c"/> : "Change password"}
+            </button>
+            <p className="text-[11px] text-gray-400">You will be logged out everywhere and sign back in with the new password.</p>
+            {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+    );
+}
+
 function SettingsGroup({title, hint, children}) {
     return (
         <section className="rounded-2xl glass-inset p-4 space-y-3">
@@ -549,6 +604,10 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
                 <div className="-mx-2">
                     <SingleForm fields={profileFields} values={values} setValues={setValues} errors={fieldErrors}/>
                 </div>
+            </SettingsGroup>
+
+            <SettingsGroup title="Password" hint="Change it right here - no email needed.">
+                <PasswordSection/>
             </SettingsGroup>
 
             <SettingsGroup title="Emails" hint={user.is_verified ? "Weekly mail only goes to a confirmed address." : "This address is not confirmed yet. Use the banner at the top to resend the link."}>
