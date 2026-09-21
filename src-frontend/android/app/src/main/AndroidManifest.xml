@@ -17,14 +17,6 @@
              OEM builds from letterboxing the nearly-square inner display. -->
         <meta-data android:name="android.max_aspect" android:value="2.4" />
 
-        <supports-screens
-            android:smallScreens="true"
-            android:normalScreens="true"
-            android:largeScreens="true"
-            android:xlargeScreens="true"
-            android:anyDensity="true"
-            android:resizeable="true" />
-
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
@@ -90,5 +82,16 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- Foldables & large screens: must be a direct child of <manifest>
+         (inside <application> the release build fails AAPT resource
+         linking with "unexpected element <supports-screens>"). -->
+    <supports-screens
+        android:smallScreens="true"
+        android:normalScreens="true"
+        android:largeScreens="true"
+        android:xlargeScreens="true"
+        android:anyDensity="true"
+        android:resizeable="true" />
+
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>

@@ -4,6 +4,7 @@ import {BeatLoader} from "react-spinners";
 import {useDispatch} from "react-redux";
 import {drillInstructorApi, usePostDrillPhotoMutation} from "../utils/reducers/drillInstructorSlice";
 import {compressImage} from "../utils/imageCompress";
+import {decodePhoto} from "../utils/heicDecode";
 import {isAcceptablePhoto, isNativeCameraAvailable, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
 import {OverlaySheet} from "../forms/basicComponents";
 
@@ -141,7 +142,8 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
     }
 
     // Decode to a canvas JPEG so the <img> src is pixels, not a blob: of
-    // the raw pick (CodeQL js/xss-through-dom; also defangs SVG).
+    // the raw pick (CodeQL js/xss-through-dom; also defangs SVG). HEIC
+    // picks (Samsung gallery) are converted first - see utils/heicDecode.
     const [preview, setPreview] = useState(null);
     useEffect(() => {
         if (!file) {
@@ -151,7 +153,8 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
         let cancelled = false;
         (async () => {
             try {
-                const bitmap = await createImageBitmap(file);
+                const bitmap = await decodePhoto(file);
+                if (cancelled) { bitmap.close?.(); return; }
                 const max = 800;
                 const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
                 const canvas = document.createElement("canvas");
@@ -217,8 +220,16 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
             )}
             {file ? (
                 <div className="relative">
-                    <img src={preview} alt="Upload preview"
-                         className="mx-auto max-h-[50vh] w-auto max-w-full rounded-2xl"/>
+                    {/* HEIC conversion takes a moment - show a placeholder
+                        instead of an <img> with no (valid) src. */}
+                    {preview ? (
+                        <img src={preview} alt="Upload preview"
+                             className="mx-auto max-h-[50vh] w-auto max-w-full rounded-2xl"/>
+                    ) : !error ? (
+                        <div className="mx-auto flex h-48 w-full max-w-sm items-center justify-center rounded-2xl bg-ink-950/5 dark:bg-white/5">
+                            <BeatLoader size={8} color="#d7ff3e"/>
+                        </div>
+                    ) : null}
                     <button type="button" onClick={() => { setFile(null); setError(null); }}
                             aria-label="Discard photo"
                             className="absolute top-2 right-2 min-h-[36px] min-w-[36px] rounded-full bg-ink-950/80 text-white flex items-center justify-center hover:bg-ink-800 transition">

@@ -876,7 +876,21 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             .distinct()
             .order_by("-posted_at")[: self.HALL_SIZE]
         )
-        return Response(RoastCardSerializer(qs, many=True, context={"request": request}).data)
+        cards = list(qs)
+        # Stamps live on the activity thread ROOT (parent, or grandparent
+        # for roasts of photo replies). Bulk-attach it so the serializer
+        # can expose thread_id/thread_reacts without N+1 queries - the
+        # fullscreen hall viewer stamps directly from the card.
+        root_ids = {(c.parent.parent_id or c.parent_id) for c in cards if c.parent_id}
+        roots = {
+            r.pk: r
+            for r in DrillInstructorMessage.objects
+            .filter(pk__in=root_ids)
+            .prefetch_related("activity_reacts__user")
+        }
+        for c in cards:
+            c.thread_root = roots.get(c.parent.parent_id or c.parent_id) if c.parent_id else None
+        return Response(RoastCardSerializer(cards, many=True, context={"request": request}).data)
 
     @action(detail=True, methods=["post"])
     def vote(self, request, pk=None):

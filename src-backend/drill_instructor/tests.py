@@ -3887,6 +3887,33 @@ class ArcadeGameTests(TestCase):
         self.assertEqual(cards[roast.id]["react_count"], 2)
         self.assertEqual(cards[lonely.id]["react_count"], 0)  # no parent: no reactions to count
 
+    def test_hall_card_exposes_thread_root_and_reacts(self):
+        # The fullscreen gallery stamps straight from the card, so the
+        # hall payload carries the thread root id and its react rows.
+        from .models import DrillInstructorActivityReact
+        root = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY, body="Strong session.", user=None,
+        )
+        photo = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PHOTO, parent=root, user=self.alex, body="",
+        )
+        roast = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REACTION, parent=photo, body="remix", user=None,
+        )
+        roast.image = "message_pics/r.png"
+        roast.save()
+        DrillInstructorActivityReact.objects.create(message=root, user=self.alex, emoji="fire")
+        DrillInstructorActivityReact.objects.create(message=root, user=self.nina, emoji="fire")
+
+        self.client.force_authenticate(self.alex)
+        cards = {row["id"]: row for row in self.client.get(
+            "/api/drill-instructor/message/hall/", {"competition": self.competition.id}).json()}
+        card = cards[roast.id]
+        self.assertEqual(card["thread_id"], root.id)          # grandchild -> grandparent
+        reacts = {r["emoji"]: r for r in card["thread_reacts"]}
+        self.assertEqual(reacts["fire"]["count"], 2)
+        self.assertTrue(reacts["fire"]["me"])                 # alex stamped it
+
     def test_hall_without_competition_lists_membership_roasts(self):
         roast = DrillInstructorMessage.objects.create(
             config=self.config, kind=DrillInstructorMessage.KIND_REACTION, body="A", user=None,

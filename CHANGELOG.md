@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.62.0] - 2026-09-21
+
+### Added
+- **Fullscreen roast viewer.** Tapping a hall photo opens it edge-to-edge: pinch and double-tap to zoom, pan while zoomed, swipe sideways for the next roast, swipe down to close. Stamp and Share float on the photo — you can react without leaving the gallery.
+- **Made for the Fold — and the desktop.** On the opened inner display, tablets and desktop, a vertical left rail (like Instagram/X) replaces the bottom dock, Competition shows feed and leaderboard side by side, and Coach and Home go two-column. The narrow cover screen keeps the one-column phone layout.
+- **Training heatmap on Home.** A 26-week grid of your training days plus a 12-week volume strip — consistency is visible at a glance, rest days included.
+- **Skeleton loading.** Leaderboards, stats and galleries show placeholders in the shape of the incoming content instead of a spinner — the page feels twice as fast.
+- **Hall of Roasts, curated.** Six tiles now: the three freshest remixes and the three most-stamped, with "Show all" for the rest.
+
+### Changed
+- **A calmer, more expensive look.** One type scale (hero / pane title / caption), tabular numbers for stats, cards rise in a gentle stagger on page enter, and dialogs now float visibly above the page with deeper glass. All animations respect reduced-motion settings.
+- **Empty states show your coach.** The hall's empty state greets you with your actual persona instead of a generic megaphone.
+
+### Fixed
+- **Competition page crash** ("Something went wrong") — a missing import took the whole page down.
+- **Samsung gallery previews.** Photos picked from the gallery (HEIC) showed a red X even though the upload worked; they now decode and preview properly, and upload as lean 1600px JPEGs.
+- **Section titles line up** when feed and leaderboard sit side by side.
+- **Stat pills stay readable** in the two-pane dashboard column, and long coach names no longer wrap mid-word.
+
+### Removed
+- **Hot-or-not is gone.** The swipe box, its 24h countdown and the "next vote coming up" teaser are retired — stamps on the photos carry the verdict now. The speaker icon on the coach portrait went too (the sound toggle lives top-right).
+
+### Operator notes
+- No migrations. The workout summary endpoint gained a `days` map (26 weeks of per-day seconds) for the heatmap; the hall endpoint now carries `thread_id`/`thread_reacts` per card.
+- APK build fixed: `<supports-screens>` must be a direct child of `<manifest>` — inside `<application>` it fails release resource linking.
+
 ## [0.61.0] - 2026-09-21
 
 ### Added

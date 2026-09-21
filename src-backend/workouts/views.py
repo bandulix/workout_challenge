@@ -80,6 +80,12 @@ class WorkoutViewSet(viewsets.ModelViewSet):
         days_30 = set()
         days_7 = set()
 
+        # Per-day seconds for the dashboard heatmap (last 26 weeks).
+        # Kept as a dict - untrained days are simply absent.
+        HEATMAP_DAYS = 26 * 7
+        heatmap_start = today - datetime.timedelta(days=HEATMAP_DAYS - 1)
+        day_seconds = {}
+
         # The streak only needs trained Mondays; iterating timestamps
         # beats firing one EXISTS query per week of a long streak.
         for dt, duration, kcal, distance, _sport in qs.values_list(
@@ -88,6 +94,8 @@ class WorkoutViewSet(viewsets.ModelViewSet):
             week_monday = day - datetime.timedelta(days=day.weekday())
             trained_weeks.add(week_monday)
             seconds = duration.total_seconds() if duration else 0
+            if day >= heatmap_start and seconds:
+                day_seconds[day.isoformat()] = day_seconds.get(day.isoformat(), 0) + int(seconds)
             if day >= day_30_ago:
                 days_30.add(day)
                 d30["workouts"] += 1
@@ -126,4 +134,5 @@ class WorkoutViewSet(viewsets.ModelViewSet):
             "d7": d7,
             "week": {"seconds": int(week_seconds), "days": sorted(week_days)},
             "streak_weeks": streak,
+            "days": day_seconds,
         })

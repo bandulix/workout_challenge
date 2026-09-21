@@ -264,7 +264,9 @@ const SHEET_BACKDROP =
     "pt-[max(0.85rem,calc(var(--safe-top)+0.7rem))] " +
     "pb-[max(0.85rem,calc(var(--safe-bottom)+0.7rem))]";
 const SHEET_PANEL =
-    "relative flex max-h-full w-full flex-col overflow-hidden glass-sheet rounded-[1.75rem] animate-pop-in " +
+    // glass-overlay (elevation 4), not glass-sheet: modals must read as
+    // floating ABOVE the page's cards - deeper blur, stronger shadow.
+    "relative flex max-h-full w-full flex-col overflow-hidden glass-overlay rounded-[1.75rem] animate-pop-in " +
     PANEL_MAX_CLASS;
 
 

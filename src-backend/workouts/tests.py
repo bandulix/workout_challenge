@@ -255,6 +255,24 @@ class WorkoutSummaryApiTests(TestCase):
         self._workout(28)  # trained 4 weeks ago, but week 3 was a gap
         self.assertEqual(self.client.get("/api/workout/summary/").json()["streak_weeks"], 3)
 
+    def test_days_feed_the_heatmap(self):
+        self._workout(0, duration=datetime.timedelta(minutes=45))
+        self._workout(0, sport_type="Run", duration=datetime.timedelta(minutes=15))  # same day adds up
+        self._workout(9)
+        self._workout(200)                                    # outside the 26-week window
+        self._workout(1, sport_type="Steps", steps=3000)      # excluded
+        self._workout(2, user=self.other)                     # someone else's
+
+        self.client.force_authenticate(self.user)
+        days = self.client.get("/api/workout/summary/").json()["days"]
+
+        today = timezone.localdate()
+        self.assertEqual(days[today.isoformat()], 60 * 60)
+        self.assertEqual(days[(today - datetime.timedelta(days=9)).isoformat()], 30 * 60)
+        self.assertNotIn((today - datetime.timedelta(days=200)).isoformat(), days)
+        self.assertNotIn((today - datetime.timedelta(days=1)).isoformat(), days)  # Steps only
+        self.assertNotIn((today - datetime.timedelta(days=2)).isoformat(), days)  # other user
+
 
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},

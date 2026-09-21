@@ -1,11 +1,12 @@
 import React, {useEffect, useRef, useState} from "react";
-import {ChevronLeft, ChevronRight, Megaphone, ScrollText, Share2, Trophy, Zap} from "lucide-react";
+import {ChevronLeft, ChevronRight, Megaphone, ScrollText, Share2, Trophy, X, Zap} from "lucide-react";
 import {useProtectedImage} from "../utils/protectedMedia";
-import {roastHottestId, roastIsAfterglow} from "../utils/roastAfterglow";
-import {PaneHead, paneCardClass} from "./uiBits";
+import {EmptyState, PaneHead, paneCardClass} from "./uiBits";
 import {OverlaySheet} from "../forms/basicComponents";
 import {sharePostCard} from "../utils/shareCard";
 import {playSfx} from "../utils/sfx";
+import {OverlayPortal, useBodyScrollLock} from "../utils/overlay";
+import {ActivityReactProvider, ActivityStampButton, ActivityStampIcons} from "./ActivityReacts";
 
 export const TAG_ICON = {
     first_blood: "🩸",
@@ -239,10 +240,18 @@ export function OrderCard({order}) {
     );
 }
 
+// Fullscreen roast viewer: the photo fills the screen, pinch and
+// double-tap zoom it (pan while zoomed), a swipe navigates in fit mode,
+// swipe-down closes. Share/stamp float as overlays on the image.
 function RoastGallery({cards, index, onClose, onIndex}) {
     const card = cards[index];
     const {src} = useProtectedImage(card?.image);
-    const startX = useRef(null);
+    const stageRef = useRef(null);
+    const pointers = useRef(new Map());
+    const gesture = useRef(null);
+    const lastTap = useRef(0);
+    const [zoom, setZoom] = useState({scale: 1, x: 0, y: 0, anim: false});
+    useBodyScrollLock();
 
     useEffect(() => {
         function onKey(e) {
@@ -254,56 +263,172 @@ function RoastGallery({cards, index, onClose, onIndex}) {
         return () => window.removeEventListener("keydown", onKey);
     }, [index, cards.length, onClose, onIndex]);
 
+    // A new photo always opens in fit mode.
+    useEffect(() => { setZoom({scale: 1, x: 0, y: 0, anim: false}); }, [index]);
+
     if (!card) return null;
     const caption = card.body || `${card.persona_name || "Coach"} roasting ${card.athlete_name || "an athlete"}`;
+    const threadMsg = card.thread_id
+        ? {id: card.thread_id, reacts: card.thread_reacts || []}
+        : null;
 
-    function onPointerDown(e) { startX.current = e.clientX; }
-    function onPointerUp(e) {
-        if (startX.current == null) return;
-        const dx = e.clientX - startX.current;
-        startX.current = null;
-        if (dx > 60) onIndex(Math.max(0, index - 1));
-        if (dx < -60) onIndex(Math.min(cards.length - 1, index + 1));
+    function clampPan(s, x, y) {
+        const el = stageRef.current;
+        if (!el) return {x, y};
+        const r = el.getBoundingClientRect();
+        return {
+            x: Math.min((s - 1) * r.width / 2, Math.max(-(s - 1) * r.width / 2, x)),
+            y: Math.min((s - 1) * r.height / 2, Math.max(-(s - 1) * r.height / 2, y)),
+        };
     }
 
+    function onPointerDown(e) {
+        stageRef.current?.setPointerCapture?.(e.pointerId);
+        pointers.current.set(e.pointerId, {x: e.clientX, y: e.clientY});
+        const now = performance.now();
+        if (pointers.current.size === 2) {
+            const [a, b] = [...pointers.current.values()];
+            gesture.current = {
+                mode: "pinch",
+                dist: Math.hypot(a.x - b.x, a.y - b.y),
+                scale: zoom.scale, x: zoom.x, y: zoom.y,
+            };
+            return;
+        }
+        if (pointers.current.size !== 1) return;
+        if (now - lastTap.current < 300) {
+            // Double-tap: toggle fit <-> 2.5x, zooming toward the tap.
+            lastTap.current = 0;
+            const r = stageRef.current.getBoundingClientRect();
+            const s = zoom.scale > 1 ? 1 : 2.5;
+            const c = s > 1
+                ? clampPan(s, (r.left + r.width / 2 - e.clientX) * (s - 1),
+                           (r.top + r.height / 2 - e.clientY) * (s - 1))
+                : {x: 0, y: 0};
+            setZoom({scale: s, ...c, anim: true});
+            gesture.current = null;
+            return;
+        }
+        lastTap.current = now;
+        gesture.current = {mode: "single", sx: e.clientX, sy: e.clientY,
+                           x: zoom.x, y: zoom.y, moved: false};
+    }
+
+    function onPointerMove(e) {
+        if (!pointers.current.has(e.pointerId)) return;
+        pointers.current.set(e.pointerId, {x: e.clientX, y: e.clientY});
+        const g = gesture.current;
+        if (!g) return;
+        if (g.mode === "pinch" && pointers.current.size === 2) {
+            const [a, b] = [...pointers.current.values()];
+            const dist = Math.hypot(a.x - b.x, a.y - b.y);
+            const s = Math.min(4, Math.max(1, g.scale * (dist / Math.max(1, g.dist))));
+            setZoom({scale: s, ...clampPan(s, g.x * (s / g.scale), g.y * (s / g.scale)), anim: false});
+        } else if (g.mode === "single") {
+            const dx = e.clientX - g.sx, dy = e.clientY - g.sy;
+            if (Math.abs(dx) + Math.abs(dy) > 4) g.moved = true;
+            if (zoom.scale > 1) {
+                setZoom({scale: zoom.scale, ...clampPan(zoom.scale, g.x + dx, g.y + dy), anim: false});
+            }
+        }
+    }
+
+    function onPointerUp(e) {
+        pointers.current.delete(e.pointerId);
+        const g = gesture.current;
+        gesture.current = null;
+        if (!g) return;
+        if (g.mode === "pinch" && zoom.scale <= 1.05) {
+            setZoom({scale: 1, x: 0, y: 0, anim: true});  // pinch-out snaps to fit
+            return;
+        }
+        if (g.mode === "single" && g.moved && zoom.scale === 1) {
+            const dx = e.clientX - g.sx, dy = e.clientY - g.sy;
+            if (Math.abs(dy) > 90 && Math.abs(dy) > Math.abs(dx)) { onClose(); return; }
+            if (dx > 60) onIndex(Math.max(0, index - 1));
+            else if (dx < -60) onIndex(Math.min(cards.length - 1, index + 1));
+        }
+    }
+
+    const chip =
+        "pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-black/55 backdrop-blur " +
+        "border border-white/20 text-white min-h-[44px] px-3 text-[11px] font-bold uppercase tracking-wide";
+
     return (
-        <OverlaySheet title={card.athlete_name || "Roast"} onClose={onClose} zClass="z-[80]">
-            <div className="relative select-none" onPointerDown={onPointerDown} onPointerUp={onPointerUp}>
-                <img src={src} alt="" className="mx-auto max-h-[55vh] w-full rounded-2xl object-contain"/>
-                <p className="mt-3 text-sm leading-relaxed break-words text-gray-800 dark:text-gray-200">{caption}</p>
-                <p className="mt-1 text-[11px] text-gray-400 flex items-center gap-2 flex-wrap">
-                    <span>{[card.persona_name, card.competition_name].filter(Boolean).join(" · ")}</span>
-                    <ReactCount count={card.react_count}/>
-                </p>
-                <div className="mt-3 flex items-center justify-between gap-2">
-                    <button type="button" disabled={index <= 0} onClick={() => onIndex(index - 1)}
-                            aria-label="Previous roast"
-                            className="min-h-[44px] min-w-[44px] rounded-full btn-glass flex items-center justify-center disabled:opacity-30">
-                        <ChevronLeft className="h-5 w-5"/>
-                    </button>
-                    <button type="button" onClick={() => sharePostCard({
-                        title: card.athlete_name || "Roast",
-                        text: caption,
-                        imageUrl: card.image,
-                    })}
-                            className="inline-flex items-center gap-1.5 rounded-full btn-glass px-3 py-2 text-[11px] font-bold uppercase tracking-wide">
-                        <Share2 className="h-3.5 w-3.5"/> Share
-                    </button>
-                    <button type="button" disabled={index >= cards.length - 1} onClick={() => onIndex(index + 1)}
-                            aria-label="Next roast"
-                            className="min-h-[44px] min-w-[44px] rounded-full btn-glass flex items-center justify-center disabled:opacity-30">
-                        <ChevronRight className="h-5 w-5"/>
+        <OverlayPortal>
+            <div role="dialog" aria-modal="true" aria-label={card.athlete_name || "Roast"}
+                 className="fixed inset-0 z-[80] bg-black select-none"
+                 style={{touchAction: "none"}}>
+                {/* the photo stage eats every gesture */}
+                <div ref={stageRef}
+                     className="absolute inset-0 overflow-hidden flex items-center justify-center"
+                     onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+                     onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
+                    <img src={src} alt={caption} draggable={false}
+                         className={"max-h-full max-w-full object-contain " +
+                             (zoom.anim ? "transition-transform duration-200" : "")}
+                         style={{transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})`}}/>
+                </div>
+
+                {/* top bar */}
+                <div className="absolute top-0 inset-x-0 flex items-center justify-between gap-2 p-3 pt-[max(0.75rem,var(--safe-top))] pointer-events-none">
+                    <span className={chip}>{card.athlete_name || "Roast"}</span>
+                    <button type="button" onClick={onClose} aria-label="Close" className={chip + " !px-0 min-w-[44px] justify-center"}>
+                        <X className="h-5 w-5"/>
                     </button>
                 </div>
-                <p className="mt-2 text-center text-[11px] text-gray-500">{index + 1} / {cards.length} · swipe</p>
+
+                {/* edge nav, fit mode only (zoomed = pan, not navigate) */}
+                {zoom.scale === 1 && (<>
+                    {index > 0 && (
+                        <button type="button" onClick={() => onIndex(index - 1)} aria-label="Previous roast"
+                                className={"absolute left-2 top-1/2 -translate-y-1/2 !px-0 min-w-[44px] justify-center " + chip}>
+                            <ChevronLeft className="h-5 w-5"/>
+                        </button>
+                    )}
+                    {index < cards.length - 1 && (
+                        <button type="button" onClick={() => onIndex(index + 1)} aria-label="Next roast"
+                                className={"absolute right-2 top-1/2 -translate-y-1/2 !px-0 min-w-[44px] justify-center " + chip}>
+                            <ChevronRight className="h-5 w-5"/>
+                        </button>
+                    )}
+                </>)}
+
+                {/* bottom overlay: caption + stamps + share */}
+                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent
+                                px-4 pt-10 pb-[max(1rem,var(--safe-bottom))] pointer-events-none">
+                    <p className="text-sm leading-relaxed break-words text-white/95">{caption}</p>
+                    <p className="mt-1 text-[11px] text-white/60">
+                        {[card.persona_name, card.competition_name].filter(Boolean).join(" · ")}
+                    </p>
+                    <div className="mt-2.5 flex items-center gap-2 pointer-events-auto text-white">
+                        <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                            {threadMsg ? (
+                                <ActivityReactProvider message={threadMsg}>
+                                    <ActivityStampIcons/>
+                                    <ActivityStampButton/>
+                                </ActivityReactProvider>
+                            ) : (
+                                <ReactCount count={card.react_count}/>
+                            )}
+                        </div>
+                        <span className="text-[11px] text-white/80 shrink-0">{index + 1} / {cards.length}</span>
+                        <button type="button" onClick={() => sharePostCard({
+                            title: card.athlete_name || "Roast",
+                            text: caption,
+                            imageUrl: card.image,
+                        })} className={chip}>
+                            <Share2 className="h-3.5 w-3.5"/> Share
+                        </button>
+                    </div>
+                </div>
             </div>
-        </OverlaySheet>
+        </OverlayPortal>
     );
 }
 
 // Badge on hall tiles / the gallery: how many emoji reactions the
-// roast's thread collected. Hot-or-not votes stay inside the swipe
-// game - the hall shows what the whole group reacted to.
+// roast's thread collected - the group's verdict on the best shots.
 function ReactCount({count, light = false}) {
     const n = Math.max(0, Number(count) || 0);
     const filled = n > 0;
@@ -328,13 +453,11 @@ function sortHallCards(cards) {
     });
 }
 
-function HallFrame({card, onOpen, afterglow = false, hottest = false}) {
+function HallFrame({card, onOpen}) {
     const {src} = useProtectedImage(card.image, "card");
     const reacts = card.react_count || 0;
     return (
-        <article className={"min-w-0 rounded-3xl glass-card text-ink-950 dark:text-white " +
-            (hottest ? "roast-hottest " : "") +
-            (afterglow ? "roast-afterglow" : "")}>
+        <article className="min-w-0 rounded-3xl glass-card text-ink-950 dark:text-white">
             <button type="button" onClick={() => src && onOpen()}
                     className="block w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
                 <div className="relative overflow-hidden rounded-t-3xl">
@@ -357,42 +480,64 @@ function HallFrame({card, onOpen, afterglow = false, hottest = false}) {
     );
 }
 
-export function HallOfRoasts({cards}) {
+// The hall shows six cards at a glance: the three newest remixes on top,
+// then the three most reacted-to shots of the season (deduplicated - a
+// brand-new banger isn't shown twice). "Show all" flattens to the full
+// newest-first grid.
+export function hallShowcase(cards) {
+    const list = sortHallCards(cards);
+    const newest = list.slice(0, 3);
+    const newestIds = new Set(newest.map((c) => c.id));
+    const topReacted = [...list]
+        .sort((a, b) =>
+            ((b.react_count || 0) - (a.react_count || 0))
+            || ((Date.parse(b.posted_at || "") || 0) - (Date.parse(a.posted_at || "") || 0)))
+        .filter((c) => !newestIds.has(c.id))
+        .slice(0, 3);
+    return {list, newest, topReacted};
+}
+
+export function HallOfRoasts({cards, persona}) {
     const [openIndex, setOpenIndex] = useState(null);
     const [expanded, setExpanded] = useState(false);
-    const [now, setNow] = useState(() => Date.now());
-    useEffect(() => {
-        const id = window.setInterval(() => setNow(Date.now()), 30000);
-        return () => window.clearInterval(id);
-    }, []);
-    const list = sortHallCards(cards);
-    const many = list.length > 3;
-    const shown = expanded ? list : list.slice(0, 3);
-    const hottestId = roastHottestId(list);
+    const {list, newest, topReacted} = hallShowcase(cards);
+    const many = list.length > newest.length + topReacted.length;
 
     if (list.length === 0) {
         return (
             <div>
                 <PaneHead title="Hall of roasts" hint="Newest remixed photos"/>
                 <article className={paneCardClass}>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                        Empty for now. Post a photo under a workout — the coach remixes it, and the shots land here.
-                    </p>
+                    <EmptyState persona={persona} title="Empty for now"
+                                body="Post a photo under a workout — the coach remixes it, and the shots land here."/>
                 </article>
             </div>
         );
     }
+
+    const frame = (c) => (
+        <HallFrame key={c.id} card={c} onOpen={() => setOpenIndex(list.indexOf(c))}/>
+    );
+
     return (
         <div>
-            <PaneHead title="Hall of roasts" hint="Newest remixed photos"/>
-            <div className="grid grid-cols-3 gap-3">
-                {shown.map((c) => (
-                    <HallFrame key={c.id} card={c}
-                               afterglow={roastIsAfterglow(c, now)}
-                               hottest={c.id === hottestId}
-                               onOpen={() => setOpenIndex(list.indexOf(c))}/>
-                ))}
-            </div>
+            <PaneHead title="Hall of roasts" hint="Newest + most reacted remixes"/>
+            {expanded ? (
+                <div className="grid grid-cols-3 gap-3">{list.map(frame)}</div>
+            ) : (
+                <div className="space-y-3">
+                    <div>
+                        <p className="px-1 mb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Fresh off the roast</p>
+                        <div className="grid grid-cols-3 gap-3">{newest.map(frame)}</div>
+                    </div>
+                    {topReacted.length > 0 && (
+                        <div>
+                            <p className="px-1 mb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Crowd favourites</p>
+                            <div className="grid grid-cols-3 gap-3">{topReacted.map(frame)}</div>
+                        </div>
+                    )}
+                </div>
+            )}
             {many ? (
                 <button type="button" onClick={() => setExpanded((v) => !v)}
                         className="mt-2 w-full min-h-[40px] rounded-2xl text-sm font-semibold text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition">

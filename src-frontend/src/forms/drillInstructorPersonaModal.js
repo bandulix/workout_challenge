@@ -18,6 +18,7 @@ import {
 } from "./basicComponents";
 import PersonaAvatar from "../components/PersonaAvatar";
 import {invalidateProtectedImage, useProtectedImage} from "../utils/protectedMedia";
+import {displayableImageUrl} from "../utils/heicDecode";
 import {confirmAction} from "../utils/dialogs";
 import {toast} from "../utils/toasts";
 import {errText} from "../utils/errors";
@@ -144,7 +145,7 @@ export function PersonaEditModal({persona, setModalState}) {
         }
     }, [addSuccess, updateSuccess]);
 
-    function handlePictureFile(e) {
+    async function handlePictureFile(e) {
         const file = e.target.files?.[0];
         e.target.value = ""; // allow re-picking the same file
         if (!file) return;
@@ -155,10 +156,11 @@ export function PersonaEditModal({persona, setModalState}) {
         }
         if (picturePreview && picturePreview.startsWith("blob:")) URL.revokeObjectURL(picturePreview);
         setPictureFile(file);
-        setPicturePreview(URL.createObjectURL(file));
+        // HEIC (Samsung gallery) needs a JPEG conversion for the preview.
+        setPicturePreview(await displayableImageUrl(file));
     }
 
-    function handleBodyFile(slot, e) {
+    async function handleBodyFile(slot, e) {
         const file = e.target.files?.[0];
         e.target.value = "";
         if (!file) return;
@@ -167,11 +169,12 @@ export function PersonaEditModal({persona, setModalState}) {
             return;
         }
         setBodyError(null);
+        const url = await displayableImageUrl(file);
         setBodyFiles((prev) => ({...prev, [slot]: file}));
         setBodyClears((prev) => ({...prev, [slot]: false}));
         setBodyPreviews((prev) => {
             if (prev[slot]?.startsWith("blob:")) URL.revokeObjectURL(prev[slot]);
-            return {...prev, [slot]: URL.createObjectURL(file)};
+            return {...prev, [slot]: url};
         });
     }
 

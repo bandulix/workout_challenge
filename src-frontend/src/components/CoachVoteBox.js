@@ -70,7 +70,6 @@ export function CoachHandover({configId, enabled}) {
     const current = (ballot.candidates || []).find((c) => c.persona.id === ballot.current_persona)?.persona;
     if (!current) return null;
     const previous = ballot.previous_persona;
-    const countdown = formatCountdown(until, now);
     return (
         <div className="mb-3 rounded-3xl glass-card px-4 py-3 ring-1 ring-volt-500/40 dark:ring-volt-400/40">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400 flex items-center gap-1.5">
@@ -91,11 +90,6 @@ export function CoachHandover({configId, enabled}) {
                     </p>
                 </div>
             </div>
-            {countdown ? (
-            <p className="mt-2 text-xs text-volt-700 dark:text-volt-300 font-bold uppercase tracking-wider tabular-nums">
-                On the clock · {countdown}
-            </p>
-            ) : null}
         </div>
     );
 }
@@ -132,24 +126,9 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
         Number.isFinite(switchAt) && switchAt - now <= 72 * 60 * 60 * 1000
     );
 
-    // Outside the window: a quiet teaser, so the weekly vote is
-    // discoverable before it opens (the box used to vanish entirely).
-    if (!votingOpen) {
-        const opensAt = Number.isFinite(switchAt) ? switchAt - 72 * 60 * 60 * 1000 : null;
-        const opensIn = opensAt && opensAt > now ? formatCountdown(new Date(opensAt).toISOString(), now) : null;
-        return (
-            <div className="rounded-3xl glass-card px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
-                    <Timer className="h-3.5 w-3.5"/> Coach vote
-                </p>
-                <p className="mt-1.5 text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-                    {opensIn
-                        ? <>Voting for next week's coach opens in <b className="text-volt-700 dark:text-volt-300">{opensIn}</b>.</>
-                        : "Voting for next week's coach opens in the last 72 hours before the Monday switch."}
-                </p>
-            </div>
-        );
-    }
+    // Outside the voting window the box stays hidden entirely - the
+    // "opens soon" teaser was noise for six days of the week.
+    if (!votingOpen) return null;
 
     const countdown = formatCountdown(ballot.next_switch_at, now);
     const tiedLeaders = candidates.filter((c) => c.leading && c.votes > 0).length > 1;

@@ -25,9 +25,12 @@ export function PaneHead({title, hint, children}) {
     return (
         <div className="mb-3 px-1">
             <div className="flex items-center gap-3">
-                <h2 className="text-xs font-extrabold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 shrink-0">{title}</h2>
+                <h2 className="t-pane text-gray-500 dark:text-gray-400 shrink-0">{title}</h2>
                 <span className="flex-1 h-px bg-ink-950/10 dark:bg-white/10" aria-hidden="true"/>
-                {children && <div className="flex items-center gap-2 shrink-0">{children}</div>}
+                {/* -my-3.5: 44px-tall action children would otherwise
+                    grow the row and push the title text down ~14px
+                    against childless PaneHeads in sibling columns. */}
+                {children && <div className="flex items-center gap-2 shrink-0 -my-3.5">{children}</div>}
             </div>
             {hint && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</p>}
         </div>
@@ -66,10 +69,10 @@ export function Chip({children}) {
     );
 }
 
-export function EmptyState({title, body, actionLabel, onAction}) {
+export function EmptyState({title, body, actionLabel, onAction, persona}) {
     return (
         <div className="flex flex-col items-center text-center py-8 px-4">
-            <PersonaAvatar persona={{avatar: "megaphone", theme_color: "#d7ff3e"}} size={56} glow/>
+            <PersonaAvatar persona={persona || {avatar: "megaphone", theme_color: "#d7ff3e"}} size={56} glow/>
             <p className="mt-3 font-semibold text-ink-950 dark:text-gray-100">{title}</p>
             {body && <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 max-w-xs">{body}</p>}
             {onAction && actionLabel && (

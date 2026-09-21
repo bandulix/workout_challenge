@@ -32,7 +32,7 @@ import {
     ModifyGoalsButton,
 } from "../forms/basicComponents";
 import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
-import {SectionLoader} from "../utils/loaders";
+import {SectionLoader, SkeletonCard, SkeletonRows} from "../utils/loaders";
 import {useDispatch} from "react-redux";
 import {useSyncGarminMutation, useSyncStravaMutation, useSyncHealthMutation} from "../utils/reducers/linkSlice";
 import {nativeHealthKickSync} from "../utils/nativeHealth";
@@ -43,6 +43,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import {DogTagRow} from "../components/gameBits";
 import {Chip, EmptyState, SectionHead, SyncChip, rowClass} from "../components/uiBits";
 import usePollingInterval from "../utils/usePollingInterval";
+import TrainingHeatmap from "../components/TrainingHeatmap";
 import {toast} from "../utils/toasts";
 import {errText} from "../utils/errors";
 import {ReleaseSpark} from "../components/WhatsNew";
@@ -528,36 +529,39 @@ function ThirtyDayStats({thirtyDayStats}) {
                 </span>
             </div>
             <div className="flex items-end px-2 pt-1 pb-3">
-                <span className="font-display text-7xl leading-none text-volt-500 dark:text-volt-400">{thirtyDayStats.activeDays}</span>
+                <span className="font-display text-7xl leading-none t-stat text-volt-400">{thirtyDayStats.activeDays}</span>
                 <span className="uppercase text-xs tracking-[0.2em] text-gray-400 pb-1.5 pl-3">active<br/>days</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {/* 4-up only at lg: at md (foldable inner) this box sits in
+                a two-pane column ~500px wide, where four pills squeeze
+                the labels out - 2x2 keeps them readable. */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                 <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
                     <Dumbbell className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
                     <div className="text-left">
                         <div className="text-[11px] tracking-wide text-gray-500">Workouts</div>
-                        <div className="text-xl font-bold leading-tight">{thirtyDayStats.workouts}</div>
+                        <div className="text-xl font-bold leading-tight t-stat">{thirtyDayStats.workouts}</div>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
                     <Timer className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
                     <div className="text-left">
                         <div className="text-[11px] tracking-wide text-gray-500">Time</div>
-                        <div className="text-xl font-bold leading-tight">{Math.floor(thirtyDayStats.time / 3600).toLocaleString()}<span className="text-sm font-semibold">hr </span>{Math.floor((thirtyDayStats.time % 3600) / 60)}<span className="text-sm font-semibold">min</span></div>
+                        <div className="text-xl font-bold leading-tight t-stat">{Math.floor(thirtyDayStats.time / 3600).toLocaleString()}<span className="text-sm font-semibold">hr </span>{Math.floor((thirtyDayStats.time % 3600) / 60)}<span className="text-sm font-semibold">min</span></div>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
                     <Flame className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
                     <div className="text-left">
                         <div className="text-[11px] tracking-wide text-gray-500">Calories</div>
-                        <div className="text-xl font-bold leading-tight">{thirtyDayStats.kcal.toLocaleString()}<span className="text-sm font-semibold">kcal</span></div>
+                        <div className="text-xl font-bold leading-tight t-stat">{thirtyDayStats.kcal.toLocaleString()}<span className="text-sm font-semibold">kcal</span></div>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
                     <Ruler className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
                     <div className="text-left">
                         <div className="text-[11px] tracking-wide text-gray-500">Distance</div>
-                        <div className="text-xl font-bold leading-tight">{Math.round(thirtyDayStats.distance).toLocaleString()}<span className="text-sm font-semibold">km</span></div>
+                        <div className="text-xl font-bold leading-tight t-stat">{Math.round(thirtyDayStats.distance).toLocaleString()}<span className="text-sm font-semibold">km</span></div>
                     </div>
                 </div>
             </div>
@@ -802,6 +806,7 @@ function StatsBox({workouts, user, summary}) {
             <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
                 <ThirtyDayStats thirtyDayStats={thirtyDayStats}/>
                 <SevenDayStats sevenDayStats={sevenDayStats} user={user}/>
+                <TrainingHeatmap days={summary?.days}/>
             </div>
             <StreakCard workouts={workouts} summary={summary}/>
         </div>
@@ -919,31 +924,45 @@ export default function MySpace() {
 
                 </div>
 
-                {/* Stats (30 Day Activity, goals, streak) + Competitions -
-                    above the workout list so the activity summary is the
-                    first thing after the welcome block */}
-                <div className="w-full flex flex-col xl:flex-row">
-                    <div className="w-full xl:w-2/3 xl:mr-2 mb-4">
+                {/* Stats (30 Day Activity, goals, streak) + Competitions +
+                    Workouts. md+ (foldable inner display and up): two
+                    columns - training left, challenges right - so the
+                    whole dashboard fits above the fold. */}
+                <div className="w-full md:grid md:grid-cols-3 md:gap-4 md:items-start stagger-in">
+                    <div className="md:col-span-2 stagger-in">
+                        <div className="mb-4">
+                            {
+                                (userLoading || workoutsIsLoading) ? (
+                                    <SkeletonCard height="h-80 mb-4"/>
+                                ) : (workoutsError) ? (
+                                    <ErrorBoxSection additionalClasses="mb-4"
+                                                     errorMsg={errText(workoutsError, 'Could not load your workouts. Please try again.')}/>
+                                ) : (
+                                    <BoxSection additionalClasses="h-full">
+                                        <StatsBox workouts={workouts} user={user} summary={workoutSummary}/>
+                                    </BoxSection>
+                                )
+                            }
+                        </div>
 
-                        {
-                            (userLoading || workoutsIsLoading) ? (
-                                <SectionLoader height={"w-full h-80 mb-4"}/>
-                            ) : (workoutsError) ? (
-                                <ErrorBoxSection additionalClasses="mb-4"
-                                                 errorMsg={errText(workoutsError, 'Could not load your workouts. Please try again.')}/>
-                            ) : (
-                                <BoxSection additionalClasses="h-full">
-                                    <StatsBox workouts={workouts} user={user} summary={workoutSummary}/>
-                                </BoxSection>
-                            )
-                        }
-
+                        {/* My Workouts - the 5 most recent trainings */}
+                        <div className="mb-4">
+                            {
+                                (userLoading || workoutsIsLoading) ? (
+                                    <SkeletonRows n={5}/>
+                                ) : (workoutsError) ? (
+                                    <ErrorBoxSection
+                                        errorMsg={errText(workoutsError, 'Could not load your workouts. Please try again.')}/>
+                                ) : (
+                                    <WorkoutsBox workouts={workouts} user={user} setLinkStrava={setLinkStrava} summary={workoutSummary}/>
+                                )
+                            }
+                        </div>
                     </div>
-                    <div className="w-full xl:w-1/3 xl:ml-2 mb-4">
-
+                    <div className="mb-4">
                         {
                             (userLoading || competitionLoading) ? (
-                                <SectionLoader/>
+                                <SkeletonRows n={3}/>
                             ) : (competitionError) ? (
                                 <ErrorBoxSection additionalClasses="mb-4"
                                                  errorMsg={errText(competitionError, 'Could not load your challenges. Please try again.')}/>
@@ -951,22 +970,7 @@ export default function MySpace() {
                                 <CompetitionsBox user={user} competitions={competitions} setJoinCompetition={setJoinCompetition}/>
                             )
                         }
-
                     </div>
-                </div>
-
-                {/* My Workouts - the 5 most recent trainings */}
-                <div className="w-full mb-4">
-                    {
-                        (userLoading || workoutsIsLoading) ? (
-                            <SectionLoader height={"h-80"}/>
-                        ) : (workoutsError) ? (
-                            <ErrorBoxSection
-                                errorMsg={errText(workoutsError, 'Could not load your workouts. Please try again.')}/>
-                        ) : (
-                            <WorkoutsBox workouts={workouts} user={user} setLinkStrava={setLinkStrava} summary={workoutSummary}/>
-                        )
-                    }
                 </div>
             </div>
 

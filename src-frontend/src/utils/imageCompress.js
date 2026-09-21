@@ -7,6 +7,8 @@
 // images that already fit the budget - recompressing a small JPEG only
 // makes it uglier.
 
+import {decodePhoto} from "./heicDecode";
+
 const MAX_DIMENSION = 1600; // px, longest edge
 const JPEG_QUALITY = 0.82;
 const SKIP_BYTES = 400 * 1024; // already small enough - don't touch
@@ -28,7 +30,10 @@ export async function compressImage(file) {
         bitmap = await createImageBitmap(file, {imageOrientation: "from-image"});
     } catch {
         try {
-            bitmap = await createImageBitmap(file);
+            // HEIC (Samsung gallery) decodes via heic2any, so the upload
+            // becomes a compact JPEG instead of a multi-MB HEIC blob the
+            // server then has to re-encode.
+            bitmap = await decodePhoto(file);
         } catch {
             return file; // undecodable here - server validation decides
         }

@@ -984,6 +984,10 @@ class RoastCardSerializer(serializers.ModelSerializer):
     # Emoji stamps on the thread this roast belongs to - the Hall of
     # Roasts badge (hot-or-not votes only exist inside the swipe game).
     react_count = serializers.IntegerField(read_only=True)
+    # Thread root (the activity the roast reacts to) + its stamp rows:
+    # lets the fullscreen hall viewer stamp without leaving the gallery.
+    thread_id = serializers.SerializerMethodField()
+    thread_reacts = serializers.SerializerMethodField()
     my_vote = serializers.SerializerMethodField()
 
     class Meta:
@@ -1000,9 +1004,28 @@ class RoastCardSerializer(serializers.ModelSerializer):
             "not_votes",
             "last_hot_at",
             "react_count",
+            "thread_id",
+            "thread_reacts",
             "my_vote",
         ]
         read_only_fields = fields
+
+    @staticmethod
+    def _thread_root(obj):
+        # Attached in bulk by the hall/roasts views; absent elsewhere.
+        if obj.parent_id is None:
+            return None
+        return getattr(obj, "thread_root", None)
+
+    def get_thread_id(self, obj):
+        root = self._thread_root(obj)
+        return root.pk if root else None
+
+    def get_thread_reacts(self, obj):
+        root = self._thread_root(obj)
+        if root is None:
+            return []
+        return activity_reacts_payload(root, self.context.get("request"))
 
     def get_image(self, obj):
         return _message_image_url(obj)

@@ -7,7 +7,7 @@ import {
 import {SwipePages} from "../components/swipeTabs";
 import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
-import {SectionLoader} from "../utils/loaders";
+import {SectionLoader, SkeletonRows} from "../utils/loaders";
 import {useGetFeedByIdQuery} from "../utils/reducers/feedSlice";
 import JoinTeamForm from "../forms/joinTeamForm";
 import {
@@ -25,6 +25,7 @@ import AthleteCard from "../components/AthleteCard";
 import usePollingInterval from "../utils/usePollingInterval";
 import {CompetitionHead, CoachCorner} from "../components/competitionChrome";
 import EchoLiveStrip from "../components/EchoLiveStrip";
+import useWideLayout from "../utils/useWideLayout";
 
 
 function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
@@ -40,7 +41,7 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
     }
 
     const teams = stats?.leaderboard?.team;
-    if (!teams) return <SectionLoader/>;
+    if (!teams) return <SkeletonRows n={4}/>;
 
     return (
         <>
@@ -228,7 +229,7 @@ function IndividualLeaderboardBox({stats, userId, dunceUserId, feed}) {
     }, [range, stats?.timeseries?.all, fieldN]);
 
     const people = stats?.leaderboard?.individual;
-    if (!people) return <SectionLoader/>;
+    if (!people) return <SkeletonRows n={4}/>;
 
     return (
         <div>
@@ -406,14 +407,17 @@ export default function Competition() {
         pollingInterval: pollSlow,
     });
 
+    // Wide screens (foldable landscape / desktop) show feed and board
+    // side by side - no tabs, so stats must load and poll immediately.
+    const wide = useWideLayout();
     const {
         data: stats,
         error: statsError,
         isLoading: statsLoading,
         refetch: refreshStats,
     } = useGetStatsByIdQuery(id, {
-        skip: tab === "feed" && !statsPeeked,
-        pollingInterval: tab === "board" ? pollSlow : 0,
+        skip: !wide && tab === "feed" && !statsPeeked,
+        pollingInterval: (wide || tab === "board") ? pollSlow : 0,
     });
 
     const isOwner = (user !== undefined) && (user?.id === competition?.owner);
@@ -474,41 +478,64 @@ export default function Competition() {
                     )
                 }
 
-                <SwipePages tab={tab} onChange={setTab} onPeek={peekTab}>
-                <div>
-                {competition && <EchoLiveStrip competitionId={competition.id} userId={user?.id}/>}
-                {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
-                </div>
-
-                <div>
-                {/* A stats failure is shown ONCE in the header position above
-                    - not repeated inside each leaderboard column. */}
-                {statsError ? null : (
-                <div className="flex flex-col md:flex-row mb-4">
-                    <div className={"w-full mb-4 md:mb-0 " + (competition?.has_teams === false ? "" : "md:w-1/2 md:pr-2")}>
-                        {
-                            (statsLoading || !stats) ? (
-                                <SectionLoader/>
-                            ) : (
-                                <IndividualLeaderboardBox stats={stats} userId={user?.id} dunceUserId={dunceUserId} feed={feed}/>
-                            )
-                        }
-                    </div>
-                    {(competition?.has_teams === false) ? null : (
-                    <div className="w-full md:w-1/2 md:pl-2">
-                        {
-                            (statsLoading || competitionLoading || !stats) ? (
-                                <SectionLoader/>
-                            ) : (
-                                <TeamLeaderboardBox stats={stats} competition={competition} user={user} teamId={teamId} isOwner={isOwner}/>
-                            )
-                        }
-                    </div>
-                    )}
-                </div>
-                )}
-                </div>
-                </SwipePages>
+                {(() => {
+                    const feedPane = (
+                        <div>
+                        {competition && <EchoLiveStrip competitionId={competition.id} userId={user?.id}/>}
+                        {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
+                        </div>
+                    );
+                    const boardPane = (
+                        <div>
+                        {/* A stats failure is shown ONCE in the header position above
+                            - not repeated inside each leaderboard column. */}
+                        {statsError ? null : (
+                        // One board column at lg+: the two leaderboards
+                        // already get a full half of the wide screen each
+                        // time (feed takes the other). Stacked they stay
+                        // readable even with many teams.
+                        <div className={"flex flex-col mb-4 " + (wide ? "" : "md:flex-row")}>
+                            <div className={"w-full mb-4 md:mb-0 " + (wide ? "" : (competition?.has_teams === false ? "" : "md:w-1/2 md:pr-2"))}>
+                                {
+                                    (statsLoading || !stats) ? (
+                                        <SkeletonRows n={4}/>
+                                    ) : (
+                                        <IndividualLeaderboardBox stats={stats} userId={user?.id} dunceUserId={dunceUserId} feed={feed}/>
+                                    )
+                                }
+                            </div>
+                            {(competition?.has_teams === false) ? null : (
+                            <div className={"w-full " + (wide ? "" : "md:w-1/2 md:pl-2")}>
+                                {
+                                    (statsLoading || competitionLoading || !stats) ? (
+                                        <SkeletonRows n={4}/>
+                                    ) : (
+                                        <TeamLeaderboardBox stats={stats} competition={competition} user={user} teamId={teamId} isOwner={isOwner}/>
+                                    )
+                                }
+                            </div>
+                            )}
+                        </div>
+                        )}
+                        </div>
+                    );
+                    // lg+: feed and leaderboard side by side, no swipe
+                    // carousel and no tab bar (everything is visible).
+                    if (wide) {
+                        return (
+                            <div className="grid grid-cols-2 gap-4 items-start stagger-in">
+                                {feedPane}
+                                {boardPane}
+                            </div>
+                        );
+                    }
+                    return (
+                        <SwipePages tab={tab} onChange={setTab} onPeek={peekTab}>
+                            {feedPane}
+                            {boardPane}
+                        </SwipePages>
+                    );
+                })()}
             </div>
 
         </PageWrapper>

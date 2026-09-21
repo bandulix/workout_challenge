@@ -24,6 +24,7 @@ import {ensureFreshAccessToken} from "./authTokens";
 import {lastChallenge} from "./challenge";
 import {isPublicPath} from "./publicPath";
 import {onAppResume} from "./appLifecycle";
+import useWideLayout from "./useWideLayout";
 
 
 const COACH_FALLBACK = {name: "Coach", avatar: "megaphone", theme_color: "#d7ff3e"};
@@ -235,6 +236,8 @@ export default function BottomNav() {
         return active[0].persona_detail;
     }, [drillConfigs]);
 
+    const wide = useWideLayout();
+
     if (onPublic || !user) {
         return null;
     }
@@ -244,6 +247,131 @@ export default function BottomNav() {
         setShowCompetitionPicker(false);
         setShowSettingsSheet(false);
     };
+
+    // lg+ (foldable landscape / dual-screen, desktop): vertical left
+    // rail, Instagram/X style. The coach avatar moves to the top of the
+    // rail; panels open as a floating card right of it instead of
+    // growing up from a bottom dock.
+    if (wide) {
+        return (
+            <>
+                {sheetOpen && (
+                    <div className="fixed inset-0 z-40 bg-ink-950/30 dark:bg-black/45 backdrop-blur-[2px]"
+                         onClick={closeSheets} aria-hidden="true"/>
+                )}
+                <nav className="wc-rail fixed left-3 top-3 bottom-3 z-40 w-[88px] animate-nav-rise"
+                     aria-label="Primary navigation">
+                    <div className="glass-dock relative h-full flex flex-col items-center rounded-[1.75rem] py-4 gap-1">
+                        <span className="glass-sheen rounded-[inherit]" aria-hidden="true"/>
+                        {/* Main items vertically centered; Settings stays
+                            pinned at the bottom. */}
+                        <div className="flex-1 flex flex-col items-center justify-center gap-1">
+                        <Link to="/coach" onClick={closeSheets}
+                              className="relative z-10 flex flex-col items-center px-1 pb-2 transition"
+                              aria-label="Coach" aria-current={onCoach ? "page" : undefined}>
+                            <span className="relative">
+                                <span aria-hidden="true"
+                                      className="absolute -inset-2 rounded-full blur-md animate-volt-breathe"
+                                      style={{backgroundColor: coachAccentRgba(coachPersona, 0.28)}}/>
+                                <span className={"relative block rounded-full transition active:scale-95 " +
+                                    (onCoach ? "animate-pulse-ring" : "")}
+                                      style={{
+                                          boxShadow: `0 0 0 2px ${coachAccent(coachPersona)}, 0 0 16px ${coachAccentRgba(coachPersona, 0.55)}`,
+                                          "--pulse-ring-color": coachAccentRgba(coachPersona, 0.55),
+                                      }}>
+                                    <PersonaAvatar persona={coachPersona} size={48} glow/>
+                                </span>
+                            </span>
+                            <span className="text-[9px] font-bold leading-none mt-1.5 tracking-widest uppercase"
+                                  style={{color: coachAccent(coachPersona), opacity: onCoach ? 1 : 0.75}}>
+                                Coach
+                            </span>
+                        </Link>
+                        <NavLink to="/dashboard" icon={Home} label="Home" isActive={onDashboard} onClick={closeSheets}/>
+                        <NavLink
+                            to="#"
+                            icon={Flag}
+                            label="Compete"
+                            isActive={onCompetition || showCompetitionPicker}
+                            onClick={() => {
+                                setShowSettingsSheet(false);
+                                if (onCompetition) {
+                                    setShowCompetitionPicker((open) => !open);
+                                    return;
+                                }
+                                const dest = lastChallenge(competitions);
+                                if (dest) {
+                                    setShowCompetitionPicker(false);
+                                    navigate(`/competition/${dest.id}`);
+                                } else {
+                                    setShowCompetitionPicker((open) => !open);
+                                }
+                            }}
+                        />
+                        <NavLink
+                            to="#"
+                            icon={Plus}
+                            label="Log"
+                            isActive={showLogWorkout}
+                            onClick={() => { closeSheets(); setShowLogWorkout(true); }}
+                        />
+                        </div>
+                        <NavLink
+                            to="#"
+                            icon={Settings}
+                            label="Settings"
+                            isActive={onAdmin || showSettingsSheet}
+                            onClick={() => {
+                                setShowCompetitionPicker(false);
+                                setShowSettingsSheet((v) => !v);
+                            }}
+                        />
+                    </div>
+                </nav>
+                {sheetOpen && (
+                    <div className="fixed left-[112px] top-3 bottom-3 z-50 w-80 max-w-[calc(100vw-8rem)] glass-dock rounded-[1.75rem] overflow-y-auto overscroll-contain animate-nav-rise">
+                        {showCompetitionPicker && (
+                            <CompetitionPickerPanel onClose={closeSheets}
+                                                    currentId={onCompetition ? location.pathname.split("/")[2] : null}
+                                                    onCreate={() => setShowCreateChallenge(true)}/>
+                        )}
+                        {showSettingsSheet && (
+                            <SettingsPanel
+                                onClose={closeSheets} user={user} isStaff={isStaff}
+                                onAccount={() => setShowSettings(true)}
+                                onEqualizer={() => setShowEqualizer(true)}
+                                onRoaster={() => setShowRoaster(true)}
+                                onSupport={() => setShowSupport(true)}/>
+                        )}
+                    </div>
+                )}
+                <Suspense fallback={<div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40" role="status" aria-label="Loading"><BeatLoader color="#d7ff3e"/></div>}>
+                    {showLogWorkout && user && (
+                        <WorkoutForm setModalState={setShowLogWorkout}
+                                     scaling_distance={parseFloat(user?.scaling_distance || "1.0")}/>
+                    )}
+                    {showCreateChallenge && <CompetitionForm setModalState={setShowCreateChallenge}/>}
+                    {showSettings && (user ? (
+                        <SettingsForm user={user} setModalState={setShowSettings} setLinkStrava={setLinkStrava}/>
+                    ) : (
+                        <Modal title="Account" landscape={true} setShowModal={setShowSettings} isLoading={!userError}>
+                            <div className="text-center space-y-3 px-4">
+                                <p className="text-red-500 text-sm">Your profile could not be loaded.</p>
+                                <button onClick={() => refetchUser()}
+                                        className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition">
+                                    Try again
+                                </button>
+                            </div>
+                        </Modal>
+                    ))}
+                    {showEqualizer && user && <GoalEqualizerForm user={user} setModalState={setShowEqualizer}/>}
+                    {showRoaster && <RoasterModal setShowModal={setShowRoaster}/>}
+                    {showSupport && <SupportModal setModalState={setShowSupport}/>}
+                    {linkStrava && <LinkStravaScreen setModal={setLinkStrava}/>}
+                </Suspense>
+            </>
+        );
+    }
 
     return (
         <>
