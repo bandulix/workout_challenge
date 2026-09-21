@@ -104,7 +104,7 @@ function CoachHeroWash({persona, mood}) {
     );
 }
 
-function CoachHero({persona, config, message: latest, briefing, ownedCompetitions, mood, lastOwnActivityId}) {
+function CoachHero({persona, config, message: latest, briefing, ownedCompetitions, mood, lastOwnActivityId, meId}) {
     const trained = trainedSummary(mood);
     const [sfxOn, setSfxOn] = useSfxEnabled();
 
@@ -116,7 +116,7 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                 canReply={Boolean(config?.enabled)}
                 competitionId={config.competition}
                 visionCapable={Boolean(config.vision_capable)}
-                lastOwnActivityId={lastOwnActivityId}
+                meId={meId}
                 hero={hero}
             />
         );
@@ -305,7 +305,8 @@ function CoachPage() {
                                        briefing={todayBriefing}
                                        ownedCompetitions={ownedCompetitions}
                                        mood={heroConfig?.mood}
-                                       lastOwnActivityId={lastOwnActivityId}/>
+                                       lastOwnActivityId={lastOwnActivityId}
+                                       meId={user?.id}/>
 
                             {/* The handover celebration belongs where the voting
                                 happens, not only on the challenge feed. */}

@@ -7,10 +7,10 @@ import ProfileAvatar from "./ProfileAvatar";
 import {drillInstructorApi, useReplyToDrillMessageMutation} from "../utils/reducers/drillInstructorSlice";
 import {useProtectedImage} from "../utils/protectedMedia";
 import {elapsedSince, timeAgo} from "../utils/time";
-import {FullImageSheet} from "./uiBits";
+import {RoastGallery} from "./gameBits";
 
 function ReplyImage({url, alt, elapsed}) {
-    // Card JPEG in the thread; FullImageSheet fetches the original.
+    // Card JPEG in the thread; the gallery fetches the original.
     const {src} = useProtectedImage(url, "card");
     const [open, setOpen] = useState(false);
     if (!src) return null;
@@ -26,8 +26,9 @@ function ReplyImage({url, alt, elapsed}) {
                 )}
             </button>
             {open && (
-                <FullImageSheet url={url} title={alt || "Photo"} fallback={src}
-                                onClose={() => setOpen(false)} zClass="z-[70]"/>
+                <RoastGallery
+                    cards={[{image: url, title: alt || "Photo", caption: ""}]}
+                    index={0} onIndex={() => {}} onClose={() => setOpen(false)}/>
             )}
         </>
     );

@@ -290,10 +290,13 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
     return raw, None
 
 
-# 1x1 white PNG - the probe only tests whether the API ACCEPTS image
-# content parts, not what the model makes of them.
+# 32x32 white PNG - the probe only tests whether the API ACCEPTS image
+# content parts, not what the model makes of them. Do NOT shrink this:
+# providers enforce minimum image sizes (xAI: >=512 total pixels), and
+# a too-small probe image earns a 400 that we then misread as "the model
+# can't see pictures", hiding the photo feature for a full cache day.
 _PROBE_PNG_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKUlEQVR4nO3NMQEAAAjDMMC/52ECvlRA00nqs3m9AwAAAAAAAAAAgMMWx/EDPS4YA2MAAAAASUVORK5CYII="
 )
 
 # Definitive answers (a 400 rejecting the request shape) are stable per
@@ -351,7 +354,7 @@ def check_vision_capability() -> bool:
 
     OpenAI-compatible providers expose no reliable capability metadata,
     and custom/self-hosted model names defy pattern matching - so we
-    probe: one tiny chat completion with a 1x1 image. A clean response
+    probe: one tiny chat completion with a small (32x32) image. A clean response
     means vision works; a 400 means the model rejects image content
     parts. Network/5xx/rate-limit answers count as "no" but expire
     quickly, so a provider hiccup doesn't hide the feature for a day.

@@ -11,8 +11,12 @@ import {OverlaySheet} from "../forms/basicComponents";
 // Photo sharing for the coach feed. The camera button is ALWAYS visible
 // while the coach is on duty - a click without a latest-own-workout
 // parent, or when the server's AI model can't see pictures, explains
-// that instead of opening the picker. The picture always hangs under
-// the caller's latest activity comment (resolved server-side).
+// that instead of opening the picker. The picture hangs under the own
+// activity it was started from (any of the caller's workouts inside the
+// window below), resolved + enforced server-side.
+// Keep in sync with DRILL_PHOTO_WINDOW_DAYS on the backend.
+export const PHOTO_WINDOW_DAYS = 5;
+export const PHOTO_WINDOW_MS = PHOTO_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 const PILL =
     "inline-flex w-full items-center justify-center gap-2 rounded-full bg-volt-400 text-ink-950 px-4 sm:px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt min-h-[44px]";
 const CHIP =

@@ -470,6 +470,11 @@ LLM_EMAIL_MODEL = os.environ.get("LLM_EMAIL_MODEL", "gpt-4o")
 # both cost money per call, so keep this tight.
 DRILL_MAX_PHOTOS_PER_DAY = int(os.environ.get("DRILL_MAX_PHOTOS_PER_DAY", 2))
 
+# Photos can be attached to an own activity for this many days after it
+# was posted - the feed's photo icon and the photo endpoint share this
+# window.
+DRILL_PHOTO_WINDOW_DAYS = int(os.environ.get("DRILL_PHOTO_WINDOW_DAYS", 5))
+
 # Optional: a SEPARATE OpenAI-compatible provider for image editing (the
 # coach's roasted-photo remix). Chat models that can READ images often
 # can't CREATE them (e.g. MiniMax M3) - with these set, the roast edit

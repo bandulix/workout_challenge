@@ -329,7 +329,12 @@ export default function BottomNav() {
                     </div>
                 </nav>
                 {sheetOpen && (
-                    <div className="fixed left-[112px] top-3 bottom-3 z-50 w-80 max-w-[calc(100vw-8rem)] glass-dock rounded-[1.75rem] overflow-y-auto overscroll-contain animate-nav-rise">
+                    /* fixed must sit on the OUTER wrapper: .glass-dock sets
+                       position:relative and would silently win over the
+                       Tailwind .fixed utility, dropping the panel to the
+                       bottom of the page (seen on the Fold inner display). */
+                    <div className="fixed left-[112px] top-3 bottom-3 z-50 w-80 max-w-[calc(100vw-8rem)] animate-nav-rise">
+                        <div className="glass-dock h-full rounded-[1.75rem] overflow-y-auto overscroll-contain">
                         {showCompetitionPicker && (
                             <CompetitionPickerPanel onClose={closeSheets}
                                                     currentId={onCompetition ? location.pathname.split("/")[2] : null}
@@ -343,6 +348,7 @@ export default function BottomNav() {
                                 onRoaster={() => setShowRoaster(true)}
                                 onSupport={() => setShowSupport(true)}/>
                         )}
+                        </div>
                     </div>
                 )}
                 <Suspense fallback={<div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40" role="status" aria-label="Loading"><BeatLoader color="#d7ff3e"/></div>}>

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Photos for five days, not one.** The camera button now hangs on every one of your activities for 5 days after it's posted (was: latest workout only), and the picture lands on exactly that workout. The backend enforces the same window (`DRILL_PHOTO_WINDOW_DAYS`, default 5).
+- **Every picture gets the big-screen treatment.** Echo artwork, the coach's roast remixes, feed photos and images inside threads all open in the fullscreen viewer introduced for the Hall of Roasts: pinch/double-tap zoom, swipe between shots, swipe down to close, Stamp and Share right on the photo. The old sheet-style popups are gone.
+- **All Echoes shows the relics, not just their names.** The "All" overview is now a tile grid with the artwork, status badge and the usual Share/Delete actions — and tapping the art opens the fullscreen viewer at that relic.
+
+### Fixed
+- **Fold/desktop menus landed at the bottom of the page.** On the left-rail layout, the Settings and Compete panels dropped to the end of the page because the glass style quietly overrode their anchoring; they now open next to the icon as intended.
+- **"Model can't see pictures" on vision-capable models.** The capability probe sent a 1x1 test image, which xAI rejects as too small — the probe read that as "no vision" and hid photo posts for a day. The probe now uses a provider-safe 32x32 image, and a regression test guards the size.
+
+### Operator notes
+- No migrations. New optional env `DRILL_PHOTO_WINDOW_DAYS` (default 5).
+- After deploying, the previously cached "no vision" verdict can survive up to 24h in Redis — clear the `drill-vision-capable:*` key (or flush the cache) once, then the next request re-probes with the fixed image.
+
 ## [0.62.0] - 2026-09-21
 
 ### Added

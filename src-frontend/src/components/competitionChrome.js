@@ -12,15 +12,15 @@ import TransferOwnershipForm from "../forms/transferOwnershipForm";
 import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
 import ActivityGoalsForm from "../forms/activityGoalsForm";
 import {sportLabelShort} from "../forms/workoutForm";
-import {FullImageSheet, PaneHead, paneCardClass} from "./uiBits";
+import {PaneHead, paneCardClass} from "./uiBits";
 import {topSportCounts} from "../utils/sportCounts";
 import CoachThread from "./CoachThread";
-import PhotoPost, {PhotoCamBonus} from "./PhotoPost";
+import PhotoPost, {PhotoCamBonus, PHOTO_WINDOW_MS} from "./PhotoPost";
 import {ActivityReactProvider, ActivityStampButton, ActivityStampIcons} from "./ActivityReacts";
 import {CoachHandover} from "./CoachVoteBox";
 import PersonaAvatar from "./PersonaAvatar";
 import ProfileAvatar from "./ProfileAvatar";
-import {OrderRibbon} from "./gameBits";
+import {OrderRibbon, RoastGallery} from "./gameBits";
 import {OverlaySheet} from "../forms/basicComponents";
 import {elapsedSince, timeAgo} from "../utils/time";
 import {useProtectedImage} from "../utils/protectedMedia";
@@ -616,8 +616,14 @@ export function PointsChip({capped, raw, hasPhoto = false, size = "md", message 
 }
 
 
-export function ActivityCoachPost({message, persona, canReply, defaultOpen, competitionId, visionCapable, lastOwnActivityId, hero = false}) {
-    const ownLatest = Boolean(canReply && lastOwnActivityId === message.id);
+export function ActivityCoachPost({message, persona, canReply, defaultOpen, competitionId, visionCapable, meId, hero = false}) {
+    // The photo icon hangs on every own activity inside the upload window
+    // (5 days, mirrored in PhotoPost.PHOTO_WINDOW_DAYS and the backend's
+    // DRILL_PHOTO_WINDOW_DAYS) - not only on the latest one.
+    const ownInWindow = Boolean(
+        canReply && meId && message.workout_user_id === meId
+        && (Date.now() - Date.parse(message.posted_at || "")) <= PHOTO_WINDOW_MS
+    );
     const hasPhoto = activityHasPhoto(message);
     const remixUrl = activityBackdropUrl(message);
     const {src: bgSrc} = useProtectedImage(remixUrl, "card");
@@ -675,7 +681,7 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                                     {message.workout_summary || "Workout"} · {timeAgo(message.posted_at)}
                                 </p>
                             </div>
-                            {ownLatest && !hasPhoto && (
+                            {ownInWindow && !hasPhoto && (
                                 <PhotoPost
                                     competitionId={competitionId}
                                     parentId={message.id}
@@ -738,8 +744,15 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                 </div>
             </div>
             {lightbox === "remix" && remixUrl && (
-                <FullImageSheet url={remixUrl} title="Roast" fallback={bgSrc}
-                                onClose={() => setLightbox(null)}/>
+                <RoastGallery
+                    cards={[{
+                        image: remixUrl,
+                        athlete_name: message.athlete_name,
+                        persona_name: message.persona_name,
+                        thread_id: message.id,
+                        thread_reacts: message.reacts,
+                    }]}
+                    index={0} onIndex={() => {}} onClose={() => setLightbox(null)}/>
             )}
         </article>
         </ActivityReactProvider>
@@ -782,8 +795,16 @@ function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
                 <CoachThread message={message} persona={persona} canReply={canReply} defaultOpen={defaultOpen}/>
             </div>
             {lightbox && (
-                <FullImageSheet url={message.image} title={message.body || "Photo"} fallback={src}
-                                onClose={() => setLightbox(false)}/>
+                <RoastGallery
+                    cards={[{
+                        image: message.image,
+                        title: message.author_name || "Photo",
+                        caption: message.body || `Shared by ${message.author_name || "a participant"}`,
+                        subline: timeAgo(message.posted_at),
+                        thread_id: message.id,
+                        thread_reacts: message.reacts,
+                    }]}
+                    index={0} onIndex={() => {}} onClose={() => setLightbox(false)}/>
             )}
         </article>
     );
@@ -815,10 +836,16 @@ function AnnouncementPost({message, persona, canReply, defaultOpen}) {
             )}
             <CoachThread message={message} persona={persona} canReply={canReply} defaultOpen={defaultOpen}/>
             {lightbox && src && (
-                <OverlaySheet title={kind} onClose={() => setLightbox(false)} zClass="z-[70]">
-                    <img src={src} alt=""
-                         className="mx-auto max-h-[70vh] w-full rounded-2xl object-contain"/>
-                </OverlaySheet>
+                <RoastGallery
+                    cards={[{
+                        image: message.image,
+                        title: kind,
+                        caption: message.body || "",
+                        subline: message.athlete_name ? `→ ${message.athlete_name}` : "",
+                        thread_id: message.id,
+                        thread_reacts: message.reacts,
+                    }]}
+                    index={0} onIndex={() => {}} onClose={() => setLightbox(false)}/>
             )}
         </FeedCard>
     );
@@ -921,9 +948,6 @@ export function CoachCorner({competition, isOwner}) {
     const roots = all.filter((m) => m.kind !== "photo" && m.kind !== "echo" && m.kind !== "claim");
     const hidden = Math.max(0, (page?.count || all.length) - all.length);
     const groups = groupByDay(roots);
-    const lastOwnActivityId = all.find(
-        (m) => m.kind === "activity" && m.workout_user_id === me?.id
-    )?.id ?? null;
 
     function renderMessage(m) {
         const threadPersona = {
@@ -944,7 +968,7 @@ export function CoachCorner({competition, isOwner}) {
                                        defaultOpen={open}
                                        competitionId={competition.id}
                                        visionCapable={config.vision_capable}
-                                       lastOwnActivityId={lastOwnActivityId}/>
+                                       meId={me?.id}/>
                 </li>
             );
         }

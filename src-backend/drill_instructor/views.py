@@ -399,6 +399,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
     # queues an LLM reaction (and possibly an image-edit roast), both of
     # which cost money, and a photo spam feed stops being fun quickly.
     MAX_PHOTOS_PER_DAY = settings.DRILL_MAX_PHOTOS_PER_DAY
+    PHOTO_WINDOW_DAYS = settings.DRILL_PHOTO_WINDOW_DAYS
     MAX_PHOTO_BYTES = 5 * 1024 * 1024  # 5 MB
     MAX_PHOTO_CAPTION_LEN = 500
 
@@ -626,14 +627,18 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["post"])
     def photo(self, request):
-        """Attach a photo to the caller's latest own workout thread.
+        """Attach a photo to one of the caller's own workout threads.
 
         The camera is available on every thread (including posts that
-        @-mention the caller). The picture always hangs under their most
-        recent activity comment in that challenge — never on someone
-        else's workout and never as a standalone feed post. ``parent``
-        (a visible thread root) or ``competition`` picks the challenge;
-        the actual parent is resolved server-side.
+        @-mention the caller). When ``parent`` points at the caller's own
+        activity comment the picture hangs right there; on any other
+        thread (someone else's workout, a push, a nudge) it falls back to
+        their most recent own activity comment in that challenge — never
+        on someone else's workout and never as a standalone feed post.
+        Either way the activity must be no older than
+        ``DRILL_PHOTO_WINDOW_DAYS`` (default 5). ``competition`` instead
+        of ``parent`` picks the challenge; the actual parent is resolved
+        server-side.
         """
         no_workout = {
             "parent": "Photos hang under your latest workout. Log one and wait for the coach to comment first.",
@@ -643,6 +648,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
 
         parent_id = request.data.get("parent")
         competition_id = request.data.get("competition")
+        parent = None
         if parent_id not in (None, ""):
             try:
                 parent_id = int(parent_id)
@@ -650,6 +656,12 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
                 return Response(no_workout, status=status.HTTP_400_BAD_REQUEST)
             hint = get_object_or_404(roots, pk=parent_id)
             competition_id = hint.config.competition_id
+            if (
+                hint.kind == DrillInstructorMessage.KIND_ACTIVITY
+                and hint.workout_id
+                and hint.workout.user_id == user.id
+            ):
+                parent = hint
         elif competition_id not in (None, ""):
             try:
                 competition_id = int(competition_id)
@@ -664,9 +676,18 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         else:
             return Response(no_workout, status=status.HTTP_400_BAD_REQUEST)
 
-        parent = self._last_own_activity(user, competition_id)
         if parent is None:
-            return Response(no_workout, status=status.HTTP_400_BAD_REQUEST)
+            parent = self._last_own_activity(user, competition_id)
+            if parent is None:
+                return Response(no_workout, status=status.HTTP_400_BAD_REQUEST)
+
+        window = datetime.timedelta(days=self.PHOTO_WINDOW_DAYS)
+        if timezone.now() - parent.posted_at > window:
+            return Response(
+                {"image": f"Photos can be added within {self.PHOTO_WINDOW_DAYS} days of the workout."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         if parent.replies.filter(kind=DrillInstructorMessage.KIND_PHOTO).exists():
             return Response(
                 {"image": "This workout already has a photo."},

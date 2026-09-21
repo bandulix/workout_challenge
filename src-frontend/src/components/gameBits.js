@@ -240,10 +240,14 @@ export function OrderCard({order}) {
     );
 }
 
-// Fullscreen roast viewer: the photo fills the screen, pinch and
+// Fullscreen image viewer: the photo fills the screen, pinch and
 // double-tap zoom it (pan while zoomed), a swipe navigates in fit mode,
 // swipe-down closes. Share/stamp float as overlays on the image.
-function RoastGallery({cards, index, onClose, onIndex}) {
+// Card shape: {image, title?, caption?, body?, subline?, athlete_name?,
+// persona_name?, competition_name?, react_count?, thread_id?,
+// thread_reacts?} - the hall cards use the roast fields; generic
+// callers (echo art, feed photos) pass title/body/subline instead.
+export function RoastGallery({cards, index, onClose, onIndex}) {
     const card = cards[index];
     const {src} = useProtectedImage(card?.image);
     const stageRef = useRef(null);
@@ -267,7 +271,9 @@ function RoastGallery({cards, index, onClose, onIndex}) {
     useEffect(() => { setZoom({scale: 1, x: 0, y: 0, anim: false}); }, [index]);
 
     if (!card) return null;
-    const caption = card.body || `${card.persona_name || "Coach"} roasting ${card.athlete_name || "an athlete"}`;
+    const label = card.title || card.athlete_name || "Roast";
+    const caption = card.caption ?? (card.body || `${card.persona_name || "Coach"} roasting ${card.athlete_name || "an athlete"}`);
+    const subline = card.subline ?? [card.persona_name, card.competition_name].filter(Boolean).join(" · ");
     const threadMsg = card.thread_id
         ? {id: card.thread_id, reacts: card.thread_reacts || []}
         : null;
@@ -356,7 +362,7 @@ function RoastGallery({cards, index, onClose, onIndex}) {
 
     return (
         <OverlayPortal>
-            <div role="dialog" aria-modal="true" aria-label={card.athlete_name || "Roast"}
+            <div role="dialog" aria-modal="true" aria-label={label}
                  className="fixed inset-0 z-[80] bg-black select-none"
                  style={{touchAction: "none"}}>
                 {/* the photo stage eats every gesture */}
@@ -372,7 +378,7 @@ function RoastGallery({cards, index, onClose, onIndex}) {
 
                 {/* top bar */}
                 <div className="absolute top-0 inset-x-0 flex items-center justify-between gap-2 p-3 pt-[max(0.75rem,var(--safe-top))] pointer-events-none">
-                    <span className={chip}>{card.athlete_name || "Roast"}</span>
+                    <span className={chip}>{label}</span>
                     <button type="button" onClick={onClose} aria-label="Close" className={chip + " !px-0 min-w-[44px] justify-center"}>
                         <X className="h-5 w-5"/>
                     </button>
@@ -397,10 +403,12 @@ function RoastGallery({cards, index, onClose, onIndex}) {
                 {/* bottom overlay: caption + stamps + share */}
                 <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent
                                 px-4 pt-10 pb-[max(1rem,var(--safe-bottom))] pointer-events-none">
-                    <p className="text-sm leading-relaxed break-words text-white/95">{caption}</p>
-                    <p className="mt-1 text-[11px] text-white/60">
-                        {[card.persona_name, card.competition_name].filter(Boolean).join(" · ")}
-                    </p>
+                    {caption && (
+                        <p className="text-sm leading-relaxed break-words text-white/95">{caption}</p>
+                    )}
+                    {subline && (
+                        <p className="mt-1 text-[11px] text-white/60">{subline}</p>
+                    )}
                     <div className="mt-2.5 flex items-center gap-2 pointer-events-auto text-white">
                         <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                             {threadMsg ? (
@@ -408,13 +416,13 @@ function RoastGallery({cards, index, onClose, onIndex}) {
                                     <ActivityStampIcons/>
                                     <ActivityStampButton/>
                                 </ActivityReactProvider>
-                            ) : (
+                            ) : (card.react_count != null && (
                                 <ReactCount count={card.react_count}/>
-                            )}
+                            ))}
                         </div>
                         <span className="text-[11px] text-white/80 shrink-0">{index + 1} / {cards.length}</span>
                         <button type="button" onClick={() => sharePostCard({
-                            title: card.athlete_name || "Roast",
+                            title: label,
                             text: caption,
                             imageUrl: card.image,
                         })} className={chip}>

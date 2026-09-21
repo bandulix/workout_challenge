@@ -1775,16 +1775,44 @@ class PhotoPostTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("latest workout", response.json()["parent"])
 
-    def test_photo_always_uses_the_latest_own_activity(self):
+    def test_photo_on_own_older_activity_within_window_stays_there(self):
+        # The feed's photo icon hangs on every own activity inside the
+        # window, and the upload must land on THAT activity - not get
+        # silently moved to the latest one.
         older = self._activity_root(self.athlete)
         DrillInstructorMessage.objects.filter(pk=older.pk).update(
-            posted_at=timezone.now() - datetime.timedelta(hours=2)
+            posted_at=timezone.now() - datetime.timedelta(days=2)
         )
         newer = self._activity_root(self.athlete)
         response = self._post(self.athlete, parent=older)
         self.assertEqual(response.status_code, 201, response.content)
         message = DrillInstructorMessage.objects.get(pk=response.json()["id"])
-        self.assertEqual(message.parent, newer)
+        self.assertEqual(message.parent, older)
+        self.assertNotEqual(message.parent, newer)
+
+    def test_photo_on_own_activity_older_than_the_window_is_rejected(self):
+        root = self._activity_root(self.athlete)
+        DrillInstructorMessage.objects.filter(pk=root.pk).update(
+            posted_at=timezone.now() - datetime.timedelta(days=6)
+        )
+        response = self._post(self.athlete, parent=root)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("5 days", response.json()["image"])
+
+    def test_window_applies_to_the_fallback_latest_activity_too(self):
+        # No parent match (a push mention): the fallback latest own
+        # activity is also bound by the window.
+        root = self._activity_root(self.athlete)
+        DrillInstructorMessage.objects.filter(pk=root.pk).update(
+            posted_at=timezone.now() - datetime.timedelta(days=6)
+        )
+        push = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PUSH,
+            body="Show me the effort, @Alex!",
+        )
+        response = self._post(self.athlete, parent=push)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("5 days", response.json()["image"])
 
     def test_participant_can_post_and_reaction_is_queued(self):
         root = self._activity_root(self.athlete)
@@ -2630,6 +2658,21 @@ class VisionCapabilityProbeTests(TestCase):
         self.assertEqual(content[0]["type"], "text")
         self.assertEqual(content[1]["type"], "image_url")
         self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
+
+    def test_probe_image_meets_provider_minimum_size(self):
+        # xAI rejects images below 512 total pixels with a 400, which the
+        # probe reads as "no vision" and caches for a day. Guard the baked
+        # probe PNG so nobody shrinks it below that floor again.
+        import base64
+        from io import BytesIO
+
+        from PIL import Image
+
+        from . import llm_client
+        img = Image.open(BytesIO(base64.b64decode(llm_client._PROBE_PNG_B64)))
+        img.load()
+        self.assertEqual(img.format, "PNG")
+        self.assertGreaterEqual(img.size[0] * img.size[1], 512)
 
 
 @override_settings(
