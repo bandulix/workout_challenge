@@ -30,7 +30,8 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from workout_challenge.celery import app, is_task_already_executing
-from workouts.models import Workout, SPORT_TYPES, find_duplicate_workout
+from workouts.models import Workout, find_duplicate_workout
+from workouts.sport_types import normalize_sport_type
 
 logger = logging.getLogger(__name__)
 
@@ -161,130 +162,14 @@ def generate_invitation(user) -> dict:
 # Workout mapping
 # ---------------------------------------------------------------------------
 
-_VALID_SPORT_TYPES = {key for key, _label in SPORT_TYPES}
-
-# Health Connect (Android) and Apple HealthKit (iOS) workout type names,
-# lowercased/underscored, mapped onto our sport types. Open Wearables
-# passes the source strings through, so both ecosystems are covered.
-HEALTH_SPORT_MAP = {
-    "running": "Run",
-    "running_track": "Run",
-    "running_treadmill": "VirtualRun",
-    "trail_running": "TrailRun",
-    "treadmill": "VirtualRun",
-    "treadmill_running": "VirtualRun",
-    "indoor_running": "VirtualRun",
-    "cycling": "Ride",
-    "cycling_stationary": "VirtualRide",
-    "biking": "Ride",
-    "biking_road": "Ride",
-    "e_bike": "EBikeRide",
-    "ebike": "EBikeRide",
-    "gravel_cycling": "GravelRide",
-    "mountain_biking": "MountainBikeRide",
-    "e_mountain_biking": "EMountainBikeRide",
-    "indoor_cycling": "VirtualRide",
-    "spinning": "VirtualRide",
-    "walking": "Walk",
-    "walking_for_fitness": "Walk",
-    "hiking": "Hike",
-    "snowshoeing": "Snowshoe",
-    "swimming": "Swim",
-    "swimming_pool": "Swim",
-    "swimming_open_water": "Swim",
-    "pool_swimming": "Swim",
-    "open_water_swimming": "Swim",
-    "rowing": "Rowing",
-    "indoor_rowing": "VirtualRow",
-    "rowing_machine": "VirtualRow",
-    "stair_climbing_machine": "StairStepper",
-    "kayaking": "Kayaking",
-    "canoeing": "Canoeing",
-    "paddleboarding": "StandUpPaddling",
-    "stand_up_paddleboarding": "StandUpPaddling",
-    "surfing": "Surfing",
-    "windsurfing": "Windsurf",
-    "kitesurfing": "Kitesurf",
-    "sailing": "Sail",
-    "skiing": "AlpineSki",
-    "skiing_downhill": "AlpineSki",
-    "skiing_cross_country": "NordicSki",
-    "cross_country_skiing": "NordicSki",
-    "backcountry_skiing": "BackcountrySki",
-    "roller_skiing": "RollerSki",
-    "snowboarding": "Snowboard",
-    "ice_skating": "IceSkate",
-    "inline_skating": "InlineSkate",
-    "skateboarding": "Skateboard",
-    "roller_skating": "InlineSkate",
-    "elliptical": "Elliptical",
-    "stair_climbing": "StairStepper",
-    "stair_stepper": "StairStepper",
-    "hiit": "HighIntensityIntervalTraining",
-    "high_intensity_interval_training": "HighIntensityIntervalTraining",
-    "crossfit": "Crossfit",
-    "cross_fit": "Crossfit",
-    "strength_training": "WeightTraining",
-    "traditional_strength_training": "WeightTraining",
-    "functional_strength_training": "WeightTraining",
-    "weightlifting": "WeightTraining",
-    "pilates": "Pilates",
-    "yoga": "Yoga",
-    "rock_climbing": "RockClimbing",
-    "bouldering": "RockClimbing",
-    "climbing": "RockClimbing",
-    "soccer": "Soccer",
-    "football": "Soccer",
-    "squash": "Squash",
-    "badminton": "Badminton",
-    "tennis": "Tennis",
-    "table_tennis": "TableTennis",
-    "pickleball": "Pickleball",
-    "racquetball": "Racquetball",
-    "golf": "Golf",
-    "wheelchair": "Wheelchair",
-    "wheelchair_walk_pace": "Wheelchair",
-    "wheelchair_run_pace": "Wheelchair",
-    "handcycle": "Handcycle",
-    "boxing": "Boxing",
-    "kickboxing": "Kickboxing",
-    "martial_arts": "MartialArts",
-    "muay_thai": "MuayThai",
-    "mixed_martial_arts": "MartialArts",
-    "mma": "MartialArts",
-    "basketball": "Basketball",
-    "volleyball": "Volleyball",
-    "cricket": "Cricket",
-    "padel": "Padel",
-    "dance": "Dance",
-    "dancing": "Dance",
-    "physical_therapy": "PhysicalTherapy",
-}
-
-
 def map_health_sport_type(raw_type) -> str:
-    """OW workout type -> our sport type (unknown types -> 'Workout',
-    same philosophy as the Strava unknown-type guard).
-
-    Health Connect emits UPPER_SNAKE names (and sometimes
-    ``EXERCISE_TYPE_BIKING``), Apple HealthKit camelCase
-    ("traditionalStrengthTraining") - both are normalised to
-    lower_snake_case before the lookup.
-    """
-    import re
-    key = str(raw_type or "").strip()
-    # camelCase -> snake_case, then lowercase everything.
-    key = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key)
-    key = key.lower().replace(" ", "_").replace("-", "_")
-    if key.startswith("exercise_type_"):
-        key = key[len("exercise_type_"):]
-    mapped = HEALTH_SPORT_MAP.get(key)
-    if mapped:
-        return mapped
-    # Already one of ours (e.g. OW normalized it or a custom type matches)?
-    if raw_type in _VALID_SPORT_TYPES:
-        return raw_type
-    return "Workout"
+    """HealthKit / Health Connect workout type -> app sport type via the
+    SHARED normaliser (workouts.sport_types): every import source must
+    land the same physical activity on the same sport type, or the Echo
+    families drift apart per source. Unknown types -> 'Workout' (same
+    philosophy as the Strava unknown-type guard)."""
+    mapped, _matched = normalize_sport_type(raw_type)
+    return mapped
 
 
 def _parse_dt(raw):

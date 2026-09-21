@@ -420,6 +420,33 @@ class MapStravaSportTypeTests(TestCase):
                 self.assertEqual(_map_sport_type(unknown), "Workout")
 
 
+class MapGarminSportTypeTests(TestCase):
+    """Garmin typeKeys are exact-matched; the watch's plain 'Cardio'
+    profile ships as ``cardio`` (older firmware) or ``indoor_cardio``
+    (newer) - both are cardio gym work, not a generic 'Workout'."""
+
+    def test_cardio_profiles_map_to_hiit(self):
+        from .garmin import map_sport_type
+        for key in ("cardio", "CARDIO", "indoor_cardio", "hiit"):
+            with self.subTest(key=key):
+                self.assertEqual(
+                    map_sport_type({"activityType": {"typeKey": key}}),
+                    "HighIntensityIntervalTraining",
+                )
+
+    def test_unknown_type_logs_and_falls_back(self):
+        # The fallback itself is by design - but it must be visible in
+        # the logs, otherwise renamed/new Garmin profiles degrade
+        # silently (exactly how the cardio gap went unnoticed).
+        from .garmin import map_sport_type
+        with self.assertLogs("custom_user.garmin", level="INFO") as logs:
+            self.assertEqual(
+                map_sport_type({"activityType": {"typeKey": "underwater_hockey"}}),
+                "Workout",
+            )
+        self.assertIn("unmapped activity type", "\n".join(logs.output))
+
+
 # DRF throttling and the Strava access-token cache read the Django cache
 # - use LocMem so the tests don't need a running Redis.
 @override_settings(
@@ -764,6 +791,8 @@ class MapHealthSportTypeTests(TestCase):
         self.assertEqual(map_health_sport_type("swimming_open_water"), "Swim")
         self.assertEqual(map_health_sport_type("traditionalStrengthTraining"), "WeightTraining")
         self.assertEqual(map_health_sport_type("hiit"), "HighIntensityIntervalTraining")
+        self.assertEqual(map_health_sport_type("cardio"), "HighIntensityIntervalTraining")
+        self.assertEqual(map_health_sport_type("CARDIO"), "HighIntensityIntervalTraining")
         self.assertEqual(map_health_sport_type("RUNNING_TREADMILL"), "VirtualRun")
         self.assertEqual(map_health_sport_type("CYCLING_STATIONARY"), "VirtualRide")
         self.assertEqual(map_health_sport_type("boxing"), "Boxing")
@@ -780,6 +809,53 @@ class MapHealthSportTypeTests(TestCase):
     def test_already_ours_passes_through(self):
         from .health import map_health_sport_type
         self.assertEqual(map_health_sport_type("Pickleball"), "Pickleball")
+
+
+class CrossSourceSportTypeConsistencyTests(TestCase):
+    """The same physical activity must land on the SAME sport type no
+    matter which provider imported it - the Legend Echoes and the goal
+    sport groups match on that string. Garmin and Health share one
+    normaliser (workouts.sport_types); Strava ships our vocabulary
+    verbatim. This table is the contract between all three."""
+
+    CASES = (
+        # garmin typeKey, health type, strava sport_type, expected
+        ("running", "RUNNING", "Run", "Run"),
+        ("trail_running", "trailRunning", "TrailRun", "TrailRun"),
+        ("treadmill_running", "TREADMILL", "VirtualRun", "VirtualRun"),
+        ("cycling", "CYCLING", "Ride", "Ride"),
+        ("indoor_cycling", "CYCLING_STATIONARY", "VirtualRide", "VirtualRide"),
+        ("mountain_biking", "MOUNTAIN_BIKING", "MountainBikeRide", "MountainBikeRide"),
+        ("e_bike", "E_BIKE", "EBikeRide", "EBikeRide"),
+        ("walking", "WALKING", "Walk", "Walk"),
+        ("hiking", "HIKING", "Hike", "Hike"),
+        ("pool_swimming", "SWIMMING_POOL", "Swim", "Swim"),
+        ("rowing", "ROWING", "Rowing", "Rowing"),
+        ("indoor_rowing", "ROWING_MACHINE", "VirtualRow", "VirtualRow"),
+        ("cardio", "CARDIO", "HighIntensityIntervalTraining", "HighIntensityIntervalTraining"),
+        ("indoor_cardio", "INDOOR_CARDIO", "HighIntensityIntervalTraining", "HighIntensityIntervalTraining"),
+        ("hiit", "HIGH_INTENSITY_INTERVAL_TRAINING", "HighIntensityIntervalTraining", "HighIntensityIntervalTraining"),
+        ("strength_training", "TRADITIONAL_STRENGTH_TRAINING", "WeightTraining", "WeightTraining"),
+        ("yoga", "YOGA", "Yoga", "Yoga"),
+        ("elliptical", "ELLIPTICAL", "Elliptical", "Elliptical"),
+        ("stair_stepper", "STAIR_CLIMBING_MACHINE", "StairStepper", "StairStepper"),
+        ("cross_country_skiing", "SKIING_CROSS_COUNTRY", "NordicSki", "NordicSki"),
+        ("soccer", "SOCCER", "Soccer", "Soccer"),
+        ("boxing", "BOXING", "Boxing", "Boxing"),
+    )
+
+    def test_all_sources_agree(self):
+        from .garmin import map_sport_type as garmin_map
+        from .health import map_health_sport_type as health_map
+        from .strava import _map_sport_type as strava_map
+        for garmin_key, health_key, strava_key, expected in self.CASES:
+            with self.subTest(expected=expected):
+                self.assertEqual(
+                    garmin_map({"activityType": {"typeKey": garmin_key}}), expected,
+                    f"Garmin {garmin_key!r}",
+                )
+                self.assertEqual(health_map(health_key), expected, f"Health {health_key!r}")
+                self.assertEqual(strava_map(strava_key), expected, f"Strava {strava_key!r}")
 
 
 class HealthWorkoutMappingTests(TestCase):

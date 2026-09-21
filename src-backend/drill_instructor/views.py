@@ -5,7 +5,8 @@ import mimetypes
 from django.conf import settings
 from django.core.cache import cache
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Exists, Max, OuterRef, Prefetch, ProtectedError, Q
+from django.db.models import Count, Exists, IntegerField, Max, OuterRef, Prefetch, ProtectedError, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -126,6 +127,26 @@ def _competition_member(user, fk="config__competition_id"):
     )
 
 
+def _roast_react_count():
+    """Annotation: emoji reactions on the thread a roast belongs to.
+
+    Stamps only exist on activity thread ROOTS; the roast is a child
+    (activity-thread roast) or grandchild (roast of a photo reply), so
+    the root is ``parent.parent_id`` when set, else ``parent_id``.
+    """
+    return Coalesce(
+        Subquery(
+            DrillInstructorActivityReact.objects
+            .filter(message_id=Coalesce(OuterRef("parent__parent_id"), OuterRef("parent_id")))
+            .values("message_id")
+            .annotate(n=Count("pk"))
+            .values("n"),
+            output_field=IntegerField(),
+        ),
+        0,
+    )
+
+
 class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
     """Persona library.
 
@@ -237,6 +258,21 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
             return empty_picture_response()
         size = request.query_params.get("size")
         return serve_picture(persona.profile_picture, request=request, size=size)
+
+    @action(detail=True, methods=["get"], url_path="body/(?P<slot>[123])", renderer_classes=[ProtectedMediaRenderer])
+    def body_picture(self, request, pk=None, slot=None):
+        """Serve a full-body reference photo - authenticated only.
+
+        Same privacy model as the persona profile picture (the member-
+        scoped queryset 404s outsiders); never on public /media/.
+        """
+        try:
+            persona = self.get_object()
+        except Http404:
+            return empty_picture_response()
+        field = getattr(persona, f"body_picture_{slot}", None)
+        size = request.query_params.get("size")
+        return serve_picture(field, request=request, size=size)
 
     @action(detail=True, methods=["get"], url_path="midi", renderer_classes=[ProtectedMediaRenderer])
     def midi(self, request, pk=None):
@@ -787,6 +823,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
                 hot_votes=Count("photo_votes", filter=Q(photo_votes__hot=True), distinct=True),
                 not_votes=Count("photo_votes", filter=Q(photo_votes__hot=False), distinct=True),
                 last_hot_at=Max("photo_votes__created_at", filter=Q(photo_votes__hot=True)),
+                react_count=_roast_react_count(),
             )
             .distinct()
             .order_by("-posted_at")[: self.ROAST_BOX_LIMIT]
@@ -834,6 +871,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
                 hot_votes=Count("photo_votes", filter=Q(photo_votes__hot=True), distinct=True),
                 not_votes=Count("photo_votes", filter=Q(photo_votes__hot=False), distinct=True),
                 last_hot_at=Max("photo_votes__created_at", filter=Q(photo_votes__hot=True)),
+                react_count=_roast_react_count(),
             )
             .distinct()
             .order_by("-posted_at")[: self.HALL_SIZE]

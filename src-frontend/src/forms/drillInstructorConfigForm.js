@@ -73,6 +73,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
     const [nudgeOnInactivity, setNudgeOnInactivity] = useState(true);
     const [randomPush, setRandomPush] = useState(true);
     const [sendPushOnActivity, setSendPushOnActivity] = useState(false);
+    const [dailyPrompt, setDailyPrompt] = useState("");
     const [testBody, setTestBody] = useState(PLACEHOLDER_BODY);
     const [fieldErrors, setFieldErrors] = useState({});
     const [formError, setFormError] = useState("");
@@ -86,6 +87,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             setNudgeOnInactivity(existing.nudge_on_inactivity !== false);
             setRandomPush(existing.random_push !== false);
             setSendPushOnActivity(!!existing.send_push_on_activity);
+            setDailyPrompt(existing.daily_prompt || "");
             setInitialSnapshot({
                 enabled: !!existing.enabled,
                 persona: existing.persona ?? "",
@@ -93,6 +95,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                 nudgeOnInactivity: existing.nudge_on_inactivity !== false,
                 randomPush: existing.random_push !== false,
                 sendPushOnActivity: !!existing.send_push_on_activity,
+                dailyPrompt: existing.daily_prompt || "",
             });
         }
     }, [existing]);
@@ -113,6 +116,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             nudge_on_inactivity: nudgeOnInactivity,
             random_push: randomPush,
             send_push_on_activity: sendPushOnActivity,
+            daily_prompt: dailyPrompt.trim(),
         };
 
         try {
@@ -172,7 +176,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
         <Modal title="Coach" landscape={true} setShowModal={setModalState}
                isLoading={configsLoading || personasLoading || addLoading || updateLoading || deleteLoading}
                confirmDiscard={useFormDirty(
-                   {enabled, persona, commentOnActivity, nudgeOnInactivity, randomPush, sendPushOnActivity},
+                   {enabled, persona, commentOnActivity, nudgeOnInactivity, randomPush, sendPushOnActivity, dailyPrompt},
                    initialSnapshot,
                )}>
             <SettingsGroup title="On duty"
@@ -271,6 +275,30 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                     hint="Also ping every subscribed phone. People opt in from Home."
                     error={fieldErrors.send_push_on_activity}
                 />
+                <div className="rounded-2xl glass-card px-3.5 py-3">
+                    <label htmlFor="daily-prompt" className="text-sm font-semibold text-ink-950 dark:text-gray-100">
+                        Daily briefing topic
+                    </label>
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                        One coach-voiced post every morning about whatever you write here — in your
+                        coach's own style, and it builds on yesterday's post instead of repeating it
+                        (a third day without snow worries it more than the first). Empty means no
+                        briefing. Note: the coach can't fetch live data, so it points at the topic
+                        and turns it into the day's plan rather than quoting real numbers.
+                    </p>
+                    <textarea
+                        id="daily-prompt"
+                        rows={2}
+                        maxLength={500}
+                        className={FIELD_INPUT_CLASS + " mt-2 w-full resize-none"}
+                        placeholder={"e.g. Snow levels at Corviglia and what they mean for today's training"}
+                        value={dailyPrompt}
+                        onChange={(e) => setDailyPrompt(e.target.value)}
+                    />
+                    {fieldErrors.daily_prompt && (
+                        <p className="mt-1 text-xs text-red-500">{String(fieldErrors.daily_prompt)}</p>
+                    )}
+                </div>
             </SettingsGroup>
 
             {existing && (

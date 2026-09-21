@@ -29,6 +29,11 @@ DEFENSES_TO_IMMORTAL = 3
 MAX_LIVE_ECHOES = 6
 COOLDOWN = datetime.timedelta(hours=72)
 MIN_DURATION_MIN = 30
+MIN_DISTANCE_KM = 8
+# The "first flag" trigger seeds a sport family's very first Echo - it
+# deliberately asks for a SOLID session (not the bare 30-min floor),
+# otherwise the first logged jog of the challenge would look "legendary".
+FIRST_FLAG_MIN = 40
 SKIP_SPORTS = {"Steps"}
 # Profile-pic crown: anyone currently holding a living or immortal Echo.
 LIVE_HOLDER_STATUSES = ("undefeated", "contested", "immortal")
@@ -174,19 +179,27 @@ def _beats(workout, echo, committed_at=None):
 
 
 def _personal_best(workout, competition):
+    """Personal best within this challenge. Duration-metric sports
+    compare minutes; distance-metric sports compare KILOMETRES, so the
+    longest ride of your life counts even when it was also your fastest.
+    """
     Workout = apps.get_model("workouts", "Workout")
-    minutes = _minutes(workout)
-    if minutes < MIN_DURATION_MIN:
-        return False
-    best = Workout.objects.filter(
+    others = Workout.objects.filter(
         user=workout.user,
         start_datetime__date__gte=competition.start_date,
         start_datetime__date__lte=competition.end_date,
         sport_type__in=echo_sport_types(workout.sport_type),
-    ).exclude(pk=workout.pk).aggregate(m=Max("duration"))["m"]
-    if not best:
+    ).exclude(pk=workout.pk)
+    metric, value = _metric_for(workout)
+    if metric == "distance":
+        if value < MIN_DISTANCE_KM:
+            return False
+        best = others.aggregate(m=Max("distance"))["m"]
+        return bool(best) and float(value) > float(best)
+    if _minutes(workout) < MIN_DURATION_MIN:
         return False
-    return workout.duration is not None and workout.duration > best
+    best = others.aggregate(m=Max("duration"))["m"]
+    return bool(best) and workout.duration is not None and workout.duration > best
 
 
 def _overtake(workout, competition):
@@ -260,7 +273,7 @@ def judge_echo(workout, config):
     first = (
         bool(family)
         and not LegendEcho.objects.filter(config=config, sport_type=family).exists()
-        and _minutes(workout) >= 40
+        and _minutes(workout) >= FIRST_FLAG_MIN
     )
     if not (pb or overtake or mythic or first):
         return None
@@ -351,7 +364,22 @@ def mint_echo(workout, config, judgment=None):
         return None
     logger.info("Minted Legend Echo %s for workout %s in config %s", echo.pk, workout.pk, config.pk)
     bump_echo_holder_stats(config.competition_id)
+    _announce_mint(config, echo)
     return echo
+
+
+def _announce_mint(config, echo):
+    """A minted relic is only useful if the group SEES it: the coach
+    declares the new mark in the feed (and by push, per config)."""
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+    try:
+        from .tasks import _post_coach_line
+        _post_coach_line(
+            config, DrillInstructorMessage.KIND_ECHO,
+            echo.narrative or echo.title,
+        )
+    except Exception as exc:  # noqa: BLE001 - the echo exists; the line is bonus
+        logger.warning("Echo mint post failed: %s", exc)
 
 
 def attach_echo_image(workout, config, image_field):
@@ -415,12 +443,15 @@ def claim_echo(echo, winner, workout):
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
     previous = echo.holder
     metric, value = _metric_for(workout)
-    unit = "km" if metric == "distance" else "min"
     power = max(echo.power or 1, _power(workout, pb=False, overtake=True))
     echo.holder = winner
     echo.holder_workout = workout
     echo.chain_length = (echo.chain_length or 1) + 1
-    echo.status = LegendEcho.STATUS_UNDEFEATED
+    # A takeover is a successful "defense" of the relic's story; three of
+    # them make it immortal on the spot (DEFENSES_TO_IMMORTAL).
+    echo.defenses = (echo.defenses or 0) + 1
+    # The relic has changed hands: it is contested now, not untouched.
+    echo.status = LegendEcho.STATUS_CONTESTED
     echo.last_claimed_at = timezone.now()
     echo.metric = metric
     echo.metric_value = value
@@ -428,12 +459,47 @@ def claim_echo(echo, winner, workout):
     echo.power = min(100, power)
     echo.title = f"{_name(winner)}'s {echo_sport_label(echo.sport_type)} Echo"[:80]
     echo.save(update_fields=[
-        "holder", "holder_workout", "chain_length", "status", "last_claimed_at",
-        "metric", "metric_value", "sport_type", "power", "title",
+        "holder", "holder_workout", "chain_length", "defenses", "status",
+        "last_claimed_at", "metric", "metric_value", "sport_type", "power", "title",
     ])
     bump_echo_holder_stats(echo.config.competition_id)
     award_tag(winner, "echo_slayer")
+    _announce_claim(echo.config, echo, previous, workout)
+    if echo.defenses >= DEFENSES_TO_IMMORTAL:
+        immortalize(echo)
     return echo
+
+
+def _announce_claim(config, echo, previous_holder, workout):
+    """The succession IS the game: name winner and loser, state the new
+    mark, and ping both parties directly so the old holder learns they
+    lost the relic even with the app closed."""
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+    winner, loser = _name(workout.user), _name(previous_holder)
+    unit = "km" if echo.metric == "distance" else "min"
+    sport = echo_sport_label(echo.sport_type)
+    body = (
+        f"{config.persona.name}: @{winner} took @{loser}'s {sport} Echo - "
+        f"{echo.metric_value:g} {unit} is the mark now. Beat it to take the relic back."
+    )
+    try:
+        from .tasks import _post_coach_line
+        _post_coach_line(config, DrillInstructorMessage.KIND_CLAIM, body, image_field=echo.image)
+    except Exception as exc:  # noqa: BLE001 - the claim stands; the line is bonus
+        logger.warning("Echo claim post failed: %s", exc)
+    url = f"/competition/{config.competition_id}?tab=feed"
+    title = f"{config.competition.name} - Echo claimed"
+    for user, text in (
+        (previous_holder,
+         f"@{winner} took your {sport} Echo ({echo.metric_value:g} {unit}). Take it back!"),
+        (workout.user,
+         f"You hold the {sport} Echo now - {echo.metric_value:g} {unit} is the mark to beat."),
+    ):
+        try:
+            from push_notifications.sender import send_push_to_user
+            send_push_to_user(user, title=title, body=text, url=url)
+        except Exception:  # noqa: BLE001 - push must never break the claim
+            logger.exception("Echo claim push failed for user %s", user.id)
 
 
 def immortalize(echo):

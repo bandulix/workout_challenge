@@ -11,7 +11,7 @@ from django.utils import timezone
 from workout_challenge.celery import app, is_task_already_executing
 
 from .formatters import format_workout_summary
-from .llm_client import build_echo_art_prompt, build_group_push_prompt, build_inactivity_prompt, build_photo_prompt, build_reply_prompt, build_roast_caption_prompt, build_roast_image_prompt, build_workout_prompt, check_image_edit_capability, check_vision_capability, generate_message, generate_roast_image
+from .llm_client import build_daily_briefing_prompt, build_echo_art_prompt, build_group_push_prompt, build_inactivity_prompt, build_photo_prompt, build_reply_prompt, build_roast_caption_prompt, build_roast_image_prompt, build_workout_prompt, check_image_edit_capability, check_vision_capability, draw_roast_treatment, generate_message, generate_roast_image, invent_coach_appearance, invent_roast_twist, max_roast_reference_images
 
 try:
     from push_notifications.sender import send_push_to_user
@@ -612,6 +612,65 @@ def _persona_portrait_path(persona):
     return path if path and os.path.isfile(path) else None
 
 
+def _persona_body_picture_paths(persona):
+    """Filesystem paths of the persona's full-body reference photos."""
+    paths = []
+    for slot in (1, 2, 3):
+        picture = getattr(persona, f"body_picture_{slot}", None)
+        if not picture:
+            continue
+        try:
+            path = picture.path
+        except (ValueError, NotImplementedError):
+            continue
+        if path and os.path.isfile(path):
+            paths.append(path)
+    return paths
+
+
+def _coach_appearance(persona):
+    """The coach's canonical full-body look, invented once per persona.
+
+    Cached forever (30d rolling): the whole point is that every roast of
+    this coach puts the SAME body under the locked face. Only successes
+    are cached - a provider hiccup just means the next roast retries.
+    """
+    from django.core.cache import cache
+
+    cache_key = f"drill-coach-appearance:{persona.id}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+    text = invent_coach_appearance(
+        persona_name=persona.name,
+        persona_description=persona.description or "",
+        persona_tagline=persona.tagline or "",
+        persona_avatar=persona.avatar or "",
+    )
+    if text:
+        cache.set(cache_key, text, 60 * 60 * 24 * 30)
+    return text
+
+
+def _draw_roast_treatment(config):
+    """Pick this roast's treatment, avoiding what the group just saw.
+
+    Repetition is what makes the roast feel stale, so the last few
+    look/twist/prop keys per challenge are remembered (best-effort
+    cache - eviction just means a possible repeat, never an error).
+    """
+    from django.core.cache import cache
+
+    cache_key = f"drill-roast-treatments:{config.id}"
+    recent = list(cache.get(cache_key) or [])
+    treatment = draw_roast_treatment(avoid=recent)
+    used = [treatment["look"], treatment["stat_prop"]]
+    if treatment["twist"] != "none":
+        used.append(treatment["twist"])
+    cache.set(cache_key, (recent + used)[-9:], 60 * 60 * 24 * 30)
+    return treatment
+
+
 def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
     """The entertainment payload: edit the posted photo into a persona-
     styled roast (coach world, coach face, stats; surprise look) and
@@ -636,8 +695,30 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
     sport_type = getattr(workout, "sport_type", "") if workout is not None else ""
 
     # dall-e-2 is single-image only; claiming a face lock without sending
-    # the portrait would invent a different coach.
+    # the portrait would invent a different coach. Other endpoints take
+    # the portrait plus up to 3 full-body reference photos (xAI: 2 total
+    # extras) - the portrait wins the slots, body photos fill the rest.
     lock_portrait = bool(portrait_path) and roast_model != "dall-e-2"
+    reference_cap = 0 if roast_model == "dall-e-2" else max_roast_reference_images()
+    body_slots = max(0, reference_cap - (1 if lock_portrait else 0))
+    body_paths = _persona_body_picture_paths(persona)[:body_slots]
+    reference_paths = ([portrait_path] if lock_portrait else []) + body_paths
+    # Real body photos beat the invented body - skip the invention call.
+    appearance = None if body_paths else _coach_appearance(persona)
+    treatment = _draw_roast_treatment(config)
+    # The surprise budget: when a twist is on, ask the chat model to
+    # invent a one-off instead of re-dealing from the curated list. Any
+    # failure quietly falls back to the list twist already drawn.
+    custom_twist = None
+    if treatment["twist"] != "none":
+        custom_twist = invent_roast_twist(
+            persona_name=persona.name,
+            persona_description=persona.description or "",
+            persona_tagline=persona.tagline or "",
+            sport_type=sport_type,
+            workout_summary=workout_summary,
+            look=treatment["look"],
+        )
     roast_prompt = build_roast_image_prompt(
         persona_name=persona.name,
         persona_description=persona.description or "",
@@ -647,10 +728,17 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
         workout_summary=workout_summary,
         sport_type=sport_type,
         has_coach_portrait=lock_portrait,
+        look=treatment["look"],
+        camera=treatment["camera"],
+        stat_prop=treatment["stat_prop"],
+        twist=treatment["twist"],
+        custom_twist=custom_twist or "",
+        coach_appearance=appearance or "",
+        body_reference_count=len(body_paths),
     )
     png_bytes, roast_error = generate_roast_image(
         image_path, roast_prompt, roast_model,
-        extra_image_paths=[portrait_path] if lock_portrait else None,
+        extra_image_paths=reference_paths or None,
     )
     if not png_bytes:
         config.last_error = f"photo roast skipped: {roast_error}"
@@ -1031,6 +1119,116 @@ def post_random_pushes(self):
                         competition_id=competition.id,
                         log_label="random push notification",
                     )
+
+    return {"date": str(today), "posted": posted, "skipped": skipped, "competitions": competitions.count()}
+
+
+# Earliest hour the daily briefing may go out - it is a MORNING post
+# (conditions for the day), not a random-time ping.
+BRIEFING_NOT_BEFORE_HOUR = 7
+
+
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
+def post_daily_prompts(self):
+    """Post the owner-defined daily briefing in every running competition
+    whose coach has a ``daily_prompt`` configured.
+
+    Scheduled every 30 min via Celery beat. The briefing is a morning
+    post: it goes out once per day, the first tick at/after 07:00 local.
+    The admin writes the topic in their own words ("snow level at
+    Corviglia"); the coach turns it into a persona-voiced post. Idempotent:
+    one KIND_BRIEFING message per config per day, counted from the audit
+    log, so re-runs and late starts never double-post.
+    """
+    Competition = apps.get_model("competition", "Competition")
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+
+    if is_task_already_executing("post_daily_prompts"):
+        return "Task already executing. Skipping."
+
+    now = timezone.localtime()
+    today = now.date()
+    if now.hour < BRIEFING_NOT_BEFORE_HOUR:
+        return {"date": str(today), "posted": 0, "skipped": 0, "note": "before morning window"}
+
+    competitions = (
+        Competition.objects
+        .filter(
+            start_date__lte=today,
+            end_date__gte=today,
+            drill_instructor__enabled=True,
+        )
+        .exclude(drill_instructor__daily_prompt="")
+        .select_related("drill_instructor", "drill_instructor__persona")
+        .prefetch_related("user")
+    )
+
+    posted = 0
+    skipped = 0
+    for competition in competitions:
+        config = competition.drill_instructor
+        topic = (config.daily_prompt or "").strip()
+        if not topic:
+            skipped += 1
+            continue
+        if config.messages.filter(
+            kind=DrillInstructorMessage.KIND_BRIEFING, posted_at__date=today,
+        ).exists():
+            skipped += 1
+            continue
+
+        persona = config.persona
+        # The briefing is a continuing arc: hand the model its previous
+        # briefings on this topic (newest first) so it can evolve its
+        # take instead of repeating it.
+        previous_briefings = list(
+            config.messages.filter(kind=DrillInstructorMessage.KIND_BRIEFING)
+            .order_by("-posted_at")
+            .values_list("body", flat=True)[:4]
+        )
+        user_prompt = build_daily_briefing_prompt(
+            competition_name=competition.name,
+            topic=topic,
+            previous_briefings=previous_briefings,
+        )
+        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
+        if not body:
+            body = (
+                f"{persona.name}: daily briefing time in {competition.name} - "
+                f"today's topic is \"{topic[:180]}\", but my notes are missing. "
+                "Make the day count anyway!"
+            )
+
+        message = DrillInstructorMessage(
+            config=config,
+            kind=DrillInstructorMessage.KIND_BRIEFING,
+            workout=None,
+            body=body,
+            posted_at=timezone.now(),
+        )
+        try:
+            message.save()
+            config.last_posted_at = timezone.now()
+            config.messages_posted = (config.messages_posted or 0) + 1
+            config.last_error = llm_error or ""
+            config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
+            posted += 1
+            logger.info("Drill Instructor: stored daily briefing %s for competition %s", message.id, competition.id)
+        except Exception as exc:  # noqa: BLE001 - never block the caller
+            _flag_message_failure(message, config, exc, "message")
+            continue
+
+        if config.send_push_on_activity:
+            for participant in competition.user.all():
+                _ping_user(
+                    participant,
+                    title=f"{competition.name} - {persona.name}",
+                    body=body,
+                    url=_feed_url(message),
+                    icon=_persona_icon(persona),
+                    competition_id=competition.id,
+                    log_label="daily briefing push",
+                )
 
     return {"date": str(today), "posted": posted, "skipped": skipped, "competitions": competitions.count()}
 

@@ -51,6 +51,13 @@ def _persona_picture_url(persona):
     return reverse("drill-persona-picture", kwargs={"pk": persona.pk})
 
 
+def _persona_body_picture_url(persona, slot):
+    """Same privacy model as the profile picture (authenticated only)."""
+    if not getattr(persona, f"body_picture_{slot}", None):
+        return None
+    return reverse("drill-persona-body-picture", kwargs={"pk": persona.pk, "slot": slot})
+
+
 class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
     """Persona serializer.
 
@@ -79,6 +86,23 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
     profile_picture_upload = serializers.FileField(
         write_only=True, required=False, allow_null=True, source="profile_picture"
     )
+    # Full-body reference photos (self-created coaches): the image edits
+    # lock the coach's build/outfit to these instead of inventing a body.
+    body_picture_1 = serializers.SerializerMethodField()
+    body_picture_2 = serializers.SerializerMethodField()
+    body_picture_3 = serializers.SerializerMethodField()
+    body_picture_1_upload = serializers.FileField(
+        write_only=True, required=False, allow_null=True, source="body_picture_1"
+    )
+    body_picture_2_upload = serializers.FileField(
+        write_only=True, required=False, allow_null=True, source="body_picture_2"
+    )
+    body_picture_3_upload = serializers.FileField(
+        write_only=True, required=False, allow_null=True, source="body_picture_3"
+    )
+    clear_body_picture_1 = serializers.BooleanField(write_only=True, required=False, default=False)
+    clear_body_picture_2 = serializers.BooleanField(write_only=True, required=False, default=False)
+    clear_body_picture_3 = serializers.BooleanField(write_only=True, required=False, default=False)
     mine = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     midi = serializers.SerializerMethodField()
@@ -97,6 +121,15 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
             "avatar",
             "profile_picture",
             "profile_picture_upload",
+            "body_picture_1",
+            "body_picture_2",
+            "body_picture_3",
+            "body_picture_1_upload",
+            "body_picture_2_upload",
+            "body_picture_3_upload",
+            "clear_body_picture_1",
+            "clear_body_picture_2",
+            "clear_body_picture_3",
             "theme_color",
             "midi",
             "midi_upload",
@@ -133,6 +166,31 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
             rep.pop("system_prompt", None)
         return rep
 
+    def get_body_picture_1(self, obj):
+        return _persona_body_picture_url(obj, 1)
+
+    def get_body_picture_2(self, obj):
+        return _persona_body_picture_url(obj, 2)
+
+    def get_body_picture_3(self, obj):
+        return _persona_body_picture_url(obj, 3)
+
+    def _validate_body_upload(self, value):
+        if value is None:
+            return value
+        from workout_challenge.images import validate_and_reencode_image
+        # Full-body shots keep more detail than the 512px headshot.
+        return validate_and_reencode_image(value, max_bytes=self.MAX_PROFILE_PICTURE_BYTES, max_side=1024)
+
+    def validate_body_picture_1_upload(self, value):
+        return self._validate_body_upload(value)
+
+    def validate_body_picture_2_upload(self, value):
+        return self._validate_body_upload(value)
+
+    def validate_body_picture_3_upload(self, value):
+        return self._validate_body_upload(value)
+
     def get_midi(self, obj):
         return _persona_midi_url(obj)
 
@@ -141,16 +199,31 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop("clear_midi", False)
+        for slot in (1, 2, 3):
+            validated_data.pop(f"clear_body_picture_{slot}", False)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
         clear_midi = validated_data.pop("clear_midi", False)
+        clear_body = {slot: validated_data.pop(f"clear_body_picture_{slot}", False) for slot in (1, 2, 3)}
         instance = super().update(instance, validated_data)
+        update_fields = []
         if clear_midi and not validated_data.get("midi"):
             if instance.midi:
                 instance.midi.delete(save=False)
             instance.midi = None
-            instance.save(update_fields=["midi", "updated_at"])
+            update_fields.append("midi")
+        for slot, clear in clear_body.items():
+            field = f"body_picture_{slot}"
+            if clear and not validated_data.get(field):
+                old = getattr(instance, field)
+                if old:
+                    old.delete(save=False)
+                setattr(instance, field, None)
+                update_fields.append(field)
+        if update_fields:
+            update_fields.append("updated_at")
+            instance.save(update_fields=update_fields)
         return instance
 
     def get_profile_picture(self, obj):
@@ -215,6 +288,7 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
             "nudge_on_inactivity",
             "random_push",
             "send_push_on_activity",
+            "daily_prompt",
             "last_posted_at",
             "messages_posted",
             "last_error",
@@ -907,6 +981,9 @@ class RoastCardSerializer(serializers.ModelSerializer):
     hot_votes = serializers.IntegerField(read_only=True)
     not_votes = serializers.IntegerField(read_only=True)
     last_hot_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    # Emoji stamps on the thread this roast belongs to - the Hall of
+    # Roasts badge (hot-or-not votes only exist inside the swipe game).
+    react_count = serializers.IntegerField(read_only=True)
     my_vote = serializers.SerializerMethodField()
 
     class Meta:
@@ -922,6 +999,7 @@ class RoastCardSerializer(serializers.ModelSerializer):
             "hot_votes",
             "not_votes",
             "last_hot_at",
+            "react_count",
             "my_vote",
         ]
         read_only_fields = fields

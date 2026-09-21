@@ -35,8 +35,13 @@ function EchoExplainer() {
             </p>
             <p>
                 <b>Beat the mark, take the relic.</b> Anyone who tops it in the same
-                sport claims the Echo from its holder. Defend it long enough and it
-                becomes <b>immortal</b>. Holders wear the crown on their avatar.
+                sport claims the Echo from its holder - the feed calls it out and
+                both get a push. Holders wear the crown on their avatar.
+            </p>
+            <p>
+                <b>Immortal.</b> A relic that survives <b>3 takeovers</b> turns
+                immortal on the spot; everything still alive at the final whistle
+                is immortalized too. The planter collects the Echo Immortal tag.
             </p>
         </div>
     );
@@ -76,6 +81,11 @@ function EchoTile({echo, onDelete, busy}) {
                 <p className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400 truncate">
                     {echo.holder_name || "Held"} · {echo.metric_label}
                 </p>
+                {echo.status !== "immortal" && (echo.defenses || 0) > 0 && (
+                    <p className="mt-0.5 text-[10px] font-bold text-volt-600 dark:text-volt-400">
+                        Survived {echo.defenses}/3 takeovers
+                    </p>
+                )}
                 <div className="mt-1.5 flex items-center gap-1">
                     <button type="button"
                             onClick={() => sharePostCard({

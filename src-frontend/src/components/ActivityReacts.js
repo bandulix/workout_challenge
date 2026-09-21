@@ -173,12 +173,12 @@ function WhoList({people}) {
     );
 }
 
-function FacePip({person, size = 14}) {
+function FacePip({person, size = 14, className = ""}) {
     const {src} = useProtectedImage(person.picture || null, "avatar");
     return (
         <img src={src || "/profile.png"} alt=""
              width={size} height={size}
-             className="rounded-full object-cover shrink-0 bg-ink-800"
+             className={"rounded-full object-cover shrink-0 bg-ink-800 " + className}
              draggable={false}/>
     );
 }
@@ -249,7 +249,18 @@ function ReactChip({row, onToggle, onWho, delay, bursting, showWho}) {
                     (bursting ? " react-chip-burst" : "")}
                 style={{"--react-glow": spec.glow, animationDelay: `${delay}s`}}>
                 <StampGlyph id={row.emoji} size={22} glow={spec.glow}/>
-                {row.count > 1 && <span className="text-[11px] leading-none">{row.count}</span>}
+                {/* Faces of everyone who stamped - visible at a glance,
+                    no hover/long-press needed. Up to 3 pips, then "+N". */}
+                {(row.people || []).length > 0 && (
+                    <span className="inline-flex items-center -space-x-1" aria-hidden="true">
+                        {(row.people || []).slice(0, 3).map((p) => (
+                            <FacePip key={p.id} person={p} size={16} className="ring-1 ring-white/60 dark:ring-ink-950/60"/>
+                        ))}
+                    </span>
+                )}
+                {row.count > 3
+                    ? <span className="text-[10px] leading-none">+{row.count - 3}</span>
+                    : row.count > 1 && !row.people?.length && <span className="text-[11px] leading-none">{row.count}</span>}
                 {bursting && <Sparks/>}
             </button>
             {hover && !showWho && row.people?.length > 0 && (
@@ -340,7 +351,7 @@ export function ActivityStampIcons() {
     if (!api || !api.reacts.length) return null;
     const whoRow = api.who ? api.reacts.find((r) => r.emoji === api.who) : null;
     return (
-        <div className="flex flex-wrap items-center justify-end gap-0.5 max-w-[11rem]"
+        <div className="flex flex-wrap items-center justify-end gap-0.5 max-w-[15rem]"
              onClick={(e) => e.stopPropagation()} data-no-swipe="true">
             {api.reacts.map((row, i) => (
                 <span key={row.emoji} ref={(el) => { api.chipRefs.current[row.emoji] = el; }}

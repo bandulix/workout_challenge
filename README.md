@@ -9,7 +9,7 @@
 
 An **AI Drill Instructor** comments on every workout, remixes your photos, and pings your lock screen. Self-hosted fitness rivalries on the metrics you choose — kilometres, minutes, calories, steps — imported from **Strava, Garmin, or Health Connect**. Native **Android app** and installable **PWA**. Your data stays on your server.
 
-- **A coach, not a spreadsheet.** Personas roast, cheer, and nudge. Stamp a workout (WTF!, GOAT, Oof, …). Order of the Day, Hall of Roasts, Legend Echoes (on the workout card; beat the mark, take the relic), weekly coach vote in the last 72 hours before Monday. Add a photo for +10P — the coach remixes it, and that shot becomes the Echo picture.
+- **A coach, not a spreadsheet.** Personas roast, cheer, and nudge. Stamp a workout (WTF!, GOAT, Oof, …). Order of the Day, Hall of Roasts, Legend Echoes (on the workout card; beat the mark, take the relic — 3 takeovers make it immortal), weekly coach vote in the last 72 hours before Monday. Add a photo for +10P — the coach remixes it, and that shot becomes the Echo picture. Owners can give the coach a daily briefing topic ("snow level at Corviglia"), and custom coaches get a portrait plus full-body photos so remixes look like them.
 - **Any watch, no lock-in.** Strava, Garmin Connect, or Apple Health / Google Health Connect. One source per athlete so nothing is counted twice.
 - **Your rules.** Custom goals, teams, caps, and a live leaderboard — 1 point per 1% of a goal.
 - **Yours to host.** Docker Compose. PWA on any phone; sideload APK for one-tap Health Connect.
@@ -75,9 +75,9 @@ Backend migrations for `competition`, `workouts` and `custom_user` live in `src-
 
 This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/workout_challenge) (base `main` @ `256e5b1`) under the same SSPL v1. Original copyright is untouched. Full list: [CHANGELOG.md](CHANGELOG.md).
 
-- **AI Drill Instructor** — persona comments, stamps, Order of the Day, Hall of Roasts, Legend Echoes on the workout (sport-family relics, stacked crowns), weekly coach vote (72h window), photo remixes, native share sheet, web push / Android pings.
+- **AI Drill Instructor** — persona comments, stamps, Order of the Day, Hall of Roasts, Legend Echoes on the workout (sport-family relics, takeovers announced, 3 defenses to immortal), weekly coach vote (72h window), photo remixes, owner-defined daily briefings, native share sheet, web push / Android pings.
 - **Coach-centred PWA** — glass dock, Coach as home, daily action plates, dark theme, private uploaded photos.
-- **Garmin Connect** and **Apple Health / Health Connect** (via Open Wearables) next to Strava; one activity source per user.
+- **Garmin Connect** and **Apple Health / Health Connect** (via Open Wearables) next to Strava — one shared sport-type table, so the same workout counts the same from every watch; one activity source per user.
 - **Sideload Android app** with one-tap Health Connect.
 
 License: [LICENSE](LICENSE) (SSPL v1). Fork and third-party notices: [NOTICE](NOTICE).

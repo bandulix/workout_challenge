@@ -17,7 +17,7 @@ import {
     useFormDirty,
 } from "./basicComponents";
 import PersonaAvatar from "../components/PersonaAvatar";
-import {invalidateProtectedImage} from "../utils/protectedMedia";
+import {invalidateProtectedImage, useProtectedImage} from "../utils/protectedMedia";
 import {confirmAction} from "../utils/dialogs";
 import {toast} from "../utils/toasts";
 import {errText} from "../utils/errors";
@@ -41,6 +41,16 @@ export const PERSONA_COLORS = [
     "#a78bfa", "#f43f5e", "#38bdf8", "#fbbf24", "#94a3b8",
 ];
 
+// Thumbnail for one full-body slot: staged uploads are blob: URLs,
+// saved pictures come through the authenticated media fetcher.
+function BodyThumb({url}) {
+    const isBlob = url.startsWith("blob:");
+    const {src} = useProtectedImage(isBlob ? null : url, "card");
+    const finalSrc = isBlob ? url : src;
+    if (!finalSrc) return <Camera className="h-5 w-5 text-gray-400"/>;
+    return <img src={finalSrc} alt="" className="h-full w-full object-cover"/>;
+}
+
 export function PersonaEditModal({persona, setModalState}) {
     const isNew = persona?.id === undefined;
     const [values, setValues] = useState({});
@@ -53,6 +63,12 @@ export function PersonaEditModal({persona, setModalState}) {
     const [clearMidi, setClearMidi] = useState(false);
     const [previewOn, setPreviewOn] = useState(false);
     const fileInput = useRef(null);
+    // Full-body reference photos, slots 1-3 (custom coaches only).
+    const [bodyFiles, setBodyFiles] = useState({1: null, 2: null, 3: null});
+    const [bodyClears, setBodyClears] = useState({1: false, 2: false, 3: false});
+    const [bodyPreviews, setBodyPreviews] = useState({1: null, 2: null, 3: null});
+    const [bodyError, setBodyError] = useState(null);
+    const bodyInputRefs = useRef({});
 
     const [addPersona, {isLoading: addLoading, error: addError, isSuccess: addSuccess}] = useAddPersonaMutation();
     const [updatePersona, {isLoading: updateLoading, error: updateError, isSuccess: updateSuccess}] = useUpdatePersonaMutation();
@@ -79,6 +95,14 @@ export function PersonaEditModal({persona, setModalState}) {
             setMidiFile(null);
             setClearMidi(false);
             setPreviewOn(false);
+            setBodyFiles({1: null, 2: null, 3: null});
+            setBodyClears({1: false, 2: false, 3: false});
+            setBodyError(null);
+            setBodyPreviews({
+                1: persona.body_picture_1 || null,
+                2: persona.body_picture_2 || null,
+                3: persona.body_picture_3 || null,
+            });
             stopMidiBed();
         }
     }, [persona]);
@@ -134,13 +158,41 @@ export function PersonaEditModal({persona, setModalState}) {
         setPicturePreview(URL.createObjectURL(file));
     }
 
+    function handleBodyFile(slot, e) {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (!file) return;
+        if (file.size > MAX_PICTURE_BYTES) {
+            setBodyError(`Full-body picture ${slot} is too large (max 5 MB).`);
+            return;
+        }
+        setBodyError(null);
+        setBodyFiles((prev) => ({...prev, [slot]: file}));
+        setBodyClears((prev) => ({...prev, [slot]: false}));
+        setBodyPreviews((prev) => {
+            if (prev[slot]?.startsWith("blob:")) URL.revokeObjectURL(prev[slot]);
+            return {...prev, [slot]: URL.createObjectURL(file)};
+        });
+    }
+
+    function removeBody(slot) {
+        setBodyFiles((prev) => ({...prev, [slot]: null}));
+        setBodyClears((prev) => ({...prev, [slot]: true}));
+        setBodyPreviews((prev) => {
+            if (prev[slot]?.startsWith("blob:")) URL.revokeObjectURL(prev[slot]);
+            return {...prev, [slot]: null};
+        });
+    }
+
+    const anyBodyChange = [1, 2, 3].some((slot) => bodyFiles[slot] || bodyClears[slot]);
+
     async function handleSubmit() {
         setFieldErrors({});
         setFormError("");
         // With a custom picture on board the payload goes as multipart
         // form data; otherwise plain JSON (the slice sets the headers).
         let payload;
-        const needsMultipart = Boolean(pictureFile || midiFile || clearMidi);
+        const needsMultipart = Boolean(pictureFile || midiFile || clearMidi || anyBodyChange);
         if (needsMultipart) {
             payload = new FormData();
             for (const [key, value] of Object.entries(values)) {
@@ -149,6 +201,10 @@ export function PersonaEditModal({persona, setModalState}) {
             if (pictureFile) payload.append("profile_picture_upload", pictureFile);
             if (midiFile) payload.append("midi_upload", midiFile);
             if (clearMidi && !midiFile) payload.append("clear_midi", "true");
+            for (const slot of [1, 2, 3]) {
+                if (bodyFiles[slot]) payload.append(`body_picture_${slot}_upload`, bodyFiles[slot]);
+                else if (bodyClears[slot]) payload.append(`clear_body_picture_${slot}`, "true");
+            }
         } else {
             payload = {...values};
         }
@@ -162,6 +218,11 @@ export function PersonaEditModal({persona, setModalState}) {
                 if (pictureFile) {
                     invalidateProtectedImage(persona.profile_picture);
                 }
+                for (const slot of [1, 2, 3]) {
+                    if (bodyFiles[slot] || bodyClears[slot]) {
+                        invalidateProtectedImage(persona[`body_picture_${slot}`]);
+                    }
+                }
             }
         } catch (err) {
             console.error("Persona save failed", err);
@@ -174,7 +235,7 @@ export function PersonaEditModal({persona, setModalState}) {
     return (
         <Modal title={isNew ? "New coach" : "Edit coach"} setShowModal={setModalState}
                isLoading={addLoading || updateLoading}
-               confirmDiscard={useFormDirty(values, initialValues) || Boolean(pictureFile) || Boolean(midiFile)}>
+               confirmDiscard={useFormDirty(values, initialValues) || Boolean(pictureFile) || Boolean(midiFile) || anyBodyChange}>
             {/* identity preview - click the picture to upload a custom one */}
             <div className="flex items-center gap-4 px-4 pb-2">
                 <button type="button" onClick={() => fileInput.current?.click()}
@@ -241,6 +302,45 @@ export function PersonaEditModal({persona, setModalState}) {
                            placeholder="🔥" maxLength={8}
                            onChange={(e) => setValues({...values, avatar: e.target.value || "megaphone"})}/>
                 </div>
+
+                {/* full-body reference photos - only self-created coaches */}
+                {!persona?.is_builtin && (
+                    <div className="px-4 w-full">
+                        <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
+                            Full-body pictures{fieldErrors.body_picture_1_upload && (
+                                <span className="text-red-600 font-normal italic"> ({fieldErrors.body_picture_1_upload})</span>
+                            )}
+                        </label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                            Up to 3 photos of the coach from head to toe. Photo remixes lock the coach's
+                            build and outfit to these instead of inventing a body.
+                        </p>
+                        <div className="flex gap-3">
+                            {[1, 2, 3].map((slot) => (
+                                <div key={slot} className="flex flex-col items-center gap-1">
+                                    <button type="button"
+                                            onClick={() => bodyInputRefs.current[slot]?.click()}
+                                            className="h-28 w-20 overflow-hidden rounded-2xl btn-glass flex items-center justify-center transition active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400"
+                                            aria-label={`Full-body picture ${slot}`}>
+                                        {bodyPreviews[slot]
+                                            ? <BodyThumb url={bodyPreviews[slot]}/>
+                                            : <Camera className="h-5 w-5 text-gray-400"/>}
+                                    </button>
+                                    <input ref={(el) => { bodyInputRefs.current[slot] = el; }}
+                                           type="file" accept={PICTURE_ACCEPT} className="hidden"
+                                           onChange={(e) => handleBodyFile(slot, e)}/>
+                                    {bodyPreviews[slot] && (
+                                        <button type="button" onClick={() => removeBody(slot)}
+                                                className="text-[10px] font-bold uppercase tracking-wide text-red-500 hover:underline">
+                                            Remove
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        {bodyError && <p className="text-xs text-red-500 mt-1">{bodyError}</p>}
+                    </div>
+                )}
 
                 {/* accent colour picker */}
                 <div className="px-4 w-full">

@@ -14,8 +14,10 @@ recreate applies changes; there is deliberately no runtime override.
 Vision: :func:`check_vision_capability` probes the configured model with
 a tiny test image (OpenAI-compatible providers give no reliable metadata
 for this, and custom-model names defy heuristics) and caches the answer.
-Photo posts in the coach feed are gated on it, and the coach's photo
-reactions include the actual picture when the model can see.
+The cache key includes a hash of the API key, so a key rotation re-probes
+automatically instead of serving the old key's verdict. Photo posts in
+the coach feed are gated on it, and the coach's photo reactions include
+the actual picture when the model can see.
 """
 
 import base64
@@ -294,16 +296,30 @@ _PROBE_PNG_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 )
 
-# Definitive answers are stable per model - cache them for a day.
-# Transient failures (network, 5xx, rate limit) are retried soon.
+# Definitive answers (a 400 rejecting the request shape) are stable per
+# model - cache them for a day. Everything else (network, 5xx, rate
+# limit, auth/billing 4xx) is retried soon: a 401/402/404 says nothing
+# about image support, and caching it for a day keeps the feature hidden
+# long after the underlying problem is fixed.
 _VISION_CACHE_TTL = 60 * 60 * 24
 _VISION_RETRY_TTL = 60 * 5
 
 
+def _key_fingerprint(api_key: Optional[str]) -> str:
+    # Never the key itself - just enough to tell two keys apart.
+    return hashlib.sha256((api_key or "").encode()).hexdigest()[:8]
+
+
 def _vision_cache_key(config) -> str:
-    # Keyed by endpoint + model: an admin editing the LLM settings
-    # produces a fresh key automatically - no invalidation hook needed.
-    digest = hashlib.sha256(f"{config.get('base_url')}|{config.get('model')}".encode()).hexdigest()[:16]
+    # Keyed by endpoint + model + key fingerprint: an admin editing the
+    # LLM settings OR rotating the API key produces a fresh cache key
+    # automatically - no invalidation hook needed. (Without the key in
+    # the hash, a rotated key inherited the dead key's cached verdict,
+    # e.g. a provider answering the old key with 402/404 had been stored
+    # as a 24h "model rejects images".)
+    digest = hashlib.sha256(
+        f"{config.get('base_url')}|{config.get('model')}|{_key_fingerprint(config.get('api_key'))}".encode()
+    ).hexdigest()[:16]
     return f"drill-vision-capable:{digest}"
 
 
@@ -368,13 +384,17 @@ def check_vision_capability() -> bool:
         capable = True
     except Exception as exc:  # noqa: BLE001 - OpenAI raises many subclasses
         status_code = getattr(exc, "status_code", None)
-        if status_code is not None and 400 <= status_code < 500 and status_code not in (401, 403, 429):
+        if status_code == 400:
             # Definitive: the endpoint rejected the request shape (image
-            # content not supported by this model).
+            # content not supported by this model). Only a 400 carries
+            # that meaning.
             capable = False
             ttl = _VISION_CACHE_TTL
         else:
-            # Transient or indeterminate - answer "no" for now, retry soon.
+            # Transient or indeterminate - answer "no" for now, retry
+            # soon. This includes other 4xx (401/403 auth, 402 billing,
+            # 404 unknown model): none of them say the model can't see
+            # images, and a day-long cache would outlive the fix.
             capable = False
             ttl = _VISION_RETRY_TTL
         logger.info("Drill Instructor vision probe failed (%s): %s", type(exc).__name__, str(exc)[:200])
@@ -570,10 +590,18 @@ def _image_cache_key() -> str:
     image_cfg = _image_endpoint_config()
     if image_cfg is not None:
         raw = f"image-endpoint|{image_cfg['base_url']}|{image_cfg['model']}"
+        api_key = image_cfg["api_key"]
+        if not api_key:
+            from site_settings.models import resolve_llm_settings
+            api_key = resolve_llm_settings()["api_key"]
     else:
         from site_settings.models import resolve_llm_settings
         config = resolve_llm_settings()
         raw = f"chat-endpoint|{config.get('base_url')}|{config.get('model')}"
+        api_key = config["api_key"]
+    # The key fingerprint busts the cache on rotation - see
+    # _vision_cache_key for why.
+    raw = f"{raw}|{_key_fingerprint(api_key)}"
     return "drill-image-edit:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
@@ -605,10 +633,11 @@ def check_image_edit_capability() -> Optional[str]:
             )
         except Exception as exc:  # noqa: BLE001 - OpenAI raises many subclasses
             status_code = getattr(exc, "status_code", None)
-            if status_code is not None and 400 <= status_code < 500 and status_code not in (401, 403, 429):
+            if status_code == 400:
                 logger.info("Drill Instructor image-edit probe: model %s rejected (%s)", candidate, status_code)
                 continue  # definitive "this model can't" - try the next one
-            # Transient or indeterminate - answer "no" for now, retry soon.
+            # Transient or indeterminate (network, 5xx, auth/billing 4xx)
+            # - answer "no" for now, retry soon.
             logger.info("Drill Instructor image-edit probe failed (%s): %s", type(exc).__name__, str(exc)[:200])
             cache.set(cache_key, "", _VISION_RETRY_TTL)
             return None
@@ -696,6 +725,20 @@ def generate_roast_image(image_path: str, roast_prompt: str, model: str, extra_i
 MAX_ROAST_IMAGE_BYTES = 8 * 1024 * 1024
 
 
+def max_roast_reference_images() -> int:
+    """Reference photos (portrait + body) the edit endpoint accepts on
+    top of the source image. xAI's images/edits caps the request at 3
+    images total (source + 2); OpenAI-style endpoints take several.
+    dall-e-2 is single-image - the caller zeroes that case itself."""
+    image_cfg = _image_endpoint_config()
+    if image_cfg is not None:
+        base_url = image_cfg["base_url"]
+    else:
+        from site_settings.models import resolve_llm_settings
+        base_url = resolve_llm_settings().get("base_url")
+    return 2 if _image_endpoint_style(base_url) == "xai" else 3
+
+
 def coach_face_lock_clause(coach: str, has_portrait: bool) -> str:
     """How the coach's face is taken from the second source image."""
     if has_portrait:
@@ -710,6 +753,25 @@ def coach_face_lock_clause(coach: str, has_portrait: bool) -> str:
     return (
         f"There is no portrait reference. Invent a distinctive look for "
         f"coach \"{coach}\" that fits their world above, and still include them in the scene."
+    )
+
+
+def coach_body_lock_clause(coach: str, start_index: int, count: int) -> str:
+    """Full-body lock from the coach's own reference photos.
+
+    Self-created coaches can upload real full-body pictures; the edit
+    must keep that build and wardrobe instead of inventing a body.
+    ``start_index`` is the 1-based image index of the first body photo
+    (2 when there is no portrait, 3 when the portrait takes IMAGE 2).
+    """
+    images = ", ".join(f"IMAGE {i}" for i in range(start_index, start_index + count))
+    return (
+        f"BODY LOCK: {images} "
+        f"{'is a real full-body photo' if count == 1 else 'are real full-body photos'} "
+        f"of coach \"{coach}\". The coach's build, outfit and overall style in the result "
+        "MUST match those photos - same body type, same wardrobe identity, read through "
+        "the LOOK. Do not slim, bulk up, re-dress or re-age the coach; the face still "
+        "comes from the face reference."
     )
 
 
@@ -832,20 +894,227 @@ def _pinned_or_choice(options, pinned):
     return random.choice(options)
 
 
+# The fourth surprise axis: one surreal directive per artwork. Look and
+# camera alone became predictable - the twist is the "wait, what?" detail.
+# Constants (coach world, both faces, stats object) always stay intact.
+_ROAST_TWISTS = (
+    ("gravity-off", "TWIST: gravity is optional here - props, weather and fabric drift slowly upward; the people treat it as normal."),
+    ("season-swap", "TWIST: the wrong season has invaded the scene (snow in summer, blossoms in a storm) - play it completely straight."),
+    ("giant-prop", "TWIST: one everyday object in the scene is comically oversized; nobody acknowledges it."),
+    ("tiny-world", "TWIST: the whole scene reads as a handmade miniature diorama - tilt-shift scale, tiny textures, giant studio light."),
+    ("crowd", "TWIST: an audience of mismatched spectators (animals, statues, ghosts - whatever fits this world) watches the scene."),
+    ("weather-actor", "TWIST: the weather participates like a character - wind, rain or snow actively shapes the composition."),
+    ("mirror-scene", "TWIST: a reflective surface in the scene shows a DIFFERENT, even more epic version of the same moment."),
+    ("time-bleed", "TWIST: one element is centuries out of place (armor at a marathon, a gramophone at the gym) and everyone ignores it."),
+    ("impossible-light", "TWIST: the lighting is physically impossible - two suns, coloured shadows, or light falling upward - rendered with total confidence."),
+    ("craft-stage", "TWIST: parts of the environment are visibly handcrafted (cardboard, tape, string) while the people stay fully real."),
+    ("freeze-frame", "TWIST: time is frozen except for coach and athlete - water drops, confetti and dust hang motionless in mid-air."),
+    ("flooded", "TWIST: the scene behaves as if underwater while the air is clear - slow fabric, floating props, light caustics."),
+    ("shadow-play", "TWIST: the shadows tell a second story - they pose even more heroically than the people casting them."),
+    ("portal", "TWIST: a portal or torn edge in the scene reveals the same world from another angle or another moment."),
+    ("stampede", "TWIST: something is mid-stampede in the background (dogs, office chairs, shopping carts - fit the world); nobody reacts."),
+    ("giant-coach", "TWIST: the coach appears twice - at normal size with the athlete AND as a vast presence in the sky or landscape, same face both times."),
+    ("attic-artifact", "TWIST: the picture is a found artifact - worn edges, faded spots, a partial price sticker - as if discovered in an attic."),
+    ("reverse-scale", "TWIST: the athlete is the towering hero of the scene and the coach is tiny, cheering from their shoulder or the stats prop."),
+)
+
+
+# Persona tone: the persona's voice decides whether the artwork mocks or
+# celebrates. A Zen Master should not produce Drill Sergeant mockery.
+_ROAST_TONES = {
+    "roast": (
+        "TONE: this coach ROASTS - the scene playfully mocks the athlete's "
+        "PERFORMANCE (never the person). The coach is clearly landing the joke."
+    ),
+    "celebrate": (
+        "TONE: this coach is warm and supportive - the scene is an admiring, "
+        "heartfelt celebration of the athlete's effort, presented with pride. "
+        "Still spectacular and surprising, never a mockery."
+    ),
+}
+_GENTLE_COACH_HINTS = (
+    "zen", "calm", "gentle", "kind", "warm", "support", "cheer", "butler",
+    "buddy", "mentor", "encourag", "sweet", "positive", "heart",
+)
+
+
+def _coach_tone_key(persona_name, persona_description, persona_tagline):
+    """'celebrate' when the persona reads gentle/supportive, else 'roast'.
+
+    Keyword match is deliberately simple: it nails the built-ins (Zen
+    Master, Cheerleader, British Butler are gentle; Drill Sergeant and
+    Roast Master are not) and gives custom coaches the obvious knob -
+    words like 'calm' or 'kind' in the description switch the tone.
+    """
+    blob = f"{persona_name} {persona_description} {persona_tagline}".lower()
+    if any(hint in blob for hint in _GENTLE_COACH_HINTS):
+        return "celebrate"
+    return "roast"
+
+
+def draw_roast_treatment(avoid=()):
+    """Pick this artwork's look / camera / stat_prop / twist at random.
+
+    ``avoid`` carries the treatment keys of the last few roasts in this
+    challenge, so the Nth picture is as surprising as the first instead
+    of re-rolling a look the group saw yesterday. Twist is skipped
+    entirely ~1 time in 8 - a clean shot is its own surprise.
+    """
+    avoid_keys = set(avoid or ())
+
+    def pick(options, key=lambda item: item):
+        pool = [o for o in options if key(o) not in avoid_keys]
+        return random.choice(pool or list(options))
+
+    twist = "none"
+    if random.random() > 1 / 8:
+        twist = pick(_ROAST_TWISTS, key=lambda item: item[0])[0]
+    return {
+        "look": pick(_ROAST_LOOKS, key=lambda item: item[0])[0],
+        "camera": random.choice(_ROAST_CAMERAS),
+        "stat_prop": pick(_ROAST_STAT_PROPS),
+        "twist": twist,
+    }
+
+
+def _invent_text(lines, *, temperature: float, max_tokens: int = 120) -> Optional[str]:
+    """One small creative chat completion, or None on any failure.
+
+    Shared by the twist inventor and the coach-appearance inventor.
+    Strips <think> blocks and wrapping quotes; garbage/short answers and
+    provider hiccups all degrade to None. Never raises.
+    """
+    client, config, error = _resolved_client(timeout=15, max_retries=0)
+    if client is None:
+        return None
+    try:
+        response = client.chat.completions.create(
+            model=config["model"],
+            messages=[{"role": "user", "content": "\n".join(lines)}],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **_minimax_extra_body(config),
+        )
+        raw = (response.choices[0].message.content or "").strip()
+    except Exception as exc:  # noqa: BLE001 - provider hiccups are fine
+        logger.info("Drill Instructor invention failed (%s): %s", type(exc).__name__, str(exc)[:200])
+        return None
+    # Reasoning models may leak a <think> block - never feed that onward.
+    raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip().strip('"').strip()
+    if len(raw) < 12:
+        return None
+    return raw[:300]
+
+
+def invent_roast_twist(*, persona_name: str, persona_description: str = "",
+                       persona_tagline: str = "", sport_type: str = "",
+                       workout_summary: str = "", look: str = "") -> Optional[str]:
+    """One-off visual twist invented by the chat model, or None.
+
+    Fixed twist lists go stale no matter how long they are - the real
+    surprise is a twist nobody (including us) pre-wrote. Built from the
+    persona, the sport and the chosen look, in the persona's tone. Any
+    failure (no key, outage, empty/garbage answer) returns None and the
+    caller falls back to the curated list. Never raises.
+    """
+    coach = " ".join((persona_name or "the coach").split())[:60] or "the coach"
+    vibe = (persona_description or persona_tagline or "").strip()[:200]
+    tone_key = _coach_tone_key(persona_name, persona_description, persona_tagline)
+    tone_hint = (
+        "wondrous, kind and celebratory"
+        if tone_key == "celebrate"
+        else "absurd and mocking (of the PERFORMANCE, never the person)"
+    )
+    lines = [
+        f"Invent ONE visual surprise for a picture edit starring coach \"{coach}\" "
+        "and an athlete, set in the coach's signature world.",
+    ]
+    if vibe:
+        lines.append(f"The coach's personality: {vibe}")
+    if sport_type:
+        lines.append(f"The sport: {sport_type}.")
+    if workout_summary:
+        lines.append(f"The workout being shown off: {workout_summary}.")
+    if look:
+        lines.append(f"The picture's visual style is \"{look}\" - the twist must work in that style.")
+    lines.append(
+        f"The twist is {tone_hint}. Examples of the SHAPE (do not reuse these): "
+        "frozen time, the wrong season invading, one comically oversized object."
+    )
+    lines.append(
+        "Rules: one or two short sentences, concrete and drawable; no letters or "
+        "words inside the twist; it must never change the coach's face, the "
+        "athlete's face, or the stats object; never mock the athlete's body or "
+        "identity. Answer with ONLY the twist."
+    )
+    return _invent_text(lines, temperature=1.0)
+
+
+def invent_coach_appearance(*, persona_name: str, persona_description: str = "",
+                            persona_tagline: str = "", persona_avatar: str = "") -> Optional[str]:
+    """The coach's canonical full-body look, invented once by the chat model.
+
+    The persona portrait is a headshot: without guidance the edit model
+    re-invents the coach's build and outfit on every call, so the same
+    coach looks like a different person below the chin in each roast.
+    This description is invented once and cached by the caller, giving
+    every artwork the same body under the (locked) face. None on any
+    failure - the caller then falls back to the plain world/vibe hint.
+    """
+    coach = " ".join((persona_name or "the coach").split())[:60] or "the coach"
+    vibe = (persona_description or persona_tagline or "").strip()[:200]
+    lines = [
+        f"Describe the full-body look of the fictional coach \"{coach}\" for an image generator.",
+    ]
+    if vibe:
+        lines.append(f"Personality and world: {vibe}")
+    if persona_avatar:
+        lines.append(f"Visual theme: {persona_avatar}.")
+    lines.append(
+        "Two to three short sentences: build, posture, signature outfit, footwear, "
+        "and one signature accessory. Concrete and drawable, matching the coach's "
+        "world. Do NOT describe the face or head - those come from a photo. "
+        "Answer with ONLY the description."
+    )
+    return _invent_text(lines, temperature=0.7)
+
+
+def _roast_twist_line(twist: str, custom_twist: str = "") -> Optional[str]:
+    """The TWIST directive for one artwork, or None for a clean shot.
+
+    A free-form ``custom_twist`` (LLM-invented per roast) wins over the
+    list; ``twist="none"`` only skips the list, never a custom twist.
+    """
+    custom = " ".join(str(custom_twist or "").split()).strip()
+    if custom:
+        if custom.upper().startswith("TWIST:"):
+            custom = custom[6:].strip()
+        return "TWIST: " + custom[:300]
+    if twist == "none":
+        return None
+    _key, line = _pinned_or_choice(_ROAST_TWISTS, twist)
+    return line
+
+
 def build_roast_image_prompt(*, persona_name: str, persona_description: str = "",
                              persona_tagline: str = "", persona_avatar: str = "",
                              caption: str = "", workout_summary: str = "",
                              sport_type: str = "", has_coach_portrait: bool = False,
                              look: str = "", camera: str = "",
-                             stat_prop: str = "") -> str:
-    """Edit: coach world + coach face + stats, with a surprise visual look.
+                             stat_prop: str = "", twist: str = "", tone: str = "",
+                             custom_twist: str = "", coach_appearance: str = "",
+                             body_reference_count: int = 0) -> str:
+    """Edit: coach world + coach face + stats, with a surprise treatment.
 
     Image 1 is the posted photo. Image 2 (when ``has_coach_portrait``) is
     a face lock. The environment is the same invented coach world as Echo
     art. Workout stats are a physical object the coach is showing off.
-    Everything else — medium, camera, lighting — is picked per roast so
-    the next picture is a surprise. Pass ``look`` / ``camera`` /
-    ``stat_prop`` to pin a treatment (tests); otherwise they are random.
+    Everything else — medium, camera, tone, twist — is picked per roast
+    so the next picture is a surprise. The persona's personality sets the
+    TONE: a gentle coach celebrates, a savage one roasts. Pass ``look`` /
+    ``camera`` / ``stat_prop`` / ``twist`` / ``tone`` to pin a treatment
+    (tests, and the no-repeat draw in tasks); otherwise they are random.
+    ``twist="none"`` explicitly skips the twist.
     """
     coach = " ".join((persona_name or "the coach").split())[:60] or "the coach"
     world = coach_echo_world(
@@ -858,21 +1127,29 @@ def build_roast_image_prompt(*, persona_name: str, persona_description: str = ""
     look_key, look_line = _pinned_or_choice(_ROAST_LOOKS, look)
     camera_line = _pinned_or_choice(_ROAST_CAMERAS, camera)
     prop = _pinned_or_choice(_ROAST_STAT_PROPS, stat_prop)
+    tone_key = tone if tone in _ROAST_TONES else _coach_tone_key(
+        persona_name, persona_description, persona_tagline,
+    )
     parts = [
-        "Edit IMAGE 1, the athlete's photo, into a roast masterpiece.",
+        "Edit IMAGE 1, the athlete's photo, into a spectacular, surprising artwork "
+        "starring them and their coach.",
         "This is NOT a phone filter, NOT a generic gym, NOT a collage, NOT a floating HUD.",
         "Constants (never change these): the coach's environment, the coach's face, "
-        "and the workout stats as a real object in the shot. "
+        "the athlete's face, and the workout stats as a real object in the shot. "
         "Everything else is a SURPRISE — a different visual treatment each time.",
         f"COACH WORLD (the environment for coach \"{coach}\" — keep this place, "
         f"its architecture, weather, and signature props): {world}",
         "Render that environment THROUGH the LOOK. A photoreal LOOK photographs "
         "the place as if it exists; an illustrated LOOK paints the same place. "
         "Do not default to a comic splash page or movie poster unless the LOOK says so.",
-        f"This roast's treatment is \"{look_key}\". Commit fully to that look — "
+        f"This artwork's treatment is \"{look_key}\". Commit fully to that look — "
         "do not mix it with another style.",
         look_line,
         camera_line,
+        "USE THE PHOTO: whatever IMAGE 1 actually shows is your raw material - "
+        "its location, weather, time of day, clothing, gear, and anything odd "
+        "in the background. Weave at least one real detail from IMAGE 1 into "
+        "the scene, so this picture could only have been made from THIS photo.",
     ]
     if sport_type:
         scene = echo_sport_scene(sport_type)
@@ -881,15 +1158,34 @@ def build_roast_image_prompt(*, persona_name: str, persona_description: str = ""
             f"Photoreal LOOK = a real version of this sport in the coach's environment; "
             f"illustrated LOOK = stylize it. It must still clearly read as {sport_type}."
         )
+    parts.append(_ROAST_TONES[tone_key])
+    twist_line = _roast_twist_line(twist, custom_twist)
+    if twist_line:
+        parts.append(
+            twist_line + " Commit to the twist, but never let it break the "
+            "constants above (world, faces, stats object)."
+        )
     parts.extend([
         f"The coach \"{coach}\" MUST be clearly visible in that world with the athlete "
-        "(coaching them, pointing, holding a prop, mid-roast). "
-        "Match the coach's clothing and vibe to the world. The coach is the one landing the joke.",
+        "(coaching them, pointing, holding a prop, celebrating or teasing). "
+        "Match the coach's clothing and vibe to the world.",
         "Keep the athlete's face from IMAGE 1 clearly recognizable. Do not "
-        "beautify, distort, swap, or replace the athlete. Roast the PERFORMANCE — "
-        "never mock body, appearance, or identity. The group laughs WITH them.",
+        "beautify, distort, swap, or replace the athlete. Whatever the tone, "
+        "never mock body, appearance, or identity - the group laughs WITH them.",
     ])
     parts.append(coach_face_lock_clause(coach, has_coach_portrait))
+    if body_reference_count > 0:
+        # Real body photos beat the invented body - and they sit after
+        # the portrait (IMAGE 2) when one is attached.
+        start = 3 if has_coach_portrait else 2
+        parts.append(coach_body_lock_clause(coach, start, body_reference_count))
+    else:
+        appearance = " ".join(str(coach_appearance or "").split()).strip()
+        if appearance:
+            parts.append(
+                f"COACH BODY: the face reference only shows the head. Extend the coach "
+                f"into a full person with EXACTLY this look in every artwork: {appearance[:300]}"
+            )
     if workout_summary:
         parts.append(
             "THE JOKE: these workout stats are a physical object in the coach's world, "
@@ -1103,17 +1399,23 @@ def build_echo_art_prompt(*, title: str, narrative: str = "", sport_type: str = 
 
 
 def build_roast_caption_prompt(*, competition_name: str, author_first_name: str, caption: str = "") -> str:
-    """One-liner the coach posts together with the roasted image."""
+    """One-liner the coach posts together with the remixed image.
+
+    Deliberately tone-neutral: the persona's own voice decides whether
+    the line is a warm celebration or a savage roast.
+    """
     parts = [
         f"Competition: {competition_name}",
-        f"Situation: you just posted a remixed picture of @{author_first_name}'s photo as a playful roast.",
+        f"Situation: you just posted a picture of @{author_first_name}'s photo, "
+        "remixed into a spectacular artwork starring you and them.",
     ]
     if caption:
         parts.append(f"Their original caption: \"{caption[:200]}\"")
     parts.append(
         "Write one short line (max 160 chars) in your persona's voice "
-        f"presenting your masterpiece and addressing @{author_first_name} by "
-        "their @FirstName token. Never invent other names."
+        f"presenting the picture and addressing @{author_first_name} by "
+        "their @FirstName token. Stay true to YOUR personality - a kind "
+        "coach celebrates, a savage one roasts. Never invent other names."
     )
     parts.append("Write your line now.")
     return "\n".join(parts)
@@ -1231,6 +1533,56 @@ def build_group_push_prompt(*, competition_name: str, participant_first_names, l
         "above instead of reciting it. Never invent other names."
     )
     parts.append("Write your message now.")
+    return "\n".join(parts)
+
+
+def build_daily_briefing_prompt(*, competition_name: str, topic: str, previous_briefings=None) -> str:
+    """Compose the user-message for the owner-defined daily briefing.
+
+    The challenge admin decides WHAT the coach talks about every morning
+    (snow levels, a route of the day, a nutrition focus...); the persona
+    decides HOW it sounds. The briefing is a continuing arc, not a daily
+    reset: previous briefings are included and the coach must evolve its
+    take (a third day without snow should worry it more than the first).
+    Honesty guardrail: the model has no live data feed, so it must never
+    invent today's numbers - when the topic needs current facts it says so
+    in persona and turns it into the day's plan.
+    """
+    clean_topic = " ".join(str(topic or "").split())[:400]
+    parts = [
+        f"Competition: {competition_name}",
+        f"The challenge admin gave you this daily briefing topic: \"{clean_topic}\".",
+        "Every morning you post one message about this topic, in your "
+        "persona's voice.",
+        "Honesty rule: you have no live data feed. If the topic needs "
+        "current facts you cannot know (today's weather, snow levels, "
+        "results, news), say plainly that you can't check them right now - "
+        "in your persona's style - and turn it into the day's plan or a "
+        "call to action instead. NEVER invent measurements, numbers or "
+        "forecasts.",
+    ]
+    briefings = [b for b in (previous_briefings or []) if b]
+    if briefings:
+        parts.append(
+            "Your previous briefings on this topic, newest first: "
+            + " | ".join(f"\"{b[:160]}\"" for b in briefings[:4])
+        )
+        parts.append(
+            "CONTINUE the story from those briefings - this is a running "
+            "arc, not a daily reset. If the situation has not changed "
+            "(still no snow, still the same lull), your reaction must "
+            "EVOLVE in your persona's style: growing worry, impatience, "
+            "gallows humour, fresh hope - a third bad day should read "
+            "differently from the first. Never restate yesterday's take."
+        )
+    else:
+        parts.append("This is your FIRST briefing on this topic - set the scene.")
+    parts.append(
+        "Write one short briefing (max 280 chars) in your persona's voice. "
+        "It must clearly be about the admin's topic. No @mentions unless "
+        "the topic itself names someone."
+    )
+    parts.append("Write your briefing now.")
     return "\n".join(parts)
 
 

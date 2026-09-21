@@ -26,6 +26,7 @@ from django.utils import timezone
 
 from workout_challenge.celery import app, is_task_already_executing
 from workouts.models import Workout, find_duplicate_workout
+from workouts.sport_types import normalize_sport_type
 from .token_crypto import decrypt_token, encrypt_token
 
 logger = logging.getLogger(__name__)
@@ -104,83 +105,19 @@ def get_client_for_user(user):
 # Activity mapping
 # ---------------------------------------------------------------------------
 
-GARMIN_SPORT_MAP = {
-    "running": "Run",
-    "trail_running": "TrailRun",
-    "track_running": "Run",
-    "treadmill_running": "VirtualRun",
-    "indoor_running": "VirtualRun",
-    "cycling": "Ride",
-    "e_bike": "EBikeRide",
-    "eBike": "EBikeRide",
-    "gravel_cycling": "GravelRide",
-    "mountain_biking": "MountainBikeRide",
-    "e_mountain_biking": "EMountainBikeRide",
-    "indoor_cycling": "VirtualRide",
-    "virtual_ride": "VirtualRide",
-    "walking": "Walk",
-    "casual_walking": "Walk",
-    "hiking": "Hike",
-    "snowshoeing": "Snowshoe",
-    "swimming": "Swim",
-    "pool_swimming": "Swim",
-    "open_water_swimming": "Swim",
-    "rowing": "Rowing",
-    "indoor_rowing": "VirtualRow",
-    "kayaking": "Kayaking",
-    "canoeing": "Canoeing",
-    "stand_up_paddleboarding": "StandUpPaddling",
-    "surfing": "Surfing",
-    "windsurfing": "Windsurf",
-    "kitesurfing": "Kitesurf",
-    "sailing": "Sail",
-    "resort_skiing": "AlpineSki",
-    "resort_skiing_snowboarding": "AlpineSki",
-    "backcountry_skiing": "BackcountrySki",
-    "cross_country_skiing": "NordicSki",
-    "skate_skiing": "NordicSki",
-    "snowboarding": "Snowboard",
-    "ice_skating": "IceSkate",
-    "inline_skating": "InlineSkate",
-    "skateboarding": "Skateboard",
-    "elliptical": "Elliptical",
-    "stair_climbing": "StairStepper",
-    "stair_stepper": "StairStepper",
-    "indoor_cardio": "HighIntensityIntervalTraining",
-    "hiit": "HighIntensityIntervalTraining",
-    "crossfit": "Crossfit",
-    "strength_training": "WeightTraining",
-    "pilates": "Pilates",
-    "yoga": "Yoga",
-    "rock_climbing": "RockClimbing",
-    "bouldering": "RockClimbing",
-    "soccer": "Soccer",
-    "squash": "Squash",
-    "badminton": "Badminton",
-    "tennis": "Tennis",
-    "table_tennis": "TableTennis",
-    "pickleball": "Pickleball",
-    "padel": "Padel",
-    "racquetball": "Racquetball",
-    "golf": "Golf",
-    "wheelchair": "Wheelchair",
-    "boxing": "Boxing",
-    "kickboxing": "Kickboxing",
-    "muay_thai": "MuayThai",
-    "martial_arts": "MartialArts",
-    "mixed_martial_arts": "MartialArts",
-    "mma": "MartialArts",
-    "basketball": "Basketball",
-    "volleyball": "Volleyball",
-    "cricket": "Cricket",
-    "dance": "Dance",
-    "dancing": "Dance",
-}
-
-
 def map_sport_type(activity: dict) -> str:
+    """Garmin typeKey -> app sport type via the SHARED normaliser
+    (workouts.sport_types): Garmin, Health Connect and Strava must land
+    the same physical activity on the same sport type, or the Echo
+    families drift apart per source."""
     type_key = ((activity.get("activityType") or {}).get("typeKey") or "").lower()
-    return GARMIN_SPORT_MAP.get(type_key, "Workout")
+    mapped, matched = normalize_sport_type(type_key)
+    if not matched and type_key:
+        # Unknown types fall back to the generic bucket - log them so a
+        # new or renamed Garmin profile is visible (the 'cardio' gap
+        # went unnoticed for months because the fallback was silent).
+        logger.info("Garmin: unmapped activity type %r - imported as generic Workout", type_key)
+    return mapped
 
 
 # Garmin feed entries that are NOT workouts: some devices/loggers push

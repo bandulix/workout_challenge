@@ -373,6 +373,73 @@ class PersonaAdminPermissionTests(TestCase):
             response.json()["profile_picture"],
         )
 
+    def test_creator_can_upload_and_clear_body_pictures(self):
+        own = DrillInstructorPersona.objects.create(
+            name="Body Coach", system_prompt="Stand tall.", created_by=self.regular,
+        )
+        self.client.force_authenticate(self.regular)
+        listed = self.client.get(f"/api/drill-instructor/persona/{own.id}/").json()
+        self.assertIsNone(listed["body_picture_1"])
+        self.assertIsNone(listed["body_picture_3"])
+
+        upload = SimpleUploadedFile("body.png", PNG_1PX, content_type="image/png")
+        patched = self.client.patch(
+            f"/api/drill-instructor/persona/{own.id}/",
+            {"body_picture_1_upload": upload},
+            format="multipart",
+        )
+        self.assertEqual(patched.status_code, 200, patched.content)
+        body_url = patched.json()["body_picture_1"]
+        self.assertEqual(body_url, f"/api/drill-instructor/persona/{own.id}/body/1/")
+        self.assertNotIn("/media/", body_url)
+        own.refresh_from_db()
+        self.assertTrue(own.body_picture_1.name.startswith("persona_body_pics/"))
+
+        fetched = self.client.get(body_url)
+        self.assertEqual(fetched.status_code, 200)
+        self.assertIn("private", fetched["Cache-Control"])
+
+        self.client.logout()
+        self.assertEqual(self.client.get(body_url).status_code, 401)
+
+        # Junk is rejected like any other image upload.
+        self.client.force_authenticate(self.regular)
+        junk = SimpleUploadedFile("nope.png", b"not an image", content_type="text/plain")
+        bad = self.client.patch(
+            f"/api/drill-instructor/persona/{own.id}/",
+            {"body_picture_2_upload": junk},
+            format="multipart",
+        )
+        self.assertEqual(bad.status_code, 400)
+        own.refresh_from_db()
+        self.assertFalse(own.body_picture_2)
+
+        cleared = self.client.patch(
+            f"/api/drill-instructor/persona/{own.id}/",
+            {"clear_body_picture_1": True},
+            format="json",
+        )
+        self.assertEqual(cleared.status_code, 200, cleared.content)
+        self.assertIsNone(cleared.json()["body_picture_1"])
+        own.refresh_from_db()
+        self.assertFalse(own.body_picture_1)
+        self.assertEqual(self.client.get(body_url).status_code, 204)
+
+    def test_body_pictures_hidden_from_unrelated_users(self):
+        creator = _user("body-owner@example.com", "Bora")
+        outsider = _user("body-outsider@example.com", "Ozzy")
+        own = DrillInstructorPersona.objects.create(
+            name="Private Body", system_prompt="Hush.", created_by=creator,
+        )
+        own.body_picture_1.save(
+            "body.png", SimpleUploadedFile("body.png", PNG_1PX, content_type="image/png")
+        )
+        url = f"/api/drill-instructor/persona/{own.id}/body/1/"
+        self.client.force_authenticate(creator)
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.client.force_authenticate(outsider)
+        self.assertEqual(self.client.get(url).status_code, 204)  # 404-disguised, no leak
+
     def test_profile_picture_rejects_non_image(self):
         self.client.force_authenticate(self.admin)
         upload = SimpleUploadedFile("coach.txt", b"definitely not an image", content_type="text/plain")
@@ -906,6 +973,190 @@ class PostRandomPushesTests(TestCase):
             self.assertIn("Test Sergeant", message.body)
             self.config.refresh_from_db()
             self.assertEqual(self.config.last_error, "outage")
+
+
+class PostDailyPromptsTests(TestCase):
+    """The owner-defined daily briefing: one persona-voiced morning post
+    per running competition whose admin configured a topic."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "drill_instructor.tasks.post_workout_comment.delay",
+            "custom_user.models.verify_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+
+        llm_patcher = mock.patch(
+            "drill_instructor.tasks.generate_message",
+            return_value=("Corviglia calling, platoon!", None),
+        )
+        self.addCleanup(llm_patcher.stop)
+        self.generate_message = llm_patcher.start()
+
+        # Tests run on UTC and often before 07:00 there - pin the morning
+        # gate open. (test_skips_before_the_morning_window covers the gate.)
+        hour_patcher = mock.patch("drill_instructor.tasks.BRIEFING_NOT_BEFORE_HOUR", 0)
+        self.addCleanup(hour_patcher.stop)
+        hour_patcher.start()
+
+        self.persona = DrillInstructorPersona.objects.create(
+            name="Alpine Sergeant",
+            system_prompt="You bark about mountains.",
+        )
+        self.owner = _user("brief-owner@example.com", "Olivia")
+        self.athlete = _user("brief-athlete@example.com", "Alex")
+        today = timezone.localdate()
+        self.competition = Competition.objects.create(
+            owner=self.owner,
+            name="Ski Cup",
+            start_date=today - datetime.timedelta(days=3),
+            end_date=today + datetime.timedelta(days=4),
+        )
+        self.athlete.my_competitions.add(self.competition)
+        self.config = DrillInstructorConfig.objects.create(
+            competition=self.competition,
+            enabled=True,
+            persona=self.persona,
+            daily_prompt="Snow level at Corviglia",
+        )
+
+    def test_posts_briefing_in_persona_about_the_topic(self):
+        from .tasks import post_daily_prompts
+        result = post_daily_prompts()
+
+        self.assertEqual(result["posted"], 1)
+        message = DrillInstructorMessage.objects.get(config=self.config)
+        self.assertEqual(message.kind, DrillInstructorMessage.KIND_BRIEFING)
+        self.assertEqual(message.body, "Corviglia calling, platoon!")
+        _, kwargs = self.generate_message.call_args
+        self.assertEqual(kwargs["system_prompt"], "You bark about mountains.")
+        self.assertIn("Snow level at Corviglia", kwargs["user_prompt"])
+        # Honesty guardrail: no invented snow numbers.
+        self.assertIn("NEVER invent", kwargs["user_prompt"])
+
+    def test_second_run_same_day_is_idempotent(self):
+        from .tasks import post_daily_prompts
+        post_daily_prompts()
+        result = post_daily_prompts()
+        self.assertEqual(result["posted"], 0)
+        self.assertEqual(DrillInstructorMessage.objects.count(), 1)
+
+    def test_skips_before_the_morning_window(self):
+        from . import tasks
+        with mock.patch.object(tasks, "BRIEFING_NOT_BEFORE_HOUR", 24):
+            result = tasks.post_daily_prompts()
+        self.assertEqual(result["posted"], 0)
+        self.assertEqual(result["note"], "before morning window")
+        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
+
+    def test_skips_when_no_topic_configured(self):
+        from .tasks import post_daily_prompts
+        self.config.daily_prompt = ""
+        self.config.save()
+        result = post_daily_prompts()
+        self.assertEqual(result["posted"], 0)
+        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
+
+    def test_skips_when_instructor_disabled(self):
+        from .tasks import post_daily_prompts
+        self.config.enabled = False
+        self.config.save()
+        result = post_daily_prompts()
+        self.assertEqual(result["posted"], 0)
+        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
+
+    def test_skips_when_competition_not_running(self):
+        from .tasks import post_daily_prompts
+        today = timezone.localdate()
+        self.competition.start_date = today + datetime.timedelta(days=2)
+        self.competition.end_date = today + datetime.timedelta(days=9)
+        self.competition.save()
+        result = post_daily_prompts()
+        self.assertEqual(result["posted"], 0)
+        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
+
+    def test_yesterdays_briefing_feeds_todays_prompt(self):
+        """The arc: the model sees its previous briefing on this topic and
+        is told to evolve it, not repeat it (0 snow day after 0 snow day ->
+        growing worry)."""
+        from .tasks import post_daily_prompts
+        DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_BRIEFING,
+            body="Still no snow at Corviglia. Day one of patience.",
+            posted_at=timezone.now() - datetime.timedelta(days=1),
+        )
+        result = post_daily_prompts()
+        self.assertEqual(result["posted"], 1)
+        _, kwargs = self.generate_message.call_args
+        self.assertIn("Still no snow at Corviglia. Day one of patience.", kwargs["user_prompt"])
+        self.assertIn("CONTINUE the story", kwargs["user_prompt"])
+
+    def test_fallback_body_when_llm_unavailable(self):
+        from .tasks import post_daily_prompts
+        self.generate_message.return_value = (None, "outage")
+        result = post_daily_prompts()
+        self.assertEqual(result["posted"], 1)
+        message = DrillInstructorMessage.objects.get(config=self.config)
+        self.assertIn("Alpine Sergeant", message.body)
+        self.assertIn("Snow level at Corviglia", message.body)
+
+    def test_periodic_task_seeded(self):
+        from django_celery_beat.models import PeriodicTask
+        task = PeriodicTask.objects.get(name="drill_instructor_daily_prompt")
+        self.assertEqual(task.task, "drill_instructor.tasks.post_daily_prompts")
+        self.assertTrue(task.enabled)
+        self.assertEqual(task.crontab.minute, "*/30")
+
+    def test_config_api_round_trips_the_topic(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.owner)
+        response = self.client.patch(
+            f"/api/drill-instructor/config/{self.config.id}/",
+            {"daily_prompt": "Wind on the glacier and layering advice"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.daily_prompt, "Wind on the glacier and layering advice")
+        self.assertEqual(response.json()["daily_prompt"], "Wind on the glacier and layering advice")
+
+
+class DailyBriefingPromptTests(TestCase):
+    """The prompt builder: the admin's topic is flattened, the honesty
+    guardrail is always present, and history slots before the instruction."""
+
+    def test_includes_topic_and_honesty_rule(self):
+        from .llm_client import build_daily_briefing_prompt
+        prompt = build_daily_briefing_prompt(
+            competition_name="Ski Cup",
+            topic="Snow level\nat Corviglia   please",
+        )
+        self.assertIn("Ski Cup", prompt)
+        self.assertIn('"Snow level at Corviglia please"', prompt)
+        self.assertIn("NEVER invent", prompt)
+        self.assertIn("persona's voice", prompt)
+
+    def test_previous_briefings_drive_the_arc(self):
+        from .llm_client import build_daily_briefing_prompt
+        prompt = build_daily_briefing_prompt(
+            competition_name="Ski Cup",
+            topic="snow",
+            previous_briefings=["Day 2: still no snow. Patience wears thin.", "Day 1: snow report"],
+        )
+        self.assertIn("previous briefings", prompt)
+        self.assertIn("Day 2: still no snow. Patience wears thin.", prompt)
+        self.assertIn("CONTINUE the story", prompt)
+        self.assertIn("EVOLVE", prompt)
+        self.assertLess(prompt.index("Day 2:"), prompt.index("Write your briefing now"))
+
+    def test_first_briefing_sets_the_scene(self):
+        from .llm_client import build_daily_briefing_prompt
+        prompt = build_daily_briefing_prompt(competition_name="Ski Cup", topic="snow")
+        self.assertIn("FIRST briefing", prompt)
+        self.assertNotIn("CONTINUE the story", prompt)
 
 
 class DrawPushPlanTests(TestCase):
@@ -1937,6 +2188,81 @@ class PhotoPostTests(TestCase):
         self.assertEqual(roast_args[0], photo_reply.image.path)
         self.assertEqual(roast_args[2], "grok-imagine-image")
 
+    def test_roast_treatment_draw_never_repeats_recent_looks(self):
+        # The surprise lives in variety: the per-challenge memory makes
+        # back-to-back roasts pick a look/prop the group hasn't just seen.
+        from django.core.cache import cache
+        from .tasks import _draw_roast_treatment
+        cache.delete(f"drill-roast-treatments:{self.config.id}")
+        first = _draw_roast_treatment(self.config)
+        recent = cache.get(f"drill-roast-treatments:{self.config.id}")
+        self.assertIn(first["look"], recent)
+        self.assertIn(first["stat_prop"], recent)
+        second = _draw_roast_treatment(self.config)
+        self.assertNotEqual(second["look"], first["look"])
+        self.assertNotEqual(second["stat_prop"], first["stat_prop"])
+        self.assertLessEqual(len(cache.get(f"drill-roast-treatments:{self.config.id}")), 9)
+
+    def test_roast_locks_the_body_to_uploaded_full_body_photos(self):
+        # Self-created coaches with full-body uploads: the edit call gets
+        # the photos as extra references, the prompt locks the body to
+        # them, and the invented appearance is skipped entirely.
+        from .tasks import post_reply_reaction
+        self.persona.body_picture_1.save(
+            "body1.png", SimpleUploadedFile("body1.png", PNG_1PX, content_type="image/png")
+        )
+        self.persona.body_picture_2.save(
+            "body2.png", SimpleUploadedFile("body2.png", PNG_1PX, content_type="image/png")
+        )
+        photo_reply = self._photo_message()
+        photo_reply.parent = self._coach_root()
+        photo_reply.save()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image"), \
+                mock.patch("drill_instructor.tasks.max_roast_reference_images", return_value=3), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - framed it!", None)), \
+                mock.patch("drill_instructor.tasks.invent_coach_appearance") as invent, \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(PNG_1PX, None)) as roast:
+            result = post_reply_reaction(photo_reply.id)
+        self.assertIsNotNone(result["roast_id"])
+        invent.assert_not_called()  # real body photos beat the invented body
+        prompt = roast.call_args[0][1]
+        self.assertIn("BODY LOCK", prompt)
+        self.assertIn("IMAGE 2", prompt)
+        extras = roast.call_args.kwargs["extra_image_paths"]
+        self.assertEqual(
+            sorted(extras),
+            sorted([self.persona.body_picture_1.path, self.persona.body_picture_2.path]),
+        )
+
+    def test_roast_body_photos_respect_the_provider_reference_cap(self):
+        # xAI-style endpoints take only 2 extras total; the portrait
+        # (face lock) wins the slots, body photos get what is left.
+        from .tasks import post_reply_reaction
+        self.persona.profile_picture.save(
+            "face.png", SimpleUploadedFile("face.png", PNG_1PX, content_type="image/png")
+        )
+        self.persona.body_picture_1.save(
+            "body1.png", SimpleUploadedFile("body1.png", PNG_1PX, content_type="image/png")
+        )
+        self.persona.body_picture_2.save(
+            "body2.png", SimpleUploadedFile("body2.png", PNG_1PX, content_type="image/png")
+        )
+        photo_reply = self._photo_message()
+        photo_reply.parent = self._coach_root()
+        photo_reply.save()
+        with mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image"), \
+                mock.patch("drill_instructor.tasks.max_roast_reference_images", return_value=2), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - framed it!", None)), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(PNG_1PX, None)) as roast:
+            post_reply_reaction(photo_reply.id)
+        extras = roast.call_args.kwargs["extra_image_paths"]
+        self.assertEqual(extras, [self.persona.profile_picture.path, self.persona.body_picture_1.path])
+        prompt = roast.call_args[0][1]
+        self.assertIn("FACE LOCK", prompt)
+        self.assertIn("IMAGE 3 is a real full-body photo", prompt)
+
     def test_photo_reply_roasts_without_chat_vision(self):
         from .tasks import post_reply_reaction
         photo_reply = self._photo_message()
@@ -2251,6 +2577,53 @@ class VisionCapabilityProbeTests(TestCase):
         self.assertFalse(second)
         create.assert_called_once()
 
+    def test_key_rotation_reprobes(self):
+        # The cache key carries a fingerprint of the API key: a rotated
+        # key must not inherit the old key's cached verdict.
+        from . import llm_client
+
+        class FakeBadRequest(Exception):
+            status_code = 400
+
+        client = mock.Mock()
+        create = client.chat.completions.create
+        create.side_effect = [FakeBadRequest("old key rejected"), mock.Mock()]
+        base_config = {
+            "provider": "custom",
+            "base_url": "https://llm.example.com/v1",
+            "model": "some-model",
+        }
+        with mock.patch.object(llm_client, "_resolved_client",
+                               return_value=(client, {**base_config, "api_key": "old-key"}, None)):
+            self.assertFalse(llm_client.check_vision_capability())
+        with mock.patch.object(llm_client, "_resolved_client",
+                               return_value=(client, {**base_config, "api_key": "new-key"}, None)):
+            self.assertTrue(llm_client.check_vision_capability())
+        self.assertEqual(create.call_count, 2)  # rotation forced a fresh probe
+
+    def test_non_400_4xx_is_retried_soon(self):
+        # 402/404 etc. are billing/auth/config problems, not "the model
+        # can't see" - cache only briefly so the feature recovers on its
+        # own once the underlying problem is fixed.
+        from . import llm_client
+
+        class FakePaymentRequired(Exception):
+            status_code = 402
+
+        client = mock.Mock()
+        client.chat.completions.create.side_effect = FakePaymentRequired("quota exceeded")
+        config = {
+            "provider": "custom",
+            "api_key": "test-key",
+            "base_url": "https://llm.example.com/v1",
+            "model": "some-model",
+        }
+        with mock.patch.object(llm_client, "_resolved_client", return_value=(client, config, None)), \
+                mock.patch.object(llm_client.cache, "set", wraps=llm_client.cache.set) as cache_set:
+            self.assertFalse(llm_client.check_vision_capability())
+        cache_set.assert_called_once()
+        self.assertEqual(cache_set.call_args[0][2], llm_client._VISION_RETRY_TTL)
+
     def test_probe_sends_an_image_content_part(self):
         _, _, create = self._run_probe()
         content = create.call_args[1]["messages"][0]["content"]
@@ -2318,6 +2691,18 @@ class ImageEditCapabilityProbeTests(TestCase):
         self.assertIsNone(self._run(client, self._config()))
         self.assertIsNone(self._run(client, self._config()))  # cached
         client.images.edit.assert_called_once()  # custom provider: only the chat model itself
+
+    def test_auth_failure_does_not_fall_through_to_next_model(self):
+        # A 402/404 is a billing/auth/config problem, not "this model
+        # can't edit" - stop probing and retry soon, don't burn through
+        # the fallback candidates.
+        class FakePaymentRequired(Exception):
+            status_code = 402
+
+        client = mock.Mock()
+        client.images.edit.side_effect = FakePaymentRequired("quota exceeded")
+        self.assertIsNone(self._run(client, self._config(provider="openai")))
+        client.images.edit.assert_called_once()
 
     def test_transient_failure_retries_soon(self):
         client = mock.Mock()
@@ -2533,6 +2918,99 @@ class RoastImagePromptTests(TestCase):
         without = self._build()
         self.assertIn("Do not invent extra slogans", without)
 
+    def test_gentle_coach_celebrates_instead_of_roasting(self):
+        prompt = self._build(persona_name="Zen Master")
+        self.assertIn("TONE", prompt)
+        self.assertIn("celebration", prompt.lower())
+        self.assertNotIn("playfully mocks", prompt)
+
+    def test_savage_coach_keeps_the_roast_tone(self):
+        prompt = self._build(persona_name="Roast Master")
+        self.assertIn("playfully mocks", prompt)
+
+    def test_tone_pin_overrides_persona_keywords(self):
+        prompt = self._build(persona_name="Roast Master", tone="celebrate")
+        self.assertIn("celebration", prompt.lower())
+        self.assertNotIn("playfully mocks", prompt)
+
+    def test_twist_is_pinned_into_the_prompt(self):
+        prompt = self._build(twist="gravity-off")
+        self.assertIn("TWIST", prompt)
+        self.assertIn("gravity", prompt.lower())
+
+    def test_twist_none_omits_the_twist(self):
+        prompt = self._build(twist="none")
+        self.assertNotIn("TWIST", prompt)
+
+    def test_prompt_riffs_on_the_actual_photo(self):
+        prompt = self._build()
+        self.assertIn("IMAGE 1", prompt)
+        self.assertIn("could only have been made from THIS photo", prompt)
+
+    def test_custom_twist_wins_and_is_sanitized(self):
+        messy = "TWIST:  the coach's megaphone\n\n is  raining  confetti  "
+        prompt = self._build(twist="none", custom_twist=messy)
+        self.assertIn("TWIST: the coach's megaphone is raining confetti", prompt)
+
+    def test_custom_twist_is_capped(self):
+        prompt = self._build(custom_twist=("giant banana " * 60))
+        self.assertIn("TWIST:", prompt)
+        self.assertLessEqual(len(prompt), 3900)
+
+    def test_coach_appearance_adds_the_body_clause(self):
+        prompt = self._build(coach_appearance="broad shoulders, a neon tracksuit, combat boots")
+        self.assertIn("COACH BODY", prompt)
+        self.assertIn("neon tracksuit", prompt)
+        self.assertNotIn("COACH BODY", self._build())
+
+    def test_body_lock_replaces_the_invented_body(self):
+        # Real full-body photos win over the invented appearance and are
+        # numbered after the portrait (IMAGE 2).
+        prompt = self._build(has_coach_portrait=True, body_reference_count=2,
+                             coach_appearance="ignored body")
+        self.assertIn("BODY LOCK", prompt)
+        self.assertIn("IMAGE 3", prompt)
+        self.assertIn("IMAGE 4", prompt)
+        self.assertNotIn("COACH BODY", prompt)
+        # Without a portrait the body photos start at IMAGE 2.
+        prompt = self._build(has_coach_portrait=False, body_reference_count=1)
+        self.assertIn("BODY LOCK", prompt)
+        self.assertIn("IMAGE 2 is a real full-body photo", prompt)
+
+    def test_draw_avoids_recently_used_treatments(self):
+        from .llm_client import _ROAST_LOOKS, _ROAST_STAT_PROPS, draw_roast_treatment
+        avoid = [key for key, _line in _ROAST_LOOKS[:-1]] + list(_ROAST_STAT_PROPS[:-1])
+        for _ in range(5):
+            treatment = draw_roast_treatment(avoid=avoid)
+            self.assertEqual(treatment["look"], _ROAST_LOOKS[-1][0])
+            self.assertEqual(treatment["stat_prop"], _ROAST_STAT_PROPS[-1])
+
+    def test_draw_returns_known_treatment_keys(self):
+        from .llm_client import _ROAST_LOOKS, _ROAST_STAT_PROPS, _ROAST_TWISTS, draw_roast_treatment
+        twist_keys = {key for key, _line in _ROAST_TWISTS} | {"none"}
+        for _ in range(10):
+            treatment = draw_roast_treatment()
+            self.assertIn(treatment["look"], {key for key, _line in _ROAST_LOOKS})
+            self.assertIn(treatment["stat_prop"], _ROAST_STAT_PROPS)
+            self.assertIn(treatment["twist"], twist_keys)
+            self.assertTrue(treatment["camera"].startswith("CAMERA:"))
+
+    def test_every_twist_keeps_constants_and_fits_the_edit_cap(self):
+        from .llm_client import _ROAST_TWISTS
+        for key, _line in _ROAST_TWISTS:
+            prompt = self._build(
+                twist=key,
+                has_coach_portrait=True,
+                workout_summary="45 min Run · 5.00 km · 420 kcal",
+                sport_type="Run",
+                caption="leg day!",
+            )
+            self.assertIn("TWIST", prompt)
+            self.assertIn("COACH WORLD", prompt)
+            self.assertIn("FACE LOCK", prompt)
+            self.assertIn("THE JOKE", prompt)
+            self.assertLessEqual(len(prompt), 3900, key)
+
     def test_every_look_keeps_world_face_and_stats_and_fits_the_edit_cap(self):
         from .llm_client import _ROAST_LOOKS
         for key, _line in _ROAST_LOOKS:
@@ -2548,6 +3026,94 @@ class RoastImagePromptTests(TestCase):
             self.assertIn("THE JOKE", prompt)
             self.assertIn("45 min Run · 5.00 km · 420 kcal", prompt)
             self.assertLessEqual(len(prompt), 3900, key)
+
+
+class RoastTwistInventionTests(TestCase):
+    """invent_roast_twist: one-off twists from the chat model, or None."""
+
+    def _run(self, content="The track becomes a river of finish-line tape.", side_effect=None):
+        from . import llm_client
+        client = mock.Mock()
+        create = client.chat.completions.create
+        if side_effect is not None:
+            create.side_effect = side_effect
+        else:
+            create.return_value = mock.Mock(
+                choices=[mock.Mock(message=mock.Mock(content=content))],
+            )
+        config = {"provider": "custom", "api_key": "k", "base_url": "https://llm.example.com/v1", "model": "m"}
+        with mock.patch.object(llm_client, "_resolved_client", return_value=(client, config, None)):
+            return llm_client.invent_roast_twist(persona_name="Roast Master"), create
+
+    def test_twist_text_is_returned(self):
+        twist, create = self._run()
+        self.assertEqual(twist, "The track becomes a river of finish-line tape.")
+        create.assert_called_once()
+
+    def test_think_blocks_and_quotes_are_stripped(self):
+        twist, _ = self._run(content='<think>draft</think> "Neon rain falls upward."')
+        self.assertEqual(twist, "Neon rain falls upward.")
+
+    def test_garbage_answer_returns_none(self):
+        twist, _ = self._run(content="ok")
+        self.assertIsNone(twist)
+
+    def test_provider_failure_returns_none(self):
+        twist, _ = self._run(side_effect=ConnectionError("down"))
+        self.assertIsNone(twist)
+
+    def test_no_client_returns_none(self):
+        from . import llm_client
+        with mock.patch.object(llm_client, "_resolved_client", return_value=(None, {}, "no key")):
+            self.assertIsNone(llm_client.invent_roast_twist(persona_name="Roast Master"))
+
+
+class CoachAppearanceTests(TestCase):
+    """invent_coach_appearance + the per-persona cache in tasks."""
+
+    def _run_invent(self, content="Broad build, volt tracksuit, combat boots, a chrome whistle.", side_effect=None):
+        from . import llm_client
+        client = mock.Mock()
+        create = client.chat.completions.create
+        if side_effect is not None:
+            create.side_effect = side_effect
+        else:
+            create.return_value = mock.Mock(
+                choices=[mock.Mock(message=mock.Mock(content=content))],
+            )
+        config = {"provider": "custom", "api_key": "k", "base_url": "https://llm.example.com/v1", "model": "m"}
+        with mock.patch.object(llm_client, "_resolved_client", return_value=(client, config, None)):
+            return llm_client.invent_coach_appearance(persona_name="Drill Sergeant")
+
+    def test_appearance_text_is_returned(self):
+        self.assertEqual(
+            self._run_invent(),
+            "Broad build, volt tracksuit, combat boots, a chrome whistle.",
+        )
+
+    def test_failure_returns_none(self):
+        self.assertIsNone(self._run_invent(side_effect=ConnectionError("down")))
+        self.assertIsNone(self._run_invent(content="nope"))
+
+    def test_tasks_caches_the_appearance_per_persona(self):
+        from django.core.cache import cache
+        from . import tasks
+        persona = mock.Mock(id=4242, name="Drill Sergeant", description="", tagline="", avatar="")
+        cache.delete("drill-coach-appearance:4242")
+        with mock.patch.object(tasks, "invent_coach_appearance", return_value="volt tracksuit") as invent:
+            self.assertEqual(tasks._coach_appearance(persona), "volt tracksuit")
+            self.assertEqual(tasks._coach_appearance(persona), "volt tracksuit")
+        invent.assert_called_once()  # second read served from cache
+
+    def test_tasks_does_not_cache_failures(self):
+        from django.core.cache import cache
+        from . import tasks
+        persona = mock.Mock(id=4343, name="Zen Master", description="", tagline="", avatar="")
+        cache.delete("drill-coach-appearance:4343")
+        with mock.patch.object(tasks, "invent_coach_appearance", side_effect=[None, "linen robe"]) as invent:
+            self.assertIsNone(tasks._coach_appearance(persona))
+            self.assertEqual(tasks._coach_appearance(persona), "linen robe")
+        self.assertEqual(invent.call_count, 2)  # a hiccup just retries next roast
 
 
 class RoastImageGenerationTests(TestCase):
@@ -3288,6 +3854,39 @@ class ArcadeGameTests(TestCase):
         older = next(row for row in response.json() if row["id"] == a.id)
         self.assertIsNotNone(older["last_hot_at"])
 
+    def test_hall_card_counts_thread_reactions(self):
+        # The gallery badge counts the emoji stamps on the roast's
+        # thread (reactions live on activity roots only), not the
+        # hot-or-not votes.
+        from .models import DrillInstructorActivityReact
+        root = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY, body="Strong session.", user=None,
+        )
+        photo = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PHOTO, parent=root, user=self.alex, body="",
+        )
+        roast = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REACTION, parent=photo, body="remix", user=None,
+        )
+        roast.image = "message_pics/r.png"
+        roast.save()
+        lonely = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REACTION, body="no thread", user=None,
+        )
+        lonely.image = "message_pics/l.png"
+        lonely.save()
+        DrillInstructorActivityReact.objects.create(message=root, user=self.alex, emoji="fire")
+        DrillInstructorActivityReact.objects.create(message=root, user=self.nina, emoji="goat")
+        self.client.force_authenticate(self.alex)
+        response = self.client.get(
+            "/api/drill-instructor/message/hall/",
+            {"competition": self.competition.id},
+        )
+        self.assertEqual(response.status_code, 200)
+        cards = {row["id"]: row for row in response.json()}
+        self.assertEqual(cards[roast.id]["react_count"], 2)
+        self.assertEqual(cards[lonely.id]["react_count"], 0)  # no parent: no reactions to count
+
     def test_hall_without_competition_lists_membership_roasts(self):
         roast = DrillInstructorMessage.objects.create(
             config=self.config, kind=DrillInstructorMessage.KIND_REACTION, body="A", user=None,
@@ -3671,9 +4270,12 @@ class LegendEchoTests(TestCase):
         self.assertEqual(echo.status, LegendEcho.STATUS_UNDEFEATED)
         self.assertEqual(echo.holder_id, self.alex.id)
         self.assertGreaterEqual(echo.power, 1)
-        self.assertFalse(DrillInstructorMessage.objects.filter(
+        # The mint is announced in the feed - invisible relics confused
+        # everyone. The line carries the echo's narrative.
+        announcement = DrillInstructorMessage.objects.get(
             config=self.config, kind=DrillInstructorMessage.KIND_ECHO,
-        ).exists())
+        )
+        self.assertEqual(announcement.body, echo.narrative)
         activity = DrillInstructorMessage.objects.create(
             config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
             workout=echo.origin_workout, body="Nice.",
@@ -3766,13 +4368,85 @@ class LegendEchoTests(TestCase):
         echo.refresh_from_db()
         self.assertEqual(echo.holder_id, self.nina.id)
         self.assertEqual(echo.chain_length, 2)
-        self.assertEqual(echo.status, LegendEcho.STATUS_UNDEFEATED)
+        self.assertEqual(echo.defenses, 1)
+        # A relic that changed hands is contested, not untouched.
+        self.assertEqual(echo.status, LegendEcho.STATUS_CONTESTED)
         self.assertGreater(echo.metric_value, 45)
         self.assertIsNone(mint_echo(beat, self.config))
         self.assertTrue(DogTag.objects.filter(user=self.nina, slug="echo_slayer").exists())
-        self.assertFalse(DrillInstructorMessage.objects.filter(
+        # The takeover is called out in the feed.
+        self.assertTrue(DrillInstructorMessage.objects.filter(
             config=self.config, kind=DrillInstructorMessage.KIND_CLAIM,
         ).exists())
+
+    def test_claim_announces_and_pings_both_parties(self):
+        from .echoes import claim_beaten_echoes, mint_echo
+        mint_echo(self._workout(self.alex, minutes=45), self.config)
+        with mock.patch("push_notifications.sender.send_push_to_user") as push:
+            claimed = claim_beaten_echoes(self._workout(self.nina, minutes=60), self.config)
+        self.assertEqual(len(claimed), 1)
+        line = DrillInstructorMessage.objects.get(
+            config=self.config, kind=DrillInstructorMessage.KIND_CLAIM,
+        )
+        self.assertIn("@Nina took @Alex's Run Echo", line.body)
+        self.assertIn("60 min is the mark now", line.body)
+        # The loser learns they lost the relic; the winner gets the mark.
+        self.assertEqual(push.call_count, 2)
+        loser_call, winner_call = push.call_args_list
+        self.assertEqual(loser_call[0][0], self.alex)
+        self.assertIn("took your Run Echo", loser_call[1]["body"])
+        self.assertIn("Take it back", loser_call[1]["body"])
+        self.assertEqual(winner_call[0][0], self.nina)
+        self.assertIn("mark to beat", winner_call[1]["body"])
+
+    def test_three_takeovers_immortalize_the_echo(self):
+        """3-defenses rule: a relic that survives three takeovers turns
+        immortal mid-season; the planter earns the tag right away."""
+        from .echoes import claim_beaten_echoes, mint_echo
+        from .models import DogTag, LegendEcho
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        claim_beaten_echoes(self._workout(self.nina, minutes=60), self.config)
+        echo.refresh_from_db()
+        self.assertEqual(echo.defenses, 1)
+        self.assertEqual(echo.status, LegendEcho.STATUS_CONTESTED)
+        claim_beaten_echoes(self._workout(self.alex, minutes=75), self.config)
+        echo.refresh_from_db()
+        self.assertEqual(echo.defenses, 2)
+        self.assertNotEqual(echo.status, LegendEcho.STATUS_IMMORTAL)
+        claim_beaten_echoes(self._workout(self.nina, minutes=90), self.config)
+        echo.refresh_from_db()
+        self.assertEqual(echo.defenses, 3)
+        self.assertEqual(echo.status, LegendEcho.STATUS_IMMORTAL)
+        self.assertIsNotNone(echo.immortalized_at)
+        self.assertTrue(DogTag.objects.filter(user=self.alex, slug="echo_immortal").exists())
+        immortal_line = DrillInstructorMessage.objects.filter(
+            config=self.config, kind=DrillInstructorMessage.KIND_ECHO,
+        ).order_by("-posted_at").first()
+        self.assertIn("IMMORTAL", immortal_line.body)
+        # Immortal relics are off the board: no more claims.
+        self.assertEqual(claim_beaten_echoes(self._workout(self.alex, minutes=120), self.config), [])
+
+    def test_distance_personal_best_mints(self):
+        """Longest ride ever counts as PB even in shorter time - distance
+        sports compare kilometres, not minutes."""
+        from .echoes import mint_echo
+        self._workout(self.nina, minutes=95, sport="Run")  # burns the Run "first flag"
+        self._workout(self.alex, minutes=40, distance=10, sport="Ride")
+        # 12 km beats the 10 km best; 25 min is under the duration floor,
+        # so only a DISTANCE personal best can mint this.
+        echo = mint_echo(self._workout(self.alex, minutes=25, distance=12, sport="Ride"), self.config)
+        self.assertIsNotNone(echo)
+        self.assertEqual(echo.metric, "distance")
+        self.assertEqual(echo.sport_type, "Ride")
+
+    def test_first_flag_asks_for_a_solid_session(self):
+        """The family's first Echo seeds the board - but only for a solid
+        session (>=40 min), not for the bare 30-minute floor."""
+        from .echoes import mint_echo
+        self.assertIsNone(mint_echo(self._workout(self.alex, minutes=39, sport="Walk"), self.config))
+        echo = mint_echo(self._workout(self.alex, minutes=40, sport="Walk"), self.config)
+        self.assertIsNotNone(echo)
+        self.assertEqual(echo.sport_type, "Walk")
 
     def test_holder_cannot_claim_own_echo(self):
         from .echoes import claim_beaten_echoes, mint_echo

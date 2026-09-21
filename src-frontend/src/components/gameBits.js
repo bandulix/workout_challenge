@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from "react";
-import {ChevronLeft, ChevronRight, Heart, Megaphone, ScrollText, Share2, Trophy} from "lucide-react";
+import {ChevronLeft, ChevronRight, Megaphone, ScrollText, Share2, Trophy, Zap} from "lucide-react";
 import {useProtectedImage} from "../utils/protectedMedia";
 import {roastHottestId, roastIsAfterglow} from "../utils/roastAfterglow";
 import {PaneHead, paneCardClass} from "./uiBits";
@@ -273,7 +273,7 @@ function RoastGallery({cards, index, onClose, onIndex}) {
                 <p className="mt-3 text-sm leading-relaxed break-words text-gray-800 dark:text-gray-200">{caption}</p>
                 <p className="mt-1 text-[11px] text-gray-400 flex items-center gap-2 flex-wrap">
                     <span>{[card.persona_name, card.competition_name].filter(Boolean).join(" · ")}</span>
-                    <HotCount count={card.hot_votes}/>
+                    <ReactCount count={card.react_count}/>
                 </p>
                 <div className="mt-3 flex items-center justify-between gap-2">
                     <button type="button" disabled={index <= 0} onClick={() => onIndex(index - 1)}
@@ -301,25 +301,21 @@ function RoastGallery({cards, index, onClose, onIndex}) {
     );
 }
 
-function HotCount({count, light = false}) {
+// Badge on hall tiles / the gallery: how many emoji reactions the
+// roast's thread collected. Hot-or-not votes stay inside the swipe
+// game - the hall shows what the whole group reacted to.
+function ReactCount({count, light = false}) {
     const n = Math.max(0, Number(count) || 0);
     const filled = n > 0;
-    const stack = filled ? Math.min(n, 3) : 1;
     return (
         <span className={"inline-flex items-center gap-1 tabular-nums " +
-            (light ? "text-white" : "text-rose-600 dark:text-rose-400")}>
-            <span className="inline-flex items-center -space-x-1.5" aria-hidden="true">
-                {Array.from({length: stack}, (_, i) => (
-                    <Heart key={i}
-                           className={"h-3.5 w-3.5 " + (filled
-                               ? "fill-rose-500 text-rose-400"
-                               : (light ? "text-white/70" : "text-gray-400"))}
-                           style={{zIndex: stack - i}}
-                           strokeWidth={filled ? 1.75 : 2}/>
-                ))}
-            </span>
+            (light ? "text-white" : "text-volt-700 dark:text-volt-300")}>
+            <Zap className={"h-3.5 w-3.5 " + (filled
+                ? "fill-volt-400 text-volt-500"
+                : (light ? "text-white/70" : "text-gray-400"))}
+                 aria-hidden="true"/>
             <span className="text-[10px] font-extrabold">{n}</span>
-            <span className="sr-only">{n === 1 ? "1 hot vote" : `${n} hot votes`}</span>
+            <span className="sr-only">{n === 1 ? "1 reaction" : `${n} reactions`}</span>
         </span>
     );
 }
@@ -334,7 +330,7 @@ function sortHallCards(cards) {
 
 function HallFrame({card, onOpen, afterglow = false, hottest = false}) {
     const {src} = useProtectedImage(card.image, "card");
-    const hot = card.hot_votes || 0;
+    const reacts = card.react_count || 0;
     return (
         <article className={"min-w-0 rounded-3xl glass-card text-ink-950 dark:text-white " +
             (hottest ? "roast-hottest " : "") +
@@ -350,7 +346,7 @@ function HallFrame({card, onOpen, afterglow = false, hottest = false}) {
                         </div>
                     )}
                     <span className="absolute bottom-2 right-2 inline-flex rounded-full bg-ink-950/75 px-2 py-0.5 backdrop-blur-sm">
-                        <HotCount count={hot} light/>
+                        <ReactCount count={reacts} light/>
                     </span>
                 </div>
                 <div className="px-2.5 py-2">

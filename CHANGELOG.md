@@ -7,8 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.61.0] - 2026-09-21
+
 ### Added
 - **Foldable phones welcome.** Galaxy Z Fold/Flip-class devices get a resizable app window, fold/unfold without losing your place, and a dock that never hides under the hinge when the app spans both panes.
+- **Your coach, your face — and your body.** Self-created coaches take a profile portrait plus up to three full-body photos; the roast/echo image edits use them as the body lock, so the coach keeps a real build and outfit under the locked face. (Built-in coaches keep their invented look.) Served members-only, like the portrait.
+- **Daily briefing, your topic.** The challenge owner writes one line — "Snow level at Corviglia", "protein focus this week" — and the coach posts about it every morning in persona style. It continues the arc instead of repeating itself: day three without snow worries it more than day one. (The coach can't fetch live data and says so instead of inventing numbers.)
+- **Echo drama, out loud.** Minting a relic and every takeover are now announced in the feed with the mark to beat, and both parties get a push — losing your relic is no longer something you notice by accident. A relic that survives **3 takeovers** turns immortal on the spot and crowns its planter; tiles show the "Survived N/3" progress, and a relic that changed hands is marked contested.
+
+### Changed
+- **Roasts got a personality transplant.** Calm personas celebrate instead of mocking; every roast gets a surreal twist (frozen time, wrong season, giant props — some LLM-invented per roast), must weave a real detail from your actual photo into the scene, and a per-challenge memory stops the coach from repeating a look it just used. Coaches keep one consistent invented full-body look across artworks.
+- **One sport language for every source.** Garmin, Apple Health / Health Connect and Strava now normalize through a single shared table — the same session lands on the same sport type no matter the watch, so Echoes and goal groups work across sources. Garmin/Health "cardio" sessions finally count as cardio (HIIT) instead of "Other Workout". Unmapped types are logged instead of silently degrading.
+- **Reactions are visible.** The gallery badge shows the reaction count instead of hot votes, and reaction chips show up to three faces of who reacted (no more hover to find out).
+- **Echo personal bests count kilometres too.** Distance sports compare distance, so your longest ride ever mints even when it was also your fastest.
+
+### Fixed
+- **"Model can't see pictures" after an API key rotation.** The vision/edit capability cache now keys off the key's fingerprint, and only an HTTP 400 counts as a definitive "no" — transient errors retry after 5 minutes instead of hiding the feature for a day.
+
+### Operator notes
+- Migrations `0030` (persona body pictures) and `0031` (`daily_prompt`, `briefing` message kind, beat job) run on deploy; the daily briefing starts the next morning without touching celery config.
+- A coach's invented body lives in Redis (`drill-coach-appearance:<id>`, 30 days) — clear that key after editing a persona's text, or uploads of real body photos simply supersede it.
+- Upload privacy re-audited: every image/MIDI is served only through authenticated, member-scoped endpoints; `/media/` 404s everything, and the X-Accel location is internal-only.
 
 ## [0.60.0] - 2026-09-20
 

@@ -87,6 +87,13 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="*/30"),
         "args": (),
     },
+    # every 30 min: fire the owner-defined daily briefing (one morning
+    # post per competition, first tick after 07:00)
+    "drill_instructor_daily_prompt": {
+        "task": "drill_instructor.tasks.post_daily_prompts",
+        "schedule": crontab(minute="*/30"),
+        "args": (),
+    },
     "drill_instructor_echo_windows": {
         "task": "drill_instructor.tasks.immortalize_finished_echoes",
         "schedule": crontab(minute="*/15"),

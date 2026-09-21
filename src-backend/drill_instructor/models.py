@@ -36,6 +36,27 @@ class DrillInstructorPersona(models.Model):
         blank=True,
         help_text="Custom uploaded profile picture. Takes precedence over the avatar artwork/emoji when set.",
     )
+    # Optional full-body reference photos (self-created coaches): the
+    # roast/echo image edits use them as the body lock, so the coach
+    # keeps a real build and outfit instead of an invented one.
+    body_picture_1 = models.ImageField(
+        upload_to="persona_body_pics/",
+        null=True,
+        blank=True,
+        help_text="Full-body reference photo 1 for image edits.",
+    )
+    body_picture_2 = models.ImageField(
+        upload_to="persona_body_pics/",
+        null=True,
+        blank=True,
+        help_text="Full-body reference photo 2 for image edits.",
+    )
+    body_picture_3 = models.ImageField(
+        upload_to="persona_body_pics/",
+        null=True,
+        blank=True,
+        help_text="Full-body reference photo 3 for image edits.",
+    )
     midi = models.FileField(
         upload_to="coach_midi/",
         null=True,
@@ -121,6 +142,19 @@ class DrillInstructorConfig(models.Model):
     push_plan_date = models.DateField(null=True, blank=True)
     push_plan = models.JSONField(default=list, blank=True)
 
+    # Owner-defined daily briefing: the coach posts once every morning
+    # about whatever the challenge admin writes here (e.g. "snow level at
+    # Corviglia"). Empty = the feature is off.
+    daily_prompt = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text=(
+            "Topic for the coach's daily morning post, in the admin's own "
+            "words. The coach writes about it every day in persona style."
+        ),
+    )
+
     last_error = models.TextField(blank=True, default="")
     last_posted_at = models.DateTimeField(null=True, blank=True)
     messages_posted = models.IntegerField(default=0)
@@ -181,6 +215,7 @@ class DrillInstructorMessage(models.Model):
     KIND_ECHO = "echo"
     KIND_CLAIM = "claim"
     KIND_WAR = "war"
+    KIND_BRIEFING = "briefing"
     KIND_CHOICES = [
         (KIND_ACTIVITY, "Workout comment"),
         (KIND_TEST, "Test message"),
@@ -196,6 +231,7 @@ class DrillInstructorMessage(models.Model):
         (KIND_ECHO, "Legend Echo minted"),
         (KIND_CLAIM, "Legend Echo claimed"),
         (KIND_WAR, "Legend Echo war"),
+        (KIND_BRIEFING, "Daily owner briefing"),
     ]
 
     config = models.ForeignKey(
