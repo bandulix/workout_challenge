@@ -22,9 +22,11 @@ import {
     ensureFreshAccessToken,
     getAccessToken,
     hasAuthMarker,
+    markLoggedIn,
     markLoggedOut,
 } from "../utils/authTokens";
 import {readLastPath} from "../utils/lastPath";
+import {hasNativeRefreshHint} from "../utils/secureRefreshStore";
 import {clearBodyScrollLock} from "../utils/overlay";
 import {GlassSelect} from "../forms/basicComponents";
 
@@ -140,13 +142,26 @@ function WelcomePage() {
     const navigate = useNavigate();
 
     useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const dest = params.get("join") || params.get("action")
+            ? `/dashboard${location.search}`
+            : readLastPath();
+        // Returning session (native refresh hint / marker / in-memory
+        // token): navigate NOW and let the API layer refresh the access
+        // token in the background. Awaiting the secure-storage read plus
+        // the refresh round-trip here was the ~2s APK splash on /login.
+        // A stale hint is caught by baseQueryWithReauth, which bounces to
+        // /login on a dead refresh token.
+        if (getAccessToken() || hasAuthMarker() || hasNativeRefreshHint()) {
+            markLoggedIn();
+            ensureFreshAccessToken();
+            navigate(dest, {replace: true});
+            return;
+        }
         (async () => {
             const status = await ensureFreshAccessToken();
             if (status === 'ok' || getAccessToken() || hasAuthMarker()) {
-                const params = new URLSearchParams(location.search);
-                navigate(params.get("join") || params.get("action")
-                    ? `/dashboard${location.search}`
-                    : readLastPath(), {replace: true});
+                navigate(dest, {replace: true});
             }
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -241,6 +256,16 @@ function LogInPage() {
         // visitor never waits on a doomed request (previously: up to 8s
         // of spinner for everyone).
         const likelyLoggedIn = Boolean(getAccessToken()) || hasAuthMarker();
+
+        // Native with a stored refresh token: skip the spinner entirely -
+        // the API layer refreshes in the background and bounces back here
+        // if the token is dead. Same fast path as WelcomePage.
+        if (hasNativeRefreshHint() && !(getAccessToken() && !accessTokenNeedsRefresh())) {
+            markLoggedIn();
+            ensureFreshAccessToken();
+            goAfterLogin(navigate, location, params);
+            return;
+        }
 
         (async () => {
             if (likelyLoggedIn) setIsLoading(true);

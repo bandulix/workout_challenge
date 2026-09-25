@@ -13,6 +13,11 @@ import {registerPlugin} from "@capacitor/core";
 import {isNativeApp} from "./serverUrl";
 
 const KEY = "wc_refresh";
+// Non-secret localStorage hint: "this install holds a native refresh
+// token". Cold-start routing reads it SYNCHRONOUSLY (the secure-storage
+// plugin call is a slow native bridge) so a returning APK session can
+// navigate straight to the app while the refresh runs in the background.
+const HINT_KEY = "wc_native_refresh";
 const SecureStoragePlugin = registerPlugin("SecureStoragePlugin");
 
 let memoryMirror = null;
@@ -23,6 +28,26 @@ export function cacheNativeRefresh(token) {
 
 export function peekNativeRefresh() {
   return memoryMirror;
+}
+
+export function hasNativeRefreshHint() {
+  try {
+    return localStorage.getItem(HINT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setNativeRefreshHint(on) {
+  try {
+    if (on) {
+      localStorage.setItem(HINT_KEY, "1");
+    } else {
+      localStorage.removeItem(HINT_KEY);
+    }
+  } catch {
+    /* private mode */
+  }
 }
 
 export async function getSecureRefresh() {
@@ -44,6 +69,7 @@ export async function setSecureRefresh(token) {
     await clearSecureRefresh();
     return;
   }
+  setNativeRefreshHint(true);
   try {
     await SecureStoragePlugin.set({key: KEY, value: token});
   } catch {
@@ -53,6 +79,7 @@ export async function setSecureRefresh(token) {
 
 export async function clearSecureRefresh() {
   memoryMirror = null;
+  setNativeRefreshHint(false);
   if (!isNativeApp()) return;
   try {
     await SecureStoragePlugin.remove({key: KEY});

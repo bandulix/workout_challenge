@@ -1125,17 +1125,20 @@ class PostDailyPromptsTests(TestCase):
 
 
 class DailyBriefingPromptTests(TestCase):
-    """The prompt builder: the admin's topic is flattened, the honesty
-    guardrail is always present, and history slots before the instruction."""
+    """The prompt builder: the admin's text is passed 1:1 (verbatim, no
+    reformatting), the honesty guardrail is always present, and history
+    slots before the instruction."""
 
-    def test_includes_topic_and_honesty_rule(self):
+    def test_instruction_is_passed_verbatim(self):
         from .llm_client import build_daily_briefing_prompt
         prompt = build_daily_briefing_prompt(
             competition_name="Ski Cup",
             topic="Snow level\nat Corviglia   please",
         )
         self.assertIn("Ski Cup", prompt)
-        self.assertIn('"Snow level at Corviglia please"', prompt)
+        # Verbatim 1:1 - no whitespace flattening, no rewording.
+        self.assertIn('"""Snow level\nat Corviglia   please"""', prompt)
+        self.assertIn("verbatim (1:1)", prompt)
         self.assertIn("NEVER invent", prompt)
         self.assertIn("persona's voice", prompt)
 
@@ -1150,7 +1153,7 @@ class DailyBriefingPromptTests(TestCase):
         self.assertIn("Day 2: still no snow. Patience wears thin.", prompt)
         self.assertIn("CONTINUE the story", prompt)
         self.assertIn("EVOLVE", prompt)
-        self.assertLess(prompt.index("Day 2:"), prompt.index("Write your briefing now"))
+        self.assertLess(prompt.index("Day 2:"), prompt.index("Write today's post now"))
 
     def test_first_briefing_sets_the_scene(self):
         from .llm_client import build_daily_briefing_prompt

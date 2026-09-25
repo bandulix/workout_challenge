@@ -1542,22 +1542,23 @@ def build_group_push_prompt(*, competition_name: str, participant_first_names, l
 def build_daily_briefing_prompt(*, competition_name: str, topic: str, previous_briefings=None) -> str:
     """Compose the user-message for the owner-defined daily briefing.
 
-    The challenge admin decides WHAT the coach talks about every morning
-    (snow levels, a route of the day, a nutrition focus...); the persona
-    decides HOW it sounds. The briefing is a continuing arc, not a daily
-    reset: previous briefings are included and the coach must evolve its
-    take (a third day without snow should worry it more than the first).
-    Honesty guardrail: the model has no live data feed, so it must never
-    invent today's numbers - when the topic needs current facts it says so
-    in persona and turns it into the day's plan.
+    The admin's text is passed to the model 1:1 (verbatim, only stripped
+    and capped at the field's 500 chars) as a standing instruction for the
+    daily morning post - the app must NOT rewrite it into a "topic", or
+    admins lose control over wording, length and format. The persona still
+    decides HOW it sounds (system prompt). The briefing is a continuing
+    arc, not a daily reset: previous posts are included and the coach must
+    evolve its take. Honesty guardrail: the model has no live data feed,
+    so it must never invent today's numbers.
     """
-    clean_topic = " ".join(str(topic or "").split())[:400]
+    instruction = str(topic or "").strip()[:480]
     parts = [
         f"Competition: {competition_name}",
-        f"The challenge admin gave you this daily briefing topic: \"{clean_topic}\".",
-        "Every morning you post one message about this topic, in your "
-        "persona's voice.",
-        "Honesty rule: you have no live data feed. If the topic needs "
+        "The challenge admin wrote the following standing instruction for "
+        "your daily morning post. It is passed to you verbatim (1:1) - "
+        "follow it exactly as written, in your persona's voice:",
+        f"\"\"\"{instruction}\"\"\"",
+        "Honesty rule: you have no live data feed. If the instruction needs "
         "current facts you cannot know (today's weather, snow levels, "
         "results, news), say plainly that you can't check them right now - "
         "in your persona's style - and turn it into the day's plan or a "
@@ -1581,11 +1582,11 @@ def build_daily_briefing_prompt(*, competition_name: str, topic: str, previous_b
     else:
         parts.append("This is your FIRST briefing on this topic - set the scene.")
     parts.append(
-        "Write one short briefing (max 280 chars) in your persona's voice. "
-        "It must clearly be about the admin's topic. No @mentions unless "
-        "the topic itself names someone."
+        "Write today's post now - in your persona's voice, following the "
+        "admin's instruction above exactly (including any length or format "
+        "it asks for; default: one short post, max 280 chars). No @mentions "
+        "unless the instruction itself names someone."
     )
-    parts.append("Write your briefing now.")
     return "\n".join(parts)
 
 

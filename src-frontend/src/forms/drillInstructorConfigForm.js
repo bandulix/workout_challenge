@@ -277,21 +277,28 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                 />
                 <div className="rounded-2xl glass-card px-3.5 py-3">
                     <label htmlFor="daily-prompt" className="text-sm font-semibold text-ink-950 dark:text-gray-100">
-                        Daily briefing topic
+                        Daily briefing — your instruction to the AI
                     </label>
                     <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                        One coach-voiced post every morning about whatever you write here — in your
-                        coach's own style, and it builds on yesterday's post instead of repeating it
-                        (a third day without snow worries it more than the first). Empty means no
-                        briefing. Note: the coach can't fetch live data, so it points at the topic
-                        and turns it into the day's plan rather than quoting real numbers.
+                        Sent to the AI <b>exactly as you write it (1:1)</b>, every morning — the coach
+                        answers in its own persona and builds on yesterday's post instead of repeating
+                        it (a third day without snow worries it more than the first). Empty means no
+                        briefing.
                     </p>
+                    <ul className="mt-1.5 list-disc pl-4 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed space-y-0.5">
+                        <li>The coach already knows its own name and personality, and the challenge's
+                            name — you can write things like “Sign off as {existing?.persona_detail?.name || "your coach name"}”
+                            or “{competition?.name ? `Open with the day 3 weather worry for ${competition.name}` : "Open with today's plan"}”.</li>
+                        <li>Format and length are yours: “Always 3 bullet points”, “Max one sentence”, “End with a dare”.</li>
+                        <li>It can't fetch live data (weather, snow, results) — it says so in persona
+                            instead of inventing numbers.</li>
+                    </ul>
                     <textarea
                         id="daily-prompt"
-                        rows={2}
+                        rows={3}
                         maxLength={500}
                         className={FIELD_INPUT_CLASS + " mt-2 w-full resize-none"}
-                        placeholder={"e.g. Snow levels at Corviglia and what they mean for today's training"}
+                        placeholder={"e.g. Post a morning motivation about the snow at Corviglia. Sign off with your coach name. Always end with one concrete workout dare."}
                         value={dailyPrompt}
                         onChange={(e) => setDailyPrompt(e.target.value)}
                     />

@@ -142,16 +142,17 @@ class DrillInstructorConfig(models.Model):
     push_plan_date = models.DateField(null=True, blank=True)
     push_plan = models.JSONField(default=list, blank=True)
 
-    # Owner-defined daily briefing: the coach posts once every morning
-    # about whatever the challenge admin writes here (e.g. "snow level at
-    # Corviglia"). Empty = the feature is off.
+    # Owner-defined daily briefing: the admin's standing instruction for
+    # the coach's daily morning post, passed to the model verbatim (1:1).
+    # Empty = the feature is off.
     daily_prompt = models.CharField(
         max_length=500,
         blank=True,
         default="",
         help_text=(
-            "Topic for the coach's daily morning post, in the admin's own "
-            "words. The coach writes about it every day in persona style."
+            "Standing instruction for the coach's daily morning post, "
+            "passed to the AI exactly as written (1:1). The coach answers "
+            "in persona style."
         ),
     )
 

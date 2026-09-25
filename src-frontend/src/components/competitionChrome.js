@@ -220,8 +220,9 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
 
 
 // Challenge feed: independent glass cards on the gym plate. One visual
-// language for workouts, photos, and coach announcements.
-const FEED_PAGE = 15;
+// language for workouts, photos, and coach announcements. First paint
+// shows the 10 newest posts; "Show more" pages back from there.
+const FEED_PAGE = 10;
 
 const KIND_LABEL = {
     activity: "Workout",
@@ -651,11 +652,15 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
             )}
             {bgSrc && (
                 /* The card body opens the lightbox on click for mouse users;
-                   keyboard/AT users get this explicit control instead. */
-                <button type="button" onClick={(e) => { e.stopPropagation(); setLightbox("remix"); }}
-                        className="absolute top-3 left-3 z-10 inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-ink-950/60 text-white px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide backdrop-blur-sm transition hover:bg-ink-950/80">
-                    View photo
-                </button>
+                   keyboard/AT users get this explicit control instead. It
+                   sits in normal flow (not absolutely positioned) so it
+                   never overlaps the athlete header beneath it. */
+                <div className="relative z-10 px-3.5 pt-3 sm:px-4 sm:pt-3.5">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setLightbox("remix"); }}
+                            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-ink-950/60 text-white px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide backdrop-blur-sm transition hover:bg-ink-950/80">
+                        View photo
+                    </button>
+                </div>
             )}
             {hero && (
                 <div className="absolute -top-3.5 right-4 z-20 flex items-center gap-3">

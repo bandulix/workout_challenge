@@ -8,11 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Shorter first feed.** The challenge feed now opens with the 10 newest posts (was 15); "Show more" pages further back as before.
+- **Daily briefing takes your words 1:1.** The owner instruction for the coach's daily morning post is now passed to the AI verbatim — wording, format and length rules you write are the actual instruction (the coach still answers in its persona, keeps the running arc, and admits when it can't fetch live data). The settings field explains this and shows hints, e.g. how to have the coach sign with its name.
+- **APK opens straight into the app.** A returning Android session no longer waits ~2s on the login screen for the token refresh — the app navigates immediately on a stored-session hint and refreshes in the background; an actually-expired session still bounces back to login.
 - **Photos for five days, not one.** The camera button now hangs on every one of your activities for 5 days after it's posted (was: latest workout only), and the picture lands on exactly that workout. The backend enforces the same window (`DRILL_PHOTO_WINDOW_DAYS`, default 5).
 - **Every picture gets the big-screen treatment.** Echo artwork, the coach's roast remixes, feed photos and images inside threads all open in the fullscreen viewer introduced for the Hall of Roasts: pinch/double-tap zoom, swipe between shots, swipe down to close, Stamp and Share right on the photo. The old sheet-style popups are gone.
 - **All Echoes shows the relics, not just their names.** The "All" overview is now a tile grid with the artwork, status badge and the usual Share/Delete actions — and tapping the art opens the fullscreen viewer at that relic.
 
 ### Fixed
+- **"View photo" no longer covers the card.** The explicit viewer button on photo-backed activity cards sat absolutely over the athlete header; it now has its own row above the card content.
 - **Fold/desktop menus landed at the bottom of the page.** On the left-rail layout, the Settings and Compete panels dropped to the end of the page because the glass style quietly overrode their anchoring; they now open next to the icon as intended.
 - **"Model can't see pictures" on vision-capable models.** The capability probe sent a 1x1 test image, which xAI rejects as too small — the probe read that as "no vision" and hid photo posts for a day. The probe now uses a provider-safe 32x32 image, and a regression test guards the size.
 
