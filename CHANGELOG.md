@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Garmin linking works with two-step verification.** Garmin now forces an email/SMS code on many accounts (on watches with health features it can't be turned off), and linking always failed for those. After your password you can now enter the code Garmin sends you.
+- **Gallery photo uploads no longer stall on the three dots.** HEIC picks (Samsung gallery) hung forever because the security policy blocked the converter's Web Worker. Blob workers are allowed again, and a stuck decode now ends in an error instead of endless dots.
 - **Garmin / Health Connect / Strava linking works again behind a reverse proxy.** The TLS edge-hardening only trusted `X-Forwarded-Proto` from loopback peers, so a proxy reaching the container over a Docker bridge or LAN address was treated as cleartext and the link buttons refused with "Linking requires HTTPS". Private/LAN peers are trusted again; direct internet clients (public remote address) still can't spoof the header.
 
 ### Changed

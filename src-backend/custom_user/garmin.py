@@ -10,8 +10,10 @@ Security model:
     tokens and is NEVER stored.
   - The OAuth token blob is stored encrypted at rest (Fernet, key
     derived from Django's SECRET_KEY - overridable via GARMIN_TOKEN_KEY).
-  - Accounts with Garmin MFA enabled can't be linked non-interactively
-    yet; the link endpoint tells the user so explicitly.
+  - Accounts with Garmin MFA (email/SMS code - forced on by Garmin for
+    many devices) link via a two-step flow: the first call stashes the
+    SSO session state in the cache and returns an mfa_token, the second
+    call resumes the login with the code (see "MFA continuation").
 
 Sync mirrors the Strava flow: recent activities are mapped onto
 ``workouts.Workout`` rows, de-duplicated by ``garmin_id``, with a daily
@@ -63,6 +65,115 @@ def _new_client(email=None, password=None):
     return garminconnect.Garmin(email, password, return_on_mfa=True)
 
 
+# ---------------------------------------------------------------------------
+# MFA continuation
+#
+# Garmin now forces two-step verification (email/SMS code) on many
+# accounts - for watches with health features it can't be disabled at
+# all. The library completes MFA on the SAME client object that started
+# the login (the SSO session lives in memory), so we serialise its MFA
+# state into the cache for the few minutes between "password OK, code
+# sent" and "user typed the code". The state contains live Garmin SSO
+# cookies: cache-only, short TTL, single flow, never logged.
+# ---------------------------------------------------------------------------
+MFA_CACHE_PREFIX = "garmin-mfa:"
+MFA_CACHE_TTL = 60 * 10  # codes live 30min, but the SSO session is short-lived
+
+
+class GarminMfaRequired(Exception):
+    """Password accepted, Garmin sent a verification code."""
+
+    def __init__(self, mfa_token: str, method: str = "email"):
+        super().__init__("MFA required")
+        self.mfa_token = mfa_token
+        self.method = method
+
+
+def _dump_mfa_state(client, email: str) -> str:
+    """Serialise the in-memory MFA state; returns the cache token."""
+    import secrets
+
+    import requests
+
+    from django.core.cache import cache
+
+    c = client.client  # vendored garminconnect.client.Client
+    sess = getattr(c, "_mfa_session", None)
+    if sess is None:
+        raise GarminAuthError("Garmin asked for a code but left no session to resume.")
+    cookies = sess.cookies
+    if hasattr(cookies, "get_dict"):
+        cookie_dict = cookies.get_dict()
+    else:
+        cookie_dict = requests.cookies.dict_from_cookiejar(cookies)
+    widget_resp = getattr(c, "_widget_last_resp", None)
+    state = {
+        "email": email,
+        "flow": getattr(c, "_mfa_flow", "portal"),
+        "method": getattr(c, "_mfa_method", "email"),
+        "login_params": getattr(c, "_mfa_login_params", {}) or {},
+        "post_headers": getattr(c, "_mfa_post_headers", {}) or {},
+        "service_url": getattr(c, "_mfa_service_url", None),
+        "cookies": cookie_dict,
+        "widget_resp_text": getattr(widget_resp, "text", None),
+    }
+    token = secrets.token_urlsafe(24)
+    cache.set(MFA_CACHE_PREFIX + token, state, MFA_CACHE_TTL)
+    return token
+
+
+def _restore_mfa_client(token: str):
+    """Rebuild a client positioned exactly after the password step."""
+    import requests
+
+    from django.core.cache import cache
+
+    state = cache.get(MFA_CACHE_PREFIX + token)
+    if not state:
+        raise GarminAuthError("The verification session expired - please connect again.")
+    client = _new_client()
+    c = client.client
+    sess = requests.Session()
+    sess.cookies = requests.cookies.cookiejar_from_dict(state["cookies"])
+    c._mfa_session = sess
+    c._mfa_flow = state["flow"]
+    c._mfa_method = state["method"]
+    c._mfa_login_params = state["login_params"]
+    c._mfa_post_headers = state["post_headers"]
+    if state.get("service_url"):
+        c._mfa_service_url = state["service_url"]
+    if state.get("widget_resp_text"):
+        # _complete_mfa_widget only parses the CSRF token out of .text.
+        c._widget_last_resp = type("Resp", (), {"text": state["widget_resp_text"]})()
+    return client
+
+
+def complete_mfa_login(mfa_token: str, mfa_code: str) -> "tuple[str, str]":
+    """Finish an MFA login with the emailed/SMSed code.
+
+    Returns (token_blob, garmin_email) - the email rides in the cached
+    state so the second request never has to repeat it.
+    """
+    import garminconnect
+
+    from django.core.cache import cache
+
+    state = cache.get(MFA_CACHE_PREFIX + mfa_token)
+    if not state:
+        raise GarminAuthError("The verification session expired - please connect again.")
+    client = _restore_mfa_client(mfa_token)
+    try:
+        client.resume_login(None, mfa_code.strip())
+    except garminconnect.GarminConnectAuthenticationError as exc:
+        raise GarminAuthError("Garmin rejected the verification code.") from exc
+    except garminconnect.GarminConnectTooManyRequestsError as exc:
+        raise GarminUnavailableError("Garmin rate-limited the login - try again in a few minutes.") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise GarminUnavailableError("Could not reach Garmin Connect. Please try again later.") from exc
+    cache.delete(MFA_CACHE_PREFIX + mfa_token)
+    return client.client.dumps(), state["email"]
+
+
 def login_and_get_tokens(email: str, password: str) -> str:
     """Validate credentials against Garmin and return the token blob.
 
@@ -82,10 +193,9 @@ def login_and_get_tokens(email: str, password: str) -> str:
         raise GarminUnavailableError("Could not reach Garmin Connect. Please try again later.") from exc
 
     if needs_mfa:
-        raise GarminAuthError(
-            "This Garmin account has two-factor authentication enabled. "
-            "Accounts with MFA can't be linked yet - please disable MFA in "
-            "your Garmin account settings (or use Strava instead)."
+        raise GarminMfaRequired(
+            mfa_token=_dump_mfa_state(client, email),
+            method=getattr(client.client, "_mfa_method", "email") or "email",
         )
     return client.client.dumps()
 

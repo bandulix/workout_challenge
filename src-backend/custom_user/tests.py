@@ -420,6 +420,112 @@ class MapStravaSportTypeTests(TestCase):
                 self.assertEqual(_map_sport_type(unknown), "Workout")
 
 
+# DRF throttling and the Garmin MFA state read the Django cache - use
+# LocMem so the tests don't need a running Redis.
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
+class GarminMfaLinkTests(TestCase):
+    """Garmin forces an email/SMS code on many accounts (non-disableable
+    on health watches). The link flow is two-step: password -> mfa_token
+    (SSO state in cache), then code -> linked."""
+
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            email="mfa@example.com", password="pw123456", is_verified=True)
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+
+    @staticmethod
+    def _fake_client(needs_mfa):
+        """Stand-in for garminconnect.Garmin positioned after login()."""
+        import requests
+
+        client = mock.Mock()
+        inner = client.client
+        inner._mfa_session = requests.Session()
+        inner._mfa_session.cookies.set("SSO", "cookie-value", domain=".garmin.com")
+        inner._mfa_flow = "ios"
+        inner._mfa_method = "email"
+        inner._mfa_login_params = {"clientId": "x"}
+        inner._mfa_post_headers = {"User-Agent": "x"}
+        inner._mfa_service_url = "https://connect.garmin.com"
+        inner._widget_last_resp = None
+        inner.login.return_value = ("needs_mfa" if needs_mfa else None, None)
+        inner.dumps.return_value = "token-blob-json"
+        client.login.return_value = ("needs_mfa" if needs_mfa else None, None)
+        client.client = inner
+        return client
+
+    def test_password_step_returns_mfa_token_and_caches_state(self):
+        from . import garmin
+        with mock.patch.object(garmin, "_new_client", return_value=self._fake_client(True)):
+            with self.assertRaises(garmin.GarminMfaRequired) as ctx:
+                garmin.login_and_get_tokens("mfa@example.com", "pw")
+        exc = ctx.exception
+        self.assertTrue(exc.mfa_token)
+        self.assertEqual(exc.method, "email")
+        state = cache.get(garmin.MFA_CACHE_PREFIX + exc.mfa_token)
+        self.assertIsNotNone(state)
+        self.assertEqual(state["flow"], "ios")
+        self.assertEqual(state["cookies"], {"SSO": "cookie-value"})
+
+    def test_complete_mfa_restores_session_and_returns_tokens(self):
+        from . import garmin
+        with mock.patch.object(garmin, "_new_client", return_value=self._fake_client(True)):
+            with self.assertRaises(garmin.GarminMfaRequired) as ctx:
+                garmin.login_and_get_tokens("mfa@example.com", "pw")
+        token = ctx.exception.mfa_token
+
+        restored = self._fake_client(True)
+        with mock.patch.object(garmin, "_new_client", return_value=restored):
+            blob, email = garmin.complete_mfa_login(token, " 123456 ")
+        self.assertEqual(blob, "token-blob-json")
+        self.assertEqual(email, "mfa@example.com")
+        # Code is stripped, resume happened on a session with the cookies.
+        restored.resume_login.assert_called_once_with(None, "123456")
+        inner = restored.client
+        self.assertEqual(inner._mfa_flow, "ios")
+        self.assertEqual(inner._mfa_session.cookies.get("SSO"), "cookie-value")
+        # One-shot: the state is gone after a successful completion.
+        self.assertIsNone(cache.get(garmin.MFA_CACHE_PREFIX + token))
+
+    def test_complete_mfa_with_expired_token_fails_clearly(self):
+        from . import garmin
+        with self.assertRaisesRegex(garmin.GarminAuthError, "expired"):
+            garmin.complete_mfa_login("no-such-token", "123456")
+
+    def test_view_two_step_flow(self):
+        from . import garmin
+        client = self._fake_client(True)
+        with mock.patch.object(garmin, "_new_client", return_value=client), \
+             mock.patch.object(garmin.sync_garmin, "delay") as sync_delay:
+            res = self.api.post("/api/garmin/link/", {"email": "mfa@example.com", "password": "pw"},
+                                format="json", secure=True)
+            self.assertEqual(res.status_code, 200, res.content)
+            self.assertTrue(res.data["mfa_required"])
+            self.assertIn("mfa_token", res.data)
+            self.assertFalse(CustomUser.objects.get(pk=self.user.pk).garmin_tokens_enc)
+
+            res = self.api.post("/api/garmin/link/mfa/",
+                                {"mfa_token": res.data["mfa_token"], "mfa_code": "123456"},
+                                format="json", secure=True)
+            self.assertEqual(res.status_code, 200, res.content)
+            self.assertIn("Successfully linked", res.data["message"])
+            sync_delay.assert_called_once()
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.garmin_email, "mfa@example.com")
+        self.assertTrue(self.user.garmin_tokens_enc)
+        self.assertEqual(self.user.activity_source, "garmin")
+
+    def test_view_rejects_expired_mfa_token(self):
+        res = self.api.post("/api/garmin/link/mfa/",
+                            {"mfa_token": "stale", "mfa_code": "123456"}, format="json", secure=True)
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("expired", res.data["message"])
+
+
 class MapGarminSportTypeTests(TestCase):
     """Garmin typeKeys are exact-matched; the watch's plain 'Cardio'
     profile ships as ``cardio`` (older firmware) or ``indoor_cardio``

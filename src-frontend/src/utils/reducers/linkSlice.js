@@ -47,6 +47,16 @@ export const linkApi = createApi({
             }),
             invalidatesTags: [],
         }),
+        // Step 2 when Garmin answers the password with an email/SMS code
+        // challenge (forced two-step verification on many accounts).
+        linkGarminMfa: builder.mutation({
+            query: ({mfa_token, mfa_code}) => ({
+                url: `garmin/link/mfa/`,
+                method: 'POST',
+                body: {mfa_token, mfa_code},
+            }),
+            invalidatesTags: [],
+        }),
         unlinkGarmin: builder.mutation({
             query: () => ({
                 url: `garmin/unlink/`,
@@ -87,6 +97,7 @@ export const {
     useResetStravaMutation,
     useSyncStravaMutation,
     useLinkGarminMutation,
+    useLinkGarminMfaMutation,
     useUnlinkGarminMutation,
     useSyncGarminMutation,
     useLinkHealthMutation,

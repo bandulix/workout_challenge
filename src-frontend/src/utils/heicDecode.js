@@ -4,8 +4,31 @@
 // render as a broken image. The upload itself always worked (the server
 // re-encodes); only the local decode needs help.
 //
-// heic2any is lazy-loaded: ~1 MB of WASM that only HEIC picks ever pay
-// for, so it stays out of the main bundle.
+// heic-to is lazy-loaded (~1 MB decoder) so only HEIC picks pay for it,
+// and it's the /csp build on purpose: the plain build (like heic2any,
+// which we used before) runs emscripten glue that calls new Function
+// inside its Web Worker, which our CSP's script-src forbids - and the
+// conversion promise then NEVER settles, leaving the picker on the
+// loading dots forever. The /csp build decodes in plain JS.
+
+// A hung conversion must surface as the caller's normal "can't decode"
+// error path, never as an endless spinner - so race with a timeout.
+const HEIC_DECODE_TIMEOUT_MS = 60 * 1000;
+
+function withTimeout(promise) {
+    let timer;
+    return Promise.race([
+        promise.finally(() => clearTimeout(timer)),
+        new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error("HEIC conversion timed out")), HEIC_DECODE_TIMEOUT_MS);
+        }),
+    ]);
+}
+
+async function convertHeic(file) {
+    const {heicTo} = await import("heic-to/csp");
+    return withTimeout(heicTo({blob: file, type: "image/jpeg", quality: 0.9}));
+}
 
 export function looksLikeHeic(file) {
     const type = (file?.type || "").toLowerCase();
@@ -20,9 +43,7 @@ export async function decodePhoto(file) {
     try {
         return await createImageBitmap(file);
     } catch (nativeError) {
-        const {default: heic2any} = await import("heic2any");
-        const out = await heic2any({blob: file, toType: "image/jpeg", quality: 0.9});
-        const blob = Array.isArray(out) ? out[0] : out;
+        const blob = await convertHeic(file);
         try {
             return await createImageBitmap(blob);
         } catch {
@@ -39,8 +60,6 @@ export async function displayableImageUrl(file) {
         probe.close?.();
         return URL.createObjectURL(file);
     } catch {
-        const {default: heic2any} = await import("heic2any");
-        const out = await heic2any({blob: file, toType: "image/jpeg", quality: 0.9});
-        return URL.createObjectURL(Array.isArray(out) ? out[0] : out);
+        return URL.createObjectURL(await convertHeic(file));
     }
 }

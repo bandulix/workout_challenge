@@ -2,7 +2,7 @@ import {useDeleteUserMutation, usersApi, useUpdateUserMutation} from "../utils/r
 import React, {useEffect, useState} from "react";
 import {FIELD_INPUT_CLASS, Modal, SaveButton, SingleForm, StravaButton, useFormDirty} from "./basicComponents";
 import {useNavigate} from "react-router-dom";
-import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, useUnlinkGarminMutation, useLinkHealthMutation, useUnlinkHealthMutation} from "../utils/reducers/linkSlice";
+import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, useLinkGarminMfaMutation, useUnlinkGarminMutation, useLinkHealthMutation, useUnlinkHealthMutation} from "../utils/reducers/linkSlice";
 import {useDispatch} from "react-redux";
 import {Watch, Smartphone, Download, Volume2, VolumeX, KeyRound} from "lucide-react";
 import {BeatLoader} from "react-spinners";
@@ -225,10 +225,16 @@ function HealthSection({user, onChanged}) {
 function GarminSection({user, onChanged}) {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    // Garmin forces two-step verification (email/SMS code) on many
+    // accounts - after a correct password the server returns an
+    // mfa_token and we ask for the code it sent.
+    const [mfa, setMfa] = useState(null); // {token, method}
+    const [mfaCode, setMfaCode] = useState("");
     const [message, setMessage] = useState(null);
     const [error, setError] = useState(null);
 
     const [linkGarmin, {isLoading: linkLoading}] = useLinkGarminMutation();
+    const [linkGarminMfa, {isLoading: mfaLoading}] = useLinkGarminMfaMutation();
     const [unlinkGarmin, {isLoading: unlinkLoading}] = useUnlinkGarminMutation();
 
     const linked = Boolean(user?.garmin_email);
@@ -238,11 +244,31 @@ function GarminSection({user, onChanged}) {
         setError(null);
         try {
             const res = await linkGarmin({email, password}).unwrap();
+            if (res?.mfa_required) {
+                setMfa({token: res.mfa_token, method: res.mfa_method || "email"});
+                setMfaCode("");
+                return;
+            }
             setMessage(res?.message || "Garmin linked.");
             setPassword("");
             onChanged();
         } catch (err) {
             setError(err?.data?.message || "Could not link Garmin.");
+        }
+    }
+
+    async function handleMfa() {
+        setMessage(null);
+        setError(null);
+        try {
+            const res = await linkGarminMfa({mfa_token: mfa.token, mfa_code: mfaCode}).unwrap();
+            setMessage(res?.message || "Garmin linked.");
+            setPassword("");
+            setMfa(null);
+            setMfaCode("");
+            onChanged();
+        } catch (err) {
+            setError(err?.data?.message || "Could not verify the code.");
         }
     }
 
@@ -280,11 +306,31 @@ function GarminSection({user, onChanged}) {
                             {unlinkLoading ? <BeatLoader size={6} color="#d7ff3e"/> : "Unlink Garmin"}
                         </button>
                     </>
+                ) : mfa ? (
+                    <>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Garmin sent a verification code to your {mfa.method === "email" ? "email" : "phone"} -
+                            enter it to finish linking <b>{email}</b>.
+                        </p>
+                        <input type="text" inputMode="numeric" autoComplete="one-time-code"
+                               className={FIELD_INPUT_CLASS} placeholder="6-digit code"
+                               value={mfaCode} onChange={(e) => setMfaCode(e.target.value)}/>
+                        <div className="flex gap-2">
+                            <button onClick={handleMfa} disabled={mfaLoading || !mfaCode.trim()}
+                                    className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
+                                {mfaLoading ? <BeatLoader size={6} color="#0b0b0c"/> : "Verify & link"}
+                            </button>
+                            <button onClick={() => { setMfa(null); setMfaCode(""); setError(null); }}
+                                    className="px-4 py-2 rounded-full btn-glass text-sm font-semibold transition">
+                                Back
+                            </button>
+                        </div>
+                    </>
                 ) : (
                     <>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                             Your Garmin password is used once to obtain access tokens and is <b>never stored</b> -
-                            only the encrypted tokens are kept. Accounts with two-factor authentication can't be linked yet.
+                            only the encrypted tokens are kept. If Garmin asks for a verification code, you can enter it right here.
                         </p>
                         <input type="email" className={FIELD_INPUT_CLASS} placeholder="Garmin Connect email" autoComplete="off"
                                value={email} onChange={(e) => setEmail(e.target.value)}/>

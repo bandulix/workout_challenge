@@ -484,10 +484,9 @@ class LinkGarminView(APIView):
     def post(self, request):
         from .garmin import (
             GarminAuthError,
+            GarminMfaRequired,
             GarminUnavailableError,
-            encrypt_tokens,
             login_and_get_tokens,
-            sync_garmin,
         )
 
         email = (request.data.get("email") or "").strip()
@@ -498,44 +497,89 @@ class LinkGarminView(APIView):
 
         try:
             token_blob = login_and_get_tokens(email, password)
+        except GarminMfaRequired as exc:
+            # Password accepted, Garmin sent a verification code - the
+            # frontend asks for it and posts it to garmin/link/mfa/.
+            return Response({"mfa_required": True, "mfa_token": exc.mfa_token,
+                             "mfa_method": exc.method},
+                            status=status.HTTP_200_OK)
         except GarminAuthError:
             # Never forward upstream exception text - it can echo back the
             # account email or internal details (CodeQL stack-trace-exposure).
             logger.info("Garmin login failed for user %s", request.user.pk, exc_info=True)
-            return Response({"message": "Garmin login failed - check your credentials (and approve any MFA prompt in the Garmin Connect app first)."},
+            return Response({"message": "Garmin login failed - check your credentials."},
                             status=status.HTTP_400_BAD_REQUEST)
         except GarminUnavailableError:
             logger.info("Garmin unavailable during link for user %s", request.user.pk, exc_info=True)
             return Response({"message": "Could not reach Garmin - please try again later."},
                             status=status.HTTP_502_BAD_GATEWAY)
 
-        user = request.user
-        user.garmin_email = email
-        user.garmin_tokens_enc = encrypt_tokens(token_blob)
-        user.garmin_last_synced_at = None
-        # The first linked provider becomes the activity source; linking a
-        # second provider never changes it (the user switches it in the
-        # personal settings).
-        if not user.activity_source:
-            user.activity_source = 'garmin'
-        user.save()
+        return _garmin_linked_response(request.user, email, token_blob)
 
-        # Only import when Garmin is the user's activity source - with
-        # Strava selected, an import would double every activity that
-        # exists in both ecosystems.
-        if user.get_activity_source() != 'garmin':
-            return Response({"message": "Successfully linked Garmin. Strava is currently your activity source, so no Garmin activities were imported - you can switch the source in the personal settings."},
-                            status=status.HTTP_200_OK)
 
-        # Initial import of the last ~6 weeks runs in the background -
-        # the Garmin SSO roundtrip is slow enough already.
+class LinkGarminMfaView(APIView):
+    # Expensive outbound OAuth/SSO calls get their own tighter bucket.
+    throttle_classes = [ClientIPScopedThrottle]
+    throttle_scope = 'provider_link'
+    """Finish a Garmin link that Garmin answered with an MFA challenge."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .garmin import (
+            GarminAuthError,
+            GarminUnavailableError,
+            complete_mfa_login,
+        )
+
+        mfa_token = (request.data.get("mfa_token") or "").strip()
+        mfa_code = (request.data.get("mfa_code") or "").strip()
+        if not mfa_token or not mfa_code:
+            return Response({"message": "Verification token and code are required."},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
-            sync_garmin.delay(user__id=user.id, days_back=43)
-        except Exception as exc:  # noqa: BLE001 - linkage itself succeeded
-            logger.warning("Garmin linked but initial sync could not be queued for user %s: %s", user.id, exc)
+            token_blob, email = complete_mfa_login(mfa_token, mfa_code)
+        except GarminAuthError as exc:
+            logger.info("Garmin MFA completion failed for user %s", request.user.pk, exc_info=True)
+            return Response({"message": str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except GarminUnavailableError:
+            logger.info("Garmin unavailable during MFA link for user %s", request.user.pk, exc_info=True)
+            return Response({"message": "Could not reach Garmin - please try again later."},
+                            status=status.HTTP_502_BAD_GATEWAY)
 
-        return Response({"message": "Successfully linked Garmin. Your recent activities are being imported in the background."},
+        return _garmin_linked_response(request.user, email, token_blob)
+
+
+def _garmin_linked_response(user, email, token_blob):
+    """Store the fresh tokens and kick off the initial import."""
+    from .garmin import encrypt_tokens, sync_garmin
+
+    user.garmin_email = email
+    user.garmin_tokens_enc = encrypt_tokens(token_blob)
+    user.garmin_last_synced_at = None
+    # The first linked provider becomes the activity source; linking a
+    # second provider never changes it (the user switches it in the
+    # personal settings).
+    if not user.activity_source:
+        user.activity_source = 'garmin'
+    user.save()
+
+    # Only import when Garmin is the user's activity source - with
+    # Strava selected, an import would double every activity that
+    # exists in both ecosystems.
+    if user.get_activity_source() != 'garmin':
+        return Response({"message": "Successfully linked Garmin. Strava is currently your activity source, so no Garmin activities were imported - you can switch the source in the personal settings."},
                         status=status.HTTP_200_OK)
+
+    # Initial import of the last ~6 weeks runs in the background -
+    # the Garmin SSO roundtrip is slow enough already.
+    try:
+        sync_garmin.delay(user__id=user.id, days_back=43)
+    except Exception as exc:  # noqa: BLE001 - linkage itself succeeded
+        logger.warning("Garmin linked but initial sync could not be queued for user %s: %s", user.id, exc)
+
+    return Response({"message": "Successfully linked Garmin. Your recent activities are being imported in the background."},
+                    status=status.HTTP_200_OK)
 
 
 class UnlinkGarminView(APIView):

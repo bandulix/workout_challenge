@@ -24,7 +24,7 @@ from custom_user.jwt_views import (
 from rest_framework.routers import DefaultRouter
 from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, CompetitionStatsSummaryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView, PointsFactorsView
 from workouts.views import WorkoutViewSet
-from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, ResetStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, EmailVerifyConfirmView, EmailVerifyResendView, LinkGarminView, UnlinkGarminView, SyncGarminView, LinkHealthView, UnlinkHealthView, SyncHealthView
+from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, ResetStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, EmailVerifyConfirmView, EmailVerifyResendView, LinkGarminView, LinkGarminMfaView, UnlinkGarminView, SyncGarminView, LinkHealthView, UnlinkHealthView, SyncHealthView
 from custom_user.link_https import reject_insecure_link
 
 
@@ -98,6 +98,7 @@ urlpatterns = [
         path('strava/reset/', ResetStravaView.as_view(), name='strava-reset'),
         path('strava/sync/', SyncStravaView.as_view(), name='strava-sync'),
         path('garmin/link/', SecureLinkGarminView.as_view(), name='garmin-link'),
+        path('garmin/link/mfa/', _https_required(LinkGarminMfaView).as_view(), name='garmin-link-mfa'),
         path('garmin/unlink/', UnlinkGarminView.as_view(), name='garmin-unlink'),
         path('garmin/sync/', SyncGarminView.as_view(), name='garmin-sync'),
         path('health/link/', SecureLinkHealthView.as_view(), name='health-link'),
