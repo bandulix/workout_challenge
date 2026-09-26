@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Garmin / Health Connect / Strava linking works again behind a reverse proxy.** The TLS edge-hardening only trusted `X-Forwarded-Proto` from loopback peers, so a proxy reaching the container over a Docker bridge or LAN address was treated as cleartext and the link buttons refused with "Linking requires HTTPS". Private/LAN peers are trusted again; direct internet clients (public remote address) still can't spoof the header.
+
 ### Changed
 - **Shorter first feed.** The challenge feed now opens with the 10 newest posts (was 15); "Show more" pages further back as before.
 - **Daily briefing takes your words 1:1.** The owner instruction for the coach's daily morning post is now passed to the AI verbatim — wording, format and length rules you write are the actual instruction (the coach still answers in its persona, keeps the running arc, and admits when it can't fetch live data). The settings field explains this and shows hints, e.g. how to have the coach sign with its name.
