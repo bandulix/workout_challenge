@@ -472,18 +472,23 @@ export default function Competition() {
 
     return (
         <PageWrapper>
+            {(competitionLoading) ? (
+                <div className="container mx-auto p-4"><SectionLoader height={"h-48 mb-4"}/></div>
+            ) : (tab !== "feed" && statsError) ? (
+                <div className="container mx-auto p-4">
+                    <ErrorBoxSection additionalClasses="mb-4" errorMsg={errText(statsError, 'Could not load the leaderboard. Please try again.')}/>
+                </div>
+            ) : (
+                <CompetitionHead
+                    competition={competition}
+                    feed={feed}
+                    isOwner={isOwner}
+                    goals={competition?.goals || stats?.competition?.goals}
+                    user={user}
+                />
+            )}
 
             <div className="container mx-auto p-4">
-
-                {
-                    (competitionLoading) ? (
-                        <SectionLoader height={"h-48 mb-4"} />
-                    ) : (tab !== "feed" && statsError) ? (
-                        <ErrorBoxSection additionalClasses='mb-4' errorMsg={errText(statsError, 'Could not load the leaderboard. Please try again.')}/>
-                    ) : (
-                        <CompetitionHead competition={competition} feed={feed} isOwner={isOwner} goals={competition?.goals || stats?.competition?.goals} user={user} />
-                    )
-                }
 
                 {(() => {
                     const trailPanel = competition && (
@@ -495,9 +500,6 @@ export default function Competition() {
                     );
                     const feedPane = (
                         <div>
-                        {/* Narrow layout: a one-line teaser at the top of the feed
-                            opens the Trail page. Wide layout shows the full map
-                            above the leaderboard instead. */}
                         {!wide && hasTrail && (
                             <ExpeditionTeaser expedition={expedition} onOpen={() => setTab("trail")}/>
                         )}

@@ -10,7 +10,7 @@ function goalAmount(value, goalKey) {
     return `${shown} km`;
 }
 
-export default function RivalCard({model, onPin, onDismiss, isPinned = false}) {
+export default function RivalCard({model, onPin, onDismiss, isPinned = false, plate = false}) {
     if (!model) return null;
 
     let title;
@@ -86,50 +86,74 @@ export default function RivalCard({model, onPin, onDismiss, isPinned = false}) {
             ? "Your own goal"
             : "Your challenge";
 
-    return (
-        <BoxSection additionalClasses="mb-4 border-l-4 border-volt-400">
+    const inner = (
+        <>
             <div className="flex items-start gap-3">
                 <Link
                     to={`/competition/${model.challengeId}`}
                     aria-label={`Open ${model.challengeName}: ${title}`}
                     className="group flex min-w-0 flex-1 items-start gap-3 rounded-xl text-inherit no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400 focus-visible:ring-offset-2"
                 >
-                    <div className="mt-0.5 rounded-full bg-volt-400/15 p-2 text-volt-700 dark:text-volt-300">
-                        <Target className="h-5 w-5" aria-hidden="true"/>
-                    </div>
+                    {!plate && (
+                        <div className="mt-0.5 rounded-full bg-volt-400/15 p-2 text-volt-700 dark:text-volt-300">
+                            <Target className="h-5 w-5" aria-hidden="true"/>
+                        </div>
+                    )}
                     <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-x-2">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-volt-700 dark:text-volt-300">
+                            <p className={plate
+                                ? "text-xs font-bold uppercase tracking-[0.16em] text-volt-300"
+                                : "text-xs font-bold uppercase tracking-[0.16em] text-volt-700 dark:text-volt-300"}>
                                 {eyebrow}
                             </p>
-                            <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400">· {model.challengeName}</span>
+                            <span className={plate
+                                ? "text-xs font-semibold text-white/50"
+                                : "text-xs font-semibold text-gray-500 dark:text-gray-400"}>
+                                {plate ? model.challengeName : `· ${model.challengeName}`}
+                            </span>
                         </div>
-                        <h2 className="mt-0.5 text-base font-extrabold text-gray-900 dark:text-gray-100">{title}</h2>
-                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{detail}</p>
+                        <h2 className={"mt-0.5 font-extrabold " + (plate ? "text-lg text-white" : "text-base text-gray-900 dark:text-gray-100")}>{title}</h2>
+                        <p className={"mt-1 text-sm " + (plate ? "text-white/70" : "text-gray-600 dark:text-gray-300")}>{detail}</p>
                     </div>
                     <ChevronRight
-                        className="mt-1 h-5 w-5 shrink-0 text-gray-400 transition group-hover:translate-x-0.5 group-hover:text-volt-600 dark:text-gray-500"
+                        className={"mt-1 h-5 w-5 shrink-0 transition group-hover:translate-x-0.5 " + (plate
+                            ? "text-white/40 group-hover:text-volt-300"
+                            : "text-gray-400 group-hover:text-volt-600 dark:text-gray-500")}
                         aria-hidden="true"
                     />
                 </Link>
                 {onPin && model.rivalId && ["chasing", "defending", "tied"].includes(model.kind) && (
                     <button type="button" onClick={onPin}
                             aria-label={isPinned ? `Unpin @${model.rivalUsername}` : `Pin @${model.rivalUsername}`}
-                            className="min-h-[44px] min-w-[44px] rounded-full text-xs font-semibold text-gray-600 hover:text-volt-700 dark:text-gray-300 dark:hover:text-volt-300">
+                            className={"min-h-[44px] min-w-[44px] rounded-full text-xs font-semibold " + (plate
+                                ? "text-white/70 hover:text-volt-300"
+                                : "text-gray-600 hover:text-volt-700 dark:text-gray-300 dark:hover:text-volt-300")}>
                         {isPinned ? "Pinned" : "Pin"}
                     </button>
                 )}
             </div>
             {onDismiss && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                    {onDismiss && (
-                        <button type="button" onClick={onDismiss}
-                                className="min-h-[44px] rounded-full btn-glass px-4 py-2 text-sm font-semibold">
-                            Dismiss until tomorrow
-                        </button>
-                    )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" onClick={onDismiss}
+                            className="min-h-[44px] rounded-full btn-glass px-4 py-2 text-sm font-semibold">
+                        Dismiss until tomorrow
+                    </button>
                 </div>
             )}
+        </>
+    );
+
+    if (plate) {
+        return (
+            <div className="rounded-3xl border border-white/10 bg-ink-950/80 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                {inner}
+            </div>
+        );
+    }
+
+    return (
+        <BoxSection additionalClasses="mb-4 border-l-4 border-volt-400">
+            {inner}
         </BoxSection>
     );
 }

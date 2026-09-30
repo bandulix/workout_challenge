@@ -4,8 +4,7 @@ import {Megaphone, ChevronRight, Radio, ScrollText} from "lucide-react";
 import {PageWrapper} from "../utils/miscellaneous";
 
 import {SectionLoader} from "../utils/loaders";
-import PersonaAvatar, {usePersonaImageSrc} from "../components/PersonaAvatar";
-import PortraitWash from "../components/PortraitWash";
+import PersonaAvatar from "../components/PersonaAvatar";
 import CoachVoteBox, {CoachHandover} from "../components/CoachVoteBox";
 import PushOptInCard from "../components/PushOptIn";
 import {ActivityCoachPost} from "../components/competitionChrome";
@@ -92,18 +91,6 @@ function coachPersona(persona, message) {
 }
 
 
-function CoachHeroWash({persona, mood}) {
-    const {src, onError} = usePersonaImageSrc(persona);
-    return (
-        <PortraitWash
-            src={src}
-            color={persona?.theme_color || "#d7ff3e"}
-            intensity={mood?.intensity}
-            onError={onError}
-        />
-    );
-}
-
 function CoachHero({persona, config, message: latest, briefing, ownedCompetitions, mood, lastOwnActivityId, meId}) {
     const trained = trainedSummary(mood);
 
@@ -122,22 +109,21 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
     }
 
     return (
-        <div className="relative rounded-3xl glass-card portrait-wash-card text-ink-950 dark:text-white">
-            <CoachHeroWash persona={persona} mood={mood}/>
-            <div className="relative p-5 sm:p-8">
+        <div className="season-bleed relative overflow-hidden pb-2 text-white">
+            <div className="relative px-5 pt-7 sm:px-8">
                 <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400">
+                    <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-volt-300">
                         <Radio className="h-3.5 w-3.5"/>
                         {config ? "On duty" : "Coach"}
                     </span>
                     {config && mood?.label && (
-                        <span className={"rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.16em] " +
-                            (MOOD_CHIP[mood.key] || "bg-gray-200 text-gray-700 dark:bg-ink-800 dark:text-gray-300")}>
+                        <span className={"rounded-full px-2 py-0.5 text-xs font-extrabold uppercase tracking-[0.16em] " +
+                            (MOOD_CHIP[mood.key] || "bg-white/10 text-white/80")}>
                             {mood.label}
                         </span>
                     )}
                     {trained && (
-                        <span className="rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.14em] text-gray-600 dark:text-gray-300"
+                        <span className="rounded-full px-2 py-0.5 text-xs font-extrabold uppercase tracking-[0.14em] text-white/70"
                               title={trained.hint}>
                             {trained.label}
                         </span>
@@ -152,15 +138,13 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                         </SquadOrbit>
                     </div>
                     <div className="min-w-0 flex-1">
-                        {/* Big headline only at xl: in the md two-pane
-                            column (~400px) text-3xl wraps long coach
-                            names mid-word ("SERGEAN T"). */}
-                        <h1 className="t-hero xl:text-3xl break-words">{persona.name}</h1>
-                        {persona.tagline && <p className="mt-1.5 text-sm text-gray-600 dark:text-gray-300 italic break-words">“{persona.tagline}”</p>}
+                        <h1 className="t-hero break-words xl:text-3xl">{persona.name}</h1>
+                        {persona.tagline && <p className="mt-1.5 break-words text-sm italic text-white/70">“{persona.tagline}”</p>}
                     </div>
                 </div>
+            </div>
 
-                <div className="mt-8 space-y-4">
+            <div className="relative space-y-4 px-5 pb-2 sm:px-8">
                     {latest?.kind === "activity" && config ? (
                         activityCard(latest, latest?.id === lastOwnActivityId)
                     ) : (
@@ -179,10 +163,6 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                             )}
                         />
                     )}
-                    {/* The owner's daily briefing (config.daily_prompt turned
-                        into a coach post each morning) stays pinned under the
-                        latest message for the rest of the day - unless it IS
-                        the latest message, then the quote above already is it. */}
                     {briefing && briefing.id !== latest?.id && (
                         <div className="rounded-2xl glass-well px-5 py-4 animate-pop-in">
                             <p className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-[0.18em] text-volt-700 dark:text-volt-400">
@@ -193,20 +173,17 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                             </p>
                         </div>
                     )}
-                </div>
 
-                {!config && ownedCompetitions.length > 0 && (
-                    /* coach=setup auto-opens the coach config modal on the
-                       challenge page - no hunting for the megaphone icon. */
-                    <Link to={`/competition/${ownedCompetitions[0].id}?tab=feed&coach=setup`}
-                          className="mt-5 inline-flex items-center gap-2 rounded-full bg-volt-400 text-ink-950 px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
-                        <Megaphone className="h-4 w-4"/> Set up your coach <ChevronRight className="h-4 w-4"/>
-                    </Link>
-                )}
+                    {!config && ownedCompetitions.length > 0 && (
+                        <Link to={`/competition/${ownedCompetitions[0].id}?tab=feed&coach=setup`}
+                              className="mt-5 inline-flex items-center gap-2 rounded-full bg-volt-400 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink-950 shadow-glow-volt transition hover:bg-volt-300">
+                            <Megaphone className="h-4 w-4"/> Set up your coach <ChevronRight className="h-4 w-4"/>
+                        </Link>
+                    )}
+                </div>
             </div>
-        </div>
-    );
-}
+        );
+    }
 
 
 function CoachPage() {
@@ -280,48 +257,41 @@ function CoachPage() {
 
     return (
         <PageWrapper>
-            <div className="container mx-auto max-w-3xl md:max-w-6xl">
-                {isLoading ? (
-                    <SectionLoader height="h-96"/>
-                ) : (() => {
-                    const main = (
-                        <>
-                            <CoachHero persona={heroPersona} config={heroConfig} message={latestMessage}
-                                       briefing={todayBriefing}
-                                       ownedCompetitions={ownedCompetitions}
-                                       mood={heroConfig?.mood}
-                                       lastOwnActivityId={lastOwnActivityId}
-                                       meId={user?.id}/>
-
-                            {/* The handover celebration belongs where the voting
-                                happens, not only on the challenge feed. */}
-                            {heroConfig && <CoachHandover configId={heroConfig.id} enabled={heroConfig.enabled}/>}
-
-                            {heroConfig?.daily_order && <OrderCard order={heroConfig.daily_order}/>}
-                        </>
-                    );
-                    const play = (
-                        <>
-                            <CoachVoteBox configs={configs} preferredConfigId={heroConfig?.id}/>
-
-                            {mediaReady && <HallOfRoasts cards={hall} persona={heroPersona}/>}
-
-                            <PushOptInCard/>
-                        </>
-                    );
-                    // lg+: the coach briefs on the left, the games live
-                    // on the right - one glance, no scrolling.
-                    if (wide) {
-                        return (
-                            <div className="grid grid-cols-2 gap-4 items-start stagger-in">
-                                <div className="flex flex-col gap-4 stagger-in">{main}</div>
-                                <div className="flex flex-col gap-4 stagger-in">{play}</div>
+            {isLoading ? (
+                <div className="container mx-auto p-4"><SectionLoader height="h-96"/></div>
+            ) : (
+                <>
+                    <CoachHero persona={heroPersona} config={heroConfig} message={latestMessage}
+                               briefing={todayBriefing}
+                               ownedCompetitions={ownedCompetitions}
+                               mood={heroConfig?.mood}
+                               lastOwnActivityId={lastOwnActivityId}
+                               meId={user?.id}/>
+                    <div className="container mx-auto max-w-3xl p-4 md:max-w-6xl">
+                        {wide ? (
+                            <div className="grid grid-cols-2 items-start gap-4 stagger-in">
+                                <div className="flex flex-col gap-4 stagger-in">
+                                    {heroConfig && <CoachHandover configId={heroConfig.id} enabled={heroConfig.enabled}/>}
+                                    {heroConfig?.daily_order && <OrderCard order={heroConfig.daily_order}/>}
+                                </div>
+                                <div className="flex flex-col gap-4 stagger-in">
+                                    <CoachVoteBox configs={configs} preferredConfigId={heroConfig?.id}/>
+                                    {mediaReady && <HallOfRoasts cards={hall} persona={heroPersona}/>}
+                                    <PushOptInCard/>
+                                </div>
                             </div>
-                        );
-                    }
-                    return <div className="flex flex-col gap-4 stagger-in">{main}{play}</div>;
-                })()}
-            </div>
+                        ) : (
+                            <div className="flex flex-col gap-4 stagger-in">
+                                {heroConfig && <CoachHandover configId={heroConfig.id} enabled={heroConfig.enabled}/>}
+                                {heroConfig?.daily_order && <OrderCard order={heroConfig.daily_order}/>}
+                                <CoachVoteBox configs={configs} preferredConfigId={heroConfig?.id}/>
+                                {mediaReady && <HallOfRoasts cards={hall} persona={heroPersona}/>}
+                                <PushOptInCard/>
+                            </div>
+                        )}
+                    </div>
+                </>
+            )}
         </PageWrapper>
     );
 }

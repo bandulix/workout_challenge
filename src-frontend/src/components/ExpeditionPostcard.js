@@ -58,7 +58,7 @@ export default function ExpeditionPostcard({title, finale, canRematch = false, o
             <p className="mt-2 text-xs text-muted">This preview leaves out individual activity and personal progress.</p>
             <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={sharePostcard}
-                    className="btn-primary min-h-[44px] rounded-full px-4 py-2 text-sm font-bold">
+                    className="min-h-[44px] rounded-full bg-volt-400 px-4 py-2 text-sm font-bold text-ink-950 hover:bg-volt-300">
                     Share postcard
                 </button>
                 {canRematch && onRematch && (

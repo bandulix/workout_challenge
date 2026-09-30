@@ -44,6 +44,7 @@ import {clearBodyScrollLock} from "../utils/overlay";
 import ProfileAvatar from "../components/ProfileAvatar";
 import RivalCard from "../components/RivalCard";
 import ComebackBench from "../components/ComebackBench";
+import SeasonBoard, {pickSeasonChallenge} from "../components/SeasonBoard";
 import {DogTagRow} from "../components/gameBits";
 import {Chip, EmptyState, SectionHead, SyncChip, rowClass} from "../components/uiBits";
 import usePollingInterval from "../utils/usePollingInterval";
@@ -859,6 +860,7 @@ export default function MySpace() {
         pollingInterval: pollFast,
     });
     const homeRivalSelection = homeRivalChallengeSelection(competitions, user?.id);
+    const seasonChallenge = pickSeasonChallenge(competitions, homeRivalSelection?.challenge);
     const rivalCardModel = challengeRivalCard(homeRivalSelection?.challenge, {
         user,
         workoutSummary,
@@ -907,32 +909,28 @@ export default function MySpace() {
 
     return (
         <PageWrapper>
+            {!(userLoading || workoutsIsLoading || (competitionLoading && !competitions)) && !userError && seasonChallenge && (
+                <SeasonBoard
+                    competitionId={seasonChallenge.id}
+                    user={user}
+                    onOpen={() => navigate(`/competition/${seasonChallenge.id}?tab=trail`)}
+                />
+            )}
 
-            <div className="container mx-auto p-4">
+            <div className={"container mx-auto p-4" + (seasonChallenge ? " relative z-10" : "")}>
                 <div className="w-full">
                     {
-                        (userLoading || workoutsIsLoading) ? (
+                        (userLoading || workoutsIsLoading || (competitionLoading && !competitions)) ? (
                             <SectionLoader height={"h-48 mb-4"}/>
                         ) : (userError) ? (
                             <ErrorBoxSection additionalClasses="mb-4"
                                              errorMsg={errText(userError, 'Could not load your account. Please try again.')}/>
-                        ) : (
+                        ) : seasonChallenge ? null : (
                             <WelcomeBox user={user} workouts={workouts} summary={workoutSummary}/>
                         )
                     }
                 </div>
-                {user && (
-                    <GettingStarted
-                        user={user}
-                        competitions={competitions}
-                        workouts={workouts}
-                        configs={drillConfigs}
-                        onJoin={() => setJoinCompetition(true)}
-                        onCreate={() => setShowCreateChallenge(true)}
-                        onSettings={() => setShowGettingStartedSettings(true)}
-                        onOpenChallenge={(id) => navigate(`/competition/${id}?tab=feed`)}
-                    />
-                )}
+                <div className={seasonChallenge ? "relative z-10 mb-6" : ""}>
                 <RivalCard
                     model={rivalCardModel}
                     isPinned={Boolean(rivalCardModel?.rivalIsPinned)}
@@ -948,6 +946,19 @@ export default function MySpace() {
                         setHomeRivalVersion((version) => version + 1);
                     }}
                 />
+                </div>
+                {user && (
+                    <GettingStarted
+                        user={user}
+                        competitions={competitions}
+                        workouts={workouts}
+                        configs={drillConfigs}
+                        onJoin={() => setJoinCompetition(true)}
+                        onCreate={() => setShowCreateChallenge(true)}
+                        onSettings={() => setShowGettingStartedSettings(true)}
+                        onOpenChallenge={(id) => navigate(`/competition/${id}?tab=feed`)}
+                    />
+                )}
                 {user && <ComebackBench/>}
 
                 {/* Stats (30 Day Activity, goals, streak) + Competitions +

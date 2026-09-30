@@ -58,6 +58,14 @@ function themeOf(expedition) {
     return THEMES[expedition?.route_theme] || THEMES.summit;
 }
 
+const STAGE_THEMES = ["summit", "ocean", "desert", "space", "relay"];
+
+/** Class for a surface whose background IS the route's sky. */
+export function seasonStageClass(themeKey) {
+    const key = STAGE_THEMES.includes(themeKey) ? themeKey : "summit";
+    return `season-stage season-stage-${key}`;
+}
+
 function landmarkTitle(expedition, milestoneId) {
     const fromApi = expedition?.landmark_titles?.[milestoneId];
     if (fromApi) return fromApi;
@@ -229,7 +237,7 @@ function CrewMarker({crew, x, y}) {
     );
 }
 
-function ExpeditionRouteMap({expedition, progress}) {
+export function ExpeditionRouteMap({expedition, progress, bare = false, stage = false}) {
     const theme = themeOf(expedition);
     const crewPosition = routePosition(progress);
     const pace = Number(expedition.pace_percent);
@@ -246,24 +254,25 @@ function ExpeditionRouteMap({expedition, progress}) {
         routePosition(((index + 1) / Math.max(1, Number(camp.weeks_total) || 1)) * 100)) : [];
 
     return (
-        <figure className="mt-3">
+        <figure className={stage ? "h-full min-h-52 w-full" : (bare ? "" : "mt-3")}>
             <svg
                 aria-label={`Shared route map, current position ${percent(progress)}%`}
-                className={`h-auto w-full rounded-xl bg-gradient-to-b ${theme.sky}`}
+                className={stage ? "h-full w-full" : `h-auto w-full bg-gradient-to-b ${theme.sky} ${bare ? "" : "rounded-xl"}`}
+                preserveAspectRatio={stage ? "xMidYMid meet" : undefined}
                 role="img"
                 viewBox="0 0 420 190"
             >
                 {theme.stars && [[30, 20], [90, 50], [150, 18], [210, 60], [300, 24], [360, 70], [400, 14], [250, 40]].map(([sx, sy]) => (
                     <circle cx={sx} cy={sy} fill="currentColor" key={`${sx}-${sy}`} r="1.3" className="text-gray-400 dark:text-gray-300"/>
                 ))}
-                <path d={theme.backdrop} className={theme.ground} opacity="0.8"/>
+                {!stage && <path d={theme.backdrop} className={theme.ground} opacity="0.8"/>}
                 {theme.lanes && [176, 182].map((ly) => (
                     <line key={ly} stroke="white" strokeDasharray="8 6" strokeWidth="1.5" x1="0" x2="420" y1={ly} y2={ly} opacity="0.7"/>
                 ))}
                 <path d={routePath} fill="none" pathLength="100" stroke="currentColor" strokeLinecap="round"
                     strokeDasharray="2 3" strokeWidth="4" className="text-gray-400 dark:text-gray-500"/>
                 {segments.length === 0 && (
-                    <path d={routePath} fill="none" pathLength="100" stroke="#15803d" strokeLinecap="round"
+                    <path d={routePath} fill="none" pathLength="100" stroke="#d7ff3e" strokeLinecap="round"
                         strokeDasharray={`${progress} 100`} strokeWidth="6"/>
                 )}
                 {segments.map((segment) => (
@@ -306,15 +315,15 @@ function ExpeditionRouteMap({expedition, progress}) {
                     const isNext = point.milestoneId === nextId;
                     const Icon = hidden ? HelpCircle : landmarkIcon(expedition, point.milestoneId);
                     const title = hidden ? "?" : landmarkTitle(expedition, point.milestoneId);
-                    const fill = reached ? (unstamped ? "#94a3b8" : "#15803d") : "white";
-                    const stroke = reached ? (unstamped ? "#64748b" : "#15803d") : isNext ? "#2563eb" : "#64748b";
+                    const fill = reached ? (unstamped ? "#94a3b8" : "#d7ff3e") : "white";
+                    const stroke = reached ? (unstamped ? "#64748b" : "#d7ff3e") : isNext ? "#d7ff3e" : "#64748b";
                     return (
                         <g key={point.milestoneId}>
                             <circle cx={point.x} cy={point.y} r={isNext ? 11 : 9} fill={fill} stroke={stroke}
                                 strokeDasharray={hidden ? "3 2" : undefined} strokeWidth={isNext ? 3 : 2}/>
                             {reached
-                                ? <Check color="white" size={11} x={point.x - 5.5} y={point.y - 5.5}/>
-                                : <Icon color={isNext ? "#2563eb" : "#475569"} size={11} x={point.x - 5.5} y={point.y - 5.5}/>}
+                                ? <Check color={unstamped ? "white" : "#0b0b0c"} size={11} x={point.x - 5.5} y={point.y - 5.5}/>
+                                : <Icon color={isNext ? "#d7ff3e" : "#475569"} size={11} x={point.x - 5.5} y={point.y - 5.5}/>}
                             {!hidden && (
                                 <text x={point.labelX} y={point.labelY} fontSize="10" fontWeight={isNext ? 700 : 500}
                                     textAnchor={point.anchor || "start"}
@@ -328,7 +337,7 @@ function ExpeditionRouteMap({expedition, progress}) {
                 })}
                 {crew.length > 0
                     ? <CrewMarker crew={crew} x={crewPosition.x} y={crewPosition.y}/>
-                    : <circle cx={crewPosition.x} cy={crewPosition.y} r="7" fill="white" stroke="#2563eb" strokeWidth="3">
+                    : <circle cx={crewPosition.x} cy={crewPosition.y} r="7" fill="white" stroke="#d7ff3e" strokeWidth="3">
                         <title>{`Current group position: ${percent(progress)}%`}</title>
                     </circle>}
             </svg>
@@ -521,7 +530,7 @@ export function ExpeditionTeaser({expedition, onOpen}) {
                 <line stroke="currentColor" strokeDasharray="2 3" strokeLinecap="round" strokeWidth="4"
                     className="text-gray-300 dark:text-ink-600" x1={x(0)} x2={x(100)} y1="26" y2="26"/>
                 {segments.length === 0 && progress > 0 && (
-                    <line stroke="#15803d" strokeLinecap="round" strokeWidth="6" x1={x(0)} x2={x(progress)} y1="26" y2="26"/>
+                    <line stroke="#d7ff3e" strokeLinecap="round" strokeWidth="6" x1={x(0)} x2={x(progress)} y1="26" y2="26"/>
                 )}
                 {segments.map((segment) => (
                     <line key={segment.member.id} stroke={segment.color} strokeWidth="6"
@@ -536,13 +545,13 @@ export function ExpeditionTeaser({expedition, onOpen}) {
                 {ROUTE_POSITIONS.map((point) => {
                     const reached = statuses.get(point.milestoneId) === "completed";
                     return (
-                        <circle cx={x(point.progress)} cy="26" fill={reached ? "#15803d" : "white"} key={point.milestoneId}
-                            r="4.5" stroke={reached ? "#15803d" : "#64748b"} strokeWidth="2"/>
+                        <circle cx={x(point.progress)} cy="26" fill={reached ? "#d7ff3e" : "white"} key={point.milestoneId}
+                            r="4.5" stroke={reached ? "#d7ff3e" : "#64748b"} strokeWidth="2"/>
                     );
                 })}
                 {crew.length > 0
                     ? <CrewMarker crew={crew} x={x(progress)} y={26}/>
-                    : <circle cx={x(progress)} cy="26" fill="white" r="6" stroke="#2563eb" strokeWidth="3"/>}
+                    : <circle cx={x(progress)} cy="26" fill="white" r="6" stroke="#d7ff3e" strokeWidth="3"/>}
             </svg>
             <span className="shrink-0 text-right">
                 <span className={`block text-sm font-semibold leading-tight ${status.tone}`}>{status.headline}</span>
@@ -570,7 +579,7 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
     return (
         <section
             aria-labelledby="expedition-title"
-            className="mb-4 rounded-3xl glass-card p-4 text-ink-950 dark:text-white sm:p-5"
+            className={`mb-4 overflow-hidden rounded-3xl p-4 text-white sm:p-5 ${seasonStageClass(expedition.route_theme)}`}
         >
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
@@ -617,16 +626,16 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                 );
             })()}
 
-            <ExpeditionRouteMap expedition={expedition} progress={groupProgress}/>
+            <ExpeditionRouteMap stage expedition={expedition} progress={groupProgress}/>
 
             <div aria-label="Shared Expedition progress" aria-valuemax={100} aria-valuemin={0}
                 aria-valuenow={Number(groupProgress)} aria-valuetext={`${groupProgress}% of the shared route`}
-                className="mt-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1" role="progressbar">
-                <span className={`text-sm font-semibold ${status.tone}`} role="status">{status.headline}</span>
-                <span className="text-sm text-muted">
-                    <span className="font-semibold text-gray-900 dark:text-white">{groupProgress}%</span>
-                    {status.detail ? ` · ${status.detail}` : ""}
-                </span>
+                className="mt-3 flex items-end justify-between gap-3" role="progressbar">
+                <div className="min-w-0">
+                    <span className={`block text-sm font-semibold ${status.tone}`} role="status">{status.headline}</span>
+                    {status.detail && <span className="mt-0.5 block text-sm text-muted">{status.detail}</span>}
+                </div>
+                <span className="font-display text-4xl leading-none tabular-nums text-volt-400">{groupProgress}%</span>
             </div>
 
             <CrewRow expedition={expedition}/>

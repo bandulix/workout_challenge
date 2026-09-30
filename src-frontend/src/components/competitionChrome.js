@@ -90,17 +90,13 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
     const showGoals = scoredGoals.length > 0 || isOwner;
 
     return (
-        <div className="mb-4 rounded-3xl glass-card overflow-hidden">
-            {/* Two-row header on small screens: the title gets the full
-                width first (it used to truncate between the counts and
-                the action buttons), counts + icon actions sit below. */}
+        <div className="season-bleed mb-2 overflow-hidden pb-2 text-white">
             <div className="p-5 sm:p-6">
-                {/* The challenge name is the page's actual heading. */}
-                <h1 className="text-xl font-display uppercase tracking-wide">{competition.name}</h1>
+                <h1 className="font-display text-xl uppercase tracking-wide text-white">{competition.name}</h1>
                 <div className="mt-0.5 flex items-center justify-between gap-3">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
+                    <p className="text-xs text-white/60">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
                     {endChip && endChip.kind === "ended" ? (
-                        <span className="shrink-0 text-xs text-gray-400">{endChip.text}</span>
+                        <span className="shrink-0 text-xs text-white/50">{endChip.text}</span>
                     ) : endChip ? (
                         <span className={"shrink-0 inline-flex items-center gap-1.5 text-sm font-extrabold tracking-wide " +
                             (endChip.kind === "last"
@@ -114,7 +110,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                 <div className="mt-2.5 flex items-center gap-3">
                     <div className="flex items-baseline gap-1.5 shrink-0">
                         <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
-                        <span className="uppercase text-xs tracking-wide text-gray-500">workouts</span>
+                        <span className="uppercase text-xs tracking-wide text-white/60">workouts</span>
                     </div>
                     {Object.entries(countGroups).map(([label, count], index) => (
                         <div key={"stat" + index} className="hidden lg:flex lg:flex-col lg:items-center shrink-0 px-1">
