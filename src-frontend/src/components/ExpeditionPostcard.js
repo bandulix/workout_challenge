@@ -46,34 +46,34 @@ export default function ExpeditionPostcard({title, finale, canRematch = false, o
     return (
         <section
             aria-label="Expedition postcard preview"
-            className="mt-5 rounded-2xl border border-emerald-700/30 bg-emerald-50 p-4 dark:border-emerald-400/30 dark:bg-emerald-950/30"
+            className="mt-5 rounded-3xl glass-card border-l-4 border-volt-400 p-4 text-ink-950 dark:text-white"
         >
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-800 dark:text-emerald-200">Expedition finale · preview</p>
-            <h3 className="mt-1 text-lg font-bold text-slate-900 dark:text-white">{challengeTitle}</h3>
-            <p className="text-sm text-slate-600 dark:text-slate-300">Finished {date}</p>
-            <div className="mt-3 rounded-xl border border-emerald-800/15 bg-white/70 p-3 dark:border-white/10 dark:bg-black/10">
-                <p className="font-semibold text-slate-900 dark:text-white">{progress}% of the shared route</p>
-                <p className="text-sm text-slate-600 dark:text-slate-300">Completed together by {participants} participants</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-volt-700 dark:text-volt-300">Expedition finale · preview</p>
+            <h3 className="mt-1 font-display text-sm uppercase tracking-wider">{challengeTitle}</h3>
+            <p className="text-sm text-muted">Finished {date}</p>
+            <div className="mt-3 rounded-2xl bg-ink-950/5 p-3 dark:bg-white/5">
+                <p className="font-display text-base tabular-nums text-volt-700 dark:text-volt-300">{progress}% of the shared route</p>
+                <p className="text-sm text-muted">Completed together by {participants} participants</p>
             </div>
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">This preview leaves out individual activity and personal progress.</p>
+            <p className="mt-2 text-xs text-muted">This preview leaves out individual activity and personal progress.</p>
             <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={sharePostcard}
-                    className="min-h-[44px] rounded-xl bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600">
+                    className="btn-primary min-h-[44px] rounded-full px-4 py-2 text-sm font-bold">
                     Share postcard
                 </button>
                 {canRematch && onRematch && (
                     <button type="button" onClick={onRematch}
-                        className="min-h-[44px] rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">
+                        className="btn-glass min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold">
                         Prepare a rematch
                     </button>
                 )}
             </div>
             {canRematch && (
-                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                <p className="mt-2 text-xs text-muted">
                     A fresh challenge is only created after you review and confirm it. Previous members are not added automatically; invite the group explicitly.
                 </p>
             )}
-            {shareMessage && <p className="mt-2 text-sm text-slate-600 dark:text-slate-300" role="status">{shareMessage}</p>}
+            {shareMessage && <p className="mt-2 text-sm text-muted" role="status">{shareMessage}</p>}
         </section>
     );
 }

@@ -23,33 +23,33 @@ const THEMES = {
     summit: {
         icons: {trailhead: MapPin, "river-crossing": Waves, "high-pass": Mountain, finale: Flag},
         backdrop: "M0 190 L0 150 L60 118 L110 138 L170 96 L230 122 L290 70 L340 96 L392 34 L420 60 L420 190 Z",
-        sky: "from-sky-50 to-emerald-50 dark:from-slate-800 dark:to-slate-900",
-        ground: "fill-emerald-100 dark:fill-slate-700",
+        sky: "from-gray-100 to-gray-50 dark:from-ink-800 dark:to-ink-950",
+        ground: "fill-gray-300 dark:fill-ink-700",
     },
     ocean: {
         icons: {trailhead: Anchor, "river-crossing": Waves, "high-pass": CloudLightning, finale: Flag},
         backdrop: "M0 190 L0 160 Q30 150 60 160 T120 160 T180 160 T240 160 T300 160 T360 160 T420 160 L420 190 Z",
-        sky: "from-sky-100 to-cyan-50 dark:from-slate-800 dark:to-slate-900",
-        ground: "fill-cyan-200 dark:fill-slate-700",
+        sky: "from-gray-100 to-gray-50 dark:from-ink-800 dark:to-ink-950",
+        ground: "fill-cyan-300/40 dark:fill-cyan-900/40",
     },
     desert: {
         icons: {trailhead: Droplets, "river-crossing": Sun, "high-pass": Mountain, finale: Building2},
         backdrop: "M0 190 L0 160 Q70 120 140 158 Q200 190 260 150 Q320 112 420 156 L420 190 Z",
-        sky: "from-orange-50 to-amber-50 dark:from-slate-800 dark:to-slate-900",
-        ground: "fill-amber-200 dark:fill-slate-700",
+        sky: "from-gray-100 to-gray-50 dark:from-ink-800 dark:to-ink-950",
+        ground: "fill-amber-300/40 dark:fill-amber-900/40",
     },
     space: {
         icons: {trailhead: Rocket, "river-crossing": Orbit, "high-pass": Sparkles, finale: Target},
         backdrop: "M0 190 L0 176 Q210 150 420 176 L420 190 Z",
-        sky: "from-indigo-100 to-slate-100 dark:from-slate-900 dark:to-black",
-        ground: "fill-indigo-200 dark:fill-slate-700",
+        sky: "from-gray-100 to-gray-50 dark:from-ink-900 dark:to-ink-950",
+        ground: "fill-indigo-300/40 dark:fill-indigo-900/40",
         stars: true,
     },
     relay: {
         icons: {trailhead: Flag, "river-crossing": Timer, "high-pass": Mountain, finale: Trophy},
         backdrop: "M0 190 L0 170 L420 170 L420 190 Z",
-        sky: "from-rose-50 to-orange-50 dark:from-slate-800 dark:to-slate-900",
-        ground: "fill-rose-200 dark:fill-slate-700",
+        sky: "from-gray-100 to-gray-50 dark:from-ink-800 dark:to-ink-950",
+        ground: "fill-gray-300 dark:fill-ink-700",
         lanes: true,
     },
 };
@@ -223,7 +223,7 @@ function CrewMarker({crew, x, y}) {
             ))}
             {overflow > 0 && (
                 <text fontSize="9" fontWeight="700" x={startX + shown.length * spread - 2} y={y - 2}
-                    className="fill-slate-700 dark:fill-slate-200">+{overflow}</text>
+                    className="fill-gray-800 dark:fill-gray-100">+{overflow}</text>
             )}
         </g>
     );
@@ -254,14 +254,14 @@ function ExpeditionRouteMap({expedition, progress}) {
                 viewBox="0 0 420 190"
             >
                 {theme.stars && [[30, 20], [90, 50], [150, 18], [210, 60], [300, 24], [360, 70], [400, 14], [250, 40]].map(([sx, sy]) => (
-                    <circle cx={sx} cy={sy} fill="currentColor" key={`${sx}-${sy}`} r="1.3" className="text-indigo-300 dark:text-slate-300"/>
+                    <circle cx={sx} cy={sy} fill="currentColor" key={`${sx}-${sy}`} r="1.3" className="text-gray-400 dark:text-gray-300"/>
                 ))}
                 <path d={theme.backdrop} className={theme.ground} opacity="0.8"/>
                 {theme.lanes && [176, 182].map((ly) => (
                     <line key={ly} stroke="white" strokeDasharray="8 6" strokeWidth="1.5" x1="0" x2="420" y1={ly} y2={ly} opacity="0.7"/>
                 ))}
                 <path d={routePath} fill="none" pathLength="100" stroke="currentColor" strokeLinecap="round"
-                    strokeDasharray="2 3" strokeWidth="4" className="text-slate-400 dark:text-slate-500"/>
+                    strokeDasharray="2 3" strokeWidth="4" className="text-gray-400 dark:text-gray-500"/>
                 {segments.length === 0 && (
                     <path d={routePath} fill="none" pathLength="100" stroke="#15803d" strokeLinecap="round"
                         strokeDasharray={`${progress} 100`} strokeWidth="6"/>
@@ -274,7 +274,7 @@ function ExpeditionRouteMap({expedition, progress}) {
                 ))}
                 {stormPosition && (
                     // Rescue run: the weather front creeping up the trail behind the crew.
-                    <g className="text-slate-500 dark:text-slate-300">
+                    <g className="text-gray-500 dark:text-gray-300">
                         <title>{`Storm front at ${percent(storm)}%`}</title>
                         <path d={routePath} fill="none" pathLength="100" stroke="rgba(71, 85, 105, 0.35)"
                             strokeDasharray={`${storm} 100`} strokeLinecap="round" strokeWidth="10"/>
@@ -289,7 +289,7 @@ function ExpeditionRouteMap({expedition, progress}) {
                     </g>
                 ))}
                 {pacePosition && (
-                    <g className="text-slate-500 dark:text-slate-300">
+                    <g className="text-gray-500 dark:text-gray-300">
                         <title>Today's pace marker</title>
                         <line stroke="currentColor" strokeDasharray="2 2" strokeWidth="1.5"
                             x1={pacePosition.x} x2={pacePosition.x} y1={pacePosition.y - 26} y2={pacePosition.y + 8}/>
@@ -318,7 +318,7 @@ function ExpeditionRouteMap({expedition, progress}) {
                             {!hidden && (
                                 <text x={point.labelX} y={point.labelY} fontSize="10" fontWeight={isNext ? 700 : 500}
                                     textAnchor={point.anchor || "start"}
-                                    className="fill-slate-700 dark:fill-slate-200">
+                                    className="fill-gray-800 dark:fill-gray-100">
                                     {title}
                                 </text>
                             )}
@@ -349,12 +349,12 @@ function EnergyRing({member, color, cap}) {
         <span className="relative inline-flex h-11 w-11 items-center justify-center"
             title={`${member.name}: ${points(member.week_points)} of ${points(cap)} this week`}>
             <svg aria-label={`${member.name}: weekly energy ${percent(energy)}%`} className="absolute inset-0" role="img" viewBox="0 0 44 44">
-                <circle cx="22" cy="22" fill="none" r={radius} stroke="currentColor" strokeWidth="3" className="text-slate-200 dark:text-slate-700"/>
+                <circle cx="22" cy="22" fill="none" r={radius} stroke="currentColor" strokeWidth="3" className="text-gray-200 dark:text-ink-700"/>
                 <circle cx="22" cy="22" fill="none" r={radius} stroke={color} strokeLinecap="round" strokeWidth="3"
                     strokeDasharray={`${(energy / 100) * circumference} ${circumference}`} transform="rotate(-90 22 22)"/>
             </svg>
             <CrewRowFace member={member} color={color}/>
-            {charged && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 rounded-full bg-emerald-600 p-0.5 text-white"><Check size={8}/></span>}
+            {charged && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 rounded-full bg-volt-400 p-0.5 text-ink-950"><Check size={8}/></span>}
         </span>
     );
 }
@@ -368,10 +368,10 @@ function CrewRow({expedition}) {
             {segments.map(({member, color}) => (
                 <li className="flex flex-col items-center gap-0.5 text-center" key={member.id}>
                     <EnergyRing member={member} color={color} cap={cap}/>
-                    <span className="max-w-[4.5rem] truncate text-xs font-medium text-slate-800 dark:text-slate-100">
+                    <span className="max-w-[4.5rem] truncate text-xs font-medium text-gray-900 dark:text-gray-100">
                         {member.is_you ? "You" : member.name}
                     </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400">{points(member.points)} pts</span>
+                    <span className="text-xs text-muted">{points(member.points)} pts</span>
                 </li>
             ))}
         </ul>
@@ -384,17 +384,17 @@ function statusLine(expedition) {
     const next = expedition.next_milestone;
     const week = expedition.this_week;
     const weekMaxed = week && Number(week.possible_points) > 0 && Number(week.earned_points) >= Number(week.possible_points);
-    let tone = "text-slate-700 dark:text-slate-200";
+    let tone = "text-gray-700 dark:text-gray-200";
     let headline;
     if (expedition.objective === "basecamp" && expedition.camp) {
         const camp = expedition.camp;
         const tents = Number(camp.tents) || 0;
         if (camp.this_week?.held) {
             headline = `Camp held · ${tents} tent${tents === 1 ? "" : "s"} standing`;
-            tone = "text-emerald-700 dark:text-emerald-300";
+            tone = "text-volt-700 dark:text-volt-300";
         } else if (camp.this_week) {
             headline = `${points(Math.max(0, Number(camp.this_week.needed_points) - Number(camp.this_week.earned_points)))} pts to hold camp this week`;
-            tone = "text-amber-700 dark:text-amber-300";
+            tone = "text-warning-text";
         } else {
             headline = `${tents} tent${tents === 1 ? "" : "s"} standing`;
         }
@@ -404,17 +404,17 @@ function statusLine(expedition) {
     if (expedition.objective === "rescue" && Number.isFinite(storm)) {
         if (progress < storm - 0.5) {
             headline = "Storm caught the crew";
-            tone = "text-amber-700 dark:text-amber-300";
+            tone = "text-warning-text";
         } else {
             headline = `Storm ${percent(progress - storm)}% behind the crew`;
-            tone = progress - storm >= 5 ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300";
+            tone = progress - storm >= 5 ? "text-volt-700 dark:text-volt-300" : "text-warning-text";
         }
     } else if (Number.isFinite(pace) && progress >= pace - 0.5) {
         headline = weekMaxed ? "Crew fully charged this week" : "Crew on pace";
-        tone = "text-emerald-700 dark:text-emerald-300";
+        tone = "text-volt-700 dark:text-volt-300";
     } else if (Number.isFinite(pace)) {
         headline = `Crew ${percent(pace - progress)}% behind today's flag`;
-        tone = "text-amber-700 dark:text-amber-300";
+        tone = "text-warning-text";
     } else {
         headline = `Crew at ${percent(progress)}%`;
     }
@@ -442,7 +442,7 @@ function HowItWorks({expedition, open}) {
         ];
     const plan = expedition.twists?.plan || [];
     return (
-        <ul className="mt-2 list-disc space-y-1 rounded-lg bg-slate-50 p-3 pl-7 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200" id="expedition-help">
+        <ul className="mt-2 list-disc space-y-1 rounded-2xl bg-ink-950/5 p-3 pl-7 text-xs text-gray-700 dark:bg-white/5 dark:text-gray-200" id="expedition-help">
             {lines.map((line) => <li key={line}>{line}</li>)}
             {expedition.route_title && <li>This season's route: {expedition.route_title}. The next challenge gets a different one.</li>}
             {expedition.twists?.active?.help && <li>{expedition.twists.active.title}: {expedition.twists.active.help}</li>}
@@ -468,12 +468,12 @@ function TwistChip({expedition, competitionId}) {
         vote({id: competitionId, choice});
     };
     return (
-        <aside aria-label={twist.title} className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-2 text-sm text-slate-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-slate-100" role="status">
+        <aside aria-label={twist.title} className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-ink-950/10 bg-ink-950/5 p-2 text-sm text-gray-900 dark:border-white/10 dark:bg-white/5 dark:text-gray-100" role="status">
             <CoachPortrait coach={expedition.current_coach} className="h-7 w-7 rounded-full"/>
-            <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300"/>
+            <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-warning-text"/>
             <span className="min-w-0 flex-1">
                 <span className="font-semibold">{twist.title}.</span>{" "}
-                <span className="text-slate-700 dark:text-slate-200">
+                <span className="text-gray-700 dark:text-gray-200">
                     {decided ? `The crew chose the ${shortcut.result}.` : twist.coach_line}
                 </span>
             </span>
@@ -485,8 +485,8 @@ function TwistChip({expedition, competitionId}) {
                         return (
                             <button aria-pressed={mine} disabled={isLoading} key={choice} onClick={() => cast(choice)} type="button"
                                 className={"rounded-full border px-2.5 py-1 text-xs font-semibold capitalize " + (mine
-                                    ? "border-amber-700 bg-amber-700 text-white"
-                                    : "border-amber-400 bg-white text-amber-800 hover:bg-amber-100 dark:bg-slate-900 dark:text-amber-200")}>
+                                    ? "border-volt-400 bg-volt-400 text-ink-950"
+                                    : "btn-glass border-transparent")}>
                                 {choice}{count > 0 ? ` · ${count}` : ""}
                             </button>
                         );
@@ -512,14 +512,14 @@ export function ExpeditionTeaser({expedition, onOpen}) {
     return (
         <button
             aria-label={`Open the Expedition trail: ${status.headline}, ${percent(progress)}% of the route`}
-            className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+            className="mb-4 flex w-full items-center gap-3 rounded-3xl glass-card px-3 py-2.5 text-left text-ink-950 transition hover:bg-volt-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400 dark:text-white"
             data-no-swipe
             onClick={onOpen}
             type="button"
         >
             <svg aria-hidden="true" className="h-11 min-w-0 flex-1" preserveAspectRatio="xMidYMid meet" viewBox="0 0 320 44">
                 <line stroke="currentColor" strokeDasharray="2 3" strokeLinecap="round" strokeWidth="4"
-                    className="text-slate-300 dark:text-slate-600" x1={x(0)} x2={x(100)} y1="26" y2="26"/>
+                    className="text-gray-300 dark:text-ink-600" x1={x(0)} x2={x(100)} y1="26" y2="26"/>
                 {segments.length === 0 && progress > 0 && (
                     <line stroke="#15803d" strokeLinecap="round" strokeWidth="6" x1={x(0)} x2={x(progress)} y1="26" y2="26"/>
                 )}
@@ -528,7 +528,7 @@ export function ExpeditionTeaser({expedition, onOpen}) {
                         x1={x(segment.start)} x2={x(segment.start + segment.length)} y1="26" y2="26"/>
                 ))}
                 {Number.isFinite(pace) && pace > 0 && pace < 100 && (
-                    <g className="text-slate-500 dark:text-slate-300">
+                    <g className="text-gray-500 dark:text-gray-300">
                         <line stroke="currentColor" strokeDasharray="2 2" strokeWidth="1.5" x1={x(pace)} x2={x(pace)} y1="6" y2="32"/>
                         <path d={`M ${x(pace)} 6 l 9 3.5 l -9 3.5 z`} fill="currentColor"/>
                     </g>
@@ -546,7 +546,7 @@ export function ExpeditionTeaser({expedition, onOpen}) {
             </svg>
             <span className="shrink-0 text-right">
                 <span className={`block text-sm font-semibold leading-tight ${status.tone}`}>{status.headline}</span>
-                <span className="block text-xs text-slate-500 dark:text-slate-400">
+                <span className="block text-xs text-muted">
                     {percent(progress)}% · Trail <span aria-hidden="true">›</span>
                 </span>
             </span>
@@ -570,27 +570,27 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
     return (
         <section
             aria-labelledby="expedition-title"
-            className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:p-5"
+            className="mb-4 rounded-3xl glass-card p-4 text-ink-950 dark:text-white sm:p-5"
         >
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
                     <span aria-hidden="true"
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 bg-white dark:bg-slate-900"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 bg-white dark:bg-ink-900"
                         style={{borderColor: accent, color: accent}}>
                         <ObjectiveIcon size={20}/>
                     </span>
                     <div className="min-w-0">
-                        <h2 id="expedition-title" className="text-lg font-bold text-slate-900 dark:text-white">
+                        <h2 id="expedition-title" className="font-display text-sm uppercase tracking-wider">
                             {expedition.objective_title || "Expedition"}
                         </h2>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <p className="text-xs text-muted">
                             {expedition.route_title ? `${expedition.route_title} · ` : ""}{expedition.participant_count || 0} on the trail
                         </p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
                     <button aria-controls="expedition-help" aria-expanded={helpOpen} aria-label="How the Expedition works"
-                        className="rounded-full p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                        className="flex h-11 w-11 items-center justify-center rounded-full text-muted transition hover:bg-ink-950/5 hover:text-volt-700 dark:hover:bg-white/10 dark:hover:text-volt-300"
                         onClick={() => setHelpOpen((value) => !value)} type="button">
                         <Info size={18}/>
                     </button>
@@ -607,7 +607,7 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                 return (
                     <aside
                         aria-label="Coach handover"
-                        className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-ink-950/5 p-2 text-sm text-gray-700 dark:bg-white/5 dark:text-gray-200"
                         role="status"
                     >
                         <CoachPortrait coach={handover.from}/>
@@ -623,8 +623,8 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                 aria-valuenow={Number(groupProgress)} aria-valuetext={`${groupProgress}% of the shared route`}
                 className="mt-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1" role="progressbar">
                 <span className={`text-sm font-semibold ${status.tone}`} role="status">{status.headline}</span>
-                <span className="text-sm text-slate-600 dark:text-slate-300">
-                    <span className="font-semibold text-slate-900 dark:text-white">{groupProgress}%</span>
+                <span className="text-sm text-muted">
+                    <span className="font-semibold text-gray-900 dark:text-white">{groupProgress}%</span>
                     {status.detail ? ` · ${status.detail}` : ""}
                 </span>
             </div>
@@ -649,7 +649,7 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                             title={label}>
                             {coachStamp ? (
                                 // The coach who saw the crew through stamps the reached landmark.
-                                <span className="block h-7 w-7 overflow-hidden rounded-full border-2 border-emerald-600 bg-white dark:bg-slate-900">
+                                <span className="block h-7 w-7 overflow-hidden rounded-full border-2 border-volt-400 bg-white dark:bg-ink-900">
                                     <img alt={`Completed with ${coach.name}`} className="h-full w-full object-cover"
                                         src={`/personas/${coach.avatar_asset_key}.svg`}/>
                                 </span>
@@ -657,17 +657,17 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                                 <span aria-hidden="true"
                                     className={"flex h-7 w-7 items-center justify-center rounded-full border-2 " + (completed
                                         ? (unstamped
-                                            ? "border-dashed border-slate-400 bg-slate-300 text-white dark:bg-slate-600"
-                                            : "border-emerald-700 bg-emerald-600 text-white")
+                                            ? "border-dashed border-gray-400 bg-gray-300 text-white dark:border-ink-600 dark:bg-ink-600"
+                                            : "border-volt-400 bg-volt-400 text-ink-950")
                                         : active
-                                            ? "border-blue-600 text-blue-700 dark:text-blue-300"
-                                            : "border-slate-300 text-slate-400 dark:border-slate-600")
+                                            ? "border-volt-400 text-volt-700 shadow-glow-volt dark:text-volt-300"
+                                            : "border-gray-300 text-gray-400 dark:border-ink-600 dark:text-gray-500")
                                         + (hidden ? " border-dashed" : "")}>
                                     {completed ? <Check size={14}/> : <Icon aria-hidden="true" className="h-4 w-4 shrink-0"/>}
                                 </span>
                             )}
-                            <span className="w-full truncate text-xs font-medium text-slate-800 dark:text-slate-100">{title}</span>
-                            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            <span className="w-full truncate text-xs font-medium text-gray-900 dark:text-gray-100">{title}</span>
+                            <span className="text-xs text-muted">
                                 {completed ? (unstamped ? "Late" : STATUS_LABELS.completed) : hidden ? "Hidden" : routeDate(milestone.target_on)}
                             </span>
                         </li>
@@ -675,7 +675,7 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                 })}
             </ol>
             {latestStory && (
-                <p className="mt-2 text-center text-xs italic text-slate-600 dark:text-slate-300" role="note">“{latestStory}”</p>
+                <p className="mt-2 text-center text-xs italic text-muted" role="note">“{latestStory}”</p>
             )}
             <ExpeditionPostcard
                 title={expedition.title}
@@ -697,7 +697,7 @@ export default function ExpeditionPanel({competitionId, canRematch = false, onRe
     );
     if (!error || error.status === 404 || isLoading) return null;
     return (
-        <p className="mb-4 rounded-xl border border-slate-200 p-3 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300" role="status">
+        <p className="mb-4 rounded-3xl glass-card p-4 text-sm text-muted" role="status">
             The Expedition route is temporarily unavailable.
         </p>
     );
