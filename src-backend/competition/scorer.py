@@ -1,8 +1,10 @@
 import datetime
 import logging
+from decimal import Decimal
 
 from django.apps import apps
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -40,6 +42,20 @@ def sport_factor(sport_type, factors=None) -> float:
         return 1.0
 
 
+_POINTS_QUANTUM = Decimal("0.01")
+
+
+def quantize_points(value) -> Decimal:
+    """Round a computed score to the 2dp the Points columns store.
+
+    Points.points_raw is Decimal(2dp) while the formula yields a float, so
+    comparing the unrounded float with the stored value never matches and
+    the "changed?" guards rewrite every row. Quantize once here so the
+    computed and stored values are the same number.
+    """
+    return Decimal(str(value)).quantize(_POINTS_QUANTUM)
+
+
 def _calculate_points_raw(goal, workout, user, factors=None):
     goal_metric = goal.metric
     goal_target = float(goal.goal)
@@ -66,7 +82,10 @@ def _calculate_points_raw(goal, workout, user, factors=None):
             points = 0
         else:
             points = float(workout.kcal) * 4.18 / (goal_target * float(user.scaling_kcal))
-    return points * 100 * sport_factor(workout.sport_type, factors)
+    else:
+        # Explicit instead of an UnboundLocalError on `points` below.
+        raise ValueError(f"Unknown goal metric {goal_metric!r} on goal {goal.pk}")
+    return quantize_points(points * 100 * sport_factor(workout.sport_type, factors))
 
 
 def _bust_stats_cache_for(user):
@@ -107,7 +126,8 @@ def apply_sport_factor_changes(old_factors: dict, new_factors: dict):
     ).select_related('workout', 'goal', 'workout__user')
     for row in rows:
         new_raw = _calculate_points_raw(row.goal, row.workout, row.workout.user, factors=new_factors)
-        if float(row.points_raw) != new_raw:
+        # Both sides are 2dp Decimals now, so unchanged rows are skipped.
+        if row.points_raw != new_raw or row.points_capped != new_raw:
             row.points_raw = new_raw
             row.points_capped = new_raw
             rows_to_update.append(row)
@@ -194,12 +214,16 @@ def trigger_workout_change(instance, new, changes):
 
         # hand off to the AI Drill Instructor (no-op if no competition
         # for this workout has it enabled). Imported lazily to avoid a
-        # circular import with apps.get_model at import time.
-        try:
-            from drill_instructor.tasks import post_workout_comment
-            post_workout_comment.delay(instance.pk)
-        except Exception:  # noqa: BLE001 - never block workout saves on instructor plumbing
-            logger.exception("Drill Instructor: failed to enqueue comment for workout %s", instance.pk)
+        # circular import with apps.get_model at import time. Enqueued on
+        # commit so a worker cannot pick the task up before the workout row
+        # (and its Points) are visible; outside a transaction it fires now.
+        def _enqueue_comment(workout_pk=instance.pk):
+            try:
+                from drill_instructor.tasks import post_workout_comment
+                post_workout_comment.delay(workout_pk)
+            except Exception:  # noqa: BLE001 - never block workout saves on instructor plumbing
+                logger.exception("Drill Instructor: failed to enqueue comment for workout %s", workout_pk)
+        transaction.on_commit(_enqueue_comment)
     else:
         # updated existing workout
         # check if relevant field was changed
@@ -308,11 +332,8 @@ def recompute_raw_points_for_goal(goal):
         if workout is None:
             continue
         new_raw = _calculate_points_raw(goal, workout, workout.user, factors=factors)
-        if (
-            abs(float(row.points_raw) - float(new_raw)) > 1e-9
-            or row.points_capped is None
-            or abs(float(row.points_capped) - float(new_raw)) > 1e-9
-        ):
+        # Both sides are 2dp Decimals now, so unchanged rows are skipped.
+        if row.points_raw != new_raw or row.points_capped is None or row.points_capped != new_raw:
             row.points_raw = new_raw
             row.points_capped = new_raw
             rows_to_update.append(row)
@@ -457,8 +478,20 @@ def trigger_competition_change(instance, new, changes):
             logger.info("Competition %s end_date extended %s → %s, triggering cap recalc", instance.pk, changes['end_date'][0], changes['end_date'][1])
         else:
             # remove point entries after changes['end_date'][1]
-            Points.objects.filter(goal__competition=instance, workout__start_datetime__gt=changes['end_date'][1]).delete()
-            logger.info("Competition %s end_date shortened %s → %s, not triggering cap recalc", instance.pk, changes['end_date'][0], changes['end_date'][1])
+            points_to_delete = Points.objects.filter(goal__competition=instance, workout__start_datetime__gt=changes['end_date'][1])
+            # Mirror the start_date branch: the deleted rows may have been
+            # the ones eating a weekly cap, so the remaining rows of that
+            # week need recapping - from the Monday of the new last week.
+            affected_pairs = set(points_to_delete.values_list('workout__user', 'goal').distinct())
+            points_to_delete.delete()
+            if affected_pairs:
+                new_end = changes['end_date'][1]
+                week_start = new_end - datetime.timedelta(days=new_end.weekday())
+                RecalcRequest.objects.bulk_create([
+                    RecalcRequest(user_id=user_id, goal_id=goal_id, start_datetime=timezone.make_aware(datetime.datetime.combine(week_start, datetime.time.min)))
+                    for user_id, goal_id in affected_pairs
+                ])
+            logger.info("Competition %s end_date shortened %s → %s, triggering cap recalc", instance.pk, changes['end_date'][0], changes['end_date'][1])
 
         trigger_recalc_points()
 
@@ -557,26 +590,13 @@ def _get_or_create_bonus_award(competition, name, reward_points):
 
 
 def grant_photo_bonus(workout, competition):
-    """Add a flat +10 to a workout when the athlete posts a photo on it.
+    """Deprecated compatibility hook; photos no longer create flat points.
 
-    Stored as an Award-backed Points row so goal rescores do not wipe it
-    and the Board still attributes it to this competition.
+    Keep this function as a no-op for old callers during rollout. Existing
+    Award-backed Points rows are intentionally left untouched, so historical
+    totals and attribution remain stable.
     """
-    if workout is None or competition is None:
-        return None
-    award = _get_or_create_bonus_award(competition, PHOTO_AWARD_NAME, PHOTO_BONUS_POINTS)
-    Points = apps.get_model("competition", "Points")
-    row, created = Points.objects.get_or_create(
-        award=award,
-        workout=workout,
-        defaults={
-            "goal": None,
-            "points_raw": PHOTO_BONUS_POINTS,
-            "points_capped": PHOTO_BONUS_POINTS,
-        },
-    )
-    bump_stats_generation([competition.pk])
-    return row if created else row
+    return None
 
 
 def grant_order_bonus(workout, competition):
@@ -591,7 +611,7 @@ def grant_order_bonus(workout, competition):
         return None
     award = _get_or_create_bonus_award(competition, ORDER_AWARD_NAME, ORDER_BONUS_POINTS)
     Points = apps.get_model("competition", "Points")
-    row, created = Points.objects.get_or_create(
+    row, _created = Points.objects.get_or_create(
         award=award,
         workout=workout,
         defaults={
@@ -601,4 +621,4 @@ def grant_order_bonus(workout, competition):
         },
     )
     bump_stats_generation([competition.pk])
-    return row if created else row
+    return row

@@ -8,8 +8,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from custom_user.jwt_cookies import REFRESH_COOKIE_NAME
-from custom_user.models import CustomUser
-from competition.models import Competition, Points
+from competition.models import Points
 
 
 @override_settings(

@@ -14,7 +14,7 @@ from custom_user.models import CustomUser
 from workouts.models import Workout
 
 from .models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona
-from .tasks import _draw_push_plan, post_inactivity_nudges, post_random_pushes
+from .tasks import post_inactivity_nudges, post_random_pushes
 
 
 def _user(email, first_name):
@@ -197,65 +197,18 @@ class PersonaAdminPermissionTests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.content)
 
-    def test_creator_can_upload_and_clear_midi(self):
-        import struct
-        track = bytes([0x00, 0xFF, 0x2F, 0x00])
-        midi = (
-            b"MThd" + struct.pack(">IHHH", 6, 0, 1, 96)
-            + b"MTrk" + struct.pack(">I", len(track)) + track
-        )
+    def test_persona_api_has_no_coach_music_feature(self):
         own = DrillInstructorPersona.objects.create(
-            name="Midi Voice", system_prompt="Go.", created_by=self.regular,
+            name="Quiet Coach", system_prompt="Go.", created_by=self.regular,
         )
         self.client.force_authenticate(self.regular)
-        listed = self.client.get(f"/api/drill-instructor/persona/{own.id}/").json()
-        self.assertIsNone(listed["midi"])
-
-        upload = SimpleUploadedFile("theme.mid", midi, content_type="audio/midi")
-        patched = self.client.patch(
-            f"/api/drill-instructor/persona/{own.id}/",
-            {"midi_upload": upload},
-            format="multipart",
-        )
-        self.assertEqual(patched.status_code, 200, patched.content)
-        midi_url = patched.json()["midi"]
-        self.assertEqual(midi_url, f"/api/drill-instructor/persona/{own.id}/midi/")
-        self.assertNotIn("/media/", midi_url)
-
-        fetched = self.client.get(midi_url)
-        self.assertEqual(fetched.status_code, 200)
-        self.assertEqual(fetched["Content-Type"], "audio/midi")
-        self.assertIn("noindex", fetched["X-Robots-Tag"])
-        self.assertIn("private", fetched["Cache-Control"])
-        if "X-Accel-Redirect" in fetched:
-            self.assertTrue(fetched["X-Accel-Redirect"].startswith("/protected-media/coach_midi/"))
-        else:
-            body = b"".join(fetched.streaming_content)
-            self.assertTrue(body.startswith(b"MThd"))
-
-        self.client.logout()
-        self.assertEqual(self.client.get(midi_url).status_code, 401)
-        self.assertEqual(self.client.get("/media/coach_midi/theme.mid").status_code, 404)
-
-        self.client.force_authenticate(self.regular)
-        junk = SimpleUploadedFile("nope.mid", b"not midi", content_type="audio/midi")
-        bad = self.client.patch(
-            f"/api/drill-instructor/persona/{own.id}/",
-            {"midi_upload": junk},
-            format="multipart",
-        )
-        self.assertEqual(bad.status_code, 400)
-
-        cleared = self.client.patch(
-            f"/api/drill-instructor/persona/{own.id}/",
-            {"clear_midi": True},
-            format="json",
-        )
-        self.assertEqual(cleared.status_code, 200, cleared.content)
-        self.assertIsNone(cleared.json()["midi"])
+        listed = self.client.get(f"/api/drill-instructor/persona/{own.id}/")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        self.assertNotIn("midi", listed.json())
+        self.assertNotIn("midi_upload", listed.json())
         self.assertEqual(
             self.client.get(f"/api/drill-instructor/persona/{own.id}/midi/").status_code,
-            204,
+            404,
         )
 
     def test_transfer_persona_to_teammate(self):
@@ -670,514 +623,56 @@ class PersonaPictureUploadTests(TestCase):
         )
 
 
-class PostInactivityNudgesTests(TestCase):
-    """The quiet-day sweep: one persona-voiced nudge per running
-    competition that saw zero workouts today."""
-
+class RetiredGenericCoachTaskTests(TestCase):
     def setUp(self):
-        # Model saves trigger point-recalc / welcome-email / coach-comment
-        # plumbing that expects a Celery broker - replace all of it with
-        # no-ops so the test runs without one.
-        for target in (
-            "competition.scorer.trigger_recalc_points",
-            "drill_instructor.tasks.post_workout_comment.delay",
-            "custom_user.models.verify_email.apply_async",
-        ):
-            patcher = mock.patch(target)
-            self.addCleanup(patcher.stop)
-            patcher.start()
-
-        llm_patcher = mock.patch(
-            "drill_instructor.tasks.generate_message",
-            return_value=("Wake up, platoon!", None),
-        )
-        self.addCleanup(llm_patcher.stop)
-        self.generate_message = llm_patcher.start()
-
         self.persona = DrillInstructorPersona.objects.create(
-            name="Test Sergeant",
-            system_prompt="You are a test sergeant.",
+            name="Test Sergeant", system_prompt="You are a test sergeant.",
         )
-        self.owner = _user("owner@example.com", "Olivia")
-        self.athlete = _user("athlete@example.com", "Alex")
+        self.owner = _user("retired-owner@example.com", "Olivia")
+        athlete = _user("retired-athlete@example.com", "Alex")
         today = timezone.localdate()
-        self.competition = Competition.objects.create(
-            owner=self.owner,
-            name="Morning Cup",
+        competition = Competition.objects.create(
+            owner=self.owner, name="Morning Cup",
             start_date=today - datetime.timedelta(days=3),
             end_date=today + datetime.timedelta(days=4),
         )
-        self.athlete.my_competitions.add(self.competition)
+        athlete.my_competitions.add(competition)
         self.config = DrillInstructorConfig.objects.create(
-            competition=self.competition,
-            enabled=True,
-            persona=self.persona,
-            nudge_on_inactivity=True,
+            competition=competition, enabled=True, persona=self.persona,
+            nudge_on_inactivity=True, random_push=True,
+            daily_prompt="Legacy topic should not trigger a post",
         )
 
-    def _workout_today(self, user):
-        return Workout.objects.create(
-            user=user,
-            sport_type="Run",
-            start_datetime=timezone.now(),
-            duration=datetime.timedelta(minutes=30),
-            intensity_category=2,
-        )
-
-    def test_posts_nudge_on_quiet_day(self):
-        result = post_inactivity_nudges()
-
-        self.assertEqual(result["posted"], 1)
-        message = DrillInstructorMessage.objects.get(config=self.config)
-        self.assertEqual(message.kind, DrillInstructorMessage.KIND_NUDGE)
-        self.assertIsNone(message.workout)
-        self.assertEqual(message.body, "Wake up, platoon!")
-        self.assertTrue(message.success)
-
-        self.config.refresh_from_db()
-        self.assertEqual(self.config.messages_posted, 1)
-        self.assertIsNotNone(self.config.last_posted_at)
-
-    def test_prompt_addresses_the_group(self):
-        post_inactivity_nudges()
-
-        _, kwargs = self.generate_message.call_args
-        prompt = kwargs["user_prompt"]
-        self.assertIn("Morning Cup", prompt)
-        self.assertIn("NOT A SINGLE participant", prompt)
-        self.assertIn("@Alex", prompt)
-
-    def test_prompt_includes_previous_two_messages_newest_first(self):
-        base = timezone.now()
-        DrillInstructorMessage.objects.create(
-            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
-            body="First blood!", posted_at=base - datetime.timedelta(minutes=2),
-        )
-        DrillInstructorMessage.objects.create(
-            config=self.config, kind=DrillInstructorMessage.KIND_PUSH,
-            body="Second wind!", posted_at=base - datetime.timedelta(minutes=1),
-        )
-        # Test messages are previews, not conversation - never referenced.
-        DrillInstructorMessage.objects.create(
-            config=self.config, kind=DrillInstructorMessage.KIND_TEST,
-            body="preview only", posted_at=base,
-        )
-
-        post_inactivity_nudges()
-
-        _, kwargs = self.generate_message.call_args
-        prompt = kwargs["user_prompt"]
-        self.assertIn("most recent messages", prompt)
-        self.assertIn("Second wind!", prompt)
-        self.assertIn("First blood!", prompt)
-        self.assertLess(prompt.index("Second wind!"), prompt.index("First blood!"))
-        self.assertNotIn("preview only", prompt)
-
-    def test_prompt_without_history_has_no_history_block(self):
-        post_inactivity_nudges()
-
-        _, kwargs = self.generate_message.call_args
-        self.assertNotIn("most recent messages", kwargs["user_prompt"])
-
-    def test_skips_when_workout_logged_today(self):
-        self._workout_today(self.athlete)
-
-        result = post_inactivity_nudges()
-
-        self.assertEqual(result["posted"], 0)
-        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
-
-    def test_second_run_same_day_is_idempotent(self):
-        post_inactivity_nudges()
-        result = post_inactivity_nudges()
-
-        self.assertEqual(result["posted"], 0)
-        self.assertEqual(DrillInstructorMessage.objects.count(), 1)
-
-    def test_skips_when_toggle_disabled(self):
-        self.config.nudge_on_inactivity = False
-        self.config.save()
-
-        result = post_inactivity_nudges()
-
-        self.assertEqual(result["posted"], 0)
-        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
-
-    def test_skips_when_instructor_disabled(self):
-        self.config.enabled = False
-        self.config.save()
-
-        result = post_inactivity_nudges()
-
-        self.assertEqual(result["posted"], 0)
-        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
-
-    def test_skips_when_competition_not_running(self):
-        today = timezone.localdate()
-        self.competition.start_date = today + datetime.timedelta(days=2)
-        self.competition.end_date = today + datetime.timedelta(days=9)
-        self.competition.save()
-
-        result = post_inactivity_nudges()
-
-        self.assertEqual(result["posted"], 0)
-        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
-
-    def test_fallback_body_when_llm_unavailable(self):
-        self.generate_message.return_value = (None, "no LLM API key configured")
-
-        result = post_inactivity_nudges()
-
-        self.assertEqual(result["posted"], 1)
-        message = DrillInstructorMessage.objects.get(config=self.config)
-        self.assertIn("Morning Cup", message.body)
-        self.assertIn("Test Sergeant", message.body)
-
-
-class PostRandomPushesTests(TestCase):
-    """The random daily group push: one persona-voiced pep talk per day
-    at a drawn random time, independent of activity."""
-
-    def setUp(self):
-        # Same plumbing stubs as the nudge tests: no Celery broker needed.
-        for target in (
-            "competition.scorer.trigger_recalc_points",
-            "drill_instructor.tasks.post_workout_comment.delay",
-            "custom_user.models.verify_email.apply_async",
-        ):
-            patcher = mock.patch(target)
-            self.addCleanup(patcher.stop)
-            patcher.start()
-
-        llm_patcher = mock.patch(
-            "drill_instructor.tasks.generate_message",
-            return_value=("Push harder, team!", None),
-        )
-        self.addCleanup(llm_patcher.stop)
-        self.generate_message = llm_patcher.start()
-
-        self.persona = DrillInstructorPersona.objects.create(
-            name="Test Sergeant",
-            system_prompt="You are a test sergeant.",
-        )
-        self.owner = _user("owner@example.com", "Olivia")
-        self.athlete = _user("athlete@example.com", "Alex")
-        today = timezone.localdate()
-        self.competition = Competition.objects.create(
-            owner=self.owner,
-            name="Morning Cup",
-            start_date=today - datetime.timedelta(days=3),
-            end_date=today + datetime.timedelta(days=4),
-        )
-        self.athlete.my_competitions.add(self.competition)
-        self.config = DrillInstructorConfig.objects.create(
-            competition=self.competition,
-            enabled=True,
-            persona=self.persona,
-            random_push=True,
-        )
-
-    def test_posts_when_slot_due_and_is_idempotent(self):
-        with mock.patch("drill_instructor.tasks._draw_push_plan", return_value=["00:00"]):
-            result = post_random_pushes()
-
-            self.assertEqual(result["posted"], 1)
-            message = DrillInstructorMessage.objects.get(config=self.config)
-            self.assertEqual(message.kind, DrillInstructorMessage.KIND_PUSH)
-            self.assertIsNone(message.workout)
-            self.assertEqual(message.body, "Push harder, team!")
-            self.assertTrue(message.success)
-
-            self.config.refresh_from_db()
-            self.assertEqual(self.config.push_plan, ["00:00"])
-            self.assertEqual(self.config.push_plan_date, timezone.localdate())
-            self.assertEqual(self.config.messages_posted, 1)
-
-            # Re-running later the same day must not re-post the slot.
-            result = post_random_pushes()
-            self.assertEqual(result["posted"], 0)
-            self.assertEqual(DrillInstructorMessage.objects.count(), 1)
-
-    def test_push_prompt_includes_previous_messages(self):
-        DrillInstructorMessage.objects.create(
-            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
-            body="Yesterday's roast",
-        )
-
-        with mock.patch("drill_instructor.tasks._draw_push_plan", return_value=["00:00"]):
-            post_random_pushes()
-
-        _, kwargs = self.generate_message.call_args
-        self.assertIn("most recent messages", kwargs["user_prompt"])
-        self.assertIn("Yesterday's roast", kwargs["user_prompt"])
-
-    def test_posts_nothing_before_slot(self):
-        with mock.patch("drill_instructor.tasks._draw_push_plan", return_value=["23:59"]):
-            result = post_random_pushes()
-
-            self.assertEqual(result["posted"], 0)
-            self.assertEqual(DrillInstructorMessage.objects.count(), 0)
-            # ...but today's plan was drawn once and is kept.
-            self.config.refresh_from_db()
-            self.assertEqual(self.config.push_plan, ["23:59"])
-
-    def test_max_one_per_day_even_if_two_slots_are_due(self):
-        with mock.patch("drill_instructor.tasks._draw_push_plan", return_value=["00:00", "00:01"]):
-            result = post_random_pushes()
-            self.assertEqual(result["posted"], 1)
-
-            # A leftover two-slot plan (or a late first run) must not dump
-            # a second pep talk in the same breath, or later the same day.
-            result = post_random_pushes()
-            self.assertEqual(result["posted"], 0)
-            self.assertEqual(DrillInstructorMessage.objects.count(), 1)
-
-    def test_skips_when_toggle_disabled(self):
-        self.config.random_push = False
-        self.config.save()
-
-        result = post_random_pushes()
-
-        self.assertEqual(result["posted"], 0)
-        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
-
-    def test_skips_when_instructor_disabled(self):
-        self.config.enabled = False
-        self.config.save()
-
-        result = post_random_pushes()
-
-        self.assertEqual(result["posted"], 0)
-        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
-
-    def test_skips_when_competition_not_running(self):
-        today = timezone.localdate()
-        self.competition.start_date = today + datetime.timedelta(days=2)
-        self.competition.end_date = today + datetime.timedelta(days=9)
-        self.competition.save()
-
-        result = post_random_pushes()
-
-        self.assertEqual(result["posted"], 0)
-        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
-
-    def test_fallback_body_when_llm_unavailable(self):
-        self.generate_message.return_value = (None, "outage")
-
-        with mock.patch("drill_instructor.tasks._draw_push_plan", return_value=["00:00"]):
-            result = post_random_pushes()
-
-            self.assertEqual(result["posted"], 1)
-            message = DrillInstructorMessage.objects.get(config=self.config)
-            self.assertIn("Morning Cup", message.body)
-            self.assertIn("Test Sergeant", message.body)
-            self.config.refresh_from_db()
-            self.assertEqual(self.config.last_error, "outage")
-
-
-class PostDailyPromptsTests(TestCase):
-    """The owner-defined daily briefing: one persona-voiced morning post
-    per running competition whose admin configured a topic."""
-
-    def setUp(self):
-        for target in (
-            "competition.scorer.trigger_recalc_points",
-            "drill_instructor.tasks.post_workout_comment.delay",
-            "custom_user.models.verify_email.apply_async",
-        ):
-            patcher = mock.patch(target)
-            self.addCleanup(patcher.stop)
-            patcher.start()
-
-        llm_patcher = mock.patch(
-            "drill_instructor.tasks.generate_message",
-            return_value=("Corviglia calling, platoon!", None),
-        )
-        self.addCleanup(llm_patcher.stop)
-        self.generate_message = llm_patcher.start()
-
-        # Tests run on UTC and often before 07:00 there - pin the morning
-        # gate open. (test_skips_before_the_morning_window covers the gate.)
-        hour_patcher = mock.patch("drill_instructor.tasks.BRIEFING_NOT_BEFORE_HOUR", 0)
-        self.addCleanup(hour_patcher.stop)
-        hour_patcher.start()
-
-        self.persona = DrillInstructorPersona.objects.create(
-            name="Alpine Sergeant",
-            system_prompt="You bark about mountains.",
-        )
-        self.owner = _user("brief-owner@example.com", "Olivia")
-        self.athlete = _user("brief-athlete@example.com", "Alex")
-        today = timezone.localdate()
-        self.competition = Competition.objects.create(
-            owner=self.owner,
-            name="Ski Cup",
-            start_date=today - datetime.timedelta(days=3),
-            end_date=today + datetime.timedelta(days=4),
-        )
-        self.athlete.my_competitions.add(self.competition)
-        self.config = DrillInstructorConfig.objects.create(
-            competition=self.competition,
-            enabled=True,
-            persona=self.persona,
-            daily_prompt="Snow level at Corviglia",
-        )
-
-    def test_posts_briefing_in_persona_about_the_topic(self):
+    def test_queued_generic_tasks_are_silent_and_idempotently_retired(self):
         from .tasks import post_daily_prompts
-        result = post_daily_prompts()
+        tasks = (post_inactivity_nudges, post_random_pushes, post_daily_prompts)
+        with mock.patch("push_notifications.sender.send_push_to_user") as send_push:
+            for task in tasks:
+                with self.subTest(task=task.name):
+                    for _ in range(2):
+                        result = task()
+                        self.assertEqual(result["reason"], "retired")
+                        self.assertEqual(result["posted"], 0)
+                        self.assertEqual(result["skipped"], 0)
+                    self.assertEqual(DrillInstructorMessage.objects.count(), 0)
+            send_push.assert_not_called()
 
-        self.assertEqual(result["posted"], 1)
-        message = DrillInstructorMessage.objects.get(config=self.config)
-        self.assertEqual(message.kind, DrillInstructorMessage.KIND_BRIEFING)
-        self.assertEqual(message.body, "Corviglia calling, platoon!")
-        _, kwargs = self.generate_message.call_args
-        self.assertEqual(kwargs["system_prompt"], "You bark about mountains.")
-        self.assertIn("Snow level at Corviglia", kwargs["user_prompt"])
-        # Honesty guardrail: no invented snow numbers.
-        self.assertIn("NEVER invent", kwargs["user_prompt"])
-
-    def test_second_run_same_day_is_idempotent(self):
-        from .tasks import post_daily_prompts
-        post_daily_prompts()
-        result = post_daily_prompts()
-        self.assertEqual(result["posted"], 0)
-        self.assertEqual(DrillInstructorMessage.objects.count(), 1)
-
-    def test_skips_before_the_morning_window(self):
-        from . import tasks
-        with mock.patch.object(tasks, "BRIEFING_NOT_BEFORE_HOUR", 24):
-            result = tasks.post_daily_prompts()
-        self.assertEqual(result["posted"], 0)
-        self.assertEqual(result["note"], "before morning window")
-        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
-
-    def test_skips_when_no_topic_configured(self):
-        from .tasks import post_daily_prompts
-        self.config.daily_prompt = ""
-        self.config.save()
-        result = post_daily_prompts()
-        self.assertEqual(result["posted"], 0)
-        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
-
-    def test_skips_when_instructor_disabled(self):
-        from .tasks import post_daily_prompts
-        self.config.enabled = False
-        self.config.save()
-        result = post_daily_prompts()
-        self.assertEqual(result["posted"], 0)
-        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
-
-    def test_skips_when_competition_not_running(self):
-        from .tasks import post_daily_prompts
-        today = timezone.localdate()
-        self.competition.start_date = today + datetime.timedelta(days=2)
-        self.competition.end_date = today + datetime.timedelta(days=9)
-        self.competition.save()
-        result = post_daily_prompts()
-        self.assertEqual(result["posted"], 0)
-        self.assertEqual(DrillInstructorMessage.objects.count(), 0)
-
-    def test_yesterdays_briefing_feeds_todays_prompt(self):
-        """The arc: the model sees its previous briefing on this topic and
-        is told to evolve it, not repeat it (0 snow day after 0 snow day ->
-        growing worry)."""
-        from .tasks import post_daily_prompts
-        DrillInstructorMessage.objects.create(
-            config=self.config, kind=DrillInstructorMessage.KIND_BRIEFING,
-            body="Still no snow at Corviglia. Day one of patience.",
-            posted_at=timezone.now() - datetime.timedelta(days=1),
-        )
-        result = post_daily_prompts()
-        self.assertEqual(result["posted"], 1)
-        _, kwargs = self.generate_message.call_args
-        self.assertIn("Still no snow at Corviglia. Day one of patience.", kwargs["user_prompt"])
-        self.assertIn("CONTINUE the story", kwargs["user_prompt"])
-
-    def test_fallback_body_when_llm_unavailable(self):
-        from .tasks import post_daily_prompts
-        self.generate_message.return_value = (None, "outage")
-        result = post_daily_prompts()
-        self.assertEqual(result["posted"], 1)
-        message = DrillInstructorMessage.objects.get(config=self.config)
-        self.assertIn("Alpine Sergeant", message.body)
-        self.assertIn("Snow level at Corviglia", message.body)
-
-    def test_periodic_task_seeded(self):
-        from django_celery_beat.models import PeriodicTask
-        task = PeriodicTask.objects.get(name="drill_instructor_daily_prompt")
-        self.assertEqual(task.task, "drill_instructor.tasks.post_daily_prompts")
-        self.assertTrue(task.enabled)
-        self.assertEqual(task.crontab.minute, "*/30")
-
-    def test_config_api_round_trips_the_topic(self):
-        self.client = APIClient()
-        self.client.force_authenticate(self.owner)
-        response = self.client.patch(
+    def test_legacy_daily_prompt_config_remains_compatible(self):
+        client = APIClient()
+        client.force_authenticate(self.owner)
+        response = client.patch(
             f"/api/drill-instructor/config/{self.config.id}/",
-            {"daily_prompt": "Wind on the glacier and layering advice"},
-            format="json",
+            {"daily_prompt": "Retained for old clients only"}, format="json",
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.config.refresh_from_db()
-        self.assertEqual(self.config.daily_prompt, "Wind on the glacier and layering advice")
-        self.assertEqual(response.json()["daily_prompt"], "Wind on the glacier and layering advice")
+        self.assertEqual(self.config.daily_prompt, "Retained for old clients only")
 
-
-class DailyBriefingPromptTests(TestCase):
-    """The prompt builder: the admin's text is passed 1:1 (verbatim, no
-    reformatting), the honesty guardrail is always present, and history
-    slots before the instruction."""
-
-    def test_instruction_is_passed_verbatim(self):
-        from .llm_client import build_daily_briefing_prompt
-        prompt = build_daily_briefing_prompt(
-            competition_name="Ski Cup",
-            topic="Snow level\nat Corviglia   please",
-        )
-        self.assertIn("Ski Cup", prompt)
-        # Verbatim 1:1 - no whitespace flattening, no rewording.
-        self.assertIn('"""Snow level\nat Corviglia   please"""', prompt)
-        self.assertIn("verbatim (1:1)", prompt)
-        self.assertIn("NEVER invent", prompt)
-        self.assertIn("persona's voice", prompt)
-
-    def test_previous_briefings_drive_the_arc(self):
-        from .llm_client import build_daily_briefing_prompt
-        prompt = build_daily_briefing_prompt(
-            competition_name="Ski Cup",
-            topic="snow",
-            previous_briefings=["Day 2: still no snow. Patience wears thin.", "Day 1: snow report"],
-        )
-        self.assertIn("previous briefings", prompt)
-        self.assertIn("Day 2: still no snow. Patience wears thin.", prompt)
-        self.assertIn("CONTINUE the story", prompt)
-        self.assertIn("EVOLVE", prompt)
-        self.assertLess(prompt.index("Day 2:"), prompt.index("Write today's post now"))
-
-    def test_first_briefing_sets_the_scene(self):
-        from .llm_client import build_daily_briefing_prompt
-        prompt = build_daily_briefing_prompt(competition_name="Ski Cup", topic="snow")
-        self.assertIn("FIRST briefing", prompt)
-        self.assertNotIn("CONTINUE the story", prompt)
-
-
-class DrawPushPlanTests(TestCase):
-    """The random slot draw itself: exactly one waking-hours slot."""
-
-    def test_always_exactly_one_slot(self):
-        for _ in range(200):
-            plan = _draw_push_plan()
-            self.assertEqual(len(plan), 1)
-
-    def test_slots_within_waking_hours_and_sorted(self):
-        for _ in range(200):
-            plan = _draw_push_plan()
-            self.assertEqual(plan, sorted(plan))
-            for slot in plan:
-                self.assertRegex(slot, r"^\d{2}:\d{2}$")
-                self.assertGreaterEqual(int(slot[:2]), 7)
-                self.assertLess(int(slot[:2]), 22)
+    def test_legacy_daily_prompt_periodic_row_is_disabled(self):
+        from django_celery_beat.models import PeriodicTask
+        task = PeriodicTask.objects.get(name="drill_instructor_daily_prompt")
+        self.assertEqual(task.task, "drill_instructor.tasks.post_daily_prompts")
+        self.assertFalse(task.enabled)
 
 
 class RandomPushPeriodicTaskTests(TestCase):
@@ -1189,7 +684,7 @@ class RandomPushPeriodicTaskTests(TestCase):
 
         task = PeriodicTask.objects.get(name="drill_instructor_random_push")
         self.assertEqual(task.task, "drill_instructor.tasks.post_random_pushes")
-        self.assertTrue(task.enabled)
+        self.assertFalse(task.enabled)
         self.assertEqual(task.crontab.minute, "*/30")
 
 
@@ -1645,9 +1140,9 @@ class PhotoPostTests(TestCase):
         self.reaction_delay = reaction_patcher.start()
 
         # Photo posts are gated on the configured LLM accepting images -
-        # pretend a vision-capable model (the probe itself is covered by
-        # its own tests below).
-        vision_patcher = mock.patch("drill_instructor.views.check_vision_capability", return_value=True)
+        # pretend a probed, vision-capable model (the probe itself is
+        # covered by its own tests below).
+        vision_patcher = mock.patch("drill_instructor.views.read_cached_capabilities", return_value=(True, False))
         self.addCleanup(vision_patcher.stop)
         vision_patcher.start()
 
@@ -1844,28 +1339,132 @@ class PhotoPostTests(TestCase):
             1,
         )
 
-    def test_photo_adds_ten_points_to_the_activity(self):
-        from competition.models import Points
-        from competition.scorer import PHOTO_BONUS_POINTS, PHOTO_AWARD_NAME
+    def test_photo_post_does_not_create_flat_points_and_preserves_legacy_awards(self):
+        from competition.models import Award, Points
+        from competition.scorer import PHOTO_AWARD_NAME
         from .serializers import DrillInstructorMessageSerializer
-        root = self._activity_root(self.athlete)
-        before = sum(float(p.points_capped or 0) for p in root.workout.points_set.all())
+
+        fresh = self._activity_root(self.athlete)
+        fresh_before = sum(float(p.points_capped or 0) for p in fresh.workout.points_set.all())
+        response = self._post(self.athlete, parent=fresh)
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertFalse(Points.objects.filter(workout=fresh.workout, award__name=PHOTO_AWARD_NAME).exists())
+        fresh_payload = DrillInstructorMessageSerializer(fresh).data
+        self.assertEqual(fresh_payload["points_capped"], fresh_before)
+        fresh_photo_row = next(row for row in fresh_payload["points_breakdown"] if row["kind"] == "photo")
+        self.assertEqual(fresh_photo_row["points"], 0.0)
+
+        legacy = self._activity_root(self.athlete)
+        legacy_award = Award.objects.create(
+            competition=self.competition, name=PHOTO_AWARD_NAME, threshold=0,
+            period="day", reward_points=10,
+        )
+        legacy_points = Points.objects.create(
+            workout=legacy.workout, award=legacy_award, points_raw=10, points_capped=10,
+        )
+        legacy_before = sum(float(p.points_capped or 0) for p in legacy.workout.points_set.all())
+        legacy_response = self._post(self.athlete, parent=legacy)
+        self.assertEqual(legacy_response.status_code, 201, legacy_response.content)
+        legacy_points.refresh_from_db()
+        self.assertEqual(float(legacy_points.points_capped), 10.0)
+        self.assertEqual(Points.objects.filter(workout=legacy.workout, award__name=PHOTO_AWARD_NAME).count(), 1)
+        legacy_payload = DrillInstructorMessageSerializer(legacy).data
+        self.assertEqual(legacy_payload["points_capped"], legacy_before)
+        legacy_photo_row = next(row for row in legacy_payload["points_breakdown"] if row["kind"] == "photo")
+        self.assertEqual(legacy_photo_row["points"], 10.0)
+
+    def test_standout_workout_only_mints_pictured_echo_after_photo_post(self):
+        from .models import LegendEcho
+        from .tasks import post_reply_reaction, post_workout_comment
+        from .echoes import process_echoes
+
+        workout = Workout(
+            user=self.athlete, sport_type="Run", start_datetime=timezone.now(),
+            duration=datetime.timedelta(minutes=45), distance=5, kcal=300,
+            intensity_category=2,
+        )
+        workout.save(score=False)
+        post_workout_comment(workout.id)
+        root = DrillInstructorMessage.objects.get(
+            config=self.config, workout=workout,
+            kind=DrillInstructorMessage.KIND_ACTIVITY,
+        )
+        self.assertEqual(root.body, "")
+        self.assertEqual(process_echoes(workout, self.config), [])
+        self.assertFalse(LegendEcho.objects.filter(origin_workout=workout).exists())
+        self.client.force_authenticate(self.athlete)
+        feed = self.client.get(
+            f"/api/drill-instructor/message/?competition={self.competition.pk}&limit=15&offset=0"
+        )
+        self.assertEqual(feed.status_code, 200, feed.content)
+        feed_root = next(item for item in feed.json()["results"] if item["id"] == root.pk)
+        self.assertEqual(feed_root["photo_action"], "echo")
+
         response = self._post(self.athlete, parent=root)
         self.assertEqual(response.status_code, 201, response.content)
-        bonus = Points.objects.get(workout=root.workout, award__name=PHOTO_AWARD_NAME)
-        self.assertEqual(float(bonus.points_capped), float(PHOTO_BONUS_POINTS))
-        self.assertEqual(bonus.award.competition_id, self.competition.id)
-        payload = DrillInstructorMessageSerializer(root).data
-        self.assertEqual(payload["points_capped"], before + PHOTO_BONUS_POINTS)
-        photo_row = next(row for row in payload["points_breakdown"] if row["kind"] == "photo")
-        self.assertEqual(photo_row["points"], float(PHOTO_BONUS_POINTS))
-        # One photo, one bonus — a rejected second post must not double it.
-        second = self._post(self.athlete, parent=root)
-        self.assertEqual(second.status_code, 400)
-        self.assertEqual(
-            Points.objects.filter(workout=root.workout, award__name=PHOTO_AWARD_NAME).count(),
-            1,
+        photo = DrillInstructorMessage.objects.get(pk=response.json()["id"])
+        with mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value=None), \
+                mock.patch("drill_instructor.llm_client.generate_message", return_value=("A pictured echo.", None)):
+            post_reply_reaction(photo.id)
+        echo = LegendEcho.objects.get(origin_workout=root.workout)
+        self.assertEqual(echo.holder_id, self.athlete.id)
+        self.assertTrue(echo.image)
+
+    def test_photo_action_is_only_offered_for_an_echo_opportunity(self):
+        from types import SimpleNamespace
+        from .serializers import DrillInstructorMessageSerializer
+
+        root = self._activity_root(self.athlete)
+        context = {"request": SimpleNamespace(user=self.athlete)}
+        ordinary = DrillInstructorMessageSerializer(root, context=context).data
+        self.assertIn("photo_action", ordinary)
+        self.assertIsNone(ordinary["photo_action"])
+
+        Workout.objects.filter(pk=root.workout_id).update(duration=datetime.timedelta(minutes=45))
+        root.workout.refresh_from_db()
+        from .echoes import judge_echo
+        self.assertIsNotNone(judge_echo(root.workout, self.config))
+        standout = DrillInstructorMessageSerializer(root, context=context).data
+        self.assertEqual(standout["photo_action"], "echo")
+
+    def test_photo_order_exposes_one_contextual_photo_action(self):
+        from types import SimpleNamespace
+        from .models import DailyOrder
+        from .serializers import DrillInstructorMessageSerializer
+        from django.utils import timezone
+
+        root = self._activity_root(self.athlete)
+        DailyOrder.objects.create(
+            config=self.config, date=timezone.localdate(), kind=DailyOrder.KIND_PHOTO,
+            brief="Post a photo",
         )
+        payload = DrillInstructorMessageSerializer(
+            root, context={"request": SimpleNamespace(user=self.athlete)},
+        ).data
+        self.assertEqual(payload["photo_action"], "photo_order")
+
+    def test_photo_less_echo_is_not_exposed_as_a_relic(self):
+        from types import SimpleNamespace
+        from .models import LegendEcho
+        from .serializers import DrillInstructorMessageSerializer
+
+        root = self._activity_root(self.athlete)
+        echo = LegendEcho.objects.create(
+            config=self.config, origin_user=self.athlete, origin_workout=root.workout,
+            holder=self.athlete, holder_workout=root.workout, title="Hidden Echo",
+            narrative="Unpictured", metric_value=30, sport_type="Run",
+            photo_required=True,
+        )
+        payload = DrillInstructorMessageSerializer(
+            root, context={"request": SimpleNamespace(user=self.athlete)},
+        ).data
+        self.assertEqual(payload["echoes"], [])
+        self.assertEqual(payload["athlete_echoes_held"], 0)
+        self.client.force_authenticate(self.athlete)
+        response = self.client.get(f"/api/drill-instructor/echoes/?competition={self.competition.id}")
+        self.assertEqual(response.status_code, 200)
+        listed = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        self.assertNotIn(echo.id, [item["id"] for item in listed])
 
     def test_payload_exposes_image_via_authenticated_url(self):
         response = self._post(self.athlete)
@@ -1911,11 +1510,42 @@ class PhotoPostTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_post_rejected_when_model_cant_see(self):
-        with mock.patch("drill_instructor.views.check_vision_capability", return_value=False):
+        with mock.patch("drill_instructor.views.read_cached_capabilities", return_value=(False, False)):
             response = self._post(self.athlete)
         self.assertEqual(response.status_code, 400)
         self.assertIn("can't see pictures", response.json()["image"])
         self.assertFalse(DrillInstructorMessage.objects.filter(kind=DrillInstructorMessage.KIND_PHOTO).exists())
+
+    def test_post_unknown_capability_queues_probe_and_asks_to_retry(self):
+        # A cold capability cache must not run the 10s network probe
+        # inside the request: queue it once and answer 503.
+        from django.core.cache import cache
+        cache.delete("drill-caps-probe-queued")
+        with mock.patch("drill_instructor.views.read_cached_capabilities", return_value=(None, None)), \
+                mock.patch("drill_instructor.tasks.probe_llm_capabilities.delay") as probe:
+            response = self._post(self.athlete)
+            second = self._post(self.athlete)
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("try again shortly", response.json()["image"])
+        self.assertEqual(second.status_code, 503)
+        probe.assert_called_once()
+        self.assertFalse(DrillInstructorMessage.objects.filter(kind=DrillInstructorMessage.KIND_PHOTO).exists())
+
+    def test_post_over_quota_never_decodes_the_upload(self):
+        # The daily cap is checked before the (expensive) Pillow
+        # re-encode and before the capability read.
+        from django.conf import settings
+        for _ in range(settings.DRILL_MAX_PHOTOS_PER_DAY):
+            DrillInstructorMessage.objects.create(
+                config=self.config, kind=DrillInstructorMessage.KIND_PHOTO,
+                user=self.athlete, body="spam!",
+            )
+        with mock.patch("workout_challenge.images.validate_and_reencode_image") as reencode, \
+                mock.patch("drill_instructor.views.read_cached_capabilities") as caps:
+            response = self._post(self.athlete)
+        self.assertEqual(response.status_code, 429)
+        reencode.assert_not_called()
+        caps.assert_not_called()
 
     def test_post_throttled(self):
         # The configured daily cap (default 2) is enforced - one more
@@ -2176,25 +1806,168 @@ class PhotoPostTests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_reply_reaction_task_skips_in_feed_reply_for_photos(self):
-        # A workout photo is not a chat turn: no coach bubble in the
-        # feed. The remix (when an edit model is on) is the backdrop /
-        # hot-or-not card instead.
+    def test_reply_reaction_reads_the_whole_thread_in_order(self):
+        # Six turns before this reply - participant words, a wordless
+        # photo, the coach's own answers. The prompt carries all of them,
+        # oldest first, so the reaction answers the conversation.
+        from .tasks import post_reply_reaction
+        root = self._coach_root()
+        other = _user("sam@example.com", "Sam")
+        other.my_competitions.add(self.competition)
+        base = timezone.now() - datetime.timedelta(minutes=30)
+        script = [
+            (self.athlete, "Is a 20 min walk enough for today?", None),
+            (None, "@Alex a walk counts. Make it brisk.", None),
+            (other, "I did 5k, feeling smug", None),
+            (None, "@Sam smug is allowed until tomorrow's session.", None),
+            (self.athlete, "", PNG_1PX),  # photo, no caption
+            (None, "", PNG_1PX),  # coach's remixed poster
+        ]
+        for i, (author, body, png) in enumerate(script):
+            msg = DrillInstructorMessage(
+                config=self.config,
+                kind=(DrillInstructorMessage.KIND_REACTION if author is None
+                      else (DrillInstructorMessage.KIND_PHOTO if png else DrillInstructorMessage.KIND_REPLY)),
+                parent=root, user=author, body=body, posted_at=base + datetime.timedelta(minutes=i),
+            )
+            if png:
+                msg.image.save(f"t{i}.png", SimpleUploadedFile(f"t{i}.png", png, content_type="image/png"), save=False)
+            msg.save()
+        reply = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REPLY, parent=root,
+            user=self.athlete, body="so was the walk enough or not??", posted_at=base + datetime.timedelta(minutes=10),
+        )
+        with mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex yes - brisk, done.", None)) as gen:
+            post_reply_reaction(reply.id)
+        prompt = gen.call_args[1]["user_prompt"]
+        expected_order = [
+            '@Alex: "Is a 20 min walk enough for today?"',
+            'You: "@Alex a walk counts. Make it brisk."',
+            '@Sam: "I did 5k, feeling smug"',
+            'You: "@Sam smug is allowed until tomorrow\'s session."',
+            '@Alex: "[shared a photo]"',
+            'You: "[posted a remixed poster]"',
+            '@Alex now replied: "so was the walk enough or not??"',
+        ]
+        positions = [prompt.find(s) for s in expected_order]
+        self.assertTrue(all(p >= 0 for p in positions), prompt)
+        self.assertEqual(positions, sorted(positions), prompt)
+        self.assertIn("answer the thread, not just the last line", prompt)
+        self.assertNotIn("earlier turns not shown", prompt)
+
+    def test_long_threads_keep_the_newest_turns_and_say_so(self):
+        from .tasks import THREAD_HISTORY_LIMIT, post_reply_reaction
+        root = self._coach_root()
+        base = timezone.now() - datetime.timedelta(hours=1)
+        for i in range(THREAD_HISTORY_LIMIT + 3):
+            DrillInstructorMessage.objects.create(
+                config=self.config, kind=DrillInstructorMessage.KIND_REPLY, parent=root,
+                user=self.athlete, body=f"turn {i}", posted_at=base + datetime.timedelta(minutes=i),
+            )
+        reply = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REPLY, parent=root,
+            user=self.athlete, body="latest", posted_at=base + datetime.timedelta(hours=1),
+        )
+        with mock.patch("drill_instructor.tasks.generate_message", return_value=("ok", None)) as gen:
+            post_reply_reaction(reply.id)
+        prompt = gen.call_args[1]["user_prompt"]
+        self.assertIn("3 earlier turns not shown", prompt)
+        self.assertNotIn('"turn 2"', prompt)
+        self.assertIn('"turn 3"', prompt)
+        self.assertIn(f'"turn {THREAD_HISTORY_LIMIT + 2}"', prompt)
+
+    def test_photo_text_reaction_knows_the_thread(self):
+        from .tasks import post_reply_reaction
+        root = self._coach_root()
+        DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_REPLY, parent=root,
+            user=self.athlete, body="proof incoming", posted_at=timezone.now() - datetime.timedelta(minutes=5),
+        )
+        photo_reply = self._photo_message()
+        photo_reply.parent = root
+        photo_reply.save()
+        with mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value=None), \
+                mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("there it is", None)) as gen, \
+                mock.patch("drill_instructor.tasks.retry_photo_roast.apply_async"):
+            post_reply_reaction(photo_reply.id)
+        prompt = gen.call_args[1]["user_prompt"]
+        self.assertIn('@Alex: "proof incoming"', prompt)
+        self.assertIn("just shared a photo", prompt)
+
+    def test_reply_reaction_task_answers_in_words_when_the_remix_cannot_land(self):
+        # Users read a silent coach as a broken coach. When no edit model
+        # answers right now, the coach speaks to the picture AND the remix
+        # is queued for a retry instead of being dropped.
         from .tasks import post_reply_reaction
         photo_reply = self._photo_message()
         photo_reply.parent = self._coach_root()
         photo_reply.save()
         with mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value=None), \
-                mock.patch("drill_instructor.tasks.generate_message") as gen:
+                mock.patch("drill_instructor.tasks.check_vision_capability", return_value=True), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("@Alex - nice frame!", None)) as gen, \
+                mock.patch("drill_instructor.tasks.retry_photo_roast.apply_async") as retry:
             result = post_reply_reaction(photo_reply.id)
-        gen.assert_not_called()
-        self.assertIsNone(result["reaction_id"])
+        gen.assert_called_once()
         self.assertIsNone(result["roast_id"])
-        self.assertFalse(
-            DrillInstructorMessage.objects.filter(
-                parent=photo_reply.parent, kind=DrillInstructorMessage.KIND_REACTION,
-            ).exists()
-        )
+        reaction = DrillInstructorMessage.objects.get(pk=result["reaction_id"])
+        self.assertEqual(reaction.parent, photo_reply.parent)  # under the thread root, like the roast would be
+        self.assertEqual(reaction.body, "@Alex - nice frame!")
+        self.assertFalse(reaction.image)
+        retry.assert_called_once_with(args=(photo_reply.id, photo_reply.parent.id, 1), countdown=60)
+
+    def test_reply_reaction_task_stays_quiet_in_words_when_the_remix_lands(self):
+        # The remix IS the answer: no extra coach bubble and no retry.
+        from .tasks import post_reply_reaction
+        photo_reply = self._photo_message()
+        photo_reply.parent = self._coach_root()
+        photo_reply.save()
+        with mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image"), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("caption", None)), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(PNG_1PX, None)), \
+                mock.patch("drill_instructor.tasks.retry_photo_roast.apply_async") as retry:
+            result = post_reply_reaction(photo_reply.id)
+        self.assertIsNotNone(result["roast_id"])
+        self.assertIsNone(result["reaction_id"])
+        retry.assert_not_called()
+
+    def test_retry_task_delivers_the_remix_and_stops(self):
+        from .tasks import retry_photo_roast
+        photo_reply = self._photo_message()
+        root = self._coach_root()
+        photo_reply.parent = root
+        photo_reply.save()
+        with mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image") as probe, \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("caption", None)), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(PNG_1PX, None)), \
+                mock.patch("drill_instructor.tasks.retry_photo_roast.apply_async") as retry:
+            result = retry_photo_roast(photo_reply.id, root.id, 2)
+        probe.assert_called_once_with(force=True)  # a cached "no" is exactly what we are retrying past
+        roast = DrillInstructorMessage.objects.get(pk=result["roast_id"])
+        self.assertEqual(roast.parent, root)
+        self.assertTrue(roast.image)
+        retry.assert_not_called()
+        # Once a roast exists, a stray duplicate retry is a no-op.
+        with mock.patch("drill_instructor.tasks.generate_roast_image") as edit:
+            self.assertEqual(retry_photo_roast(photo_reply.id, root.id, 3)["skipped"], "roast_exists")
+        edit.assert_not_called()
+
+    def test_retry_task_backs_off_then_gives_up(self):
+        from .tasks import ROAST_RETRY_DELAYS, retry_photo_roast
+        photo_reply = self._photo_message()
+        root = self._coach_root()
+        photo_reply.parent = root
+        photo_reply.save()
+        with mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image"), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(None, "safety filter")), \
+                mock.patch("drill_instructor.tasks.retry_photo_roast.apply_async") as retry:
+            second = retry_photo_roast(photo_reply.id, root.id, 1)
+            last = retry_photo_roast(photo_reply.id, root.id, len(ROAST_RETRY_DELAYS))
+        self.assertTrue(second["rescheduled"])
+        retry.assert_called_once_with(args=(photo_reply.id, root.id, 2), countdown=ROAST_RETRY_DELAYS[1])
+        self.assertFalse(last["rescheduled"])  # ladder exhausted: no infinite loop
+        self.config.refresh_from_db()
+        self.assertIn("safety filter", self.config.last_error)
 
     def test_photo_reply_earns_the_roast_remix(self):
         # The Coach page's photo button always replies to the coach's
@@ -2779,8 +2552,49 @@ class ImageEditCapabilityProbeTests(TestCase):
         _, kwargs = openai_cls.call_args
         self.assertEqual(kwargs["base_url"], "https://images.example.com/v1")
         self.assertEqual(kwargs["api_key"], "image-key")
-        # ...and only its configured model is probed.
-        self.assertEqual(client.images.edit.call_args[1]["model"], "image-model")
+        # ...and the named model is trusted - no probe request is sent.
+        client.images.edit.assert_not_called()
+
+    @override_settings(
+        LLM_IMAGE_BASE_URL="https://images.example.com/v1",
+        LLM_IMAGE_MODEL="image-model",
+        LLM_IMAGE_API_KEY="image-key",
+    )
+    def test_dedicated_image_model_is_trusted_without_a_probe(self):
+        # The admin named this model for editing. A probe that fails for
+        # any reason (busy endpoint, quota blip) must not hide the roast
+        # for a day; the real edit surfaces and retries the problem.
+        from . import llm_client
+        with mock.patch.object(llm_client, "_safe_base_url", side_effect=lambda url: url), \
+                mock.patch("openai.OpenAI") as openai_cls:
+            client = openai_cls.return_value
+            client.images.edit.side_effect = ConnectionError("provider down")
+            self.assertEqual(llm_client.check_image_edit_capability(), "image-model")
+        client.images.edit.assert_not_called()
+
+    def test_probe_timeout_counts_as_capable(self):
+        # gpt-image-1 edits can take a minute; an endpoint still rendering
+        # the probe has proven it accepts edits.
+        class FakeTimeout(Exception):
+            pass
+        FakeTimeout.__name__ = "APITimeoutError"
+
+        client = mock.Mock()
+        client.images.edit.side_effect = FakeTimeout("read timed out")
+        self.assertEqual(self._run(client, self._config()), "chat-model")
+        self.assertEqual(self._run(client, self._config()), "chat-model")  # cached positive
+        client.images.edit.assert_called_once()
+
+    def test_force_ignores_a_cached_negative_answer(self):
+        from . import llm_client
+        client = mock.Mock()
+        client.images.edit.side_effect = ConnectionError("provider down")
+        self.assertIsNone(self._run(client, self._config()))
+        client.images.edit.side_effect = None
+        with mock.patch.object(llm_client, "_resolved_client", return_value=(client, self._config(), None)):
+            self.assertIsNone(llm_client.check_image_edit_capability())  # cached "no" still honoured...
+            self.assertEqual(llm_client.check_image_edit_capability(force=True), "chat-model")  # ...unless forced
+        self.assertEqual(client.images.edit.call_count, 2)
 
     @override_settings(
         LLM_IMAGE_BASE_URL="https://images.example.com/v1",
@@ -3241,6 +3055,33 @@ class RoastImageGenerationTests(TestCase):
         self.assertIsNone(data)
         self.assertIn("safety filter", error)
 
+    def test_referenced_edit_falls_back_to_the_photo_alone(self):
+        # Multi-image edits are the fragile part; a failure there must not
+        # cost the remix. Second call: photo only, no `image` list.
+        from . import llm_client
+        client = self._client(b64=PNG_1PX)
+        client.images.edit.side_effect = [RuntimeError("too many images"), client.images.edit.return_value]
+        with mock.patch.object(llm_client, "_image_client", return_value=(client, "m", ["m"], "openai")):
+            data, error = llm_client.generate_roast_image(
+                self._photo_file(), "roast it", "m", extra_image_paths=[self._photo_file()],
+            )
+        self.assertIsNone(error)
+        self.assertEqual(data, PNG_1PX)
+        self.assertEqual(client.images.edit.call_count, 2)
+        self.assertIsInstance(client.images.edit.call_args_list[0][1]["image"], list)  # photo + portrait
+        self.assertIsInstance(client.images.edit.call_args_list[1][1]["image"], bytes)  # photo alone
+
+    def test_unreadable_portrait_does_not_block_the_edit(self):
+        from . import llm_client
+        client = self._client(b64=PNG_1PX)
+        with mock.patch.object(llm_client, "_image_client", return_value=(client, "m", ["m"], "openai")):
+            data, error = llm_client.generate_roast_image(
+                self._photo_file(), "roast it", "m", extra_image_paths=["/nonexistent/portrait.png"],
+            )
+        self.assertIsNone(error)
+        self.assertEqual(data, PNG_1PX)
+        client.images.edit.assert_called_once()
+
     def test_no_image_endpoint_means_clean_skip(self):
         from . import llm_client
         with mock.patch.object(llm_client, "_image_client", return_value=(None, None, [], None)):
@@ -3536,15 +3377,14 @@ class RoastVoteTests(TestCase):
 
 
 class InactivityNudgePeriodicTaskTests(TestCase):
-    """Migration 0007 seeds the PeriodicTask row the DatabaseScheduler
-    needs - without it the celery.py beat entry alone would never fire."""
+    """The legacy row remains auditable but can no longer post publicly."""
 
-    def test_periodic_task_seeded(self):
+    def test_periodic_task_is_retired(self):
         from django_celery_beat.models import PeriodicTask
 
         task = PeriodicTask.objects.get(name="drill_instructor_inactivity_nudge")
         self.assertEqual(task.task, "drill_instructor.tasks.post_inactivity_nudges")
-        self.assertTrue(task.enabled)
+        self.assertFalse(task.enabled)
         self.assertEqual(task.crontab.hour, "17")
         self.assertEqual(task.crontab.minute, "10")
 
@@ -3552,10 +3392,196 @@ class InactivityNudgePeriodicTaskTests(TestCase):
 @override_settings(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
 )
+class MaterialCoachGapTests(TestCase):
+    """A materially changed, human-readable standings gap is announced once."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        from competition.models import Points
+        self.Points = Points
+        self.athlete = CustomUser.objects.create_user(
+            email="gap-athlete@example.com", password="test-pw", username="gap-athlete",
+        )
+        self.rival = CustomUser.objects.create_user(
+            email="gap-rival@example.com", password="test-pw", username="gap-rival",
+        )
+        today = timezone.localdate()
+        self.competition = Competition.objects.create(
+            owner=self.athlete, name="Gap Cup",
+            start_date=today - datetime.timedelta(days=1),
+            end_date=today + datetime.timedelta(days=5),
+        )
+        self.athlete.my_competitions.add(self.competition)
+        self.rival.my_competitions.add(self.competition)
+        self.goal = self.competition.activitygoal_set.first()
+        self.persona = DrillInstructorPersona.objects.create(
+            name="Gap Coach", system_prompt="Be concise.",
+        )
+        self.config = DrillInstructorConfig.objects.create(
+            competition=self.competition, enabled=True, persona=self.persona,
+            send_push_on_activity=False,
+        )
+        self.athlete_points = self._score(self.athlete, 40)
+        self._score(self.rival, 55)
+
+    def _score(self, user, score):
+        from competition.models import Points
+        workout = Workout(
+            user=user, sport_type="Run", start_datetime=timezone.now(),
+            duration=datetime.timedelta(minutes=30), intensity_category=2,
+        )
+        workout.save(score=False)
+        return Points.objects.create(
+            goal=self.goal, workout=workout, points_raw=score, points_capped=score,
+        )
+
+    def test_inactivity_task_cannot_post_a_queued_legacy_nudge(self):
+        from workouts.models import Workout as WorkoutModel
+        from .tasks import post_inactivity_nudges
+        WorkoutModel.objects.all().delete()
+
+        with (
+            mock.patch("drill_instructor.tasks.is_task_already_executing", return_value=False),
+            mock.patch("drill_instructor.tasks.generate_message", return_value=("legacy nudge", None)) as generate,
+        ):
+            result = post_inactivity_nudges()
+
+        self.assertEqual(result["posted"], 0)
+        generate.assert_not_called()
+        self.assertFalse(self.config.messages.filter(kind=DrillInstructorMessage.KIND_NUDGE).exists())
+
+    def test_random_push_task_cannot_post_a_queued_legacy_pep_talk(self):
+        from .tasks import post_random_pushes
+        self.config.push_plan_date = timezone.localdate()
+        self.config.push_plan = ["00:00"]
+        self.config.save(update_fields=["push_plan_date", "push_plan"])
+
+        with (
+            mock.patch("drill_instructor.tasks.is_task_already_executing", return_value=False),
+            mock.patch("drill_instructor.tasks.generate_message", return_value=("legacy pep talk", None)) as generate,
+        ):
+            result = post_random_pushes()
+
+        self.assertEqual(result["posted"], 0)
+        generate.assert_not_called()
+        self.assertFalse(self.config.messages.filter(kind=DrillInstructorMessage.KIND_PUSH).exists())
+
+    def test_daily_prompt_task_cannot_post_a_queued_legacy_briefing(self):
+        from .tasks import post_daily_prompts
+        self.config.daily_prompt = "legacy briefing"
+        self.config.save(update_fields=["daily_prompt"])
+        morning = timezone.make_aware(
+            datetime.datetime.combine(timezone.localdate(), datetime.time(8)),
+        )
+
+        with (
+            mock.patch("drill_instructor.tasks.is_task_already_executing", return_value=False),
+            mock.patch("drill_instructor.tasks.timezone.localtime", return_value=morning),
+            mock.patch("drill_instructor.tasks.generate_message", return_value=("legacy briefing", None)) as generate,
+        ):
+            result = post_daily_prompts()
+
+        self.assertEqual(result["posted"], 0)
+        generate.assert_not_called()
+        self.assertFalse(self.config.messages.filter(kind=DrillInstructorMessage.KIND_BRIEFING).exists())
+
+    def test_material_gap_push_respects_user_opt_in(self):
+        from django.core.cache import cache
+        from .tasks import post_material_rank_gap_change
+
+        for enabled in (False, True):
+            with self.subTest(send_push_on_activity=enabled):
+                cache.clear()
+                self.config.send_push_on_activity = enabled
+                self.config.save(update_fields=["send_push_on_activity"])
+                self.athlete_points.points_raw = 40
+                self.athlete_points.points_capped = 40
+                self.athlete_points.save(update_fields=["points_raw", "points_capped"])
+                with mock.patch("drill_instructor.tasks._ping_user") as ping_user:
+                    self.assertFalse(
+                        post_material_rank_gap_change(self.competition.id, self.athlete.id)["posted"],
+                    )
+                    self.athlete_points.points_raw = 52
+                    self.athlete_points.points_capped = 52
+                    self.athlete_points.save(update_fields=["points_raw", "points_capped"])
+                    self.assertTrue(
+                        post_material_rank_gap_change(self.competition.id, self.athlete.id)["posted"],
+                    )
+
+                expected_pushes = self.competition.user.count() if enabled else 0
+                self.assertEqual(ping_user.call_count, expected_pushes)
+
+    def test_material_gap_update_announces_nearest_rival_once(self):
+        from .tasks import post_material_rank_gap_change
+
+        initial = post_material_rank_gap_change(self.competition.id, self.athlete.id)
+        self.assertFalse(initial["posted"])
+        self.athlete_points.points_raw = 52
+        self.athlete_points.points_capped = 52
+        self.athlete_points.save(update_fields=["points_raw", "points_capped"])
+
+        changed = post_material_rank_gap_change(self.competition.id, self.athlete.id)
+        repeated = post_material_rank_gap_change(self.competition.id, self.athlete.id)
+
+        self.assertTrue(changed["posted"])
+        self.assertFalse(repeated["posted"])
+        self.assertEqual(
+            DrillInstructorMessage.objects.filter(
+                config=self.config, kind="gap",
+            ).count(),
+            1,
+        )
+        message = DrillInstructorMessage.objects.get(config=self.config, kind="gap")
+        self.assertIn("@gap-rival", message.body)
+        self.assertIn("1 place ahead", message.body)
+        self.assertNotIn("points", message.body.lower())
+
+    def test_point_recap_enqueues_gap_check_after_capped_totals_update(self):
+        from custom_user.models import RecalcRequest
+        from custom_user.point_recalc import recalc_points
+        RecalcRequest.objects.all().delete()
+        self.athlete_points.points_capped = 0
+        self.athlete_points.save(update_fields=["points_capped"])
+        RecalcRequest.objects.create(
+            user=self.athlete,
+            goal=self.goal,
+            start_datetime=self.athlete_points.workout.start_datetime,
+        )
+
+        with (
+            mock.patch("custom_user.point_recalc.is_task_already_executing", return_value=False),
+            mock.patch("drill_instructor.tasks.post_material_rank_gap_change.delay") as enqueue,
+        ):
+            def assert_final_score(competition_id, user_id):
+                self.athlete_points.refresh_from_db()
+                self.assertEqual(self.athlete_points.points_capped, self.athlete_points.points_raw)
+
+            enqueue.side_effect = assert_final_score
+            recalc_points()
+
+        enqueue.assert_called_once_with(self.competition.id, self.athlete.id)
+
+    def test_subthreshold_changes_accumulate_from_last_announcement(self):
+        from .tasks import post_material_rank_gap_change
+
+        post_material_rank_gap_change(self.competition.id, self.athlete.id)
+        self.athlete_points.points_raw = 41
+        self.athlete_points.points_capped = 41
+        self.athlete_points.save(update_fields=["points_raw", "points_capped"])
+        self.assertFalse(post_material_rank_gap_change(self.competition.id, self.athlete.id)["posted"])
+
+        self.athlete_points.points_raw = 51
+        self.athlete_points.points_capped = 51
+        self.athlete_points.save(update_fields=["points_raw", "points_capped"])
+        self.assertTrue(post_material_rank_gap_change(self.competition.id, self.athlete.id)["posted"])
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
 class WorkoutCommentIdempotencyTests(TestCase):
-    """One coach comment per competition per workout. Double enqueues
-    (double submit, sync edge cases, broker redelivery) must never
-    produce a second, identical coach message."""
+    """Legacy per-workout coach jobs stay silent; old records remain valid."""
 
     def setUp(self):
         for target in (
@@ -3599,21 +3625,34 @@ class WorkoutCommentIdempotencyTests(TestCase):
             intensity_category=2,
         )
 
-    def test_double_enqueue_posts_only_once(self):
+    def test_legacy_workout_queue_creates_activity_thread_without_coach_chatter(self):
+        from .tasks import post_workout_comment
+
+        result = post_workout_comment(self.workout.id)
+
+        self.assertEqual(result["posted"], 0)
+        root = DrillInstructorMessage.objects.get(
+            config=self.config, workout=self.workout,
+            kind=DrillInstructorMessage.KIND_ACTIVITY,
+        )
+        self.assertEqual(root.body, "")
+        self.assertEqual(DrillInstructorMessage.objects.filter(
+            config=self.config, workout=self.workout,
+            kind=DrillInstructorMessage.KIND_REACTION,
+        ).count(), 0)
+
+    def test_double_enqueue_creates_only_one_activity_thread(self):
         from .tasks import post_workout_comment
 
         first = post_workout_comment(self.workout.id)
         second = post_workout_comment(self.workout.id)
 
-        self.assertEqual(first["posted"], 1)
+        self.assertEqual(first["posted"], 0)
         self.assertEqual(second["posted"], 0)
-        self.assertEqual(
-            DrillInstructorMessage.objects.filter(
-                config=self.config, workout=self.workout,
-                kind=DrillInstructorMessage.KIND_ACTIVITY,
-            ).count(),
-            1,
-        )
+        self.assertEqual(DrillInstructorMessage.objects.filter(
+            config=self.config, workout=self.workout,
+            kind=DrillInstructorMessage.KIND_ACTIVITY,
+        ).count(), 1)
 
     def test_db_constraint_blocks_concurrent_duplicates(self):
         from django.db import IntegrityError
@@ -3757,7 +3796,7 @@ class ArcadeGameTests(TestCase):
         bonus = Points.objects.get(workout=w, award__name=ORDER_AWARD_NAME)
         self.assertEqual(float(bonus.points_capped), float(ORDER_BONUS_POINTS))
 
-    def test_close_order_sighs_at_slackers(self):
+    def test_close_order_never_publicly_calls_out_noncompleters(self):
         from .models import DailyOrder
         from .tasks import close_daily_orders
         today = timezone.localdate()
@@ -3766,34 +3805,44 @@ class ArcadeGameTests(TestCase):
         )
         order.completed_by.add(self.alex)
         result = close_daily_orders()
-        self.assertEqual(result["sighed"], 1)
-        self.assertTrue(DrillInstructorMessage.objects.filter(
+        self.assertEqual(result["sighed"], 0)
+        self.assertFalse(DrillInstructorMessage.objects.filter(
             config=self.config, kind=DrillInstructorMessage.KIND_SIGH,
         ).exists())
         order.refresh_from_db()
         self.assertTrue(order.failed_announced)
         close_daily_orders()
-        self.assertEqual(DrillInstructorMessage.objects.filter(
+        self.assertFalse(DrillInstructorMessage.objects.filter(
             config=self.config, kind=DrillInstructorMessage.KIND_SIGH,
-        ).count(), 1)
+        ).exists())
 
-    def test_dunce_is_last_place_and_clears_on_log(self):
-        from .game import evaluate_workout_game, pick_last_place
+    def test_last_place_is_not_publicly_crowned(self):
+        from .game import pick_last_place
         from .tasks import assign_dunces
         self._points(self.alex, 100)
         self._points(self.nina, 10)
         self.assertEqual(pick_last_place(self.competition).id, self.nina.id)
-        assign_dunces()
-        self.config.refresh_from_db()
-        self.assertEqual(self.config.dunce_id, self.nina.id)
-        self.assertTrue(DrillInstructorMessage.objects.filter(
-            config=self.config, kind=DrillInstructorMessage.KIND_DUNCE,
-        ).exists())
-        w = self._workout(self.nina)
-        evaluate_workout_game(w, self.config)
+
+        result = assign_dunces()
+
+        self.assertEqual(result["crowned"], 0)
         self.config.refresh_from_db()
         self.assertIsNone(self.config.dunce_id)
+        self.assertFalse(DrillInstructorMessage.objects.filter(
+            config=self.config, kind=DrillInstructorMessage.KIND_DUNCE,
+        ).exists())
+
+    def test_legacy_dunce_clear_still_awards_positive_comeback_tag(self):
+        from .game import evaluate_workout_game
         from .models import DogTag
+        self.config.dunce = self.nina
+        self.config.dunce_since = timezone.now()
+        self.config.save(update_fields=["dunce", "dunce_since"])
+
+        evaluate_workout_game(self._workout(self.nina), self.config)
+
+        self.config.refresh_from_db()
+        self.assertIsNone(self.config.dunce_id)
         self.assertTrue(DogTag.objects.filter(user=self.nina, slug="survived_the_dunce").exists())
 
     def test_first_blood_and_photogenic_tags(self):
@@ -3849,7 +3898,7 @@ class ArcadeGameTests(TestCase):
         self.assertEqual(mood["active_24h"], 0)
         self.assertEqual(mood["workouts_today"], 0)
 
-    def test_config_payload_exposes_arcade(self):
+    def test_config_payload_hides_legacy_crown_but_keeps_orders(self):
         from .models import DailyOrder
         today = timezone.localdate()
         DailyOrder.objects.create(config=self.config, date=today, kind="log_one", spec={}, brief="Log one.")
@@ -3862,8 +3911,34 @@ class ArcadeGameTests(TestCase):
         row = response.json()[0]
         self.assertEqual(row["daily_order"]["brief"], "Log one.")
         self.assertFalse(row["daily_order"]["completed"])
-        self.assertEqual(row["dunce"]["user_id"], self.nina.id)
+        self.assertIsNone(row["dunce"])
         self.assertEqual(row["mood"]["key"], "disappointed")
+
+    def test_historical_shaming_posts_are_hidden_from_message_feed(self):
+        old_crown = DrillInstructorMessage.objects.create(
+            config=self.config,
+            kind=DrillInstructorMessage.KIND_DUNCE,
+            body="Nina was last.",
+        )
+        old_sigh = DrillInstructorMessage.objects.create(
+            config=self.config,
+            kind=DrillInstructorMessage.KIND_SIGH,
+            body="Nina missed the order.",
+        )
+        visible = DrillInstructorMessage.objects.create(
+            config=self.config,
+            kind=DrillInstructorMessage.KIND_ORDER,
+            body="Today's group mission.",
+        )
+        self.client.force_authenticate(self.alex)
+
+        response = self.client.get(f"/api/drill-instructor/message/?competition={self.competition.id}")
+
+        self.assertEqual(response.status_code, 200)
+        visible_ids = {row["id"] for row in response.json()}
+        self.assertIn(visible.id, visible_ids)
+        self.assertNotIn(old_crown.id, visible_ids)
+        self.assertNotIn(old_sigh.id, visible_ids)
 
     def test_me_exposes_dog_tags(self):
         from .game import award_tag
@@ -4275,6 +4350,11 @@ class LegendEchoTests(TestCase):
     """Mint, challenge, claim, immortalize, Book of Echoes."""
 
     def setUp(self):
+        self._echo_media = tempfile.TemporaryDirectory()
+        self.addCleanup(self._echo_media.cleanup)
+        media_override = override_settings(MEDIA_ROOT=self._echo_media.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
         for target in (
             "competition.scorer.trigger_recalc_points",
             "custom_user.models.verify_email.apply_async",
@@ -4322,6 +4402,11 @@ class LegendEchoTests(TestCase):
         w.save(score=False)
         return w
 
+    def _picture_echo(self, echo):
+        from django.core.files.base import ContentFile
+        echo.image.save(f"echo-{echo.pk}.png", ContentFile(PNG_1PX), save=True)
+        return echo
+
     def test_first_short_workout_is_not_an_echo(self):
         from .echoes import mint_echo
         echo = mint_echo(self._workout(self.alex, minutes=30), self.config)
@@ -4335,20 +4420,27 @@ class LegendEchoTests(TestCase):
         echo = mint_echo(steps, self.config)
         self.assertIsNone(echo)
 
-    def test_first_flag_mints_and_posts(self):
-        from .echoes import mint_echo
+    def test_first_flag_mints_and_posts_only_after_its_photo_exists(self):
+        from django.core.files.base import ContentFile
+        from .echoes import attach_echo_image, mint_echo
         from .models import LegendEcho
+
+        media = tempfile.TemporaryDirectory()
+        self.addCleanup(media.cleanup)
+        media_override = override_settings(MEDIA_ROOT=media.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
         echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
         self.assertIsNotNone(echo)
         self.assertEqual(echo.status, LegendEcho.STATUS_UNDEFEATED)
         self.assertEqual(echo.holder_id, self.alex.id)
+        self.assertTrue(echo.photo_required)
         self.assertGreaterEqual(echo.power, 1)
-        # The mint is announced in the feed - invisible relics confused
-        # everyone. The line carries the echo's narrative.
-        announcement = DrillInstructorMessage.objects.get(
+        self.assertFalse(DrillInstructorMessage.objects.filter(
             config=self.config, kind=DrillInstructorMessage.KIND_ECHO,
-        )
-        self.assertEqual(announcement.body, echo.narrative)
+        ).exists())
+
         activity = DrillInstructorMessage.objects.create(
             config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
             workout=echo.origin_workout, body="Nice.",
@@ -4360,22 +4452,40 @@ class LegendEchoTests(TestCase):
         if isinstance(rows, dict):
             rows = rows.get("results") or []
         card = next(row for row in rows if row["id"] == activity.id)
+        self.assertEqual(card["echoes"], [])
+        self.assertEqual(card["athlete_echoes_held"], 0)
+
+        photo = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_PHOTO,
+            parent=activity, user=self.alex, body="Proof.",
+        )
+        photo.image.save("proof.png", ContentFile(PNG_1PX), save=True)
+        self.assertEqual(attach_echo_image(echo.origin_workout, self.config, photo.image), 1)
+        echo.refresh_from_db()
+        self.assertTrue(echo.image)
+        announcement = DrillInstructorMessage.objects.get(
+            config=self.config, kind=DrillInstructorMessage.KIND_ECHO,
+        )
+        self.assertEqual(announcement.body, echo.narrative)
+
+        listed = self.client.get("/api/drill-instructor/message/", {"competition": self.competition.id})
+        rows = listed.json().get("results", []) if isinstance(listed.json(), dict) else listed.json()
+        card = next(row for row in rows if row["id"] == activity.id)
         self.assertEqual(card["echoes"][0]["id"], echo.id)
         self.assertEqual(card["echoes"][0]["role"], "earned")
         self.assertGreaterEqual(card["athlete_echoes_held"], 1)
-        self.client.force_authenticate(self.alex)
         me = self.client.get("/api/user/me/")
         self.assertEqual(me.status_code, 200, me.content)
         self.assertGreaterEqual(me.json().get("echoes_held") or 0, 1)
         self.client.force_authenticate(self.nina)
-        listed = self.client.get("/api/user/")
-        self.assertEqual(listed.status_code, 200, listed.content)
-        other = next(row for row in listed.json() if row["id"] == self.alex.id)
+        listed_users = self.client.get("/api/user/")
+        self.assertEqual(listed_users.status_code, 200, listed_users.content)
+        other = next(row for row in listed_users.json() if row["id"] == self.alex.id)
         self.assertGreaterEqual(other.get("echoes_held") or 0, 1)
 
     def test_personal_best_needs_a_prior_same_sport(self):
         from .echoes import mint_echo
-        mint_echo(self._workout(self.nina, minutes=45), self.config)
+        self._picture_echo(mint_echo(self._workout(self.nina, minutes=45), self.config))
         prior = self._workout(self.alex, minutes=35)
         self.assertIsNone(mint_echo(prior, self.config))
         better = self._workout(self.alex, minutes=50)
@@ -4390,7 +4500,7 @@ class LegendEchoTests(TestCase):
 
     def test_bike_variants_share_one_echo_family(self):
         from .echoes import claim_beaten_echoes, mint_echo
-        echo = mint_echo(self._workout(self.alex, minutes=95, sport="GravelRide"), self.config)
+        echo = self._picture_echo(mint_echo(self._workout(self.alex, minutes=95, sport="GravelRide"), self.config))
         self.assertIsNotNone(echo)
         self.assertEqual(echo.sport_type, "Ride")
         self.assertIn("Cycling", echo.title)
@@ -4412,7 +4522,7 @@ class LegendEchoTests(TestCase):
 
     def test_trail_run_does_not_touch_a_walk_echo(self):
         from .echoes import claim_beaten_echoes, mint_echo
-        walk = mint_echo(self._workout(self.alex, minutes=45, sport="Walk"), self.config)
+        walk = self._picture_echo(mint_echo(self._workout(self.alex, minutes=45, sport="Walk"), self.config))
         self.assertEqual(walk.sport_type, "Walk")
         trail = self._workout(self.nina, minutes=45, sport="TrailRun")
         self.assertEqual(claim_beaten_echoes(trail, self.config), [])
@@ -4426,7 +4536,7 @@ class LegendEchoTests(TestCase):
 
     def test_cooldown_blocks_a_second_flag(self):
         from .echoes import mint_echo
-        first = mint_echo(self._workout(self.alex, minutes=95), self.config)
+        first = self._picture_echo(mint_echo(self._workout(self.alex, minutes=95), self.config))
         self.assertIsNotNone(first)
         second = mint_echo(self._workout(self.alex, minutes=96), self.config)
         self.assertIsNone(second)
@@ -4434,7 +4544,7 @@ class LegendEchoTests(TestCase):
     def test_beating_the_mark_claims_and_awards_slayer(self):
         from .echoes import claim_beaten_echoes, mint_echo
         from .models import DogTag, LegendEcho
-        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        echo = self._picture_echo(mint_echo(self._workout(self.alex, minutes=45), self.config))
         beat = self._workout(self.nina, minutes=60)
         claimed = claim_beaten_echoes(beat, self.config)
         self.assertEqual(len(claimed), 1)
@@ -4452,9 +4562,18 @@ class LegendEchoTests(TestCase):
             config=self.config, kind=DrillInstructorMessage.KIND_CLAIM,
         ).exists())
 
+    def test_claim_does_not_push_when_coach_notifications_are_off(self):
+        from .echoes import claim_beaten_echoes, mint_echo
+        self._picture_echo(mint_echo(self._workout(self.alex, minutes=45), self.config))
+        with mock.patch("push_notifications.sender.send_push_to_user") as push:
+            claim_beaten_echoes(self._workout(self.nina, minutes=60), self.config)
+        push.assert_not_called()
+
     def test_claim_announces_and_pings_both_parties(self):
         from .echoes import claim_beaten_echoes, mint_echo
-        mint_echo(self._workout(self.alex, minutes=45), self.config)
+        self.config.send_push_on_activity = True
+        self.config.save(update_fields=["send_push_on_activity"])
+        self._picture_echo(mint_echo(self._workout(self.alex, minutes=45), self.config))
         with mock.patch("push_notifications.sender.send_push_to_user") as push:
             claimed = claim_beaten_echoes(self._workout(self.nina, minutes=60), self.config)
         self.assertEqual(len(claimed), 1)
@@ -4477,7 +4596,7 @@ class LegendEchoTests(TestCase):
         immortal mid-season; the planter earns the tag right away."""
         from .echoes import claim_beaten_echoes, mint_echo
         from .models import DogTag, LegendEcho
-        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        echo = self._picture_echo(mint_echo(self._workout(self.alex, minutes=45), self.config))
         claim_beaten_echoes(self._workout(self.nina, minutes=60), self.config)
         echo.refresh_from_db()
         self.assertEqual(echo.defenses, 1)
@@ -4523,14 +4642,14 @@ class LegendEchoTests(TestCase):
 
     def test_holder_cannot_claim_own_echo(self):
         from .echoes import claim_beaten_echoes, mint_echo
-        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        echo = self._picture_echo(mint_echo(self._workout(self.alex, minutes=45), self.config))
         self.assertEqual(claim_beaten_echoes(self._workout(self.alex, minutes=90), self.config), [])
         echo.refresh_from_db()
         self.assertEqual(echo.holder_id, self.alex.id)
 
     def test_tie_does_not_claim(self):
         from .echoes import claim_beaten_echoes, mint_echo
-        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        echo = self._picture_echo(mint_echo(self._workout(self.alex, minutes=45), self.config))
         claimed = claim_beaten_echoes(self._workout(self.nina, minutes=45), self.config)
         self.assertEqual(claimed, [])
         echo.refresh_from_db()
@@ -4539,7 +4658,7 @@ class LegendEchoTests(TestCase):
     def test_season_end_immortalizes_survivors(self):
         from .echoes import immortalize_finished_echoes, mint_echo
         from .models import LegendEcho
-        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        echo = self._picture_echo(mint_echo(self._workout(self.alex, minutes=45), self.config))
         self.competition.end_date = timezone.localdate() - datetime.timedelta(days=1)
         self.competition.save()
         result = immortalize_finished_echoes()
@@ -4549,7 +4668,7 @@ class LegendEchoTests(TestCase):
 
     def test_backdated_workout_cannot_claim(self):
         from .echoes import claim_beaten_echoes, mint_echo
-        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        echo = self._picture_echo(mint_echo(self._workout(self.alex, minutes=45), self.config))
         past = self._workout(
             self.nina, minutes=120,
             when=timezone.now() - datetime.timedelta(days=3),
@@ -4559,8 +4678,23 @@ class LegendEchoTests(TestCase):
         self.assertEqual(echo.holder_id, self.alex.id)
 
     def test_api_list_and_isolation(self):
+        from types import SimpleNamespace
         from .echoes import mint_echo
+        from .models import LegendEcho
+        from .serializers import DrillInstructorMessageSerializer
+
         echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        LegendEcho.objects.filter(pk=echo.pk).update(photo_required=False)
+        activity = DrillInstructorMessage.objects.create(
+            config=self.config, kind=DrillInstructorMessage.KIND_ACTIVITY,
+            workout=echo.origin_workout, body="Historic activity.",
+        )
+        card = DrillInstructorMessageSerializer(
+            activity, context={"request": SimpleNamespace(user=self.nina)},
+        ).data
+        self.assertEqual(card["echoes"][0]["id"], echo.id)
+        self.assertIsNone(card["echoes"][0]["image"])
+
         self.client.force_authenticate(self.nina)
         listed = self.client.get("/api/drill-instructor/echoes/", {"competition": self.competition.id})
         self.assertEqual(listed.status_code, 200, listed.content)
@@ -4621,7 +4755,7 @@ class LegendEchoTests(TestCase):
         alex_row = next(row for row in listed_users.json() if row["id"] == self.alex.id)
         self.assertEqual(alex_row.get("echoes_held") or 0, 0)
 
-    def test_echoes_with_art_list_first(self):
+    def test_unpictured_echo_is_hidden_while_pictured_echo_remains_listed(self):
         from django.core.files.base import ContentFile
         from .echoes import mint_echo
 
@@ -4640,8 +4774,8 @@ class LegendEchoTests(TestCase):
         listed = self.client.get("/api/drill-instructor/echoes/", {"competition": self.competition.id})
         self.assertEqual(listed.status_code, 200, listed.content)
         ids = [row["id"] for row in listed.json()]
-        self.assertEqual(ids[0], weaker.id)
-        self.assertIn(stronger.id, ids)
+        self.assertEqual(ids, [weaker.id])
+        self.assertNotIn(stronger.id, ids)
 
     def test_echo_windows_periodic_task_seeded(self):
         from django_celery_beat.models import PeriodicTask
@@ -4717,7 +4851,13 @@ class LegendEchoTests(TestCase):
 
         echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
         echo.image.save("echo-orig.jpg", ContentFile(PNG_1PX), save=True)
-        edited = b"\x89PNG\r\n\x1a\n" + b"edited-bytes"
+        # Provider bytes are validated + re-encoded before they are stored,
+        # so hand over a real (but distinguishable) raster image.
+        from io import BytesIO
+        from PIL import Image
+        buf = BytesIO()
+        Image.new("RGB", (4, 4), (200, 30, 30)).save(buf, format="PNG")
+        edited = buf.getvalue()
         with mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image"), \
                 mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(edited, None)):
             result = remix_echo_art(echo.id)
@@ -4725,7 +4865,35 @@ class LegendEchoTests(TestCase):
         echo = LegendEcho.objects.get(pk=echo.id)
         echo.image.open("rb")
         try:
-            self.assertEqual(echo.image.read(), edited)
+            stored = echo.image.read()
+        finally:
+            echo.image.close()
+        self.assertNotEqual(stored, PNG_1PX)
+        self.assertEqual(Image.open(BytesIO(stored)).size, (4, 4))
+
+    def test_remix_echo_art_rejects_non_image_provider_bytes(self):
+        from django.core.files.base import ContentFile
+        from .echoes import mint_echo
+        from .models import LegendEcho
+        from .tasks import remix_echo_art
+
+        media = tempfile.TemporaryDirectory()
+        self.addCleanup(media.cleanup)
+        media_override = override_settings(MEDIA_ROOT=media.name)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+        echo = mint_echo(self._workout(self.alex, minutes=45), self.config)
+        echo.image.save("echo-orig.jpg", ContentFile(PNG_1PX), save=True)
+        bogus = b"<html>not an image</html>"
+        with mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image"), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(bogus, None)):
+            result = remix_echo_art(echo.id)
+        self.assertFalse(result.get("ok"))
+        echo = LegendEcho.objects.get(pk=echo.id)
+        echo.image.open("rb")
+        try:
+            self.assertEqual(echo.image.read(), PNG_1PX)
         finally:
             echo.image.close()
 
@@ -4813,3 +4981,149 @@ class EchoArtPromptTests(TestCase):
         art_only = coach_echo_world(persona_name="Captain Nova", persona_avatar="captain")
         self.assertIn("sky-ship", art_only.lower())
 
+
+
+class ConfigCompetitionRebindTests(TestCase):
+    """A coach config belongs to the challenge it was created for. The
+    owner check on update runs against the *current* competition, so
+    ``competition`` must be immutable on PATCH/PUT - otherwise an owner
+    could move their persona/prompt (and its pushes) onto another
+    organizer's config-less challenge."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.verify_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.persona = DrillInstructorPersona.objects.create(name="Rebind Sgt", system_prompt="Go.")
+        self.owner_a = _user("rebind-a@example.com", "Ann")
+        self.owner_b = _user("rebind-b@example.com", "Bob")
+        today = timezone.localdate()
+        self.comp_a = Competition.objects.create(
+            owner=self.owner_a, name="Cup A",
+            start_date=today - datetime.timedelta(days=1), end_date=today + datetime.timedelta(days=10),
+        )
+        self.comp_b = Competition.objects.create(
+            owner=self.owner_b, name="Cup B",
+            start_date=today - datetime.timedelta(days=1), end_date=today + datetime.timedelta(days=10),
+        )
+        self.config = DrillInstructorConfig.objects.create(
+            competition=self.comp_a, enabled=True, persona=self.persona,
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.owner_a)
+
+    def test_patch_cannot_move_config_to_foreign_competition(self):
+        response = self.client.patch(
+            f"/api/drill-instructor/config/{self.config.id}/",
+            {"competition": self.comp_b.id, "daily_prompt": "sneaky"},
+            format="json",
+        )
+        self.assertIn(response.status_code, (200, 400, 403), response.content)
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.competition_id, self.comp_a.id)
+        self.assertFalse(DrillInstructorConfig.objects.filter(competition=self.comp_b).exists())
+
+    def test_put_cannot_move_config_to_foreign_competition(self):
+        response = self.client.put(
+            f"/api/drill-instructor/config/{self.config.id}/",
+            {"competition": self.comp_b.id, "persona": self.persona.id, "enabled": True},
+            format="json",
+        )
+        self.assertIn(response.status_code, (200, 400, 403), response.content)
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.competition_id, self.comp_a.id)
+        self.assertFalse(DrillInstructorConfig.objects.filter(competition=self.comp_b).exists())
+
+    def test_patch_to_own_other_competition_is_also_ignored(self):
+        # Immutable even for challenges the same owner runs - a second
+        # coach is created with POST, not by re-pointing the first one.
+        today = timezone.localdate()
+        comp_c = Competition.objects.create(
+            owner=self.owner_a, name="Cup C",
+            start_date=today, end_date=today + datetime.timedelta(days=10),
+        )
+        response = self.client.patch(
+            f"/api/drill-instructor/config/{self.config.id}/",
+            {"competition": comp_c.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.competition_id, self.comp_a.id)
+
+
+class MessageListLegacyCapTests(TestCase):
+    """Old clients that omit ``limit`` get a bare array - but never the
+    whole history of a long-running challenge."""
+
+    def setUp(self):
+        for target in (
+            "competition.scorer.trigger_recalc_points",
+            "custom_user.models.verify_email.apply_async",
+        ):
+            patcher = mock.patch(target)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        persona = DrillInstructorPersona.objects.create(name="Cap Sgt", system_prompt="Go.")
+        self.owner = _user("cap-owner@example.com", "Olivia")
+        today = timezone.localdate()
+        self.competition = Competition.objects.create(
+            owner=self.owner, name="Cap Cup",
+            start_date=today - datetime.timedelta(days=90), end_date=today + datetime.timedelta(days=4),
+        )
+        self.config = DrillInstructorConfig.objects.create(
+            competition=self.competition, enabled=True, persona=persona,
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.owner)
+
+    def test_no_limit_returns_capped_bare_array_newest_first(self):
+        from .views import DrillInstructorMessageViewSet
+        cap = DrillInstructorMessageViewSet.LIST_MAX
+        base = timezone.now() - datetime.timedelta(days=60)
+        messages = []
+        for i in range(cap + 5):
+            msg = DrillInstructorMessage.objects.create(
+                config=self.config, kind=DrillInstructorMessage.KIND_PUSH, body=f"push {i}",
+            )
+            msg.posted_at = base + datetime.timedelta(minutes=i)
+            msg.save(update_fields=["posted_at"])
+            messages.append(msg)
+
+        response = self.client.get(f"/api/drill-instructor/message/?competition={self.competition.id}")
+        self.assertEqual(response.status_code, 200)
+        results = response.json()
+        self.assertIsInstance(results, list)
+        self.assertEqual(len(results), cap)
+        self.assertEqual(results[0]["id"], messages[-1].id)
+        self.assertNotIn(messages[0].id, {row["id"] for row in results})
+
+
+class OperatorFieldVisibilityTests(TestCase):
+    """``last_error`` / ``error`` are operator-only. An anonymous user
+    (pk None) must never match an unresolved owner_id (also None)."""
+
+    def test_anonymous_never_counts_as_owner(self):
+        from django.contrib.auth.models import AnonymousUser
+        from .serializers import _is_staff_or_owner
+        request = mock.Mock(user=AnonymousUser())
+        self.assertFalse(_is_staff_or_owner(request, None))
+        self.assertFalse(_is_staff_or_owner(request, mock.Mock(owner_id=None)))
+        self.assertFalse(_is_staff_or_owner(None, mock.Mock(owner_id=None)))
+
+    def test_owner_and_staff_see_operator_fields(self):
+        from .serializers import _is_staff_or_owner
+        owner = _user("vis-owner@example.com", "Ola")
+        other = _user("vis-other@example.com", "Otto")
+        staff = _user("vis-staff@example.com", "Stan")
+        staff.is_staff = True
+        staff.save()
+        competition = mock.Mock(owner_id=owner.pk)
+        self.assertTrue(_is_staff_or_owner(mock.Mock(user=owner), competition))
+        self.assertTrue(_is_staff_or_owner(mock.Mock(user=staff), competition))
+        self.assertFalse(_is_staff_or_owner(mock.Mock(user=other), competition))
+        self.assertFalse(_is_staff_or_owner(mock.Mock(user=other), None))

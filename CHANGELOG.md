@@ -7,12 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Expedition — the crew travels a shared route (Trail tab).** Every challenge can now be an expedition: the group's normalised points move one crew along a route whose landmarks are spread across the challenge dates, with the finale held for the last day. The Trail tab shows a themed vector map with every crew-mate's face on it, a stepper of landmarks (coach portrait tick marks show who guided each stage), a live "who moved the crew this week" crew view without ranks, and a shareable finale postcard. Progress and history survive coach changes; nothing is AI-generated map truth.
+- **Expedition variety — themes, objectives, twists.** Routes rotate through five themes (Summit, Ocean crossing, Desert caravan, Space flight, Marathon relay), least-recently-used per organiser, and can run as an Expedition, a Rescue run (a storm front chases the crew; late landmarks keep the tick but lose the stamp), a Base camp (hold 60 % of the weekly ceiling to plant a tent) or a Treasure hunt (hidden landmarks revealed on arrival). Full interior weeks get one twist each — Storm/Rest week (cap ×1.5 / ×0.5), Rope week (points count only on days two crew-mates both moved) or a Shortcut vote (Ridge opens the next landmark three days early but costs +5 %; settles at week end or when everyone voted).
+- **Owners pick the expedition.** The challenge form has *Expedition* on/off, the objective and the theme ("Surprise me" keeps the rotation). Settings lock once the route has started; a rematch keeps mode and objective but draws a fresh theme.
+- **Close the Gap on Home.** Home leads with one named rival (or a pinned one, or your own goal when there is nobody to chase) and says in plain units what would narrow the gap — never a promise that one session guarantees a pass. Pin, or dismiss until tomorrow.
+- **Season endings and rematches.** Finished challenges show a finale, get archived off Home, and offer a one-tap rematch with the same crew and a fresh window.
+- **Private comeback bench.** When your week goes quieter than the last (or nothing for 7 days) a private note appears on Home — no target, rest counts. Under *Settings → Comeback* you can mute it, and opt in to let challenge-mates know you're open to a nudge: they see your first name only and can send a cheer, an easy-workout invite or a check-in, which you accept or ignore. Nothing about it is ever public.
+- **Coach reads the whole thread.** Replies to a feed post now hand the coach the full conversation so far (newest 12 turns), so it answers the thread, not a single line.
+
+### Changed
+- **Photo = relic.** The always-on "+10P" camera is gone. The camera appears only when a photo has a purpose — planting or claiming an Echo, or a photo order — and says so before the picker opens. New flat photo points are no longer awarded; historical awards and board totals are untouched. An Echo without its photo by the deadline stays a personal mark but is not a visible relic.
+- **The coach always answers a picture.** Every photo post gets a remix or, if the image model is unavailable, a spoken reaction now and a retry ladder (1 min / 4 min / 15 min) for the remix — never silence. Vision/edit capability probes are longer-lived and a dedicated image model is trusted without probing.
+- **No more public shaming.** The dunce/last-place crowning and the generic daily coach chatter (inactivity nudges, random pep talks, briefings without an owner topic) are retired; the coach speaks when something happened. Positive comeback recognition stays.
+- **Expedition header trimmed** to `Theme · N on the trail`; every explanation sits behind ⓘ.
+- **Coach music removed.** The MIDI bed/mute toggle is gone; sound effects stay on.
+- **Points are stored as exact two-decimal values** (no more float/Decimal mismatch rewriting every row on each recap) and shortening a challenge's end date now re-caps the affected weeks like extending it does.
+
 ### Fixed
+- **Coach config could be pointed at someone else's challenge.** A challenge owner could re-bind their coach configuration (own persona, system prompt, push toggles) onto any other challenge that had none. `competition` is immutable after creation and ownership is checked on the target.
+- **Expedition crew faces were broken.** Avatars requested the protected picture endpoint without credentials (401 bursts); they now load through the authenticated image path.
+- **Login lock-outs behind a reverse proxy.** nginx forwarded the proxy's own address, so all users shared one login/reset throttle bucket; the real client IP is now taken from `X-Forwarded-For` (trusted from loopback/private peers only).
+- **Refresh cookie no longer set for the Android app** (it keeps the token in secure storage), and challenge join codes are no longer persisted to the browser's local storage.
+- **Garmin two-step token bound to the account that started it** and burned on a wrong code; Health linking requires a verified e-mail; profile edits are rate-limited (e-mail enumeration).
+- **Celery "already running" guard never matched** (short vs fully-qualified task names), so overlapping syncs/recaps were possible. Weekly e-mail dropped whole days from totals ≥ 24 h; the Echo mint prompt sent a literal `{athlete}`; expedition settings could read stale right after saving; team time series leaked other challenges' teams; provider-returned "edited" images are validated before they are stored; photo tasks got a time limit that fits the image pipeline.
+
+### Security / operator notes
+- Migrations: `competition` 0007–0010 (expedition tables, variety fields, existing campaigns become Summit), `drill_instructor` 0032–0036 (MIDI removal, comeback bench, retired generic schedules, echo photo requirement). They run at container start.
+- **Reverse proxy:** must send `X-Forwarded-For` and `X-Forwarded-Proto` and redirect 80→443 (nginx sends HSTS only on HTTPS now, `X-XSS-Protection: 0`, one consistent `X-Frame-Options`).
+- Flower's basic-auth is passed via `FLOWER_BASIC_AUTH` in the environment (no longer visible in `ps`). New optional env: `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `CACHE_REDIS_URL`; Celery accepts JSON only. A loud warning is logged when `DEBUG=true` meets a non-local host.
+- `pyjwt` 2.13 → 2.14. `garminconnect` stays at 0.3.2 (advisory concerns `dump()`-to-disk, which is never used). E-mail addresses are no longer written to logs.
+- Backend lint gate: `ruff check .` in `src-backend` (config in `ruff.toml`). `scripts/launch_django.sh` removed; `scripts/dev_clean_db.sh` no longer deletes versioned migrations and asks first.
+
+### Earlier unreleased changes
+#### Fixed
 - **Garmin linking works with two-step verification.** Garmin now forces an email/SMS code on many accounts (on watches with health features it can't be turned off), and linking always failed for those. After your password you can now enter the code Garmin sends you.
 - **Gallery photo uploads no longer stall on the three dots.** HEIC picks (Samsung gallery) hung forever because the security policy blocked the converter's Web Worker. Blob workers are allowed again, and a stuck decode now ends in an error instead of endless dots.
 - **Garmin / Health Connect / Strava linking works again behind a reverse proxy.** The TLS edge-hardening only trusted `X-Forwarded-Proto` from loopback peers, so a proxy reaching the container over a Docker bridge or LAN address was treated as cleartext and the link buttons refused with "Linking requires HTTPS". Private/LAN peers are trusted again; direct internet clients (public remote address) still can't spoof the header.
 
-### Changed
+#### Changed
 - **Shorter first feed.** The challenge feed now opens with the 10 newest posts (was 15); "Show more" pages further back as before.
 - **Daily briefing takes your words 1:1.** The owner instruction for the coach's daily morning post is now passed to the AI verbatim — wording, format and length rules you write are the actual instruction (the coach still answers in its persona, keeps the running arc, and admits when it can't fetch live data). The settings field explains this and shows hints, e.g. how to have the coach sign with its name.
 - **APK opens straight into the app.** A returning Android session no longer waits ~2s on the login screen for the token refresh — the app navigates immediately on a stored-session hint and refreshes in the background; an actually-expired session still bounces back to login.
@@ -20,13 +53,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Every picture gets the big-screen treatment.** Echo artwork, the coach's roast remixes, feed photos and images inside threads all open in the fullscreen viewer introduced for the Hall of Roasts: pinch/double-tap zoom, swipe between shots, swipe down to close, Stamp and Share right on the photo. The old sheet-style popups are gone.
 - **All Echoes shows the relics, not just their names.** The "All" overview is now a tile grid with the artwork, status badge and the usual Share/Delete actions — and tapping the art opens the fullscreen viewer at that relic.
 
-### Fixed
+#### Fixed
 - **"View photo" no longer covers the card.** The explicit viewer button on photo-backed activity cards sat absolutely over the athlete header; it now has its own row above the card content.
 - **Fold/desktop menus landed at the bottom of the page.** On the left-rail layout, the Settings and Compete panels dropped to the end of the page because the glass style quietly overrode their anchoring; they now open next to the icon as intended.
 - **"Model can't see pictures" on vision-capable models.** The capability probe sent a 1x1 test image, which xAI rejects as too small — the probe read that as "no vision" and hid photo posts for a day. The probe now uses a provider-safe 32x32 image, and a regression test guards the size.
 
-### Operator notes
-- No migrations. New optional env `DRILL_PHOTO_WINDOW_DAYS` (default 5).
+#### Operator notes
+- New optional env `DRILL_PHOTO_WINDOW_DAYS` (default 5).
 - After deploying, the previously cached "no vision" verdict can survive up to 24h in Redis — clear the `drill-vision-capable:*` key (or flush the cache) once, then the next request re-probes with the fixed image.
 
 ## [0.62.0] - 2026-09-21

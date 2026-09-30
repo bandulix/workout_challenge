@@ -1,10 +1,7 @@
-import {useEffect, useRef, useState} from "react";
-import {isNativeApp} from "./serverUrl";
+import {useEffect, useRef} from "react";
 
-// Short in-app stings from Kenney Interface Sounds (CC0). On by default;
-// mute on Coach or in Account settings. Unlock on a real tap.
-const STORAGE = "wc-sfx";
-const EVENT = "wc-sfx";
+// Short in-app stings from Kenney Interface Sounds (CC0). Always on;
+// browsers unlock playback after a real tap.
 const DEBOUNCE_MS = 400;
 
 const FILES = {
@@ -19,59 +16,13 @@ const FILES = {
     ring_full: "/sfx/ring_full.mp3",
 };
 
-let memory = null;
 let sfxSessionUnlocked = false;
 const seenKeys = new Set();
 const primedScopes = new Set();
 const lastPlayed = new Map();
 
-function storeGet() {
-    try {
-        const stored = window.localStorage.getItem(STORAGE);
-        if (stored === "on" || stored === "off") return stored;
-    } catch {
-        /* private mode / node tests */
-    }
-    return memory;
-}
-
-function storeSet(value) {
-    memory = value;
-    try {
-        window.localStorage.setItem(STORAGE, value);
-    } catch {
-        /* private mode / node tests */
-    }
-}
-
 export function sfxEnabled() {
-    const value = storeGet();
-    if (value === "off") return false;
-    if (value === "on") return true;
-    // Web can start noisy; phones in a bag should not.
-    return !isNativeApp();
-}
-
-export function setSfxEnabled(on) {
-    storeSet(on ? "on" : "off");
-    if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event(EVENT));
-    }
-    if (on) {
-        unlockSfx();
-        preloadSfx();
-    }
-}
-
-export function useSfxEnabled() {
-    const [on, setOn] = useState(() => sfxEnabled());
-    useEffect(() => {
-        const sync = () => setOn(sfxEnabled());
-        sync();
-        window.addEventListener(EVENT, sync);
-        return () => window.removeEventListener(EVENT, sync);
-    }, []);
-    return [on, setSfxEnabled];
+    return true;
 }
 
 function canPlayFiles() {
@@ -112,7 +63,6 @@ export function installSfxUnlock() {
     if (typeof window === "undefined") return () => {};
     if (sfxSessionUnlocked) return () => {};
     const go = () => {
-        if (!sfxEnabled()) return;
         sfxSessionUnlocked = true;
         window.removeEventListener("pointerdown", go);
         window.removeEventListener("keydown", go);
@@ -145,7 +95,8 @@ function haptic(name) {
 export function playSfx(name) {
     if (!sfxEnabled()) return;
     const now = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
-    if ((lastPlayed.get(name) || 0) > now - DEBOUNCE_MS) return;
+    const previous = lastPlayed.get(name);
+    if (previous !== undefined && now - previous < DEBOUNCE_MS) return;
     lastPlayed.set(name, now);
     haptic(name);
     if (typeof window !== "undefined") {
@@ -245,14 +196,8 @@ export function echoSfxItems(echoes, userId) {
 }
 
 export function _resetSfxForTests() {
-    memory = null;
     sfxSessionUnlocked = false;
     seenKeys.clear();
     primedScopes.clear();
     lastPlayed.clear();
-    try {
-        window.localStorage.removeItem(STORAGE);
-    } catch {
-        /* ignore */
-    }
 }

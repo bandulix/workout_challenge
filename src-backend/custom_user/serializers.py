@@ -85,10 +85,12 @@ class CustomUserSerializer(serializers.ModelSerializer):
         n = getattr(obj, "echo_hold_count", None)
         if n is not None:
             return int(n)
-        from drill_instructor.echoes import LIVE_HOLDER_STATUSES
+        from drill_instructor.echoes import LIVE_HOLDER_STATUSES, visible_echoes
         from drill_instructor.models import LegendEcho
         try:
-            return LegendEcho.objects.filter(holder=obj, status__in=LIVE_HOLDER_STATUSES).count()
+            return visible_echoes(
+                LegendEcho.objects.filter(holder=obj, status__in=LIVE_HOLDER_STATUSES)
+            ).count()
         except Exception:
             return 0
 
@@ -298,10 +300,10 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
             uid = urlsafe_base64_decode(attrs['uid']).decode()
             self.user = CustomUser.objects.get(pk=uid)
         except (CustomUser.DoesNotExist, ValueError, TypeError):
-            raise serializers.ValidationError("This reset link is invalid or has expired.")
+            raise serializers.ValidationError("This reset link is invalid or has expired.") from None
 
         if not default_token_generator.check_token(self.user, attrs['token']):
-            raise serializers.ValidationError("This reset link is invalid or has expired.")
+            raise serializers.ValidationError("This reset link is invalid or has expired.") from None
 
         from django.contrib.auth.password_validation import validate_password
         validate_password(attrs['new_password'], user=self.user)
@@ -326,10 +328,10 @@ class EmailVerifyConfirmSerializer(serializers.Serializer):
             uid = urlsafe_base64_decode(attrs["uid"]).decode()
             self.user = CustomUser.objects.get(pk=uid)
         except (CustomUser.DoesNotExist, ValueError, TypeError, OverflowError):
-            raise serializers.ValidationError("This confirmation link is invalid or has expired.")
+            raise serializers.ValidationError("This confirmation link is invalid or has expired.") from None
 
         if not email_verify_token.check_token(self.user, attrs["token"]):
-            raise serializers.ValidationError("This confirmation link is invalid or has expired.")
+            raise serializers.ValidationError("This confirmation link is invalid or has expired.") from None
         return attrs
 
     def save(self):

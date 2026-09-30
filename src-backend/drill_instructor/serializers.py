@@ -1,16 +1,19 @@
+import logging
 import re
+from datetime import timedelta
 
+from django.conf import settings
 from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import serializers
 
-from .midi import validate_midi_upload
-
 from competition.scorer import ORDER_AWARD_NAME, PHOTO_AWARD_NAME, sport_factor
 from custom_user.serializers import user_picture_url
 
 from .formatters import format_workout_summary
+
+logger = logging.getLogger(__name__)
 
 
 def _users_share_a_challenge(user, other_id):
@@ -20,18 +23,28 @@ def _users_share_a_challenge(user, other_id):
     from competition.models import Competition
     mine = Competition.objects.filter(Q(owner=user) | Q(user=user))
     return mine.filter(Q(owner_id=other_id) | Q(user__id=other_id)).exists()
+
+
+def _is_staff_or_owner(request, competition):
+    """May the requester see operator-only fields (``last_error`` etc.)?
+
+    Anonymous users have ``pk is None``; a plain ``user.pk == owner_id``
+    comparison would match a config whose competition could not be
+    resolved (owner_id None), so authentication is checked explicitly.
+    """
+    user = getattr(request, "user", None)
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_staff", False):
+        return True
+    owner_id = getattr(competition, "owner_id", None)
+    return owner_id is not None and user.pk == owner_id
 from .models import (
     DrillInstructorConfig,
     DrillInstructorMessage,
     DrillInstructorPersona,
     LegendEcho,
 )
-
-
-def _persona_midi_url(persona):
-    if not persona.midi:
-        return None
-    return reverse("drill-persona-midi", kwargs={"pk": persona.pk})
 
 
 def _persona_picture_url(persona):
@@ -105,11 +118,6 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
     clear_body_picture_3 = serializers.BooleanField(write_only=True, required=False, default=False)
     mine = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
-    midi = serializers.SerializerMethodField()
-    midi_upload = serializers.FileField(
-        write_only=True, required=False, allow_null=True, source="midi",
-    )
-    clear_midi = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
         model = DrillInstructorPersona
@@ -131,9 +139,6 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
             "clear_body_picture_2",
             "clear_body_picture_3",
             "theme_color",
-            "midi",
-            "midi_upload",
-            "clear_midi",
             "system_prompt",
             "is_builtin",
             "is_shared",
@@ -191,28 +196,15 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
     def validate_body_picture_3_upload(self, value):
         return self._validate_body_upload(value)
 
-    def get_midi(self, obj):
-        return _persona_midi_url(obj)
-
-    def validate_midi_upload(self, value):
-        return validate_midi_upload(value)
-
     def create(self, validated_data):
-        validated_data.pop("clear_midi", False)
         for slot in (1, 2, 3):
             validated_data.pop(f"clear_body_picture_{slot}", False)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        clear_midi = validated_data.pop("clear_midi", False)
         clear_body = {slot: validated_data.pop(f"clear_body_picture_{slot}", False) for slot in (1, 2, 3)}
         instance = super().update(instance, validated_data)
         update_fields = []
-        if clear_midi and not validated_data.get("midi"):
-            if instance.midi:
-                instance.midi.delete(save=False)
-            instance.midi = None
-            update_fields.append("midi")
         for slot, clear in clear_body.items():
             field = f"body_picture_{slot}"
             if clear and not validated_data.get(field):
@@ -305,14 +297,7 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-        owner_id = None
-        try:
-            owner_id = instance.competition.owner_id
-        except Exception:
-            pass
-        if not (user and (getattr(user, "is_staff", False) or user.pk == owner_id)):
+        if not _is_staff_or_owner(self.context.get("request"), getattr(instance, "competition", None)):
             data.pop("last_error", None)
         return data
 
@@ -339,6 +324,12 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
         )
 
     def update(self, instance, validated_data):
+        # The competition is fixed at create time (same rule as
+        # TeamSerializer / ActivityGoalSerializer): the owner check in
+        # the view runs against the current competition, so letting a
+        # PATCH re-bind the config would move this persona/prompt and
+        # its pushes onto someone else's challenge.
+        validated_data.pop("competition", None)
         # Manual coach pick must stamp handover the same way the weekly
         # vote does, so the New-coach box appears for ≤24 hours (#32).
         new_persona = validated_data.get("persona")
@@ -391,6 +382,7 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
         try:
             return coach_mood(obj)
         except Exception:
+            logger.warning("Coach mood failed for config %s", obj.pk, exc_info=True)
             return None
 
     def get_daily_order(self, obj):
@@ -407,10 +399,9 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
         return order_payload(orders[0], getattr(request, "user", None))
 
     def get_dunce(self, obj):
-        if not obj.pk:
-            return None
-        from .game import dunce_payload
-        return dunce_payload(obj)
+        # Compatibility field for older clients; never expose an individual's
+        # activity/relative standing as a public label.
+        return None
 
     def get_my_tags(self, obj):
         from .game import tag_payload
@@ -421,6 +412,7 @@ class DrillInstructorConfigSerializer(serializers.ModelSerializer):
         try:
             return tag_payload(user)
         except Exception:
+            logger.warning("Tag payload failed for user %s", user.pk, exc_info=True)
             return []
 
     persona_detail = DrillInstructorPersonaSerializer(source="persona", read_only=True)
@@ -553,6 +545,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     points_raw = serializers.SerializerMethodField()
     points_breakdown = serializers.SerializerMethodField()
     order_ribbon = serializers.SerializerMethodField()
+    photo_action = serializers.SerializerMethodField()
     replies = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
     author_name = serializers.SerializerMethodField()
@@ -587,6 +580,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             "points_raw",
             "points_breakdown",
             "order_ribbon",
+            "photo_action",
             "replies",
             "image",
             "author_name",
@@ -599,16 +593,73 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-        owner_id = None
-        try:
-            owner_id = instance.config.competition.owner_id
-        except Exception:
-            pass
-        if not (user and (getattr(user, "is_staff", False) or user.pk == owner_id)):
+        competition = getattr(getattr(instance, "config", None), "competition", None)
+        if not _is_staff_or_owner(self.context.get("request"), competition):
             data.pop("error", None)
         return data
+
+    def get_photo_action(self, obj):
+        if obj.kind != DrillInstructorMessage.KIND_ACTIVITY or not obj.workout_id:
+            return None
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return None
+        workout = obj.workout
+        if workout is None or workout.user_id != user.pk:
+            return None
+        photo_window = timedelta(days=getattr(settings, "DRILL_PHOTO_WINDOW_DAYS", 5))
+        cutoff = timezone.now() - photo_window
+        if obj.posted_at < cutoff or obj.replies.filter(kind=DrillInstructorMessage.KIND_PHOTO).exists():
+            return None
+
+        # One photo can serve both purposes. Prefer the Echo action so a
+        # relic photo is never framed as a second, unrelated chore.
+        unpictured_echo = LegendEcho.objects.filter(
+            config_id=obj.config_id, holder_workout_id=workout.pk,
+        ).filter(Q(image__isnull=True) | Q(image="")).exists()
+        if unpictured_echo:
+            return "echo"
+
+        from .echoes import _beats, judge_echo, visible_echoes
+        live_echoes = visible_echoes(LegendEcho.objects.filter(
+            config_id=obj.config_id,
+            status__in=(LegendEcho.STATUS_UNDEFEATED, LegendEcho.STATUS_CONTESTED),
+        ))
+        if any(_beats(workout, echo) for echo in live_echoes):
+            return "echo"
+        cache = self.context.setdefault("_photo_echo_judgments", {})
+        judgment_key = (
+            workout.pk, workout.duration, workout.distance,
+            workout.sport_type, workout.start_datetime,
+        )
+        if judgment_key not in cache:
+            cache[judgment_key] = bool(judge_echo(workout, obj.config))
+        if cache[judgment_key]:
+            return "echo"
+
+        from .models import DailyOrder
+        order = DailyOrder.objects.filter(
+            config_id=obj.config_id, date=timezone.localdate(), kind=DailyOrder.KIND_PHOTO,
+        ).first()
+        if not order or order.completed_by.filter(pk=user.pk).exists():
+            return None
+        target_cache = self.context.setdefault("_photo_order_targets", {})
+        target_key = (obj.config_id, user.pk, cutoff.date())
+        if target_key not in target_cache:
+            target_cache[target_key] = (
+                DrillInstructorMessage.objects.filter(
+                    config_id=obj.config_id,
+                    kind=DrillInstructorMessage.KIND_ACTIVITY,
+                    workout__user_id=user.pk,
+                    posted_at__gte=cutoff,
+                )
+                .exclude(replies__kind=DrillInstructorMessage.KIND_PHOTO)
+                .order_by("-posted_at")
+                .values_list("pk", flat=True)
+                .first()
+            )
+        return "photo_order" if target_cache[target_key] == obj.pk else None
 
     def get_replies(self, obj):
         if obj.parent_id is not None:
@@ -676,30 +727,28 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             return 0
         cache = self.context.setdefault("_echo_hold_counts", {})
         if user_id not in cache:
-            from .echoes import LIVE_HOLDER_STATUSES
+            from .echoes import LIVE_HOLDER_STATUSES, visible_echoes
             from .models import LegendEcho
-            cache[user_id] = LegendEcho.objects.filter(
+            cache[user_id] = visible_echoes(LegendEcho.objects.filter(
                 holder_id=user_id, status__in=LIVE_HOLDER_STATUSES,
-            ).count()
+            )).count()
         return cache[user_id]
 
     def get_echoes(self, obj):
-        from .models import DrillInstructorMessage, LegendEcho
+        from .models import DrillInstructorMessage
         if obj.kind != DrillInstructorMessage.KIND_ACTIVITY or not obj.workout_id:
             return []
         workout = obj.workout
         if workout is None:
             return []
-        originated = list(getattr(workout, "echoes_originated").all())
-        held = list(getattr(workout, "echoes_held").all())
+        originated = list(workout.echoes_originated.all())
+        held = list(workout.echoes_held.all())
         chips = {}
         for echo in originated + held:
-            if echo.config_id != obj.config_id:
+            if echo.config_id != obj.config_id or (echo.photo_required and not echo.image):
                 continue
             role = "claimed" if echo.holder_workout_id == workout.id and echo.origin_workout_id != workout.id else "earned"
-            image = None
-            if echo.image:
-                image = reverse("drill-echo-picture", kwargs={"pk": echo.pk})
+            image = reverse("drill-echo-picture", kwargs={"pk": echo.pk}) if echo.image else None
             chips[echo.id] = {
                 "id": echo.id,
                 "title": echo.title,

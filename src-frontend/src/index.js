@@ -12,7 +12,7 @@ import {isNativeApp} from './utils/platform';
 // Sentry bundles are only fetched when a DSN is actually configured.
 const SENTRY_DSN = window.RUNTIME_CONFIG?.REACT_APP_SENTRY_DSN;
 if (SENTRY_DSN !== undefined && SENTRY_DSN !== null && SENTRY_DSN !== '') {
-    console.log('Sentry error monitoring is enabled.');
+    console.debug('Sentry error monitoring is enabled.');
     import('@sentry/react').then((Sentry) => {
         Sentry.init({
             dsn: SENTRY_DSN,
@@ -75,7 +75,7 @@ if (isNativeApp() && 'serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').then(
             (reg) => {
-                console.log('Service worker registered with scope:', reg.scope);
+                console.debug('Service worker registered with scope:', reg.scope);
                 // Long-open tabs: check for an updated worker periodically
                 // and whenever the tab returns to the foreground, so new
                 // deployments reach users without a manual refresh.

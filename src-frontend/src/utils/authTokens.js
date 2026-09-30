@@ -78,12 +78,6 @@ export function hasAuthMarker() {
   }
 }
 
-/** @deprecated Prefer hasAuthMarker / cookie refresh. Always null on web. */
-export function getRefreshToken() {
-  if (isNativeApp()) return peekNativeRefresh();
-  return null;
-}
-
 export function accessTokenExpiresAt(token) {
   if (!token || typeof token !== "string") return 0;
   const parts = token.split(".");

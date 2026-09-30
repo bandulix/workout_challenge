@@ -4,7 +4,7 @@ import {FIELD_INPUT_CLASS, Modal, SaveButton, SingleForm, StravaButton, useFormD
 import {useNavigate} from "react-router-dom";
 import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, useLinkGarminMfaMutation, useUnlinkGarminMutation, useLinkHealthMutation, useUnlinkHealthMutation} from "../utils/reducers/linkSlice";
 import {useDispatch} from "react-redux";
-import {Watch, Smartphone, Download, Volume2, VolumeX, KeyRound} from "lucide-react";
+import {Watch, Smartphone, Download, Volume2, KeyRound} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {isNativeHealthAvailable, nativeHealthConnect, nativeHealthDisconnect, nativeHealthSetSource} from "../utils/nativeHealth";
 import {confirmAction} from "../utils/dialogs";
@@ -12,7 +12,8 @@ import {toast} from "../utils/toasts";
 import {errText} from "../utils/errors";
 import {assetUrl} from "../utils/platform";
 import {clearBodyScrollLock} from "../utils/overlay";
-import {playSfx, useSfxEnabled} from "../utils/sfx";
+import {GENDER_OPTIONS_WITH_UNKNOWN} from "../utils/enums";
+
 
 
 const PROVIDER_LABELS = {strava: "Strava", garmin: "Garmin", health: "Apple/Google Health"};
@@ -424,30 +425,16 @@ function LinkedPill() {
 }
 
 function SoundSettings() {
-    const [on, setOn] = useSfxEnabled();
     return (
-        <SettingsGroup title="Sounds" hint="Short stings for stamps, roast swipes, Echoes, votes, a revealed roast, and a full squad ring. Mute anytime.">
+        <SettingsGroup title="Sounds" hint="Celebratory sound effects are always on.">
             <div className="rounded-2xl glass-card p-4 space-y-3">
                 <div className="flex items-center gap-2">
-                    {on
-                        ? <Volume2 className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
-                        : <VolumeX className="h-4 w-4 text-gray-400"/>}
-                    <span className="font-display text-xs uppercase tracking-wider">Coach sounds</span>
+                    <Volume2 className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                    <span className="font-display text-xs uppercase tracking-wider">Sound effects always on</span>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                     Plays only while this app is open. Does not replace notification pings.
                 </p>
-                <button type="button"
-                        onClick={() => {
-                            const next = !on;
-                            setOn(next);
-                            if (next) playSfx("vote");
-                        }}
-                        aria-pressed={on}
-                        className={"rounded-full px-4 py-2.5 text-sm font-bold uppercase tracking-wide min-h-[44px] transition " +
-                            (on ? "bg-volt-400 text-ink-950 shadow-glow-volt" : "btn-glass")}>
-                    {on ? "Sounds on" : "Sounds off"}
-                </button>
             </div>
         </SettingsGroup>
     );
@@ -471,12 +458,7 @@ const profileFields = {
     },
     gender: {
         type: "select", required: true, label: "Gender", width: "max-sm:w-full w-1/2",
-        selectList: [
-            {value: "M", label: "Male"},
-            {value: "F", label: "Female"},
-            {value: "O", label: "Other"},
-            {value: "", label: "Unknown"},
-        ],
+        selectList: GENDER_OPTIONS_WITH_UNKNOWN,
     },
 };
 

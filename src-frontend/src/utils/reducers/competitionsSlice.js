@@ -23,6 +23,21 @@ export const competitionsApi = createApi({
             }),
             providesTags: (result, error, id) => [{type: 'Competition', id}],
         }),
+        getExpeditionByCompetition: builder.query({
+            query: (id) => ({
+                url: `competition/${id}/expedition/`,
+                method: 'GET',
+            }),
+            providesTags: (result, error, id) => [{type: 'Competition', id}],
+        }),
+        voteExpeditionShortcut: builder.mutation({
+            query: ({id, choice}) => ({
+                url: `competition/${id}/expedition/shortcut-vote/`,
+                method: 'POST',
+                body: {choice},
+            }),
+            invalidatesTags: (result, error, {id}) => [{type: 'Competition', id}],
+        }),
         addCompetition: builder.mutation({
             query: (newCompetition) => ({
                 url: 'competition/',
@@ -52,6 +67,8 @@ export const competitionsApi = createApi({
 export const {
     useGetCompetitionsQuery,
     useGetCompetitionByIdQuery,
+    useGetExpeditionByCompetitionQuery,
+    useVoteExpeditionShortcutMutation,
     useAddCompetitionMutation,
     useUpdateCompetitionMutation,
     useDeleteCompetitionMutation,

@@ -6,7 +6,7 @@ for the whole site. Honour X-Real-IP / last X-Forwarded-For only when
 the TCP peer is that loopback nginx.
 """
 
-from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
+from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle, UserRateThrottle
 
 _TRUSTED_PROXIES = frozenset({"127.0.0.1", "::1", "localhost"})
 
@@ -30,5 +30,13 @@ class ClientIPScopedThrottle(ScopedRateThrottle):
 
 
 class ClientIPAnonRateThrottle(AnonRateThrottle):
+    def get_ident(self, request):
+        return client_ip(request)
+
+
+class ClientIPUserRateThrottle(UserRateThrottle):
+    """Per-user 'user' bucket; anonymous callers fall back to the real
+    client IP instead of nginx's loopback address."""
+
     def get_ident(self, request):
         return client_ip(request)

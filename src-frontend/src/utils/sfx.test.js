@@ -7,7 +7,6 @@ import {
     installSfxUnlock,
     observeSfx,
     playSfx,
-    setSfxEnabled,
     sfxEnabled,
     sfxOnce,
 } from "./sfx";
@@ -18,62 +17,59 @@ afterEach(() => {
 });
 
 describe("sfxEnabled", () => {
-    it("defaults on", () => {
+    it("ignores a legacy muted preference and stays on", () => {
+        vi.stubGlobal("window", {localStorage: {getItem: () => "off"}});
         expect(sfxEnabled()).toBe(true);
-    });
-
-    it("remembers the toggle", () => {
-        setSfxEnabled(true);
-        expect(sfxEnabled()).toBe(true);
-        setSfxEnabled(false);
-        expect(sfxEnabled()).toBe(false);
     });
 });
 
-describe("playSfx", () => {
-    it("is a no-op while muted", () => {
-        const vibrate = vi.fn();
-        vi.stubGlobal("navigator", {vibrate});
-        setSfxEnabled(false);
-        playSfx("stamp");
-        expect(vibrate).not.toHaveBeenCalled();
+function stubAudioPlayback() {
+    const play = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("Audio", vi.fn(function Audio() {
+        this.play = play;
+        this.pause = vi.fn();
+        this.currentTime = 0;
+        this.volume = 1;
+    }));
+    vi.stubGlobal("window", {
+        localStorage: {getItem: () => "off"},
+        dispatchEvent: vi.fn(),
     });
+    return play;
+}
 
-    it("buzzes when sound is on", () => {
-        const vibrate = vi.fn();
-        vi.stubGlobal("navigator", {vibrate});
-        setSfxEnabled(true);
-        playSfx("vote");
-        expect(vibrate).toHaveBeenCalled();
+describe("playSfx", () => {
+    it("still plays when a legacy muted preference is stored", () => {
+        const play = stubAudioPlayback();
+        vi.stubGlobal("performance", {now: () => 10});
+        playSfx("stamp");
+        expect(Audio).toHaveBeenCalledWith("/sfx/stamp.mp3");
+        expect(play).toHaveBeenCalledTimes(1);
     });
 });
 
 describe("observeSfx", () => {
     it("primes existing keys then plays only arrivals", () => {
-        const vibrate = vi.fn();
-        vi.stubGlobal("navigator", {vibrate});
-        setSfxEnabled(true);
+        const play = stubAudioPlayback();
         observeSfx("feed", [{key: "roast:1", sound: "roast_reveal"}]);
-        expect(vibrate).not.toHaveBeenCalled();
+        expect(play).not.toHaveBeenCalled();
         observeSfx("feed", [
             {key: "roast:1", sound: "roast_reveal"},
             {key: "roast:2", sound: "roast_reveal"},
         ]);
-        expect(vibrate).toHaveBeenCalledTimes(1);
+        expect(play).toHaveBeenCalledTimes(1);
         observeSfx("feed", [
             {key: "roast:1", sound: "roast_reveal"},
             {key: "roast:2", sound: "roast_reveal"},
         ]);
-        expect(vibrate).toHaveBeenCalledTimes(1);
+        expect(play).toHaveBeenCalledTimes(1);
     });
 
     it("sfxOnce does not replay the same key", () => {
-        const vibrate = vi.fn();
-        vi.stubGlobal("navigator", {vibrate});
-        setSfxEnabled(true);
+        const play = stubAudioPlayback();
         expect(sfxOnce("echo-war:9", "echo_war")).toBe(true);
         expect(sfxOnce("echo-war:9", "echo_war")).toBe(false);
-        expect(vibrate).toHaveBeenCalledTimes(1);
+        expect(play).toHaveBeenCalledTimes(1);
     });
 });
 
@@ -125,14 +121,10 @@ describe("installSfxUnlock", () => {
         expect(Audio.mock.calls.length).toBe(afterFirst);
     });
 
-    it("keeps listening when the first gesture happens while muted", () => {
+    it("unlocks on the first gesture despite a legacy muted preference", () => {
         const listeners = stubWindow();
-        setSfxEnabled(false);
+        window.localStorage.setItem("wc-sfx", "off");
         installSfxUnlock();
-        fire(listeners, "pointerdown");
-        expect(Audio).not.toHaveBeenCalled();
-        expect(listeners.pointerdown).toHaveLength(1);
-        setSfxEnabled(true);
         fire(listeners, "pointerdown");
         expect(Audio).toHaveBeenCalled();
         expect(listeners.pointerdown).toHaveLength(0);

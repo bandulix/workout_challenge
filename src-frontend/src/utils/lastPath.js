@@ -1,12 +1,9 @@
 // Remember the last in-app screen so a cold start (APK always opens at
 // "/") can skip the landing page and paint Coach/Home immediately.
 
-const STORAGE_KEY = "wc_last_path";
+import {normalizePath} from "./publicPath";
 
-function normalizePath(pathname) {
-    const raw = pathname || "/";
-    return raw.replace(/\/+$/, "") || "/";
-}
+const STORAGE_KEY = "wc_last_path";
 
 export function isRestorablePath(pathname) {
     const p = normalizePath(pathname);

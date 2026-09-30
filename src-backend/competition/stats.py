@@ -1,6 +1,7 @@
 import datetime
 
 from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
 from django.apps import apps
 from rest_framework.response import Response
@@ -162,8 +163,12 @@ def get_competition_stats(competition, last_seven_days=False):
             timeseries_user[user_id] = {}
         timeseries_user[user_id][days_ago] = i
 
+    # Restrict the team join to this challenge's teams - my_teams spans
+    # every competition, so without it a member of another challenge's
+    # team leaks that team id (and its points) into this timeseries.
     tmp_team = (
         all_points_date
+        .filter(workout__user__my_teams__competition_id=competition)
         .values('days_ago', 'workout__user__my_teams')
         .annotate(total=Sum('points_capped'))
         .order_by('-days_ago')
@@ -180,7 +185,6 @@ def get_competition_stats(competition, last_seven_days=False):
     user_dict = {i['id']: i for i in CustomUser.objects.filter(my_competitions=competition).values('id', 'username', 'strava_allow_follow', 'strava_athlete_id', 'profile_picture', 'scaling_kcal', 'scaling_distance').order_by('username', 'id')}
     echo_holds = {}
     if user_dict:
-        from django.db.models import Count
         from drill_instructor.echoes import LIVE_HOLDER_STATUSES
         from drill_instructor.models import LegendEcho
         echo_holds = {
@@ -190,6 +194,10 @@ def get_competition_stats(competition, last_seven_days=False):
                     config__competition=competition,
                     holder_id__in=user_dict.keys(),
                     status__in=LIVE_HOLDER_STATUSES,
+                )
+                .filter(
+                    Q(photo_required=False)
+                    | (Q(image__isnull=False) & ~Q(image=""))
                 )
                 .values("holder_id")
                 .annotate(n=Count("id"))
@@ -332,8 +340,56 @@ def get_competition_stats(competition, last_seven_days=False):
     return response_obj
 
 
-def get_competition_rank_summary(competition_id, user_id):
-    """Tiny Home payload: my rank / team rank, not the season snapshot."""
+_RANK_GAP_CACHE_TTL = 60 * 60 * 24 * 30
+_RANK_GAP_MIN_CHANGE = 5.0
+_RANK_GAP_RELATIVE_CHANGE = 0.20
+
+
+def _rank_gap_state(summary):
+    rival = summary.get("rival")
+    return {
+        "my_rank": summary.get("my_rank"),
+        "rival_id": rival.get("id") if rival else None,
+        "rival_rank": summary.get("rival_rank"),
+        "places_to_rival": summary.get("places_to_rival"),
+        "points_to_catch": summary.get("points_to_catch"),
+    }
+
+
+def _rank_gap_changed(previous, current):
+    if previous is None:
+        return False
+    for field in ("my_rank", "rival_id", "rival_rank", "places_to_rival"):
+        if previous.get(field) != current.get(field):
+            return True
+    old_gap = previous.get("points_to_catch")
+    new_gap = current.get("points_to_catch")
+    if old_gap is None or new_gap is None:
+        return old_gap != new_gap
+    threshold = max(_RANK_GAP_MIN_CHANGE, abs(float(old_gap)) * _RANK_GAP_RELATIVE_CHANGE)
+    return abs(float(new_gap) - float(old_gap)) >= threshold
+
+
+def _record_rank_gap_change(competition_id, user_id, summary):
+    if user_id is None:
+        return False
+    key = f"home-rank-gap:{competition_id}:{user_id}"
+    current = _rank_gap_state(summary)
+    previous = cache.get(key)
+    changed = _rank_gap_changed(previous, current)
+    if previous is None or changed:
+        cache.set(key, current, timeout=_RANK_GAP_CACHE_TTL)
+    return changed
+
+
+def get_competition_rank_summary(
+    competition_id, user_id, *, track_gap_change=True, pinned_rival_id=None,
+):
+    """Tiny Home payload: my rank / team rank, not the season snapshot.
+
+    ``track_gap_change=False`` is for post-score coach jobs: they must read
+    the current board without consuming Home's separate change indicator.
+    """
     Competition = apps.get_model("competition", "Competition")
     Points = apps.get_model("competition", "Points")
     Team = apps.get_model("competition", "Team")
@@ -342,13 +398,17 @@ def get_competition_rank_summary(competition_id, user_id):
     except Competition.DoesNotExist:
         return None
     totals = list(
-        Points.objects.filter(Q(award__competition_id=competition_id) | Q(goal__competition_id=competition_id))
-        .values("workout__user")
+        Points.objects.filter(
+            (Q(award__competition_id=competition_id) | Q(goal__competition_id=competition_id))
+            & Q(workout__user__my_competitions__id=competition_id)
+        )
+        .values("workout__user", "workout__user__username")
         .annotate(total=Sum("points_capped"))
         .order_by("-total")
     )
     my_rank = None
     my_points = 0.0
+    my_index = None
     rank = 0
     last = None
     for idx, row in enumerate(totals, start=1):
@@ -358,7 +418,43 @@ def get_competition_rank_summary(competition_id, user_id):
         if row["workout__user"] == user_id:
             my_rank = rank
             my_points = float(row["total"] or 0)
+            my_index = idx - 1
             break
+    rival = None
+    rival_rank = None
+    places_to_rival = None
+    points_to_catch = None
+    rival_is_pinned = False
+    if my_index is not None and my_rank is not None:
+        pinned_id = None
+        if pinned_rival_id is not None:
+            try:
+                pinned_id = int(pinned_rival_id)
+            except (TypeError, ValueError):
+                pinned_id = None
+        pinned_row = next(
+            (row for row in totals if row["workout__user"] == pinned_id and pinned_id != user_id),
+            None,
+        )
+        if pinned_row is not None:
+            rival_points = float(pinned_row["total"] or 0)
+            rival = {"id": pinned_id, "username": pinned_row["workout__user__username"]}
+            rival_rank = 1 + sum(float(row["total"] or 0) > rival_points for row in totals)
+            places_to_rival = my_rank - rival_rank
+            points_to_catch = rival_points - my_points
+            rival_is_pinned = True
+        else:
+            ahead = [row for row in totals[:my_index] if float(row["total"] or 0) > my_points]
+            if ahead:
+                nearest = min(ahead, key=lambda row: float(row["total"] or 0))
+                nearest_points = float(nearest["total"] or 0)
+                rival = {
+                    "id": nearest["workout__user"],
+                    "username": nearest["workout__user__username"],
+                }
+                rival_rank = 1 + sum(float(row["total"] or 0) > nearest_points for row in totals)
+                places_to_rival = my_rank - rival_rank
+                points_to_catch = nearest_points - my_points
     team_rank = None
     if comp.has_teams:
         team = Team.objects.filter(competition_id=competition_id, user__id=user_id).first()
@@ -380,11 +476,21 @@ def get_competition_rank_summary(competition_id, user_id):
                     team_rank = tr
                     break
     start_count = (timezone.localdate() - comp.start_date).days
-    return {
+    summary = {
         "my_rank": my_rank,
         "my_points": my_points,
+        "rival": rival,
+        "rival_is_pinned": rival_is_pinned,
+        "rival_rank": rival_rank,
+        "places_to_rival": places_to_rival,
+        "points_to_catch": points_to_catch,
         "team_rank": team_rank,
         "started": start_count >= 0,
         "start_date_count": start_count,
         "has_teams": comp.has_teams,
     }
+    summary["gap_changed"] = (
+        _record_rank_gap_change(competition_id, user_id, summary)
+        if track_gap_change else False
+    )
+    return summary

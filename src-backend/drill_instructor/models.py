@@ -57,12 +57,6 @@ class DrillInstructorPersona(models.Model):
         blank=True,
         help_text="Full-body reference photo 3 for image edits.",
     )
-    midi = models.FileField(
-        upload_to="coach_midi/",
-        null=True,
-        blank=True,
-        help_text="Optional looping MIDI bed for this coach. Served only through the authenticated persona MIDI endpoint, never public /media/.",
-    )
     theme_color = models.CharField(
         max_length=7,
         blank=True,
@@ -217,6 +211,7 @@ class DrillInstructorMessage(models.Model):
     KIND_CLAIM = "claim"
     KIND_WAR = "war"
     KIND_BRIEFING = "briefing"
+    KIND_GAP = "gap"
     KIND_CHOICES = [
         (KIND_ACTIVITY, "Workout comment"),
         (KIND_TEST, "Test message"),
@@ -233,6 +228,7 @@ class DrillInstructorMessage(models.Model):
         (KIND_CLAIM, "Legend Echo claimed"),
         (KIND_WAR, "Legend Echo war"),
         (KIND_BRIEFING, "Daily owner briefing"),
+        (KIND_GAP, "Material standings gap change"),
     ]
 
     config = models.ForeignKey(
@@ -254,7 +250,7 @@ class DrillInstructorMessage(models.Model):
         max_length=12,
         choices=KIND_CHOICES,
         default=KIND_ACTIVITY,
-        help_text="What triggered this message (a workout, a test, a quiet-day nudge, a random group push, a participant reply, or the coach's reaction to one).",
+        help_text="Identifies the event for filtering historical coach and challenge messages; legacy message kinds remain for compatibility.",
     )
     # Threading: replies (and the coach's reactions to them) hang under a
     # top-level coach message. One level deep on purpose - sub-threads
@@ -582,6 +578,8 @@ class LegendEcho(models.Model):
     metric_value = models.FloatField()
     sport_type = models.CharField(max_length=40)
     image = models.ImageField(upload_to="echo_pics/", null=True, blank=True)
+    # Existing Echoes remain historical/visible; new Echoes require artwork.
+    photo_required = models.BooleanField(default=False, db_index=True)
     chain_length = models.PositiveIntegerField(default=1)
     defenses = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=STATUS_UNDEFEATED)
@@ -604,5 +602,61 @@ class LegendEcho(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.status}) in config {self.config_id}"
+
+
+class ComebackPreference(models.Model):
+    """Private controls for a user's own low-pressure comeback bench."""
+
+    user = models.OneToOneField(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="comeback_preference",
+    )
+    prompts_enabled = models.BooleanField(default=True)
+    dismissed_until = models.DateField(null=True, blank=True)
+    support_opt_in = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Comeback preferences for user {self.user_id}"
+
+
+class ComebackSupportOffer(models.Model):
+    """A private, opt-in-only teammate support offer awaiting recipient choice."""
+
+    KIND_CHEER = "cheer"
+    KIND_WORKOUT = "workout"
+    KIND_CHECK_IN = "check_in"
+    OFFER_KINDS = [
+        (KIND_CHEER, "A gentle cheer"),
+        (KIND_WORKOUT, "An easy activity together"),
+        (KIND_CHECK_IN, "A low-pressure check-in"),
+    ]
+    STATUS_PENDING = "pending"
+    STATUS_ACCEPTED = "accepted"
+    STATUS_DECLINED = "declined"
+    STATUSES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_ACCEPTED, "Accepted"),
+        (STATUS_DECLINED, "Declined"),
+    ]
+
+    sender = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name="sent_comeback_offers"
+    )
+    recipient = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name="received_comeback_offers"
+    )
+    competition = models.ForeignKey(Competition, on_delete=models.CASCADE)
+    offer_kind = models.CharField(max_length=20, choices=OFFER_KINDS)
+    status = models.CharField(max_length=10, choices=STATUSES, default=STATUS_PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"Private support offer {self.pk}: {self.status}"
 
 

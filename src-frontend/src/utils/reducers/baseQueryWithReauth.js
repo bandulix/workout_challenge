@@ -4,6 +4,7 @@ import {getServerUrl} from '../serverUrl';
 import {ensureFreshAccessToken, getAccessToken, refreshAccessToken} from '../authTokens';
 import {isPublicPath} from '../publicPath';
 import {isNativeApp} from '../platform';
+import {clearPersistedState} from '../localStorage';
 
 // Gate on the runtime DSN: without it the first API hiccup would still
 // download the (heavy) Sentry chunk for nothing. (typeof guard: the unit
@@ -135,6 +136,10 @@ export function sentryError({result, errorSource, endpointName = undefined, quer
 }
 
 function redirectToLogin() {
+    // The refresh token is dead: the persisted RTK caches belong to a
+    // session that no longer exists. Drop them so the next sign-in
+    // (possibly another person on a shared device) starts clean.
+    clearPersistedState();
     const safeRedirect = window.location.pathname + window.location.search;
     window.location.href = `/login?redirect=${encodeURIComponent(safeRedirect)}`;
 }

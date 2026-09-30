@@ -11,7 +11,7 @@ import logging
 
 from django.apps import apps
 from django.db import IntegrityError, transaction
-from django.db.models import Case, IntegerField, Max, Sum, Value, When
+from django.db.models import Case, IntegerField, Max, Q, Sum, Value, When
 from django.utils import timezone
 
 from .game import _minutes, award_tag
@@ -94,8 +94,8 @@ def bump_echo_holder_stats(competition_id):
     try:
         from custom_user.point_recalc import bump_stats_generation
         bump_stats_generation([competition_id])
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception:  # noqa: BLE001 - a stale avatar count must not fail the caller
+        logger.warning("echo holder stats bump failed for competition %s", competition_id, exc_info=True)
 
 
 def delete_echo(echo):
@@ -118,6 +118,14 @@ def delete_echo(echo):
 
 def _name(user):
     return (user.first_name or user.username or "Athlete").strip() or "Athlete"
+
+
+def visible_echoes(qs):
+    """Keep historical Echoes visible; new photo-relic Echoes need art."""
+    return qs.filter(
+        Q(photo_required=False)
+        | (Q(image__isnull=False) & ~Q(image=""))
+    )
 
 
 def pictured_first(qs):
@@ -253,10 +261,10 @@ def judge_echo(workout, config):
         return None
     competition = config.competition
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
-    live = LegendEcho.objects.filter(
+    live = visible_echoes(LegendEcho.objects.filter(
         config=config,
         status__in=("undefeated", "contested"),
-    )
+    ))
     if live.count() >= MAX_LIVE_ECHOES:
         return None
     if live.filter(origin_user=workout.user, created_at__gte=timezone.now() - COOLDOWN).exists():
@@ -272,7 +280,9 @@ def judge_echo(workout, config):
     family = echo_sport_family(workout.sport_type)
     first = (
         bool(family)
-        and not LegendEcho.objects.filter(config=config, sport_type=family).exists()
+        and not visible_echoes(
+            LegendEcho.objects.filter(config=config, sport_type=family)
+        ).exists()
         and _minutes(workout) >= FIRST_FLAG_MIN
     )
     if not (pb or overtake or mythic or first):
@@ -289,13 +299,25 @@ def judge_echo(workout, config):
     return {"pb": pb, "overtake": overtake, "mythic": mythic, "first": first, "reasons": reasons}
 
 
-def mint_echo(workout, config, judgment=None):
-    """Create a Legend Echo for this workout. None if not warranted."""
+def _mint_prompt(config, athlete, sport, value, unit, reasons, power):
+    """User prompt for the mint narrative; every segment interpolates so the
+    model sees the athlete's handle, not a literal "{athlete}" placeholder."""
+    return (
+        f"Competition: {config.competition.name}. @{athlete} just earned a "
+        f"LEGEND ECHO for a {sport} ({value:g} {unit}). "
+        f"Reasons: {', '.join(reasons)}. Power {power}. "
+        "Write 2-4 sentences in your persona voice declaring this a living "
+        "trophy on the feed. The next athlete to beat that mark takes it. "
+        f"Name @{athlete}. Do not invent other names."
+    )
+
+
+def mint_echo(workout, config, judgment=None, image_field=None):
+    """Create a new photo-relic Echo; it is not public until pictured."""
     judgment = judgment or judge_echo(workout, config)
     if not judgment:
         return None
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
-    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
     DogTag = apps.get_model("drill_instructor", "DogTag")
     persona = config.persona
     metric, value = _metric_for(workout)
@@ -311,14 +333,7 @@ def mint_echo(workout, config, judgment=None):
         f"{value:g} {unit} of {sport}. Power {power}. "
         f"It sits undefeated until someone logs a harder session."
     )
-    prompt = (
-        f"Competition: {config.competition.name}. @{athlete} just earned a "
-        f"LEGEND ECHO for a {sport} ({value:g} {unit}). "
-        f"Reasons: {', '.join(judgment['reasons'])}. Power {power}. "
-        "Write 2-4 sentences in your persona voice declaring this a living "
-        "trophy on the feed. The next athlete to beat that mark takes it. "
-        "Name @{athlete}. Do not invent other names."
-    )
+    prompt = _mint_prompt(config, athlete, sport, value, unit, judgment["reasons"], power)
     narrative = None
     try:
         from .llm_client import generate_message
@@ -333,10 +348,10 @@ def mint_echo(workout, config, judgment=None):
             # push past MAX_LIVE_ECHOES (judge_echo alone is racy).
             DrillInstructorConfig = apps.get_model("drill_instructor", "DrillInstructorConfig")
             locked_config = DrillInstructorConfig.objects.select_for_update().get(pk=config.pk)
-            live_count = LegendEcho.objects.filter(
+            live_count = visible_echoes(LegendEcho.objects.filter(
                 config_id=locked_config.pk,
                 status__in=("undefeated", "contested"),
-            ).count()
+            )).count()
             if live_count >= MAX_LIVE_ECHOES:
                 logger.info(
                     "Echo mint skipped for workout %s: live cap %s reached under lock",
@@ -357,14 +372,15 @@ def mint_echo(workout, config, judgment=None):
                 metric=metric,
                 metric_value=value,
                 sport_type=echo_sport_family(workout.sport_type),
+                photo_required=True,
                 status=LegendEcho.STATUS_UNDEFEATED,
             )
     except IntegrityError:
         logger.info("Duplicate Echo mint suppressed for workout %s", workout.pk)
         return None
     logger.info("Minted Legend Echo %s for workout %s in config %s", echo.pk, workout.pk, config.pk)
-    bump_echo_holder_stats(config.competition_id)
-    _announce_mint(config, echo)
+    if image_field:
+        attach_echo_image(workout, config, image_field)
     return echo
 
 
@@ -377,6 +393,7 @@ def _announce_mint(config, echo):
         _post_coach_line(
             config, DrillInstructorMessage.KIND_ECHO,
             echo.narrative or echo.title,
+            image_field=echo.image,
         )
     except Exception as exc:  # noqa: BLE001 - the echo exists; the line is bonus
         logger.warning("Echo mint post failed: %s", exc)
@@ -401,31 +418,59 @@ def attach_echo_image(workout, config, image_field):
         logger.info("Echo image read skipped for workout %s: %s", workout.pk, exc)
         return 0
     attached = 0
+    newly_visible = []
     for echo in echoes:
         try:
+            needs_mint_announcement = bool(
+                echo.photo_required
+                and echo.origin_workout_id == workout.pk
+                and not echo.image
+            )
             echo.image.save(f"echo-{echo.pk}.jpg", ContentFile(data), save=True)
             attached += 1
+            if needs_mint_announcement:
+                newly_visible.append(echo)
         except Exception as exc:  # noqa: BLE001
             logger.info("Echo image attach skipped for %s: %s", echo.pk, exc)
+    if attached:
+        bump_echo_holder_stats(config.competition_id)
+    for echo in newly_visible:
+        _announce_mint(config, echo)
     return attached
 
 
 def process_echoes(workout, config):
-    """Claim any Echo this workout beats; otherwise mint if it is a standout."""
-    claimed = claim_beaten_echoes(workout, config)
+    """Claim/mint a photo-relic Echo only when the workout photo exists."""
+    if workout is None or config is None:
+        return []
+    Message = apps.get_model("drill_instructor", "DrillInstructorMessage")
+    photo = Message.objects.filter(
+        config=config,
+        user_id=workout.user_id,
+        kind=Message.KIND_PHOTO,
+        parent__workout_id=workout.pk,
+        image__isnull=False,
+    ).exclude(image="").order_by("posted_at", "pk").first()
+    if photo is None:
+        return []
+
+    claimed = claim_beaten_echoes(workout, config, image_field=photo.image)
     if claimed:
         return claimed
-    echo = mint_echo(workout, config)
-    return [echo] if echo else []
+    echo = mint_echo(workout, config, image_field=photo.image)
+    if echo:
+        return [echo]
+    attach_echo_image(workout, config, photo.image)
+    return []
 
 
 def live_echo_lines(config, limit=3):
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
     rows = (
-        LegendEcho.objects.filter(
+        visible_echoes(LegendEcho.objects.filter(
             config=config,
             status__in=("undefeated", "contested"),
-        )
+        ))
         .select_related("holder")
         .order_by("-power", "-created_at")[:limit]
     )
@@ -439,7 +484,17 @@ def live_echo_lines(config, limit=3):
     return lines
 
 
-def claim_echo(echo, winner, workout):
+def claim_echo(echo, winner, workout, image_field=None, announce=True):
+    """Hand the relic to ``winner``. With ``announce=False`` the caller must
+    run :func:`finish_claim` itself once its own transaction has ended."""
+    previous = _claim_echo_row(echo, winner, workout, image_field=image_field)
+    if announce:
+        finish_claim(echo, previous, workout)
+    return echo
+
+
+def _claim_echo_row(echo, winner, workout, image_field=None):
+    """DB side of a claim; returns the previous holder for the announcement."""
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
     previous = echo.holder
     metric, value = _metric_for(workout)
@@ -458,14 +513,26 @@ def claim_echo(echo, winner, workout):
     echo.sport_type = echo_sport_family(workout.sport_type) or echo.sport_type
     echo.power = min(100, power)
     echo.title = f"{_name(winner)}'s {echo_sport_label(echo.sport_type)} Echo"[:80]
+    echo.photo_required = True
     echo.save(update_fields=[
         "holder", "holder_workout", "chain_length", "defenses", "status",
         "last_claimed_at", "metric", "metric_value", "sport_type", "power", "title",
+        "photo_required",
     ])
+    if image_field:
+        attach_echo_image(workout, echo.config, image_field)
+        echo.refresh_from_db(fields=["image"])
     bump_echo_holder_stats(echo.config.competition_id)
     award_tag(winner, "echo_slayer")
-    _announce_claim(echo.config, echo, previous, workout)
-    if echo.defenses >= DEFENSES_TO_IMMORTAL:
+    return previous
+
+
+def finish_claim(echo, previous, workout):
+    """Feed line, pushes and the immortal check - the slow, network-bound
+    half of a claim, kept out of the row lock held by claim_beaten_echoes."""
+    if echo.image:
+        _announce_claim(echo.config, echo, previous, workout)
+    if echo.defenses >= DEFENSES_TO_IMMORTAL and echo.image:
         immortalize(echo)
     return echo
 
@@ -484,27 +551,31 @@ def _announce_claim(config, echo, previous_holder, workout):
     )
     try:
         from .tasks import _post_coach_line
-        _post_coach_line(config, DrillInstructorMessage.KIND_CLAIM, body, image_field=echo.image)
+        _post_coach_line(
+            config, DrillInstructorMessage.KIND_CLAIM, body,
+            send_push=False, image_field=echo.image,
+        )
     except Exception as exc:  # noqa: BLE001 - the claim stands; the line is bonus
         logger.warning("Echo claim post failed: %s", exc)
-    url = f"/competition/{config.competition_id}?tab=feed"
-    title = f"{config.competition.name} - Echo claimed"
-    for user, text in (
-        (previous_holder,
-         f"@{winner} took your {sport} Echo ({echo.metric_value:g} {unit}). Take it back!"),
-        (workout.user,
-         f"You hold the {sport} Echo now - {echo.metric_value:g} {unit} is the mark to beat."),
-    ):
-        try:
-            from push_notifications.sender import send_push_to_user
-            send_push_to_user(user, title=title, body=text, url=url)
-        except Exception:  # noqa: BLE001 - push must never break the claim
-            logger.exception("Echo claim push failed for user %s", user.id)
+    if config.send_push_on_activity:
+        url = f"/competition/{config.competition_id}?tab=feed"
+        title = f"{config.competition.name} - Echo claimed"
+        for user, text in (
+            (previous_holder,
+             f"@{winner} took your {sport} Echo ({echo.metric_value:g} {unit}). Take it back!"),
+            (workout.user,
+             f"You hold the {sport} Echo now - {echo.metric_value:g} {unit} is the mark to beat."),
+        ):
+            try:
+                from push_notifications.sender import send_push_to_user
+                send_push_to_user(user, title=title, body=text, url=url)
+            except Exception:  # noqa: BLE001 - push must never break the claim
+                logger.exception("Echo claim push failed for user %s", user.id)
 
 
 def immortalize(echo):
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
-    if echo.status == LegendEcho.STATUS_IMMORTAL:
+    if echo.status == LegendEcho.STATUS_IMMORTAL or (echo.photo_required and not echo.image):
         return echo
     echo.status = LegendEcho.STATUS_IMMORTAL
     echo.immortalized_at = timezone.now()
@@ -524,16 +595,18 @@ def immortalize(echo):
     return echo
 
 
-def claim_beaten_echoes(workout, config):
-    """Anyone who beats a live Echo's mark takes it. No war to declare."""
+def claim_beaten_echoes(workout, config, image_field=None):
+    """Anyone who beats a visible Echo's mark takes it using their photo."""
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
     claimed = []
+    pending = []
     with transaction.atomic():
         live = list(
-            LegendEcho.objects.select_for_update()
-            .filter(
-                config=config,
-                status__in=(LegendEcho.STATUS_UNDEFEATED, LegendEcho.STATUS_CONTESTED),
+            visible_echoes(
+                LegendEcho.objects.select_for_update().filter(
+                    config=config,
+                    status__in=(LegendEcho.STATUS_UNDEFEATED, LegendEcho.STATUS_CONTESTED),
+                )
             )
             .select_related(
                 "holder", "config", "config__persona", "config__competition",
@@ -542,8 +615,13 @@ def claim_beaten_echoes(workout, config):
         for echo in live:
             if not _beats(workout, echo):
                 continue
-            claim_echo(echo, workout.user, workout)
+            previous = _claim_echo_row(echo, workout.user, workout, image_field=image_field)
             claimed.append(echo)
+            pending.append((echo, previous))
+    # Feed lines and push HTTP run only after the row locks are released, so
+    # a slow push provider cannot stall every other claim on this config.
+    for echo, previous in pending:
+        finish_claim(echo, previous, workout)
     return claimed
 
 
@@ -560,10 +638,11 @@ def immortalize_finished_echoes(now=None):
     with transaction.atomic():
         today = timezone.localdate()
         finished = list(
-            LegendEcho.objects.select_for_update()
-            .filter(
-                status__in=(LegendEcho.STATUS_UNDEFEATED, LegendEcho.STATUS_CONTESTED),
-                config__competition__end_date__lt=today,
+            visible_echoes(
+                LegendEcho.objects.select_for_update().filter(
+                    status__in=(LegendEcho.STATUS_UNDEFEATED, LegendEcho.STATUS_CONTESTED),
+                    config__competition__end_date__lt=today,
+                )
             )
             .select_related("config", "config__persona", "origin_user")
         )

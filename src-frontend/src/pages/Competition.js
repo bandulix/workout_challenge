@@ -1,15 +1,17 @@
 import {useNavigationType, useParams, useSearchParams} from 'react-router-dom';
 import React, {useEffect, useMemo, useState} from "react";
-import {useGetCompetitionByIdQuery} from "../utils/reducers/competitionsSlice";
+import {useGetCompetitionByIdQuery, useGetExpeditionByCompetitionQuery} from "../utils/reducers/competitionsSlice";
 import {
     UsersRound,
 } from "lucide-react";
-import {SwipePages} from "../components/swipeTabs";
+import {SwipePages, challengeTabs} from "../components/swipeTabs";
 import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {SectionLoader, SkeletonRows} from "../utils/loaders";
 import {useGetFeedByIdQuery} from "../utils/reducers/feedSlice";
 import JoinTeamForm from "../forms/joinTeamForm";
+import CompetitionForm from "../forms/competitionForm";
+import {buildRematchSeed} from "../utils/rematch";
 import {
     ChangeTeamButton,
 } from "../forms/basicComponents";
@@ -18,9 +20,10 @@ import {errText} from "../utils/errors";
 import {EmptyState, PaneHead, paneCardClass} from "../components/uiBits";
 import {useDispatch} from "react-redux";
 import {teamsApi} from "../utils/reducers/teamsSlice";
-import {drillInstructorApi, messageResults, useGetDrillConfigsQuery, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
+import {drillInstructorApi, messageResults, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
 import {clearBodyScrollLock} from "../utils/overlay";
 import ProfileAvatar from "../components/ProfileAvatar";
+import ExpeditionPanel, {ExpeditionTeaser} from "../components/ExpeditionPanel";
 import AthleteCard from "../components/AthleteCard";
 import usePollingInterval from "../utils/usePollingInterval";
 import {CompetitionHead, CoachCorner} from "../components/competitionChrome";
@@ -196,7 +199,7 @@ function TrendSpark({series, compare}) {
     );
 }
 
-function IndividualLeaderboardBox({stats, userId, dunceUserId, feed}) {
+function IndividualLeaderboardBox({stats, userId, feed}) {
     // getWeekDates() ignores `stats`; the dep just re-anchors the week
     // labels whenever fresh stats land (a day rollover shows up on poll).
     const weekDays = React.useMemo(() => getWeekDates(), [stats]);
@@ -255,7 +258,7 @@ function IndividualLeaderboardBox({stats, userId, dunceUserId, feed}) {
                                     {person.rank !== null ? `#${person.rank}` : "–"}
                                 </span>
                                 <div className="relative shrink-0 mr-1.5">
-                                    <ProfileAvatar user={person} size={46} dunce={dunceUserId === personId}
+                                    <ProfileAvatar user={person} size={46}
                                                    onClick={() => setCard(person)}/>
                                     <span className="absolute -bottom-1 -right-2 rounded-full bg-volt-400 text-ink-950 text-[10px] font-extrabold px-1.5 py-0.5 shadow-glow-volt whitespace-nowrap">
                                         {Math.round(person.total_capped ?? 0).toLocaleString()}P
@@ -302,7 +305,6 @@ function IndividualLeaderboardBox({stats, userId, dunceUserId, feed}) {
             {card && (
                 <AthleteCard
                     person={card}
-                    dunce={dunceUserId === (card.id ?? card.workout__user__id)}
                     weekTotal={weekValues(card.id ?? card.workout__user__id).reduce((s, n) => s + n, 0)}
                     weekBars={<WeekBars values={weekValues(card.id ?? card.workout__user__id)} labels={weekLabels} showLabels tall/>}
                     trendSpark={<TrendSpark series={cumulative(card.id ?? card.workout__user__id)} compare={fieldTrend}/>}
@@ -369,11 +371,17 @@ export default function Competition() {
     }, [navType]);
 
     const dispatch = useDispatch();
+    const [showRematchForm, setShowRematchForm] = useState(false);
     const {id} = useParams();
     const [searchParams, setSearchParams] = useSearchParams();
     const pollSlow = usePollingInterval(90000);
     const tabParam = searchParams.get("tab");
-    const tab = (tabParam === "feed" || tabParam === "board")
+    // The Trail page exists only while the challenge runs an Expedition;
+    // a stale ?tab=trail link falls back to the feed.
+    const {data: expedition} = useGetExpeditionByCompetitionQuery(id, {skip: !id});
+    const hasTrail = !!expedition?.enabled;
+    const tabs = useMemo(() => challengeTabs(hasTrail), [hasTrail]);
+    const tab = (tabParam === "feed" || tabParam === "board" || (tabParam === "trail" && hasTrail))
         ? tabParam
         : "feed";
     // Stats stay skipped on Feed for first paint. A swipe mounts Board
@@ -421,6 +429,7 @@ export default function Competition() {
     });
 
     const isOwner = (user !== undefined) && (user?.id === competition?.owner);
+    const rematchSeed = useMemo(() => buildRematchSeed(competition), [competition]);
 
     const teamId = useMemo(() => {
         if (stats?.teams && user?.my_teams) {
@@ -437,8 +446,6 @@ export default function Competition() {
         {competition: competition?.id, limit: 15, offset: 0},
         {skip: !competition?.id},
     );
-    const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: !competition?.id});
-    const dunceUserId = (drillConfigs || []).find((c) => c.competition === competition?.id)?.dunce?.user_id ?? null;
     const lastDrillMsgId = React.useRef(null);
     useEffect(() => {
         const latest = messageResults(drillMessages)[0];
@@ -479,14 +486,29 @@ export default function Competition() {
                 }
 
                 {(() => {
+                    const trailPanel = competition && (
+                        <ExpeditionPanel
+                            competitionId={competition.id}
+                            canRematch={isOwner}
+                            onRematch={() => setShowRematchForm(true)}
+                        />
+                    );
                     const feedPane = (
                         <div>
+                        {/* Narrow layout: a one-line teaser at the top of the feed
+                            opens the Trail page. Wide layout shows the full map
+                            above the leaderboard instead. */}
+                        {!wide && hasTrail && (
+                            <ExpeditionTeaser expedition={expedition} onOpen={() => setTab("trail")}/>
+                        )}
                         {competition && <EchoLiveStrip competitionId={competition.id} userId={user?.id}/>}
                         {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
                         </div>
                     );
+                    const trailPane = <div>{trailPanel}</div>;
                     const boardPane = (
                         <div>
+                        {wide && trailPanel}
                         {/* A stats failure is shown ONCE in the header position above
                             - not repeated inside each leaderboard column. */}
                         {statsError ? null : (
@@ -500,7 +522,7 @@ export default function Competition() {
                                     (statsLoading || !stats) ? (
                                         <SkeletonRows n={4}/>
                                     ) : (
-                                        <IndividualLeaderboardBox stats={stats} userId={user?.id} dunceUserId={dunceUserId} feed={feed}/>
+                                        <IndividualLeaderboardBox stats={stats} userId={user?.id} feed={feed}/>
                                     )
                                 }
                             </div>
@@ -530,13 +552,21 @@ export default function Competition() {
                         );
                     }
                     return (
-                        <SwipePages tab={tab} onChange={setTab} onPeek={peekTab}>
+                        <SwipePages tab={tab} onChange={setTab} onPeek={peekTab} tabs={tabs}>
                             {feedPane}
+                            {hasTrail && trailPane}
                             {boardPane}
                         </SwipePages>
                     );
                 })()}
             </div>
+            {showRematchForm && competition && isOwner && (
+                <CompetitionForm
+                    initialValues={rematchSeed}
+                    isRematch
+                    setModalState={setShowRematchForm}
+                />
+            )}
 
         </PageWrapper>
     )

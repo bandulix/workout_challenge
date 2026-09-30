@@ -316,8 +316,13 @@ SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
 
 # Celery
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
+# JSON only - never accept pickle from the queue (a poisoned broker entry
+# would otherwise be arbitrary code execution in the worker).
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
 
 CACHES = {
     # Redis is always running in this stack (supervisord starts it as
@@ -327,7 +332,7 @@ CACHES = {
     # N times the intended throttle threshold.
     'default': {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/1",
+        "LOCATION": os.environ.get("CACHE_REDIS_URL", "redis://127.0.0.1:6379/1"),
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "CONNECTION_POOL_KWARGS": {
@@ -347,10 +352,10 @@ CACHES = {
 STATIC_URL = 'apistatic/'
 STATIC_ROOT = BASE_DIR / 'static'
 
-# User-uploaded media (profile / photo / Echo pictures, coach MIDI).
+# User-uploaded media (profile / photo / Echo pictures).
 # NEVER served at this URL: nginx 404s /media/, Django middleware 404s
-# it too, and serializers only emit authenticated /api/.../picture/ and
-# /api/.../midi/ paths. Files live in the data volume and are delivered
+# it too, and serializers only emit authenticated /api/.../picture/ paths.
+# Files live in the data volume and are delivered
 # via X-Accel-Redirect to the internal /protected-media/ location after
 # a JWT check.
 MEDIA_URL = '/media/'

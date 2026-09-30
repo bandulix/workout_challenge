@@ -322,6 +322,17 @@ def calendar_stats(user_pk):
     return streak_weeks, [return_calendar[i:i + 7] for i in range(0, len(return_calendar), 7)]
 
 
+def _duration_minutes(total):
+    """Whole minutes of a summed duration (0 when nothing was recorded).
+
+    `timedelta.seconds` only holds the intra-day remainder, so a weekly total
+    of 25h would report 60 minutes - use total_seconds() to keep whole days.
+    """
+    if total is None:
+        return 0
+    return int(total.total_seconds() // 60)
+
+
 @app.task()
 def weekly_email(user_pk):
     """Email to send users their weekly update."""
@@ -346,7 +357,7 @@ def weekly_email(user_pk):
     week_streak, calendar = calendar_stats(user_pk)
     todays_ai_quote = openai_quote()
 
-    recorded_total_duration = 0 if workout_7day_stats["total_duration"] is None else (workout_7day_stats["total_duration"].seconds // 60)
+    recorded_total_duration = _duration_minutes(workout_7day_stats["total_duration"])
     recorded_total_distance = 0 if workout_7day_stats["total_distance"] is None else workout_7day_stats["total_distance"]
     recorded_distinct_days = 0 if workout_7day_stats["distinct_days"] is None else workout_7day_stats["distinct_days"]
 

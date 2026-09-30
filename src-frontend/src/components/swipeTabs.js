@@ -7,8 +7,15 @@ export const CHALLENGE_TABS = [
     {id: "board", label: "Leaderboard"},
 ];
 
-export function peekableTabIds(idx, dragging, seen) {
-    return CHALLENGE_TABS
+// With an Expedition the challenge gets a third page: the shared trail.
+export const TRAIL_TAB = {id: "trail", label: "Trail"};
+
+export function challengeTabs(hasTrail) {
+    return hasTrail ? [CHALLENGE_TABS[0], TRAIL_TAB, CHALLENGE_TABS[1]] : CHALLENGE_TABS;
+}
+
+export function peekableTabIds(idx, dragging, seen, tabs = CHALLENGE_TABS) {
+    return tabs
         .filter((_, i) => i === idx || seen?.has(i) || (dragging && Math.abs(i - idx) === 1))
         .map((t) => t.id);
 }
@@ -34,15 +41,15 @@ function isInteractive(el) {
 }
 
 
-export function ChallengeTabBar({tab, onChange, dragRatio = 0}) {
-    const idx = Math.max(0, CHALLENGE_TABS.findIndex((t) => t.id === tab));
-    const last = CHALLENGE_TABS.length - 1;
+export function ChallengeTabBar({tab, onChange, dragRatio = 0, tabs = CHALLENGE_TABS}) {
+    const idx = Math.max(0, tabs.findIndex((t) => t.id === tab));
+    const last = tabs.length - 1;
 
     return (
         <div className="mb-3" data-no-swipe>
             <div className="flex items-center justify-center gap-1">
                 <button type="button" aria-label="Previous page" disabled={idx === 0}
-                        onClick={() => onChange(CHALLENGE_TABS[idx - 1].id)}
+                        onClick={() => onChange(tabs[idx - 1].id)}
                         className={"shrink-0 h-11 w-11 rounded-full flex items-center justify-center transition " +
                             (idx === 0
                                 ? "text-gray-300/80 dark:text-ink-600 cursor-default"
@@ -52,7 +59,7 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0}) {
 
                 <div className="flex items-center gap-0.5" role="tablist"
                      aria-label="Challenge pages. Swipe left or right to switch.">
-                    {CHALLENGE_TABS.map((t, i) => (
+                    {tabs.map((t, i) => (
                         <button key={t.id} type="button" role="tab" aria-selected={tab === t.id}
                                 onClick={() => onChange(t.id)}
                                 className={"relative px-3.5 py-2 min-h-[44px] text-[11px] font-bold uppercase tracking-[0.16em] transition " +
@@ -71,7 +78,7 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0}) {
                 </div>
 
                 <button type="button" aria-label="Next page" disabled={idx === last}
-                        onClick={() => onChange(CHALLENGE_TABS[idx + 1].id)}
+                        onClick={() => onChange(tabs[idx + 1].id)}
                         className={"shrink-0 h-11 w-11 rounded-full flex items-center justify-center transition " +
                             (idx === last
                                 ? "text-gray-300/80 dark:text-ink-600 cursor-default"
@@ -84,10 +91,10 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0}) {
 }
 
 
-export function SwipePages({tab, onChange, onPeek, children}) {
+export function SwipePages({tab, onChange, onPeek, children, tabs = CHALLENGE_TABS}) {
     const pages = React.Children.toArray(children);
-    const idx = Math.max(0, CHALLENGE_TABS.findIndex((t) => t.id === tab));
-    const last = CHALLENGE_TABS.length - 1;
+    const idx = Math.max(0, tabs.findIndex((t) => t.id === tab));
+    const last = tabs.length - 1;
     const wrapRef = useRef(null);
     const startRef = useRef(null);
     const dxRef = useRef(0);
@@ -111,8 +118,8 @@ export function SwipePages({tab, onChange, onPeek, children}) {
     useEffect(() => {
         const peek = peekRef.current;
         if (!peek) return;
-        peekableTabIds(idx, dragging, seen).forEach((id) => peek(id));
-    }, [idx, dragging, seen]);
+        peekableTabIds(idx, dragging, seen, tabs).forEach((id) => peek(id));
+    }, [idx, dragging, seen, tabs]);
 
     useEffect(() => {
         const el = wrapRef.current;
@@ -170,7 +177,7 @@ export function SwipePages({tab, onChange, onPeek, children}) {
         else if (delta > threshold && idx > 0) nextIdx = idx - 1;
         setOffset(0);
         setDragging(false);
-        if (nextIdx !== idx) onChange(CHALLENGE_TABS[nextIdx].id);
+        if (nextIdx !== idx) onChange(tabs[nextIdx].id);
         try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* ignore */ }
     }
 
@@ -183,10 +190,10 @@ export function SwipePages({tab, onChange, onPeek, children}) {
              onPointerMove={onPointerMove}
              onPointerUp={finish}
              onPointerCancel={finish}>
-            <ChallengeTabBar tab={tab} onChange={onChange} dragRatio={dragRatio}/>
+            <ChallengeTabBar tab={tab} onChange={onChange} dragRatio={dragRatio} tabs={tabs}/>
             <div className="flex"
                  style={{
-                     width: paneW ? paneW * pages.length : "300%",
+                     width: paneW ? paneW * pages.length : `${pages.length * 100}%`,
                      transform: `translateX(${-idx * width + dx}px)`,
                      transition: dragging || reduced ? "none" : "transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)",
                  }}>
@@ -194,12 +201,12 @@ export function SwipePages({tab, onChange, onPeek, children}) {
                     const near = i === idx || (dragging && Math.abs(i - idx) === 1);
                     const mount = near || seen.has(i);
                     return (
-                        <div key={CHALLENGE_TABS[i].id}
+                        <div key={tabs[i]?.id || i}
                              className="shrink-0"
                              role="tabpanel"
                              aria-hidden={i !== idx}
                              style={{
-                                 width: paneW || "33.333%",
+                                 width: paneW || `${100 / pages.length}%`,
                                  visibility: near ? "visible" : "hidden",
                                  height: near ? "auto" : 0,
                                  overflow: near ? "visible" : "hidden",

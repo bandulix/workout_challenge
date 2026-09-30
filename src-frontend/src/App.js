@@ -27,8 +27,6 @@ import ToastHost from "./components/ToastHost";
 import ForceUpdateScreen, {ForceUpdateChecking} from "./components/ForceUpdateScreen";
 import {InitStravaLink, ReturnStravaLink} from "./pages/StravaLink";
 import {installSfxUnlock} from "./utils/sfx";
-import {installMidiUnlock} from "./utils/midiBed";
-import CoachMidiBed from "./components/CoachMidiBed";
 
 // Lazy-loaded heavy pages - keeps the initial bundle small on mobile.
 const MySpace = lazy(() => import("./pages/MySpace"));
@@ -77,10 +75,8 @@ function App() {
     useDarkTheme();
     useEffect(() => {
         const stopSfx = installSfxUnlock();
-        const stopMidi = installMidiUnlock();
         return () => {
             if (typeof stopSfx === "function") stopSfx();
-            if (typeof stopMidi === "function") stopMidi();
         };
     }, []);
     return (
@@ -186,7 +182,6 @@ function AppShell() {
             </Routes>
 
             <BottomNav/>
-            <CoachMidiBed/>
             <DialogHost/>
             <ToastHost/>
             {/* Release popup: changelog once per release. Web can reload;

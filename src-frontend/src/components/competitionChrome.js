@@ -5,7 +5,6 @@ import {Crown, Megaphone, Settings, Timer, UserRoundPlus} from "lucide-react";
 import {competitionsApi} from "../utils/reducers/competitionsSlice";
 import {useLeaveCompetitionMutation} from "../utils/reducers/joinSlice";
 import {messageResults, useGetDrillConfigsQuery, useGetDrillMessageByIdQuery, useGetDrillMessagesQuery, useLazyGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
-import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import CompetitionForm from "../forms/competitionForm";
 import CompetitionInviteModal from "../forms/shareModal";
 import TransferOwnershipForm from "../forms/transferOwnershipForm";
@@ -15,7 +14,7 @@ import {sportLabelShort} from "../forms/workoutForm";
 import {PaneHead, paneCardClass} from "./uiBits";
 import {topSportCounts} from "../utils/sportCounts";
 import CoachThread from "./CoachThread";
-import PhotoPost, {PhotoCamBonus, PHOTO_WINDOW_MS} from "./PhotoPost";
+import PhotoPost from "./PhotoPost";
 import {ActivityReactProvider, ActivityStampButton, ActivityStampIcons} from "./ActivityReacts";
 import {CoachHandover} from "./CoachVoteBox";
 import PersonaAvatar from "./PersonaAvatar";
@@ -267,10 +266,6 @@ function groupByDay(list) {
     return groups;
 }
 
-export function activityHasPhoto(message) {
-    return (message.replies || []).some((r) => r.kind === "photo");
-}
-
 export function activityBackdropUrl(message) {
     // Only the coach's remixed poster is the card backdrop (and the
     // hot-or-not card). The original upload is the feed answer.
@@ -414,10 +409,9 @@ function capLines(row) {
 
 function pointsRowExplain(row) {
     if (row.kind === "photo") {
-        const earned = Math.round(Number(row.points) || 0) > 0;
         return (
             <p className="mt-1 text-[14px] leading-snug text-gray-500 dark:text-gray-400">
-                {earned ? "+10P for the picture. Caps do not apply." : "Add a picture for +10P. Caps do not apply."}
+                Legacy photo award retained from the old scoring rules; new photos do not add points.
             </p>
         );
     }
@@ -482,7 +476,7 @@ function pointsRowExplain(row) {
     );
 }
 
-export function PointsChip({capped, raw, hasPhoto = false, size = "md", message = null}) {
+export function PointsChip({capped, raw, size = "md", message = null}) {
     const [open, setOpen] = useState(false);
     const needDetail = open && message?.id && !(message.points_breakdown || []).length;
     const {data: detail} = useGetDrillMessageByIdQuery(message?.id, {skip: !needDetail});
@@ -526,8 +520,7 @@ export function PointsChip({capped, raw, hasPhoto = false, size = "md", message 
                 type="button"
                 aria-label="How these points were calculated"
                 onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-                className={"points-chip-wrap relative inline-flex shrink-0 items-center justify-center p-3 -m-3 " +
-                    (hasPhoto ? "points-chip-wrap--photo" : "")}>
+                className="points-chip-wrap relative inline-flex shrink-0 items-center justify-center p-3 -m-3">
                 {sparks}
                 <span
                     className="points-chip-bob relative z-[1] inline-flex flex-col items-center gap-0.5"
@@ -541,11 +534,9 @@ export function PointsChip({capped, raw, hasPhoto = false, size = "md", message 
                     }}
                 >
                     <span className={"points-chip rounded-full text-ink-950 font-extrabold whitespace-nowrap tabular-nums leading-none " +
-                        (large ? "text-[15px] px-3 py-1.5" : "text-[12px] px-2 py-0.5") + " " +
-                        (hasPhoto ? "points-chip--photo" : "bg-volt-400")}>
+                        (large ? "text-[15px] px-3 py-1.5" : "text-[12px] px-2 py-0.5") + " bg-volt-400"}>
                         +{Math.round(n).toLocaleString()}P{starred ? "*" : ""}
                     </span>
-                    {hasPhoto && <PhotoCamBonus large={large}/>}
                 </span>
             </button>
             {open && (
@@ -555,7 +546,7 @@ export function PointsChip({capped, raw, hasPhoto = false, size = "md", message 
                         <p>
                             {summary ? <>{summary}</> : <>This workout</>}
                             {challenge ? <> · {challenge}</> : null}
-                            {breakdown.length > 1 ? ". Goals add up. Photo is +10P. Today's order is +5P." : "."}
+                            {breakdown.length > 1 ? ". Challenge goals add up; today's order adds +5P when active. New photos do not award points." : "."}
                         </p>
                         {breakdown.length > 0 && (
                             <div className="rounded-2xl glass-well px-3 py-3">
@@ -617,22 +608,14 @@ export function PointsChip({capped, raw, hasPhoto = false, size = "md", message 
 }
 
 
-export function ActivityCoachPost({message, persona, canReply, defaultOpen, competitionId, visionCapable, meId, hero = false}) {
-    // The photo icon hangs on every own activity inside the upload window
-    // (5 days, mirrored in PhotoPost.PHOTO_WINDOW_DAYS and the backend's
-    // DRILL_PHOTO_WINDOW_DAYS) - not only on the latest one.
-    const ownInWindow = Boolean(
-        canReply && meId && message.workout_user_id === meId
-        && (Date.now() - Date.parse(message.posted_at || "")) <= PHOTO_WINDOW_MS
-    );
-    const hasPhoto = activityHasPhoto(message);
+export function ActivityCoachPost({message, persona, canReply, defaultOpen, competitionId, visionCapable, hero = false}) {
     const remixUrl = activityBackdropUrl(message);
     const {src: bgSrc} = useProtectedImage(remixUrl, "card");
     const [lightbox, setLightbox] = useState(null);
     const showThread = canReply || threadReplies(message).length > 0;
     const points = (
         <PointsChip capped={message.points_capped} raw={message.points_raw}
-                    hasPhoto={hasPhoto} size={hero ? "lg" : "md"} message={message}/>
+                    size={hero ? "lg" : "md"} message={message}/>
     );
     return (
         <ActivityReactProvider message={message}>
@@ -686,13 +669,13 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                                     {message.workout_summary || "Workout"} · {timeAgo(message.posted_at)}
                                 </p>
                             </div>
-                            {ownInWindow && !hasPhoto && (
+                            {message.photo_action && (
                                 <PhotoPost
                                     competitionId={competitionId}
                                     parentId={message.id}
                                     visionCapable={Boolean(visionCapable)}
+                                    purpose={message.photo_action}
                                     variant="ghost"
-                                    label="Photo"
                                 />
                             )}
                         </div>
@@ -894,7 +877,6 @@ export function CoachCorner({competition, isOwner}) {
         {pollingInterval: pollFast, skip: !config}
     );
     const [fetchMore, {isFetching: moreBusy}] = useLazyGetDrillMessagesQuery();
-    const {data: me} = useGetUserByIdQuery("me");
     const [showConfigModal, setShowConfigModal] = useState(false);
 
     // Deep link from the Coach page's "Respond" button
@@ -972,8 +954,7 @@ export function CoachCorner({competition, isOwner}) {
                     <ActivityCoachPost message={m} persona={threadPersona} canReply={canReply}
                                        defaultOpen={open}
                                        competitionId={competition.id}
-                                       visionCapable={config.vision_capable}
-                                       meId={me?.id}/>
+                                       visionCapable={config.vision_capable}/>
                 </li>
             );
         }

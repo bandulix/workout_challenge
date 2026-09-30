@@ -40,3 +40,23 @@ def warn_cleartext_public_bind(*, debug: bool, main_host: str, app_bind: str) ->
             main_host,
             app_bind,
         )
+
+
+def warn_debug_with_public_hosts(*, debug: bool, allowed_hosts) -> None:
+    """Warn loudly when DEBUG=true is combined with a non-local hostname.
+
+    DEBUG silently switches off several controls at once (Secure cookie
+    flags, the HTTPS link gate, the distinct-secret assertion, and it
+    enables the insecure fallback SECRET_KEY), so a "quick troubleshooting"
+    toggle on a reachable deployment must not go unnoticed.
+    """
+    if not debug:
+        return
+    local = {"127.0.0.1", "localhost", "::1", "0.0.0.0", "testserver"}  # noqa: S104 - allow-list of local names, not a bind
+    public = [h for h in allowed_hosts if h and h not in local]
+    if public:
+        logger.warning(
+            "DEBUG=true with non-local ALLOWED_HOSTS %s - security controls are "
+            "relaxed. Never run a reachable deployment with DEBUG enabled.",
+            public,
+        )

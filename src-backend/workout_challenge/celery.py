@@ -73,27 +73,6 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="5", hour="12"),
         "args": (),
     },
-    # every early evening the drill instructor nudges competitions where
-    # nobody logged a workout yet, so the group doesn't go quiet
-    "drill_instructor_inactivity_nudge": {
-        "task": "drill_instructor.tasks.post_inactivity_nudges",
-        "schedule": crontab(minute="10", hour="17"),
-        "args": (),
-    },
-    # every 30 min: fire the drill instructor's random daily group push
-    # (one pep talk per competition at a per-day drawn random time)
-    "drill_instructor_random_push": {
-        "task": "drill_instructor.tasks.post_random_pushes",
-        "schedule": crontab(minute="*/30"),
-        "args": (),
-    },
-    # every 30 min: fire the owner-defined daily briefing (one morning
-    # post per competition, first tick after 07:00)
-    "drill_instructor_daily_prompt": {
-        "task": "drill_instructor.tasks.post_daily_prompts",
-        "schedule": crontab(minute="*/30"),
-        "args": (),
-    },
     "drill_instructor_echo_windows": {
         "task": "drill_instructor.tasks.immortalize_finished_echoes",
         "schedule": crontab(minute="*/15"),
@@ -136,7 +115,20 @@ def is_task_already_executing(task_name: str) -> bool:
     task_count = 0
     for worker, running_tasks in active_tasks.items():
         for task in running_tasks:
-            if task["name"] == task_name:
+            if _task_name_matches(task.get("name"), task_name):
                 task_count += 1
 
     return task_count > 1
+
+
+def _task_name_matches(registered_name, task_name: str) -> bool:
+    """Compare a registered Celery task name with a caller-supplied one.
+
+    Celery registers tasks under their fully-qualified module path
+    ("custom_user.point_recalc.recalc_points") while callers pass the bare
+    function name ("recalc_points"), so accept either spelling - otherwise
+    the guard never matches and duplicate runs slip through.
+    """
+    if not registered_name:
+        return False
+    return registered_name == task_name or registered_name.rsplit(".", 1)[-1] == task_name

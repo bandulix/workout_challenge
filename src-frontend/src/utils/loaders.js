@@ -41,21 +41,6 @@ export function SkeletonRows({n = 4}) {
     );
 }
 
-// Gallery-shaped: a grid of image tiles with a caption bar.
-export function SkeletonTiles({n = 6, cols = 3}) {
-    return (
-        <div role="status" aria-label="Loading"
-             className={"grid gap-3 " + (cols === 3 ? "grid-cols-3" : "grid-cols-2")}>
-            {Array.from({length: n}, (_, i) => (
-                <div key={i} className="rounded-3xl glass-card overflow-hidden">
-                    <Skeleton className="h-36 w-full !rounded-none"/>
-                    <div className="px-2.5 py-2"><Skeleton className="h-3 w-3/4"/></div>
-                </div>
-            ))}
-        </div>
-    );
-}
-
 // Card-shaped block for stat panels / dashboards.
 export function SkeletonCard({height = "h-40"}) {
     return (

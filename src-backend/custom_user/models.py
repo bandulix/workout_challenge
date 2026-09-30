@@ -1,4 +1,4 @@
-import datetime
+import logging
 from decimal import Decimal
 
 from django.db import models, transaction
@@ -14,6 +14,8 @@ from django.dispatch import receiver
 
 from competition.scorer import trigger_user_change
 from custom_user.emails.celery_emails import verify_email
+
+logger = logging.getLogger(__name__)
 
 # Create your models here.
 GENDER_CHOICES = [
@@ -237,18 +239,15 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
             and not getattr(settings, "REGISTRATION_TOKEN", "")
         )
 
-        # Housekeeping: if the profile picture was replaced, delete the old
-        # file so abandoned uploads don't pile up in MEDIA_ROOT.
+        # Housekeeping: if the profile picture was replaced, remember the old
+        # file so it can be removed once the new row is safely written (an
+        # unlink before a failing save would lose the only copy).
+        stale_picture = None
         if not is_create:
-            try:
-                old_picture = (self._original or {}).get("profile_picture")
-                new_name = self.profile_picture.name if self.profile_picture else ""
-                if old_picture and old_picture != new_name:
-                    old_file = settings.MEDIA_ROOT / old_picture
-                    if old_file.is_file():
-                        old_file.unlink()
-            except Exception:  # noqa: BLE001 - never block a user save
-                pass
+            old_picture = (self._original or {}).get("profile_picture")
+            new_name = self.profile_picture.name if self.profile_picture else ""
+            if old_picture and old_picture != new_name:
+                stale_picture = old_picture
 
         if promote_first:
             from site_settings.models import SiteSettings
@@ -260,6 +259,14 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
                 super().save(*args, **kwargs)
         else:
             super().save(*args, **kwargs)
+
+        if stale_picture:
+            try:
+                old_file = settings.MEDIA_ROOT / stale_picture
+                if old_file.is_file():
+                    old_file.unlink()
+            except Exception:  # noqa: BLE001 - never block a user save on cleanup
+                logger.warning("old profile picture %s not removed for user %s", stale_picture, self.pk, exc_info=True)
 
         # Confirm the address before any welcome / coach / weekly mail.
         # The verify task is the only mail that may leave the server for

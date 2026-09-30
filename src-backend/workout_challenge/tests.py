@@ -305,10 +305,21 @@ class WorkoutDeleteWithBonusTests(TestCase):
             start_datetime=timezone.now().replace(microsecond=0),
             duration=dt.timedelta(minutes=30), intensity_category=2,
         )
+        before_bonus = list(
+            Points.objects.filter(workout=workout)
+            .order_by("pk")
+            .values_list("pk", "goal_id")
+        )
         grant_photo_bonus(workout, competition)
+        after_bonus = list(
+            Points.objects.filter(workout=workout)
+            .order_by("pk")
+            .values_list("pk", "goal_id")
+        )
         goal_rows = Points.objects.filter(workout=workout).exclude(goal=None).count()
         self.assertGreaterEqual(goal_rows, 1)
-        self.assertTrue(Points.objects.filter(workout=workout, goal=None).exists())
+        self.assertEqual(after_bonus, before_bonus)
+        self.assertFalse(Points.objects.filter(workout=workout, goal=None).exists())
 
         workout.delete()  # must not raise IntegrityError
 
@@ -326,13 +337,16 @@ class BeatScheduleParityTests(TestCase):
     # PeriodicTasks seeded by migrations (others are operator-managed).
     SEEDED = [
         "health_sync",
-        "drill_instructor_inactivity_nudge",
-        "drill_instructor_random_push",
         "drill_instructor_weekly_coach_vote",
         "drill_instructor_echo_windows",
         "drill_instructor_daily_order",
         "drill_instructor_close_order",
         "drill_instructor_assign_dunce",
+    ]
+    RETIRED_GENERIC_COACH_TASKS = [
+        "drill_instructor_inactivity_nudge",
+        "drill_instructor_random_push",
+        "drill_instructor_daily_prompt",
     ]
 
     def test_seeded_rows_exist_enabled_and_match_static_schedule(self):
@@ -346,6 +360,16 @@ class BeatScheduleParityTests(TestCase):
             entry = schedule.get(name)
             self.assertIsNotNone(entry, f"{name}: not documented in beat_schedule")
             self.assertEqual(row.task, entry["task"], f"{name}: task path drifted")
+
+    def test_generic_coach_schedules_are_retired_without_deleting_history(self):
+        from django_celery_beat.models import PeriodicTask
+        from workout_challenge.celery import app
+        schedule = app.conf.beat_schedule
+        for name in self.RETIRED_GENERIC_COACH_TASKS:
+            row = PeriodicTask.objects.filter(name=name).first()
+            self.assertIsNotNone(row, f"{name}: preserve the existing task row")
+            self.assertFalse(row.enabled, f"{name}: generic coach noise remains enabled")
+            self.assertNotIn(name, schedule, f"{name}: still in static beat schedule")
 
 
 # DRF throttling reads the Django cache - LocMem so tests need no Redis.

@@ -1,6 +1,7 @@
 """Shared upload validation: trust pixels, not the client Content-Type."""
 
 import hashlib
+import logging
 import os
 from io import BytesIO
 from pathlib import Path as _Path
@@ -11,6 +12,8 @@ from django.http import FileResponse, Http404, HttpResponse
 from django.utils.text import get_valid_filename
 from rest_framework import serializers
 from rest_framework.renderers import BaseRenderer
+
+logger = logging.getLogger(__name__)
 
 # Pillow's decompression-bomb ceiling (default ~179M px is huge; 40M is
 # a 8k x 5k photo, well above any avatar/photo-post we accept).
@@ -140,8 +143,7 @@ def _safe_media_name(name):
 
 def _content_type_for(name):
     return (
-        {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif",
-         ".mid": "audio/midi", ".midi": "audio/midi"}
+        {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
         .get(_Path(name).suffix.lower())
         or "application/octet-stream"
     )
@@ -153,7 +155,7 @@ def _file_etag(file_field, variant="full"):
         mtime = file_field.storage.get_modified_time(name).timestamp()
     except Exception:
         mtime = 0
-    return hashlib.md5(f"{name}:{mtime}:{variant}".encode()).hexdigest()
+    return hashlib.md5(f"{name}:{mtime}:{variant}".encode(), usedforsecurity=False).hexdigest()
 
 
 def _etag_matches(header, etag):
@@ -298,7 +300,8 @@ def _thumb_rel(file_field, variant, max_side, quality):
         os.chmod(tmp, _THUMB_MODE)
         os.replace(tmp, dest)
         _prepare_media_for_nginx(dest)
-    except Exception:
+    except Exception:  # noqa: BLE001 - fall back to the original; the GET must still answer
+        logger.warning("thumbnail (%s) failed for %s", variant, getattr(file_field, "name", ""), exc_info=True)
         try:
             tmp.unlink(missing_ok=True)
         except OSError:

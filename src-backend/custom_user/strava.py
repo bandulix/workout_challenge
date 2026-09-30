@@ -6,7 +6,6 @@ logger = logging.getLogger(__name__)
 
 from django.core.cache import cache
 from django.contrib.auth import get_user_model
-from django.conf import settings
 from django.utils import timezone
 from workout_challenge.celery import app, is_task_already_executing
 from django.db.models import Q
@@ -112,8 +111,8 @@ def daily_strava_sync(self, refresh_all=False):
         except RateLimitExceeded as exc:
             sleep_time = _seconds_until_next_interval() + 60
             logger.info('Strava sync rate limit exceeded - sleeping %s min', sleep_time // 60)
-            raise self.retry(exc=exc, countdown=sleep_time)  # retry in next Strava 15min api period
-        except Exception as exc:
+            raise self.retry(exc=exc, countdown=sleep_time) from exc  # retry in next Strava 15min api period
+        except Exception:
             logger.exception('Strava sync failed for user %s', user.pk)
 
     logger.info('Finished syncing Strava.')

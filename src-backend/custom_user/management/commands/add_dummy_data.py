@@ -3,7 +3,7 @@ from django.conf import settings
 import datetime, random
 from datetime import timedelta
 
-from competition.models import Competition, ActivityGoal, Team, Award, Points
+from competition.models import Competition, ActivityGoal, Team, Award
 from workouts.models import Workout
 from custom_user.models import CustomUser
 

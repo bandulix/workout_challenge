@@ -8,7 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import BasePermission, AllowAny
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.throttling import BaseThrottle
-from .throttles import client_ip, ClientIPScopedThrottle
+from .throttles import client_ip, ClientIPScopedThrottle, ClientIPUserRateThrottle
 from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -16,7 +16,6 @@ from rest_framework import status
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
-from django.conf import settings
 from django.core.cache import cache
 
 from .serializers import (
@@ -48,10 +47,10 @@ def _blacklist_user_tokens(user):
         )
     except Exception:
         # The blacklist app may not be migrated yet on a brand-new
-        # install. Swallow the error so the caller's primary action
-        # (delete / unlink) still succeeds - the short access-token
-        # lifetime is the next line of defence.
-        pass
+        # install. Don't block the caller's primary action (delete /
+        # unlink) - the short access-token lifetime is the next line of
+        # defence - but never hide it: this is a security control.
+        logger.exception("Refresh-token blacklisting failed for user %s", getattr(user, "pk", None))
 
 class UserPermissionClass(BasePermission):
     """ Allow unauthenticated users to POST data - i.e. for registration.
@@ -133,7 +132,11 @@ class CustomUserViewSet(viewsets.ModelViewSet):
     filterset_class = CustomUserFilter
 
     permission_classes = [UserPermissionClass]
-    throttle_classes = [RegisterRateThrottle]
+    # Setting throttle_classes REPLACES the DRF defaults, so the
+    # per-user bucket must be re-added explicitly: without it an
+    # authenticated PATCH /me/ was unthrottled and validate_email's
+    # distinguishable error made it an e-mail enumeration oracle.
+    throttle_classes = [RegisterRateThrottle, ClientIPUserRateThrottle]
 
     def get_queryset(self):
         # return all competitions the user is owner of or a participant of
@@ -149,7 +152,16 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             .annotate(
                 echo_hold_count=Count(
                     "echoes_held",
-                    filter=Q(echoes_held__status__in=LIVE_HOLDER_STATUSES),
+                    filter=(
+                        Q(echoes_held__status__in=LIVE_HOLDER_STATUSES)
+                        & (
+                            Q(echoes_held__photo_required=False)
+                            | (
+                                Q(echoes_held__image__isnull=False)
+                                & ~Q(echoes_held__image="")
+                            )
+                        )
+                    ),
                     distinct=True,
                 )
             )
@@ -335,13 +347,13 @@ class LinkStravaView(APIView):
                 timeout=15,
             )
             response.raise_for_status()
-        except requests.exceptions.HTTPError as exc:
+        except requests.exceptions.HTTPError:
             if response.status_code == 400:
                 # Strava rejected the auth code (already used, expired,
                 # or never issued). Surface that to the user.
                 return Response({"message": "Invalid or expired Strava linkage code."}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"message": f"Strava token exchange failed ({response.status_code})."}, status=status.HTTP_502_BAD_GATEWAY)
-        except requests.RequestException as exc:
+        except requests.RequestException:
             # Network / DNS / TLS error talking to Strava. Don't leak
             # the exception text - it can include the resolved hostname
             # or proxy details.
@@ -368,8 +380,8 @@ class LinkStravaView(APIView):
         # treatment the Garmin tokens already get).
         from .token_crypto import encrypt_token
         refresh_token = strava_tokens.get('refresh_token', None)
-        setattr(user, 'strava_refresh_token', encrypt_token(refresh_token) if refresh_token else None)
-        setattr(user, 'strava_athlete_id', new_athlete_id)
+        user.strava_refresh_token = encrypt_token(refresh_token) if refresh_token else None
+        user.strava_athlete_id = new_athlete_id
         # The first linked provider becomes the activity source; linking a
         # second provider never changes it (the user switches it in the
         # personal settings).
@@ -406,8 +418,8 @@ class UnlinkStravaView(APIView):
 
     def post(self, request):
         user = request.user
-        setattr(user, 'strava_refresh_token', None)
-        setattr(user, 'strava_athlete_id', None)
+        user.strava_refresh_token = None
+        user.strava_athlete_id = None
         user.save()
 
         # If Strava was unlinked because of a hijacked account, the
@@ -496,7 +508,7 @@ class LinkGarminView(APIView):
                             status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            token_blob = login_and_get_tokens(email, password)
+            token_blob = login_and_get_tokens(email, password, user_pk=request.user.pk)
         except GarminMfaRequired as exc:
             # Password accepted, Garmin sent a verification code - the
             # frontend asks for it and posts it to garmin/link/mfa/.
@@ -537,7 +549,7 @@ class LinkGarminMfaView(APIView):
             return Response({"message": "Verification token and code are required."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            token_blob, email = complete_mfa_login(mfa_token, mfa_code)
+            token_blob, email = complete_mfa_login(mfa_token, mfa_code, user_pk=request.user.pk)
         except GarminAuthError as exc:
             logger.info("Garmin MFA completion failed for user %s", request.user.pk, exc_info=True)
             return Response({"message": str(exc)},
@@ -650,6 +662,13 @@ class LinkHealthView(APIView):
         )
 
         user = request.user
+        # Linking adopts an existing Open Wearables account by e-mail
+        # (409 path in ensure_health_user). Only a verified address may
+        # do that, or a signup with someone else's e-mail would inherit
+        # their health data.
+        if not user.is_verified:
+            return Response({"message": "Verify your e-mail before linking Health."},
+                            status=status.HTTP_403_FORBIDDEN)
         try:
             invitation = generate_invitation(user)
         except HealthConfigError:

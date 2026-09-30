@@ -18,6 +18,8 @@ import lodUniqby from 'lodash/uniqBy';
 import {topSportCounts} from "../utils/sportCounts";
 import {useGetUserByIdQuery, usersApi} from "../utils/reducers/usersSlice";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
+import {getArchivedChallengeIds, archiveChallenge, restoreChallenge, isChallengeEnded} from "../utils/challengeArchive";
+import CompetitionArchiveRow from "../components/CompetitionArchiveRow";
 import {useGetDrillConfigsQuery} from "../utils/reducers/drillInstructorSlice";
 import CompetitionForm from "../forms/competitionForm";
 import PersonalGoalsForm from "../forms/personalGoalsForm";
@@ -40,6 +42,8 @@ import {statsApi} from "../utils/reducers/statsSlice";
 import {feedApi} from "../utils/reducers/feedSlice";
 import {clearBodyScrollLock} from "../utils/overlay";
 import ProfileAvatar from "../components/ProfileAvatar";
+import RivalCard from "../components/RivalCard";
+import ComebackBench from "../components/ComebackBench";
 import {DogTagRow} from "../components/gameBits";
 import {Chip, EmptyState, SectionHead, SyncChip, rowClass} from "../components/uiBits";
 import usePollingInterval from "../utils/usePollingInterval";
@@ -47,6 +51,7 @@ import TrainingHeatmap from "../components/TrainingHeatmap";
 import {toast} from "../utils/toasts";
 import {errText} from "../utils/errors";
 import {ReleaseSpark} from "../components/WhatsNew";
+import {challengeRivalCard, dismissHomeRivalCard, homeRivalChallengeSelection, homeRivalQueryParams, pinHomeRivalChallenge, unpinHomeRivalChallenge} from "../utils/challenge";
 
 
 const HAND_LOG_KEY = "wc_log_by_hand";
@@ -398,56 +403,29 @@ function WorkoutsBox({workouts, user, setLinkStrava, summary}) {
 }
 
 
-function CompetitionRow({competition, user}) {
-    // Rank arrives embedded in the competitions payload (my_rank_summary)
-    // - no per-row poller for N challenges anymore.
-    const summary = competition?.my_rank_summary || null;
 
-    const navigate = useNavigate();
-    const handleClick = (id) => {
-        return navigate(`/competition/${id}`);
+function CompetitionsBox({competitions, setJoinCompetition}) {
+    const [showEditCompetitionModal, setShowEditCompetitionModal] = useState(false);
+    const [archivedIds, setArchivedIds] = useState(() => new Set(getArchivedChallengeIds()));
+    const visibleCompetitions = competitions.filter(competition =>
+        !archivedIds.has(String(competition.id)) || !isChallengeEnded(competition.end_date),
+    );
+    const archivedCompetitions = competitions.filter(competition =>
+        archivedIds.has(String(competition.id)) && isChallengeEnded(competition.end_date),
+    );
+
+    function archive(id) {
+        archiveChallenge(id);
+        setArchivedIds(new Set(getArchivedChallengeIds()));
     }
 
-    const rank = summary?.my_rank;
-    const started = summary?.started;
-
-    return (
-        <li>
-            <button type="button" onClick={() => handleClick(competition.id)} className={rowClass}>
-                <div className="min-w-0 flex-1">
-                    <p className="font-semibold truncate">{competition.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{competition.start_date_fmt} – {competition.end_date_fmt}</p>
-                </div>
-                <div className="shrink-0 text-right">
-                    {!summary ? (
-                        <span className="text-gray-500 dark:text-gray-400 text-sm">—</span>
-                    ) : !started ? (
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Not started</span>
-                    ) : rank == null ? (
-                        <span className="text-xs font-semibold text-volt-600 dark:text-volt-300">Time to work out!</span>
-                    ) : (
-                        <>
-                            <p className="font-display text-xl text-volt-600 dark:text-volt-400 leading-none">#{rank}</p>
-                            {competition.has_teams && summary.team_rank != null && (
-                                <Chip>Team #{summary.team_rank}</Chip>
-                            )}
-                        </>
-                    )}
-                </div>
-            </button>
-        </li>
-    )
-}
-
-
-
-function CompetitionsBox({user, competitions, setJoinCompetition}) {
-
-    const [showEditCompetitionModal, setShowEditCompetitionModal] = useState(false);
+    function restore(id) {
+        restoreChallenge(id);
+        setArchivedIds(new Set(getArchivedChallengeIds()));
+    }
 
     return (
         <BoxSection additionalClasses={"mb-4"}>
-
             <SectionHead title="My challenges">
                 <JoinButton additionalClasses="my-0.5 sm:my-0" onClick={() => setJoinCompetition(true)}/>
                 <AddButton additionalClasses="my-0.5 sm:my-0" label={"Create"}
@@ -459,18 +437,46 @@ function CompetitionsBox({user, competitions, setJoinCompetition}) {
                             body="Create one, or join with a code from a friend."
                             actionLabel="Create a challenge"
                             onAction={() => setShowEditCompetitionModal(true)}/>
-            ) : (
+            ) : visibleCompetitions.length > 0 ? (
                 <ul className="divide-y divide-gray-100 dark:divide-ink-700/60 mt-1">
-                    {competitions.map((competition) => (
-                        <CompetitionRow key={competition.id} competition={competition} user={user} />
+                    {visibleCompetitions.map(competition => (
+                        <CompetitionArchiveRow
+                            key={competition.id}
+                            competition={competition}
+                            onArchive={archive}
+                        />
                     ))}
                 </ul>
+            ) : (
+                <p className="py-3 text-sm text-gray-500 dark:text-gray-400" role="status">
+                    Your completed challenges are archived below.
+                </p>
             )}
 
-            {(showEditCompetitionModal) && (
+            {archivedCompetitions.length > 0 && (
+                <details className="mt-3 rounded-xl border border-gray-200 px-3 py-2 dark:border-ink-700">
+                    <summary className="cursor-pointer py-2 text-sm font-semibold">
+                        Archived challenges ({archivedCompetitions.length})
+                    </summary>
+                    <p className="pb-2 text-xs text-gray-500 dark:text-gray-400">
+                        Archiving only hides a completed challenge from this browser. It does not delete or change challenge, score, or Echo history.
+                    </p>
+                    <ul className="divide-y divide-gray-100 dark:divide-ink-700/60">
+                        {archivedCompetitions.map(competition => (
+                            <CompetitionArchiveRow
+                                key={competition.id}
+                                competition={competition}
+                                archived
+                                onRestore={restore}
+                            />
+                        ))}
+                    </ul>
+                </details>
+            )}
+
+            {showEditCompetitionModal && (
                 <CompetitionForm setModalState={setShowEditCompetitionModal}/>
             )}
-
         </BoxSection>
     )
 }
@@ -823,6 +829,7 @@ export default function MySpace() {
             clearBodyScrollLock();
         }
     }, [navType]);
+    const [, setHomeRivalVersion] = useState(0);
 
     const {
         data: user,
@@ -848,8 +855,13 @@ export default function MySpace() {
         data: competitions,
         error: competitionError,
         isLoading: competitionLoading,
-    } = useGetCompetitionsQuery(undefined, {
+    } = useGetCompetitionsQuery(homeRivalQueryParams(user?.id), {
         pollingInterval: pollFast,
+    });
+    const homeRivalSelection = homeRivalChallengeSelection(competitions, user?.id);
+    const rivalCardModel = challengeRivalCard(homeRivalSelection?.challenge, {
+        user,
+        workoutSummary,
     });
 
     const [searchParams, setSearchParams] = useSearchParams();
@@ -897,6 +909,18 @@ export default function MySpace() {
         <PageWrapper>
 
             <div className="container mx-auto p-4">
+                <div className="w-full">
+                    {
+                        (userLoading || workoutsIsLoading) ? (
+                            <SectionLoader height={"h-48 mb-4"}/>
+                        ) : (userError) ? (
+                            <ErrorBoxSection additionalClasses="mb-4"
+                                             errorMsg={errText(userError, 'Could not load your account. Please try again.')}/>
+                        ) : (
+                            <WelcomeBox user={user} workouts={workouts} summary={workoutSummary}/>
+                        )
+                    }
+                </div>
                 {user && (
                     <GettingStarted
                         user={user}
@@ -909,20 +933,22 @@ export default function MySpace() {
                         onOpenChallenge={(id) => navigate(`/competition/${id}?tab=feed`)}
                     />
                 )}
-                <div className="w-full">
-
-                    {
-                        (userLoading || workoutsIsLoading) ? (
-                            <SectionLoader height={"h-48 mb-4"}/>
-                        ) : (userError) ? (
-                            <ErrorBoxSection additionalClasses="mb-4"
-                                             errorMsg={errText(userError, 'Could not load your account. Please try again.')}/>
-                        ) : (
-                            <WelcomeBox user={user} workouts={workouts} summary={workoutSummary}/>
-                        )
-                    }
-
-                </div>
+                <RivalCard
+                    model={rivalCardModel}
+                    isPinned={Boolean(rivalCardModel?.rivalIsPinned)}
+                    onPin={() => {
+                        if (!user?.id || !homeRivalSelection || !rivalCardModel?.rivalId) return;
+                        if (rivalCardModel.rivalIsPinned) unpinHomeRivalChallenge(user.id);
+                        else pinHomeRivalChallenge(user.id, homeRivalSelection.challenge.id, rivalCardModel.rivalId);
+                        setHomeRivalVersion((version) => version + 1);
+                    }}
+                    onDismiss={() => {
+                        if (!user?.id) return;
+                        dismissHomeRivalCard(user.id);
+                        setHomeRivalVersion((version) => version + 1);
+                    }}
+                />
+                {user && <ComebackBench/>}
 
                 {/* Stats (30 Day Activity, goals, streak) + Competitions +
                     Workouts. md+ (foldable inner display and up): two
@@ -967,7 +993,7 @@ export default function MySpace() {
                                 <ErrorBoxSection additionalClasses="mb-4"
                                                  errorMsg={errText(competitionError, 'Could not load your challenges. Please try again.')}/>
                             ) : (
-                                <CompetitionsBox user={user} competitions={competitions} setJoinCompetition={setJoinCompetition}/>
+                                <CompetitionsBox competitions={competitions} setJoinCompetition={setJoinCompetition}/>
                             )
                         }
                     </div>

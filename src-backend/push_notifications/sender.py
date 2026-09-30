@@ -9,10 +9,9 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
-from django.utils import timezone
 
 from .models import PushSubscription
-from .vapid import get_vapid_instance, get_vapid_public_key, get_vapid_subject
+from .vapid import get_vapid_instance, get_vapid_subject
 
 logger = logging.getLogger(__name__)
 
@@ -156,9 +155,9 @@ def _send_one(subscription: PushSubscription, payload: str, ttl: int = 60) -> No
     except WebPushException as exc:
         status = getattr(exc, "response", None) and exc.response.status_code
         if status in (404, 410):
-            raise _GoneError(str(exc))
+            raise _GoneError(str(exc)) from exc
         if status and 400 <= status < 500:
-            raise _PermanentPushError(str(exc))
+            raise _PermanentPushError(str(exc)) from exc
         raise
 
 

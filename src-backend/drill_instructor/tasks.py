@@ -1,17 +1,16 @@
 import datetime
 import logging
 import os
-import random
 
 from django.apps import apps
-from django.db import IntegrityError
-from django.db.models import Sum
+from django.core.cache import cache
+from django.db.models import F, Sum
 from django.utils import timezone
 
 from workout_challenge.celery import app, is_task_already_executing
 
 from .formatters import format_workout_summary
-from .llm_client import build_daily_briefing_prompt, build_echo_art_prompt, build_group_push_prompt, build_inactivity_prompt, build_photo_prompt, build_reply_prompt, build_roast_caption_prompt, build_roast_image_prompt, build_workout_prompt, check_image_edit_capability, check_vision_capability, draw_roast_treatment, generate_message, generate_roast_image, invent_coach_appearance, invent_roast_twist, max_roast_reference_images
+from .llm_client import build_echo_art_prompt, build_photo_prompt, build_reply_prompt, build_roast_caption_prompt, build_roast_image_prompt, check_image_edit_capability, check_vision_capability, draw_roast_treatment, generate_message, generate_roast_image, invent_coach_appearance, invent_roast_twist, max_roast_reference_images
 
 try:
     from push_notifications.sender import send_push_to_user
@@ -67,6 +66,39 @@ def probe_llm_capabilities(self):
     return {"done": True}
 
 
+# How much of a thread the coach re-reads before answering. Whole short
+# threads fit; long ones keep the most recent turns (the prompt builder
+# says how many were dropped so the coach knows there is more history).
+THREAD_HISTORY_LIMIT = 12
+
+
+def _thread_history(root, before=None, limit=THREAD_HISTORY_LIMIT):
+    """The thread under ``root`` as prompt-ready entries, oldest first.
+
+    Every direct child posted before ``before`` counts: participant
+    replies, participant photos (rendered as a photo marker plus caption
+    so a wordless picture still shows up as a turn), the coach's own
+    reactions and its remixed posters. Only the last ``limit`` entries are
+    returned, with ``dropped`` telling the caller how many older turns
+    were cut.
+    """
+    queryset = root.replies.select_related("user").order_by("posted_at", "pk")
+    if before is not None:
+        queryset = queryset.filter(posted_at__lte=before.posted_at).exclude(pk=before.pk)
+    turns = list(queryset)
+    dropped = max(0, len(turns) - limit)
+    entries = []
+    for m in turns[dropped:]:
+        is_coach = m.user_id is None
+        entries.append({
+            "is_coach": is_coach,
+            "author": None if is_coach else (m.user.first_name or m.user.username),
+            "body": m.body or "",
+            "has_image": bool(m.image),
+        })
+    return {"entries": entries, "dropped": dropped}
+
+
 def _persona_icon(persona):
     """Push-notification icon for a persona. Custom uploaded pictures are
     NOT used: they live behind the authenticated picture endpoint, and the
@@ -87,23 +119,6 @@ def _echo_lines(config):
         return []
 
 
-def _recent_bodies(config, limit=2):
-    """The persona's last ``limit`` message bodies for this config.
-
-    Passed into the prompt builders so the instructor can refer back to
-    its own recent messages (continuity, callbacks) and avoid repeating
-    itself. Test messages are previews, not conversation; failed
-    generations never reached the group - both are excluded.
-    """
-    return list(
-        config.messages
-        .exclude(kind__in=["test", "reply"])
-        .filter(success=True)
-        .order_by("-posted_at")
-        .values_list("body", flat=True)[:limit]
-    )
-
-
 def _flag_message_failure(message, config, exc, label):
     """Standard coach-message failure path: flag the message (best-effort
     resave so the error is inspectable in the audit log), note the error
@@ -113,11 +128,35 @@ def _flag_message_failure(message, config, exc, label):
     message.error = str(exc)[:2000]
     try:
         message.save()
-    except Exception:  # pragma: no cover
-        pass
+    except Exception:  # noqa: BLE001 - pragma: no cover - the config note below still lands
+        logger.debug("Drill Instructor: could not resave failed message", exc_info=True)
     config.last_error = str(exc)[:2000]
     config.save(update_fields=["last_error", "updated_at"])
     logger.warning("Drill Instructor: %s save failed for competition %s: %s", label, config.competition_id, exc)
+
+
+def _record_post(config, now, error=None):
+    """Count a posted coach line on the config.
+
+    Several tasks (workout comment, reaction, roast, beat jobs) post for
+    the same config concurrently; a read-modify-write of
+    ``messages_posted`` on the in-memory instance loses increments, so the
+    counter is bumped in SQL. ``error=None`` leaves ``last_error`` alone
+    (roasts / photo lines never reset it), a string overwrites it. The
+    in-memory instance is refreshed so callers keep reading current values.
+    """
+    DrillInstructorConfig = apps.get_model("drill_instructor", "DrillInstructorConfig")
+    values = {
+        "messages_posted": F("messages_posted") + 1,
+        "last_posted_at": now,
+        "updated_at": now,
+    }
+    fields = ["messages_posted", "last_posted_at", "updated_at"]
+    if error is not None:
+        values["last_error"] = error
+        fields.append("last_error")
+    DrillInstructorConfig.objects.filter(pk=config.pk).update(**values)
+    config.refresh_from_db(fields=fields)
 
 
 def _user_rank(workout, competition):
@@ -175,12 +214,11 @@ def _user_rank(workout, competition):
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=120)
 def post_workout_comment(self, workout_id):
-    """Generate a Drill Instructor comment for a workout and store it.
+    """Create a neutral activity thread, then process independent game events.
 
-    For every competition this workout belongs to that has an enabled
-    Drill Instructor, generate one AI-voiced comment, persist it to
-    ``DrillInstructorMessage`` so the competition owner can read it from
-    the audit log, and (optionally) send a web push to the athlete.
+    Generic AI workout chatter and its pushes are retired. The activity
+    thread remains the authenticated anchor for workout photos and Echoes;
+    its workout card is the activity itself, not a generated comment.
     """
     Workout = apps.get_model("workouts", "Workout")
     DrillInstructorConfig = apps.get_model("drill_instructor", "DrillInstructorConfig")
@@ -198,97 +236,11 @@ def post_workout_comment(self, workout_id):
     start_day = timezone.localtime(start_dt).date() if timezone.is_aware(start_dt) else start_dt.date()
 
     Competition = apps.get_model("competition", "Competition")
-    competitions = Competition.objects.filter(
-        start_date__lte=start_day,
-        end_date__gte=start_day,
-        user=workout.user,
-        drill_instructor__enabled=True,
-        drill_instructor__comment_on_activity=True,
-    ).select_related("drill_instructor", "drill_instructor__persona")
-
-    summary, duration_min = format_workout_summary(workout)
-
+    # Generic per-workout coach comments are retired. Material standings
+    # changes are announced after point caps are recalculated; game and Echo
+    # events continue through the independent lifecycle below.
+    competitions = Competition.objects.none()
     posted = 0
-    for competition in competitions:
-        config = competition.drill_instructor
-        persona = config.persona
-
-        # Idempotency: one workout comment per competition per workout.
-        # Double enqueues (double submit, sync edge cases, redelivery)
-        # must never produce a second, identical coach message.
-        if DrillInstructorMessage.objects.filter(
-            config=config, workout=workout, kind=DrillInstructorMessage.KIND_ACTIVITY
-        ).exists():
-            logger.info("Drill Instructor: workout %s already commented in competition %s, skipping.", workout_id, competition.id)
-            continue
-
-        rank, total_participants, my_total, leader_total, target_user = _user_rank(workout, competition)
-        user_prompt = build_workout_prompt(
-            user_first_name=workout.user.first_name or workout.user.username or "Athlete",
-            username=workout.user.username or "",
-            sport_type=workout.sport_type,
-            duration_minutes=duration_min or 0,
-            distance_km=float(workout.distance) if workout.distance is not None else None,
-            kcal=float(workout.kcal) if workout.kcal is not None else None,
-            intensity=workout.intensity_category or 0,
-            competition_name=competition.name,
-            points_capped=None,
-            user_rank=rank,
-            total_participants=total_participants,
-            leader_points=leader_total,
-            user_total_points=my_total,
-            target_first_name=(target_user.first_name if target_user else None),
-            previous_messages=_recent_bodies(config),
-            echo_lines=_echo_lines(config),
-        )
-
-        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
-        if not body:
-            body = f"{persona.name}: nice work on that {summary or workout.sport_type}!"
-
-        # Store the message in the in-app audit log so the owner can
-        # read it back from the Drill Instructor "messages" endpoint.
-        message = DrillInstructorMessage(
-            config=config,
-            kind=DrillInstructorMessage.KIND_ACTIVITY,
-            workout=workout,
-            body=body,
-            posted_at=timezone.now(),
-        )
-        try:
-            message.save()
-        except IntegrityError:
-            # Lost the check-then-save race against a concurrent task -
-            # the other one posted; nothing is actually wrong.
-            logger.info("Drill Instructor: duplicate workout comment suppressed for competition %s.", competition.id)
-            continue
-        except Exception as exc:  # noqa: BLE001 - never block the caller
-            _flag_message_failure(message, config, exc, "message")
-            continue
-
-        config.last_posted_at = timezone.now()
-        config.messages_posted = (config.messages_posted or 0) + 1
-        # Surface an LLM outage (message still posted as static
-        # fallback); cleared again on the next successful generation.
-        config.last_error = llm_error or ""
-        config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
-        posted += 1
-        logger.info("Drill Instructor: stored message %s for competition %s", message.id, competition.id)
-
-        # Optional web push for the athlete. Sent before arcade (Echo
-        # mint / claim) so the workout comment is the one ping that
-        # lands; the group still gets the Echo line, the athlete does not
-        # get a second buzz 2 seconds later.
-        if config.send_push_on_activity:
-            _ping_user(
-                workout.user,
-                title=f"{competition.name} - {persona.name}",
-                body=body,
-                url=_feed_url(message),
-                icon=_persona_icon(persona),
-                competition_id=competition.id,
-                log_label="push",
-            )
 
     # Arcade rules (dunce, daily order, dog tags, Echo mint) run even
     # when the owner has workout comments switched off. After comments
@@ -303,6 +255,15 @@ def post_workout_comment(self, workout_id):
         ).select_related("competition")
         for arcade_config in arcade_configs:
             try:
+                _, created = DrillInstructorMessage.objects.get_or_create(
+                    config=arcade_config,
+                    workout=workout,
+                    kind=DrillInstructorMessage.KIND_ACTIVITY,
+                    defaults={"body": ""},
+                )
+                if created:
+                    from custom_user.point_recalc import bump_feed_generation
+                    bump_feed_generation([arcade_config.competition_id])
                 evaluate_workout_game(workout, arcade_config)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Drill Instructor: game eval failed for workout %s config %s: %s",
@@ -344,12 +305,14 @@ def post_test_message(self, config_id, message):
         record.error = str(exc)[:2000]
         try:
             record.save()
-        except Exception:  # pragma: no cover
-            pass
+        except Exception:  # noqa: BLE001 - pragma: no cover - best-effort audit row
+            logger.debug("Drill Instructor: could not resave failed test message", exc_info=True)
         return {"error": str(exc), "config_id": config_id}
 
 
-@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
+# Photo replies run the image-edit probe (up to 90s per candidate model, 3
+# candidates) plus the 180s edit itself, so 300s was not enough headroom.
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=600, soft_time_limit=540)
 def post_reply_reaction(self, reply_id):
     """Generate the coach's reaction to a participant's thread reply.
 
@@ -360,7 +323,6 @@ def post_reply_reaction(self, reply_id):
     Photo replies (the Coach page's photo button) also earn the roast
     remix when an image-edit model is configured.
     """
-    DrillInstructorConfig = apps.get_model("drill_instructor", "DrillInstructorConfig")
     DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
 
     try:
@@ -383,18 +345,31 @@ def post_reply_reaction(self, reply_id):
     root = reply.parent
     replier_first_name = reply.user.first_name or reply.user.username or "Athlete"
 
-    # A photo on a workout is not a chat turn. No in-feed coach reply:
-    # the original stays the feed answer, the remix is the activity
-    # backdrop and the hot-or-not card.
+    # A photo on a workout is not a chat turn. No in-feed coach reply
+    # while the remix lands: the original stays the feed answer, the
+    # remix is the activity backdrop and the hot-or-not card. If the
+    # remix does NOT land right away, the coach still answers in words
+    # and the edit is retried in the background - silence is the one
+    # outcome a posted picture must never get.
     if reply.kind == DrillInstructorMessage.KIND_PHOTO:
+        if root.workout_id and reply.image:
+            try:
+                from .echoes import process_echoes
+                process_echoes(root.workout, config)
+            except Exception:
+                logger.warning("Photo Echo processing failed for message %s", reply.pk, exc_info=True)
         roast_id = None
+        reaction_id = None
         if reply.image:
             roast_model = check_image_edit_capability()
             if roast_model:
                 roast_id = _post_photo_roast(
                     config, reply, roast_model, reply.image.path, parent=root,
                 )
-        return {"reply_id": reply_id, "reaction_id": None, "roast_id": roast_id}
+            if roast_id is None:
+                reaction_id = _post_photo_text_reaction(config, reply, parent=root)
+                _schedule_roast_retry(reply, root)
+        return {"reply_id": reply_id, "reaction_id": reaction_id, "roast_id": roast_id}
 
     # A photo reply: the coach gets the actual picture when the model can
     # see (checked live - the model could have changed since the post).
@@ -402,22 +377,10 @@ def post_reply_reaction(self, reply_id):
     if reply.image:
         reply_image_path = reply.image.path if check_vision_capability() else None
 
-    # Thread context (the few messages before this reply, oldest first)
-    # so the reaction can call back to the conversation.
-    prior = list(
-        root.replies
-        .filter(posted_at__lt=reply.posted_at)
-        .select_related("user")
-        .order_by("-posted_at")[:4]
-    )
-    history = [
-        {
-            "is_coach": m.user_id is None,
-            "author": (m.user.first_name or m.user.username) if m.user_id is not None else None,
-            "body": m.body,
-        }
-        for m in reversed(prior)
-    ]
+    # Thread context (everything in the thread before this reply, oldest
+    # first, clamped) so the reaction answers the conversation - open
+    # questions, earlier banter, who said what - not just the last line.
+    history = _thread_history(root, before=reply)
 
     user_prompt = build_reply_prompt(
         competition_name=config.competition.name,
@@ -460,10 +423,7 @@ def post_reply_reaction(self, reply_id):
     )
     try:
         message.save()
-        config.last_posted_at = timezone.now()
-        config.messages_posted = (config.messages_posted or 0) + 1
-        config.last_error = llm_error or ""
-        config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
+        _record_post(config, timezone.now(), error=llm_error or "")
         logger.info("Drill Instructor: stored reaction %s for reply %s", message.id, reply_id)
     except Exception as exc:  # noqa: BLE001 - never block the caller
         _flag_message_failure(message, config, exc, "message")
@@ -485,7 +445,7 @@ def post_reply_reaction(self, reply_id):
     return {"reply_id": reply_id, "reaction_id": message.id, "roast_id": None}
 
 
-@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=600, soft_time_limit=540)
 def post_photo_reaction(self, photo_id):
     """Generate the coach's reaction to a participant's photo post.
 
@@ -555,10 +515,7 @@ def post_photo_reaction(self, photo_id):
     )
     try:
         message.save()
-        config.last_posted_at = timezone.now()
-        config.messages_posted = (config.messages_posted or 0) + 1
-        config.last_error = llm_error or ""
-        config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
+        _record_post(config, timezone.now(), error=llm_error or "")
         logger.info("Drill Instructor: stored photo reaction %s for photo post %s", message.id, photo_id)
     except Exception as exc:  # noqa: BLE001 - never block the caller
         _flag_message_failure(message, config, exc, "message")
@@ -580,8 +537,137 @@ def post_photo_reaction(self, photo_id):
     roast_id = None
     if roast_model and photo.image:
         roast_id = _post_photo_roast(config, photo, roast_model, photo.image.path)
+    if roast_id is None and photo.image:
+        _schedule_roast_retry(photo, photo)
 
     return {"photo_id": photo_id, "reaction_id": message.id, "roast_id": roast_id}
+
+
+def _post_photo_text_reaction(config, photo, parent):
+    """The coach's spoken reaction to a picture, hung under ``parent``.
+
+    Used when the remix cannot be delivered right away so the poster is
+    never left staring at an unanswered photo. Returns the message id or
+    None (the failure is flagged on the config, never raised).
+    """
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+    persona = config.persona
+    author_first_name = photo.user.first_name or photo.user.username or "Athlete"
+    image_path = photo.image.path if (photo.image and check_vision_capability()) else None
+    history = _thread_history(parent, before=photo) if parent is not None and parent.pk != photo.pk else None
+    photo_prompt_kwargs = dict(
+        competition_name=config.competition.name,
+        author_first_name=author_first_name,
+        caption=photo.body or "",
+        thread_history=history,
+    )
+    body, llm_error = generate_message(
+        system_prompt=persona.system_prompt,
+        user_prompt=build_photo_prompt(can_see_image=image_path is not None, **photo_prompt_kwargs),
+        image_path=image_path,
+    )
+    if not body and image_path is not None:
+        body, llm_error = generate_message(
+            system_prompt=persona.system_prompt,
+            user_prompt=build_photo_prompt(can_see_image=False, **photo_prompt_kwargs),
+        )
+    if not body:
+        body = f"@{author_first_name} drops photo proof - {persona.name} approves. Now back to training!"
+
+    message = DrillInstructorMessage(
+        config=config,
+        kind=DrillInstructorMessage.KIND_REACTION,
+        parent=parent,
+        user=None,
+        body=body,
+        posted_at=timezone.now(),
+    )
+    try:
+        message.save()
+        _record_post(config, timezone.now())
+        logger.info("Drill Instructor: stored photo text reaction %s for photo %s", message.id, photo.id)
+    except Exception as exc:  # noqa: BLE001 - never block the caller
+        _flag_message_failure(message, config, exc, "message")
+        return None
+    if config.send_push_on_activity:
+        _ping_user(
+            photo.user,
+            title=f"{config.competition.name} - {persona.name}",
+            body=body,
+            url=_feed_url(photo),
+            icon=_persona_icon(persona),
+            competition_id=config.competition_id,
+            log_label="photo reaction push",
+        )
+    return message.id
+
+
+# Retry ladder for the remix: 1 min, 4 min, 15 min after the miss. Long
+# enough for a provider hiccup or a busy image endpoint to clear, short
+# enough that the picture is still "today's" when the roast lands.
+ROAST_RETRY_DELAYS = (60, 240, 900)
+
+
+def _schedule_roast_retry(photo, parent, attempt=1):
+    """Queue the next remix attempt; best-effort (a broker outage must not
+    fail the reaction that already landed)."""
+    if attempt > len(ROAST_RETRY_DELAYS):
+        return False
+    try:
+        retry_photo_roast.apply_async(
+            args=(photo.id, parent.id, attempt),
+            countdown=ROAST_RETRY_DELAYS[attempt - 1],
+        )
+        return True
+    except Exception:  # noqa: BLE001
+        logger.warning("Drill Instructor: could not queue roast retry for photo %s", photo.id, exc_info=True)
+        return False
+
+
+@app.task(bind=True, max_retries=0, time_limit=600, soft_time_limit=540)
+def retry_photo_roast(self, photo_id, parent_id, attempt=1):
+    """Deliver the remix the reaction task could not.
+
+    Re-probes the edit model ignoring a cached "no" (the usual reason the
+    first attempt was skipped), edits, and posts the roast under the
+    thread root. Gives up only after ``ROAST_RETRY_DELAYS`` is exhausted
+    or once a roast for this photo already exists.
+    """
+    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
+    try:
+        photo = (
+            DrillInstructorMessage.objects
+            .select_related("config", "config__competition", "config__persona", "user", "workout", "parent", "parent__workout")
+            .get(pk=photo_id, kind=DrillInstructorMessage.KIND_PHOTO)
+        )
+        parent = DrillInstructorMessage.objects.select_related("workout").get(pk=parent_id)
+    except DrillInstructorMessage.DoesNotExist:
+        return {"skipped": "photo_missing", "photo_id": photo_id}
+    if not photo.image:
+        return {"skipped": "no_image", "photo_id": photo_id}
+    already = DrillInstructorMessage.objects.filter(
+        parent=parent, kind=DrillInstructorMessage.KIND_REACTION, user=None,
+        posted_at__gte=photo.posted_at,
+    ).exclude(image="").exists()
+    if already:
+        return {"skipped": "roast_exists", "photo_id": photo_id}
+
+    config = photo.config
+    if not config.enabled:
+        return {"skipped": "coach_benched", "photo_id": photo_id}
+    roast_model = check_image_edit_capability(force=True)
+    roast_id = None
+    if roast_model:
+        roast_id = _post_photo_roast(config, photo, roast_model, photo.image.path, parent=parent)
+    else:
+        config.last_error = "photo roast skipped: no image-edit model available"
+        config.save(update_fields=["last_error", "updated_at"])
+    if roast_id is None:
+        rescheduled = _schedule_roast_retry(photo, parent, attempt + 1)
+        if not rescheduled:
+            logger.warning("Drill Instructor: giving up on the roast for photo %s after %s attempts", photo_id, attempt)
+        return {"photo_id": photo_id, "roast_id": None, "attempt": attempt, "rescheduled": rescheduled}
+    return {"photo_id": photo_id, "roast_id": roast_id, "attempt": attempt}
 
 
 def _workout_answered_to(photo, parent=None):
@@ -757,7 +843,14 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
     if not caption:
         caption = f"@{author_first_name} - I made you a poster. You're welcome."
 
-    from django.core.files.base import ContentFile
+    # The provider's bytes are untrusted: verify they decode as an image
+    # and re-encode (strips metadata) before they land in MEDIA_ROOT.
+    safe_image = _validated_generated_image(png_bytes, f"roast-{photo.id}.png")
+    if safe_image is None:
+        config.last_error = "photo roast skipped: provider returned an invalid image"
+        config.save(update_fields=["last_error", "updated_at"])
+        logger.info("Drill Instructor: photo roast for %s skipped: invalid image bytes", photo.id)
+        return None
 
     roast = DrillInstructorMessage(
         config=config,
@@ -767,12 +860,10 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
         body=caption,
         posted_at=timezone.now(),
     )
-    roast.image.save(f"roast-{photo.id}.png", ContentFile(png_bytes), save=False)
+    roast.image.save(safe_image.name, safe_image, save=False)
     try:
         roast.save()
-        config.last_posted_at = timezone.now()
-        config.messages_posted = (config.messages_posted or 0) + 1
-        config.save(update_fields=["last_posted_at", "messages_posted", "updated_at"])
+        _record_post(config, timezone.now())
         logger.info("Drill Instructor: posted photo roast %s for photo post %s", roast.id, photo.id)
         return roast.id
     except Exception as exc:  # noqa: BLE001 - the roast is nice-to-have
@@ -782,7 +873,26 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
         return None
 
 
-@app.task(bind=True, max_retries=0, time_limit=240)
+def _validated_generated_image(raw_bytes, name):
+    """Run image-provider output through the upload validator.
+
+    Returns a re-encoded upload (JPEG, or PNG when the source has alpha)
+    or None when the bytes are not a decodable image - callers treat
+    that as a failed edit.
+    """
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from workout_challenge.images import validate_and_reencode_image
+
+    try:
+        return validate_and_reencode_image(
+            SimpleUploadedFile(name, raw_bytes, content_type="image/png"),
+        )
+    except Exception:  # noqa: BLE001 - ValidationError or a Pillow failure; either way not an image
+        logger.warning("Drill Instructor: generated image %s rejected", name, exc_info=True)
+        return None
+
+
+@app.task(bind=True, max_retries=0, time_limit=600, soft_time_limit=540)
 def remix_echo_art(self, echo_id, uploaded_by_id=None):
     """Paint the holder's uploaded photo into Echo-specific trophy art.
 
@@ -790,8 +900,6 @@ def remix_echo_art(self, echo_id, uploaded_by_id=None):
     the original upload stays. Never raises into the worker loop.
     Skip if the Echo changed hands after the upload was queued.
     """
-    from django.core.files.base import ContentFile
-
     LegendEcho = apps.get_model("drill_instructor", "LegendEcho")
     try:
         echo = LegendEcho.objects.select_related(
@@ -845,392 +953,38 @@ def remix_echo_art(self, echo_id, uploaded_by_id=None):
     if not png_bytes:
         logger.info("Echo art remix skipped for %s: %s", echo_id, error)
         return {"echo": echo_id, "skipped": error or "edit failed"}
-    echo.image.save(f"echo-{echo.pk}.png", ContentFile(png_bytes), save=True)
+    safe_image = _validated_generated_image(png_bytes, f"echo-{echo.pk}.png")
+    if safe_image is None:
+        logger.info("Echo art remix skipped for %s: invalid image bytes", echo_id)
+        return {"echo": echo_id, "skipped": "invalid image"}
+    echo.image.save(safe_image.name, safe_image, save=True)
     logger.info("Echo art remixed for %s", echo_id)
     return {"echo": echo_id, "ok": True}
 
 
-def _competition_leader(competition):
-    """Return ``(leader_user, leader_points)`` for a competition, or
-    ``(None, 0)`` when nobody has scored yet."""
-    Points = apps.get_model("competition", "Points")
-
-    top = (
-        Points.objects
-        .filter(goal__competition=competition)
-        .values("workout__user")
-        .annotate(total=Sum("points_capped"))
-        .order_by("-total")
-        .first()
-    )
-    if not top:
-        return None, 0
-
-    CustomUser = apps.get_model("custom_user", "CustomUser")
-    leader = CustomUser.objects.filter(pk=top["workout__user"]).first()
-    return leader, top["total"] or 0
+def _retired_generic_task_result():
+    return {
+        "date": str(timezone.localdate()), "posted": 0, "skipped": 0,
+        "competitions": 0, "reason": "retired",
+    }
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
 def post_inactivity_nudges(self):
-    """Post one motivational nudge in every running competition that went
-    quiet today.
-
-    Scheduled daily via Celery beat. For every competition that is
-    currently running and has an enabled Drill Instructor with
-    ``nudge_on_inactivity``:
-      * if any participant logged a workout today -> skip
-      * if a nudge was already posted today -> skip (idempotent re-runs)
-      * otherwise generate one persona-voiced message addressed at the
-        whole group, store it in the audit log, and (when the config's
-        push toggle is on) push it to every subscribed participant.
-    """
-    Workout = apps.get_model("workouts", "Workout")
-    Competition = apps.get_model("competition", "Competition")
-    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
-
-    # Overlap guard: a slow first run must not double-post today's nudges.
-    if is_task_already_executing("post_inactivity_nudges"):
-        return "Task already executing. Skipping."
-
-    today = timezone.localdate()
-    competitions = (
-        Competition.objects
-        .filter(
-            start_date__lte=today,
-            end_date__gte=today,
-            drill_instructor__enabled=True,
-            drill_instructor__nudge_on_inactivity=True,
-        )
-        .select_related("drill_instructor", "drill_instructor__persona")
-        .prefetch_related("user")
-    )
-
-    posted = 0
-    skipped = 0
-    for competition in competitions:
-        config = competition.drill_instructor
-        persona = config.persona
-        participants = list(competition.user.all())
-        if not participants:
-            skipped += 1
-            continue
-
-        # Any workout by any participant today? Then the group is active
-        # and no nudge is needed.
-        if Workout.objects.filter(user__in=participants, start_datetime__date=today).exists():
-            skipped += 1
-            continue
-
-        # One nudge per competition per day - re-running the beat task
-        # must not spam the feed.
-        if config.messages.filter(kind=DrillInstructorMessage.KIND_NUDGE, posted_at__date=today).exists():
-            skipped += 1
-            continue
-
-        leader, leader_points = _competition_leader(competition)
-        user_prompt = build_inactivity_prompt(
-            competition_name=competition.name,
-            participant_first_names=[(u.first_name or u.username or "Athlete") for u in participants],
-            leader_first_name=(leader.first_name or leader.username) if leader else None,
-            leader_points=float(leader_points) if leader_points else None,
-            days_left=(competition.end_date - today).days,
-            previous_messages=_recent_bodies(config),
-        )
-
-        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
-        if not body:
-            body = (
-                f"{persona.name}: quiet day in {competition.name} - "
-                "nobody logged a workout. Who breaks the silence?"
-            )
-
-        message = DrillInstructorMessage(
-            config=config,
-            kind=DrillInstructorMessage.KIND_NUDGE,
-            workout=None,
-            body=body,
-            posted_at=timezone.now(),
-        )
-        try:
-            message.save()
-            config.last_posted_at = timezone.now()
-            config.messages_posted = (config.messages_posted or 0) + 1
-            config.last_error = llm_error or ""
-            config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
-            posted += 1
-            logger.info("Drill Instructor: stored inactivity nudge %s for competition %s", message.id, competition.id)
-        except Exception as exc:  # noqa: BLE001 - never block the caller
-            _flag_message_failure(message, config, exc, "message")
-            continue
-
-        # Optional web push to every participant (the nudge targets the
-        # whole group, not a single athlete).
-        if config.send_push_on_activity:
-            for participant in participants:
-                _ping_user(
-                    participant,
-                    title=f"{competition.name} - {persona.name}",
-                    body=body,
-                    url=_feed_url(message),
-                    icon=_persona_icon(persona),
-                    competition_id=competition.id,
-                    log_label="nudge push",
-                )
-
-    return {"date": str(today), "posted": posted, "skipped": skipped, "competitions": competitions.count()}
-
-
-# Random group pushes land in waking hours only - nobody wants the
-# sergeant yelling at 03:00. One pep talk per day: two in the same
-# breath (or a late beat catching up both slots) felt like spam.
-PUSH_WINDOW_START_HOUR = 7
-PUSH_WINDOW_END_HOUR = 22
-PUSH_MAX_PER_DAY = 1
-
-
-def _draw_push_plan():
-    """Draw today's random push slot: exactly one, inside waking hours.
-    Returns a one-item list of "HH:MM" so the stored plan shape stays
-    a list (older days may still have two slots on disk)."""
-    start = PUSH_WINDOW_START_HOUR * 60
-    end = PUSH_WINDOW_END_HOUR * 60
-    slot = random.randrange(start, end)
-    return [f"{slot // 60:02d}:{slot % 60:02d}"]
+    # Preserve the Celery name so already-queued work becomes a safe no-op.
+    return _retired_generic_task_result()
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
 def post_random_pushes(self):
-    """Post the instructor's random daily pep talk in every running
-    competition that has it enabled (``random_push``).
-
-    Scheduled every 30 min via Celery beat. Each competition draws its
-    own random slot once per day (stored on the config), inside waking
-    hours (07:00-22:00). When that slot is due and not yet posted,
-    generate one persona-voiced message addressed at the whole group,
-    store it in the audit log, and (when the config's push toggle is on)
-    push it to every subscribed participant. Re-runs are idempotent: the
-    plan is drawn only once per day and already-posted slots are counted
-    from the audit log. At most one pep talk is posted per beat tick, so
-    a late start never dumps two pings onto the lock screen together.
-    """
-    Workout = apps.get_model("workouts", "Workout")
-    Competition = apps.get_model("competition", "Competition")
-    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
-
-    # Beat fires every 30 min and LLM calls are slow: without the guard
-    # an overlapping second run would double-post the same day's slots.
-    if is_task_already_executing("post_random_pushes"):
-        return "Task already executing. Skipping."
-
-    now = timezone.localtime()
-    today = now.date()
-    now_hhmm = f"{now.hour:02d}:{now.minute:02d}"
-    competitions = (
-        Competition.objects
-        .filter(
-            start_date__lte=today,
-            end_date__gte=today,
-            drill_instructor__enabled=True,
-            drill_instructor__random_push=True,
-        )
-        .select_related("drill_instructor", "drill_instructor__persona")
-        .prefetch_related("user")
-    )
-
-    posted = 0
-    skipped = 0
-    for competition in competitions:
-        config = competition.drill_instructor
-        persona = config.persona
-        participants = list(competition.user.all())
-        if not participants:
-            skipped += 1
-            continue
-
-        # Draw today's random slot once, then reuse it all day.
-        if config.push_plan_date != today:
-            config.push_plan = _draw_push_plan()
-            config.push_plan_date = today
-            config.save(update_fields=["push_plan", "push_plan_date", "updated_at"])
-        plan = config.push_plan if isinstance(config.push_plan, list) else []
-
-        # Hard cap + idempotency: what already went out today stays counted.
-        # Cap at one per beat too, so an old two-slot plan (or a late
-        # first run of the day) cannot fire two pings at once.
-        posted_today = config.messages.filter(kind=DrillInstructorMessage.KIND_PUSH, posted_at__date=today).count()
-        due_slots = [slot for slot in plan if slot <= now_hhmm]
-        remaining = min(len(due_slots), PUSH_MAX_PER_DAY, 1) - posted_today
-        if remaining <= 0:
-            skipped += 1
-            continue
-
-        leader, leader_points = _competition_leader(competition)
-
-        for _ in range(remaining):
-            # History is rebuilt per message so a same-run second push
-            # sees the first one (and won't echo it).
-            user_prompt = build_group_push_prompt(
-                competition_name=competition.name,
-                participant_first_names=[(u.first_name or u.username or "Athlete") for u in participants],
-                leader_first_name=(leader.first_name or leader.username) if leader else None,
-                leader_points=float(leader_points) if leader_points else None,
-                days_left=(competition.end_date - today).days,
-                workouts_today=Workout.objects.filter(user__in=participants, start_datetime__date=today).count(),
-                previous_messages=_recent_bodies(config),
-            )
-            body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
-            if not body:
-                body = (
-                    f"{persona.name}: checking in on {competition.name} - "
-                    "the day isn't over yet. Get a workout in!"
-                )
-
-            message = DrillInstructorMessage(
-                config=config,
-                kind=DrillInstructorMessage.KIND_PUSH,
-                workout=None,
-                body=body,
-                posted_at=timezone.now(),
-            )
-            try:
-                message.save()
-                config.last_posted_at = timezone.now()
-                config.messages_posted = (config.messages_posted or 0) + 1
-                config.last_error = llm_error or ""
-                config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
-                posted += 1
-                logger.info("Drill Instructor: stored random push %s for competition %s", message.id, competition.id)
-            except Exception as exc:  # noqa: BLE001 - never block the caller
-                _flag_message_failure(message, config, exc, "message")
-                break
-
-            # Optional web push to every participant (the pep talk targets
-            # the whole group, not a single athlete). Same tag as other
-            # coach pings so a second event replaces instead of stacking.
-            if config.send_push_on_activity:
-                for participant in participants:
-                    _ping_user(
-                        participant,
-                        title=f"{competition.name} - {persona.name}",
-                        body=body,
-                        url=_feed_url(message),
-                        icon=_persona_icon(persona),
-                        competition_id=competition.id,
-                        log_label="random push notification",
-                    )
-
-    return {"date": str(today), "posted": posted, "skipped": skipped, "competitions": competitions.count()}
-
-
-# Earliest hour the daily briefing may go out - it is a MORNING post
-# (conditions for the day), not a random-time ping.
-BRIEFING_NOT_BEFORE_HOUR = 7
+    # Preserve the Celery name so already-queued work becomes a safe no-op.
+    return _retired_generic_task_result()
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
 def post_daily_prompts(self):
-    """Post the owner-defined daily briefing in every running competition
-    whose coach has a ``daily_prompt`` configured.
-
-    Scheduled every 30 min via Celery beat. The briefing is a morning
-    post: it goes out once per day, the first tick at/after 07:00 local.
-    The admin writes the topic in their own words ("snow level at
-    Corviglia"); the coach turns it into a persona-voiced post. Idempotent:
-    one KIND_BRIEFING message per config per day, counted from the audit
-    log, so re-runs and late starts never double-post.
-    """
-    Competition = apps.get_model("competition", "Competition")
-    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
-
-    if is_task_already_executing("post_daily_prompts"):
-        return "Task already executing. Skipping."
-
-    now = timezone.localtime()
-    today = now.date()
-    if now.hour < BRIEFING_NOT_BEFORE_HOUR:
-        return {"date": str(today), "posted": 0, "skipped": 0, "note": "before morning window"}
-
-    competitions = (
-        Competition.objects
-        .filter(
-            start_date__lte=today,
-            end_date__gte=today,
-            drill_instructor__enabled=True,
-        )
-        .exclude(drill_instructor__daily_prompt="")
-        .select_related("drill_instructor", "drill_instructor__persona")
-        .prefetch_related("user")
-    )
-
-    posted = 0
-    skipped = 0
-    for competition in competitions:
-        config = competition.drill_instructor
-        topic = (config.daily_prompt or "").strip()
-        if not topic:
-            skipped += 1
-            continue
-        if config.messages.filter(
-            kind=DrillInstructorMessage.KIND_BRIEFING, posted_at__date=today,
-        ).exists():
-            skipped += 1
-            continue
-
-        persona = config.persona
-        # The briefing is a continuing arc: hand the model its previous
-        # briefings on this topic (newest first) so it can evolve its
-        # take instead of repeating it.
-        previous_briefings = list(
-            config.messages.filter(kind=DrillInstructorMessage.KIND_BRIEFING)
-            .order_by("-posted_at")
-            .values_list("body", flat=True)[:4]
-        )
-        user_prompt = build_daily_briefing_prompt(
-            competition_name=competition.name,
-            topic=topic,
-            previous_briefings=previous_briefings,
-        )
-        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
-        if not body:
-            body = (
-                f"{persona.name}: daily briefing time in {competition.name} - "
-                f"today's topic is \"{topic[:180]}\", but my notes are missing. "
-                "Make the day count anyway!"
-            )
-
-        message = DrillInstructorMessage(
-            config=config,
-            kind=DrillInstructorMessage.KIND_BRIEFING,
-            workout=None,
-            body=body,
-            posted_at=timezone.now(),
-        )
-        try:
-            message.save()
-            config.last_posted_at = timezone.now()
-            config.messages_posted = (config.messages_posted or 0) + 1
-            config.last_error = llm_error or ""
-            config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
-            posted += 1
-            logger.info("Drill Instructor: stored daily briefing %s for competition %s", message.id, competition.id)
-        except Exception as exc:  # noqa: BLE001 - never block the caller
-            _flag_message_failure(message, config, exc, "message")
-            continue
-
-        if config.send_push_on_activity:
-            for participant in competition.user.all():
-                _ping_user(
-                    participant,
-                    title=f"{competition.name} - {persona.name}",
-                    body=body,
-                    url=_feed_url(message),
-                    icon=_persona_icon(persona),
-                    competition_id=competition.id,
-                    log_label="daily briefing push",
-                )
-
-    return {"date": str(today), "posted": posted, "skipped": skipped, "competitions": competitions.count()}
+    # Preserve the Celery name so already-queued work becomes a safe no-op.
+    return _retired_generic_task_result()
 
 
 def _post_coach_line(config, kind, body, llm_error="", send_push=True, image_field=None):
@@ -1252,10 +1006,7 @@ def _post_coach_line(config, kind, body, llm_error="", send_push=True, image_fie
             message.image.save(f"feed-{config.pk}-{base}", ContentFile(data), save=True)
         except Exception as exc:  # noqa: BLE001 - the line still belongs in the feed
             logger.info("Coach line image skipped: %s", exc)
-    config.last_posted_at = timezone.now()
-    config.messages_posted = (config.messages_posted or 0) + 1
-    config.last_error = llm_error or ""
-    config.save(update_fields=["last_posted_at", "messages_posted", "last_error", "updated_at"])
+    _record_post(config, timezone.now(), error=llm_error or "")
     if send_push and config.send_push_on_activity:
         persona = config.persona
         for participant in config.competition.user.all():
@@ -1269,6 +1020,79 @@ def _post_coach_line(config, kind, body, llm_error="", send_push=True, image_fie
                 log_label=f"{kind} push",
             )
     return message
+
+
+@app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=120)
+def post_material_rank_gap_change(self, competition_id, user_id):
+    """Post one coach line after a score recap materially changes a rank gap."""
+    from competition.stats import (
+        _RANK_GAP_CACHE_TTL,
+        _rank_gap_changed,
+        _rank_gap_state,
+        get_competition_rank_summary,
+    )
+    from .models import DrillInstructorMessage, DrillInstructorConfig
+
+    summary = get_competition_rank_summary(
+        competition_id, user_id, track_gap_change=False,
+    )
+    if summary is None:
+        return {"posted": False, "reason": "competition_missing"}
+
+    state_key = f"coach-rank-gap:{competition_id}:{user_id}"
+    lock_key = f"coach-rank-gap-lock:{competition_id}:{user_id}"
+    if not cache.add(lock_key, True, timeout=300):
+        return {"posted": False, "reason": "already_running"}
+
+    try:
+        current = _rank_gap_state(summary)
+        previous = cache.get(state_key)
+        if previous is None:
+            cache.set(state_key, current, timeout=_RANK_GAP_CACHE_TTL)
+            return {"posted": False, "reason": "baseline"}
+        if not _rank_gap_changed(previous, current):
+            return {"posted": False, "reason": "not_material"}
+
+        today = timezone.localdate()
+        config = (
+            DrillInstructorConfig.objects.select_related("persona", "competition")
+            .filter(
+                competition_id=competition_id,
+                enabled=True,
+                competition__start_date__lte=today,
+                competition__end_date__gte=today,
+            )
+            .first()
+        )
+        if config is None:
+            # Do not announce old movement if a coach is enabled later.
+            cache.set(state_key, current, timeout=_RANK_GAP_CACHE_TTL)
+            return {"posted": False, "reason": "coach_unavailable"}
+
+        rival = summary.get("rival")
+        places = summary.get("places_to_rival")
+        rank = summary.get("my_rank")
+        if rival and places is not None:
+            unit = "place" if places == 1 else "places"
+            body = (
+                f"The standings shifted. @{rival['username']} is your closest rival, "
+                f"{places} {unit} ahead. Home has your updated next step."
+            )
+        elif rank is not None:
+            body = f"The standings shifted. Your current rank is #{rank}. Home has your updated next step."
+        else:
+            body = "The standings shifted. Check Home for an updated challenge next step."
+
+        _post_coach_line(
+            config,
+            DrillInstructorMessage.KIND_GAP,
+            body,
+            send_push=True,
+        )
+        cache.set(state_key, current, timeout=_RANK_GAP_CACHE_TTL)
+        return {"posted": True, "body": body}
+    finally:
+        cache.delete(lock_key)
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=120)
@@ -1334,6 +1158,7 @@ def issue_daily_orders(self):
     )
     issued = 0
     skipped = 0
+    failed = 0
     for competition in competitions:
         config = competition.drill_instructor
         if DailyOrder.objects.filter(config=config, date=today).exists():
@@ -1361,96 +1186,41 @@ def issue_daily_orders(self):
             issued += 1
         except Exception as exc:  # noqa: BLE001
             logger.warning("Drill Instructor: daily order post failed for %s: %s", competition.id, exc)
-            issued += 1
-    return {"date": str(today), "issued": issued, "skipped": skipped}
+            # The DailyOrder row exists (the game runs), only the bark is
+            # missing - report it as failed, not issued.
+            failed += 1
+    return {"date": str(today), "issued": issued, "skipped": skipped, "failed": failed}
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=300)
 def close_daily_orders(self):
-    """Evening sigh at a field that ignored today's order."""
+    """Close today's orders without publicly identifying non-completers.
+
+    ``failed_announced`` is retained as the persisted idempotency marker for
+    older rows/clients. It now means the order has been closed; no public
+    message or push is generated for individual completion status.
+    """
     if is_task_already_executing("close_daily_orders"):
         return "Task already executing. Skipping."
 
-    from .llm_client import generate_message
     DailyOrder = apps.get_model("drill_instructor", "DailyOrder")
-    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
-
     today = timezone.localdate()
-    orders = (
-        DailyOrder.objects.filter(date=today, failed_announced=False)
-        .select_related("config", "config__competition", "config__persona")
-        .prefetch_related("completed_by", "config__competition__user")
-    )
-    sighed = 0
-    for order in orders:
-        config = order.config
-        members = list(config.competition.user.all()) if config.enabled else []
-        done_ids = set(order.completed_by.values_list("id", flat=True))
-        slackers = [u for u in members if u.id not in done_ids]
-        order.failed_announced = True
-        order.save(update_fields=["failed_announced"])
-        if not config.enabled or not slackers or len(done_ids) == len(members):
-            continue
-        names = ", ".join(f"@{(u.first_name or u.username)}" for u in slackers[:6])
-        persona = config.persona
-        prompt = (
-            f"Competition: {config.competition.name}. Today's order was: \"{order.brief}\". "
-            f"These athletes did NOT complete it: {names}. "
-            "Write one short public sigh (max 220 chars) in your persona's voice. "
-            "Name the slackers with their @FirstName tokens. Write it now."
-        )
-        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=prompt)
-        if not body:
-            body = f"{persona.name}: {names} — the order still stands and you ignored it."
-        try:
-            _post_coach_line(config, DrillInstructorMessage.KIND_SIGH, body, llm_error or "")
-            sighed += 1
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Drill Instructor: order sigh failed for %s: %s", config.id, exc)
-    return {"date": str(today), "sighed": sighed}
+    orders = DailyOrder.objects.filter(date=today, failed_announced=False)
+    closed = orders.update(failed_announced=True)
+    return {"date": str(today), "sighed": 0, "closed": closed}
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=180)
 def assign_dunces(self):
-    """Midnight: last on the board wears the megaphone until they log."""
+    """Retire public last-place crowning and clear any persisted legacy crowns."""
     if is_task_already_executing("assign_dunces"):
         return "Task already executing. Skipping."
 
-    from .game import crown_dunce, pick_last_place
-    from .llm_client import generate_message
-    Competition = apps.get_model("competition", "Competition")
-    DrillInstructorMessage = apps.get_model("drill_instructor", "DrillInstructorMessage")
-
+    Config = apps.get_model("drill_instructor", "DrillInstructorConfig")
     today = timezone.localdate()
-    competitions = (
-        Competition.objects
-        .filter(start_date__lte=today, end_date__gte=today, drill_instructor__enabled=True)
-        .select_related("drill_instructor", "drill_instructor__persona")
-        .prefetch_related("user")
+    cleared = Config.objects.filter(dunce__isnull=False).update(
+        dunce=None,
+        dunce_since=None,
+        updated_at=timezone.now(),
     )
-    crowned = 0
-    for competition in competitions:
-        config = competition.drill_instructor
-        last = pick_last_place(competition)
-        if last is None:
-            continue
-        changed = crown_dunce(config, last)
-        if not changed:
-            continue
-        persona = config.persona
-        name = last.first_name or last.username or "Athlete"
-        prompt = (
-            f"Competition: {competition.name}. @{name} is last on the board. "
-            "You are hanging the dunce megaphone on them until they log a workout. "
-            "Write one short public crowning (max 220 chars) in your persona's voice. Write it now."
-        )
-        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=prompt)
-        if not body:
-            body = f"{persona.name}: @{name} wears the megaphone until they log. Last place is a costume now."
-        try:
-            _post_coach_line(config, DrillInstructorMessage.KIND_DUNCE, body, llm_error or "")
-            crowned += 1
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Drill Instructor: dunce post failed for %s: %s", competition.id, exc)
-            crowned += 1
-    return {"date": str(today), "crowned": crowned}
+    return {"date": str(today), "crowned": 0, "cleared": cleared}

@@ -23,6 +23,7 @@ from custom_user.jwt_views import (
 )
 from rest_framework.routers import DefaultRouter
 from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, CompetitionStatsSummaryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView, PointsFactorsView
+from competition.expedition_api import ExpeditionShortcutVoteView, ExpeditionView
 from workouts.views import WorkoutViewSet
 from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, ResetStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, EmailVerifyConfirmView, EmailVerifyResendView, LinkGarminView, LinkGarminMfaView, UnlinkGarminView, SyncGarminView, LinkHealthView, UnlinkHealthView, SyncHealthView
 from custom_user.link_https import reject_insecure_link
@@ -53,6 +54,11 @@ SecureLinkHealthView = _https_required(LinkHealthView)
 # the historical Throttled* names.
 ThrottledTokenObtainPairView = CookieTokenObtainPairView
 ThrottledTokenRefreshView = CookieTokenRefreshView
+from drill_instructor.comeback import (
+    ComebackBenchView,
+    ComebackSupportOfferCreateView,
+    ComebackSupportOfferRespondView,
+)
 from drill_instructor.views import (
     DrillInstructorPersonaViewSet,
     DrillInstructorConfigViewSet,
@@ -84,6 +90,11 @@ router.register(r'drill-instructor/echoes', LegendEchoViewSet, basename='drill-e
 urlpatterns = [
     path('api/', include([
         path('', include(router.urls)),
+        path('competition/<int:competition_id>/expedition/', ExpeditionView.as_view(), name='competition-expedition'),
+        path('competition/<int:competition_id>/expedition/shortcut-vote/', ExpeditionShortcutVoteView.as_view(), name='competition-expedition-shortcut-vote'),
+        path('drill-instructor/comeback/', ComebackBenchView.as_view(), name='comeback-bench'),
+        path('drill-instructor/comeback/offers/', ComebackSupportOfferCreateView.as_view(), name='comeback-support-offers'),
+        path('drill-instructor/comeback/offers/<int:offer_id>/respond/', ComebackSupportOfferRespondView.as_view(), name='comeback-support-offer-respond'),
         path('stats/<int:competition>/', CompetitionStatsQueryView.as_view(), name='competition-stats'),
         path('stats/<int:competition>/summary/', CompetitionStatsSummaryView.as_view(), name='competition-stats-summary'),
         path('feed/<int:competition>/', FeedQueryView.as_view(), name='competition-feed'),

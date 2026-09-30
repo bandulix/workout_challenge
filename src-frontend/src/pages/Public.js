@@ -29,6 +29,7 @@ import {readLastPath} from "../utils/lastPath";
 import {hasNativeRefreshHint} from "../utils/secureRefreshStore";
 import {clearBodyScrollLock} from "../utils/overlay";
 import {GlassSelect} from "../forms/basicComponents";
+import {GENDER_OPTIONS} from "../utils/enums";
 
 
 
@@ -481,11 +482,7 @@ function RegisterPage() {
                                     placeholder="Please choose"
                                     onChange={setGender}
                                     includeBlank={false}
-                                    options={[
-                                        {value: "M", label: "Male"},
-                                        {value: "F", label: "Female"},
-                                        {value: "O", label: "Other"},
-                                    ]}
+                                    options={GENDER_OPTIONS}
                                 />
                             </div>
                             <div className="mb-6">

@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from "react";
-import {Camera, Music2} from "lucide-react";
+import {Camera} from "lucide-react";
 import {
     useAddPersonaMutation,
     useDeletePersonaMutation,
@@ -23,7 +23,6 @@ import {confirmAction} from "../utils/dialogs";
 import {toast} from "../utils/toasts";
 import {errText} from "../utils/errors";
 import {clearBodyScrollLock} from "../utils/overlay";
-import {previewMidiBytes, startMidiBed, stopMidiBed, unlockMidiBed} from "../utils/midiBed";
 
 // Anyone can create a roaster of their own; staff still manage the
 // built-in library. The API rejects edits of someone else's persona.
@@ -60,9 +59,6 @@ export function PersonaEditModal({persona, setModalState}) {
     const [pictureFile, setPictureFile] = useState(null);
     const [picturePreview, setPicturePreview] = useState(null);
     const [pictureError, setPictureError] = useState(null);
-    const [midiFile, setMidiFile] = useState(null);
-    const [clearMidi, setClearMidi] = useState(false);
-    const [previewOn, setPreviewOn] = useState(false);
     const fileInput = useRef(null);
     // Full-body reference photos, slots 1-3 (custom coaches only).
     const [bodyFiles, setBodyFiles] = useState({1: null, 2: null, 3: null});
@@ -93,9 +89,6 @@ export function PersonaEditModal({persona, setModalState}) {
             setValues(loaded);
             setInitialValues(loaded);
             setPicturePreview(persona.profile_picture || null);
-            setMidiFile(null);
-            setClearMidi(false);
-            setPreviewOn(false);
             setBodyFiles({1: null, 2: null, 3: null});
             setBodyClears({1: false, 2: false, 3: false});
             setBodyError(null);
@@ -104,7 +97,6 @@ export function PersonaEditModal({persona, setModalState}) {
                 2: persona.body_picture_2 || null,
                 3: persona.body_picture_3 || null,
             });
-            stopMidiBed();
         }
     }, [persona]);
 
@@ -114,24 +106,6 @@ export function PersonaEditModal({persona, setModalState}) {
             if (picturePreview && picturePreview.startsWith("blob:")) URL.revokeObjectURL(picturePreview);
         };
     }, [picturePreview]);
-
-    useEffect(() => () => { stopMidiBed(); }, []);
-
-    async function playMidiPreview() {
-        unlockMidiBed();
-        try {
-            if (midiFile) {
-                await previewMidiBytes(await midiFile.arrayBuffer());
-            } else if (persona?.midi) {
-                await startMidiBed(persona.midi, {preview: true});
-            } else {
-                return;
-            }
-            setPreviewOn(true);
-        } catch {
-            setPreviewOn(false);
-        }
-    }
 
     useEffect(() => {
         if (addError) setFormError(errText(addError, "Could not create the coach. Please try again."));
@@ -195,15 +169,13 @@ export function PersonaEditModal({persona, setModalState}) {
         // With a custom picture on board the payload goes as multipart
         // form data; otherwise plain JSON (the slice sets the headers).
         let payload;
-        const needsMultipart = Boolean(pictureFile || midiFile || clearMidi || anyBodyChange);
+        const needsMultipart = Boolean(pictureFile || anyBodyChange);
         if (needsMultipart) {
             payload = new FormData();
             for (const [key, value] of Object.entries(values)) {
                 payload.append(key, value ?? "");
             }
             if (pictureFile) payload.append("profile_picture_upload", pictureFile);
-            if (midiFile) payload.append("midi_upload", midiFile);
-            if (clearMidi && !midiFile) payload.append("clear_midi", "true");
             for (const slot of [1, 2, 3]) {
                 if (bodyFiles[slot]) payload.append(`body_picture_${slot}_upload`, bodyFiles[slot]);
                 else if (bodyClears[slot]) payload.append(`clear_body_picture_${slot}`, "true");
@@ -238,7 +210,7 @@ export function PersonaEditModal({persona, setModalState}) {
     return (
         <Modal title={isNew ? "New coach" : "Edit coach"} setShowModal={setModalState}
                isLoading={addLoading || updateLoading}
-               confirmDiscard={useFormDirty(values, initialValues) || Boolean(pictureFile) || Boolean(midiFile) || anyBodyChange}>
+               confirmDiscard={useFormDirty(values, initialValues) || Boolean(pictureFile) || anyBodyChange}>
             {/* identity preview - click the picture to upload a custom one */}
             <div className="flex items-center gap-4 px-4 pb-2">
                 <button type="button" onClick={() => fileInput.current?.click()}
@@ -357,61 +329,6 @@ export function PersonaEditModal({persona, setModalState}) {
                                     style={{backgroundColor: c}}/>
                         ))}
                     </div>
-                </div>
-
-                <div className="px-4 w-full">
-                    <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
-                        Coach music{fieldErrors.midi_upload && <span className="text-red-600 font-normal italic"> ({fieldErrors.midi_upload})</span>}
-                    </label>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                        Looping MIDI bed while this coach is on duty. Mute with Sound. Files on{" "}
-                        <a className="text-volt-700 dark:text-volt-300 hover:underline font-semibold"
-                           href="https://bitmidi.com/" target="_blank" rel="noopener noreferrer">BitMidi</a>.
-                    </p>
-                    <input
-                        type="file"
-                        accept=".mid,.midi,audio/midi,audio/mid"
-                        aria-label="Upload MIDI"
-                        className="block w-full text-sm text-gray-600 dark:text-gray-300 file:mr-3 file:rounded-full file:border-0 file:bg-volt-400 file:px-4 file:py-2 file:text-xs file:font-bold file:uppercase file:tracking-wide file:text-ink-950"
-                        onChange={(e) => {
-                            const file = e.target.files?.[0] || null;
-                            e.target.value = "";
-                            setMidiFile(file);
-                            if (file) setClearMidi(false);
-                            setPreviewOn(false);
-                            stopMidiBed();
-                        }}
-                    />
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {midiFile
-                            ? midiFile.name
-                            : (!clearMidi && persona?.midi ? "A MIDI bed is set for this coach." : "No MIDI file yet.")}
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-3">
-                        {(midiFile || (persona?.midi && !clearMidi)) && (
-                            <button type="button"
-                                    onClick={() => previewOn ? (stopMidiBed(), setPreviewOn(false)) : playMidiPreview()}
-                                    className="inline-flex items-center gap-1 text-xs font-semibold text-volt-700 dark:text-volt-300 hover:underline">
-                                <Music2 className="h-3.5 w-3.5"/>
-                                {previewOn ? "Stop preview" : "Play preview"}
-                            </button>
-                        )}
-                        {(persona?.midi || midiFile) && (
-                            <button type="button"
-                                    onClick={() => {
-                                        setMidiFile(null);
-                                        setClearMidi(true);
-                                        setPreviewOn(false);
-                                        stopMidiBed();
-                                    }}
-                                    className="text-xs font-semibold text-red-500 dark:text-red-400 hover:underline">
-                                Remove
-                            </button>
-                        )}
-                    </div>
-                    {clearMidi && !midiFile && (
-                        <p className="text-xs text-gray-500 mt-1">MIDI will be removed when you save.</p>
-                    )}
                 </div>
 
                 <div className="px-4 w-full">

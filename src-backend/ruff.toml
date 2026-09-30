@@ -1,0 +1,28 @@
+# Ruff configuration for the backend. CI runs `ruff check .` from this
+# directory; keep the rule set small and meaningful - it is a gate, not a
+# style guide.
+target-version = "py312"
+line-length = 120
+extend-exclude = ["db_migrations", "*/migrations"]
+
+[lint]
+# E9: syntax/IO errors, F: pyflakes (unused imports, undefined names),
+# B: bugbear (real bug patterns), S: bandit security checks.
+select = ["E9", "F", "B", "S"]
+ignore = [
+    # Non-cryptographic randomness is used for coach wording, dummy data
+    # and jitter only. Anything security-relevant uses `secrets`.
+    "S311",
+    # Loop variables used for counting/unpacking only.
+    "B007",
+]
+
+[lint.per-file-ignores]
+# settings.py is a thin overlay on settings_base via star import.
+"workout_challenge/settings.py" = ["F403", "F405"]
+"workout_challenge/test_settings.py" = ["F403", "F405"]
+# Tests: asserts, fixture passwords, and broad excepts are the norm.
+"*/tests.py" = ["S101", "S105", "S106", "S107", "S110", "B011", "B017", "F841"]
+"*/test_*.py" = ["S101", "S105", "S106", "S107", "S110", "B011", "B017", "F841"]
+"workout_challenge/tests.py" = ["S101", "S105", "S106", "S107", "S110", "B011", "B017", "F841"]
+"custom_user/management/commands/add_dummy_data.py" = ["S106", "S105"]

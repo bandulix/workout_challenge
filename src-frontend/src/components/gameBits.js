@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from "react";
-import {ChevronLeft, ChevronRight, Megaphone, ScrollText, Share2, Trophy, X, Zap} from "lucide-react";
+import {ChevronLeft, ChevronRight, ScrollText, Share2, Trophy, X, Zap} from "lucide-react";
 import {useProtectedImage} from "../utils/protectedMedia";
 import {EmptyState, PaneHead, paneCardClass} from "./uiBits";
 import {OverlaySheet} from "../forms/basicComponents";
@@ -10,10 +10,10 @@ import {ActivityReactProvider, ActivityStampButton, ActivityStampIcons} from "./
 
 export const TAG_ICON = {
     first_blood: "🩸",
-    ghost_killer: "👻",
+    ghost_killer: "🌱",
     photogenic: "📸",
     never_missed_monday: "📅",
-    survived_the_dunce: "📣",
+    survived_the_dunce: "💪",
     echo_immortal: "🜲",
     echo_slayer: "⚔️",
 };
@@ -589,17 +589,6 @@ export function DogTagRow({tags}) {
                 </OverlaySheet>
             )}
         </>
-    );
-}
-
-export function DunceBadge({show, size = 18}) {
-    if (!show) return null;
-    return (
-        <span title="Dunce megaphone — last on the board until they log"
-              className="absolute -top-1 -left-1 z-10 h-6 w-6 rounded-full bg-ink-950 border border-volt-400 text-volt-400 flex items-center justify-center shadow-glow-volt"
-              style={{width: size, height: size}}>
-            <Megaphone className="h-3 w-3"/>
-        </span>
     );
 }
 

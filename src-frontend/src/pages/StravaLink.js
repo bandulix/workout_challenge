@@ -105,8 +105,14 @@ export function ReturnStravaLink() {
     const searchState = query.get('state'); // null if not present
 
     const [errorMsg, setErrorMsg] = React.useState(null);
+    // The OAuth code is single-use: guard against StrictMode's double
+    // effect invocation / remounts redeeming it twice (second call fails
+    // and would overwrite a successful link with an error).
+    const started = React.useRef(false);
 
     useEffect(() => {
+        if (started.current) return;
+        started.current = true;
         if (!(linkStravaIsLoading || linkStravaIsSuccess || linkStravaIsError)) {
             if (searchCode === null) {
                 // send user back to set up link page

@@ -11,6 +11,7 @@ import os
 from workout_challenge.sec_hardening import (
     assert_distinct_operational_secrets,
     warn_cleartext_public_bind,
+    warn_debug_with_public_hosts,
 )
 
 # Host bind for the published app port (compose APP_BIND). Used only for
@@ -24,6 +25,7 @@ assert_distinct_operational_secrets(
     health_developer_password=HEALTH_DEVELOPER_PASSWORD,
 )
 warn_cleartext_public_bind(debug=DEBUG, main_host=MAIN_HOST, app_bind=APP_BIND)
+warn_debug_with_public_hosts(debug=DEBUG, allowed_hosts=ALLOWED_HOSTS)
 
 # HTTPS gate for Garmin/Strava credential-link endpoints (issue #17).
 _mw = "custom_user.https_link_middleware.RequireHttpsForLinkMiddleware"

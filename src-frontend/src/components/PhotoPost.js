@@ -1,22 +1,21 @@
-import React, {useEffect, useState} from "react";
+import React, {useEffect, useRef, useState} from "react";
 import {Camera, Image as ImageIcon, Send, X} from "lucide-react";
 import {BeatLoader} from "react-spinners";
 import {useDispatch} from "react-redux";
 import {drillInstructorApi, usePostDrillPhotoMutation} from "../utils/reducers/drillInstructorSlice";
 import {compressImage} from "../utils/imageCompress";
 import {decodePhoto} from "../utils/heicDecode";
+import {errText} from "../utils/errors";
 import {isAcceptablePhoto, isNativeCameraAvailable, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
 import {OverlaySheet} from "../forms/basicComponents";
 
-// Photo sharing for the coach feed. The camera button is ALWAYS visible
-// while the coach is on duty - a click without a latest-own-workout
-// parent, or when the server's AI model can't see pictures, explains
-// that instead of opening the picker. The picture hangs under the own
-// activity it was started from (any of the caller's workouts inside the
-// window below), resolved + enforced server-side.
-// Keep in sync with DRILL_PHOTO_WINDOW_DAYS on the backend.
-export const PHOTO_WINDOW_DAYS = 5;
-export const PHOTO_WINDOW_MS = PHOTO_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+// Photo sharing for the coach feed. The camera is NOT always visible:
+// the server decides whether this workout can plant/claim an Echo or
+// satisfy today's photo order and hands the client a `purpose`; without
+// one the button renders nothing (`if (!action) return null`). The photo
+// window and ownership are resolved + enforced server-side - the client
+// duplicates none of that eligibility logic. The picture hangs under
+// the own activity it was started from (parentId).
 const PILL =
     "inline-flex w-full items-center justify-center gap-2 rounded-full bg-volt-400 text-ink-950 px-4 sm:px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt min-h-[44px]";
 const CHIP =
@@ -26,72 +25,73 @@ const GHOST =
 const ICON =
     "shrink-0 min-h-[44px] min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt flex items-center justify-center";
 
-export function PhotoCamBonus({large = false, neon = true, plus = false}) {
-    return (
-        <span className={"inline-flex items-center gap-[3px] font-extrabold tabular-nums leading-none " +
-            (large ? "text-[11px]" : "text-[9px]") + " " +
-            (neon ? "points-cam" : "")}>
-            <Camera className={(large ? "h-3.5 w-3.5" : "h-3 w-3") + " block shrink-0"}
-                    aria-hidden="true" strokeWidth={2.4}/>
-            <span className="leading-none">{plus ? "+10P" : "10P"}</span>
-        </span>
-    );
-}
+const PURPOSES = {
+    echo: {
+        label: "Capture Echo relic",
+        explanation: "This photo makes the Echo a visible relic. Without it, the Echo stays off the board.",
+    },
+    photo_order: {
+        label: "Complete today's photo order",
+        explanation: "This photo completes today's order; it does not add flat points.",
+    },
+};
 
-export default function PhotoPost({competitionId, visionCapable, parentId, onPosted, variant = "icon", label = "Photo"}) {
+export default function PhotoPost({competitionId, visionCapable, parentId, onPosted, purpose, variant = "icon"}) {
     const [open, setOpen] = useState(false);
+    const [ready, setReady] = useState(false);
     const [hint, setHint] = useState(null);
     const buttonClass = variant === "pill" ? PILL : variant === "chip" ? CHIP : variant === "ghost" ? GHOST : ICON;
+    const action = PURPOSES[purpose];
 
     function close() {
         setOpen(false);
+        setReady(false);
         setHint(null);
     }
 
+    function continueToPicker() {
+        if (!visionCapable) {
+            setHint("vision");
+            return;
+        }
+        if (!parentId) {
+            setHint("workout");
+            return;
+        }
+        setReady(true);
+    }
+
+    if (!action) return null;
+
     return (
         <>
-            <button type="button"
-                    onClick={() => {
-                        if (!visionCapable) {
-                            setHint("vision");
-                            setOpen(true);
-                            return;
-                        }
-                        if (!parentId) {
-                            setHint("workout");
-                            setOpen(true);
-                            return;
-                        }
-                        setHint(null);
-                        setOpen(true);
-                    }}
-                    title={`${label} · 10P`}
-                    aria-label={`${label}, 10 points`}
-                    className={buttonClass}>
-                {variant === "ghost" ? (
-                    <>
-                        <Camera className="h-3.5 w-3.5 shrink-0"/>
-                        +10P
-                    </>
-                ) : (
-                    <>
-                        <PhotoCamBonus large neon={false} plus/>
-                        {variant === "pill" && <span>{label}</span>}
-                    </>
-                )}
+            <button type="button" onClick={() => setOpen(true)}
+                    title={action.label} aria-label={action.label} className={buttonClass}>
+                <Camera className="h-3.5 w-3.5 shrink-0" aria-hidden="true"/>
+                {variant !== "icon" && <span>{action.label}</span>}
             </button>
             {open && (
-                <OverlaySheet title={label || "Add a photo"} onClose={close}
+                <OverlaySheet title={action.label} onClose={close}
                               labelledBy="photo-post-title" zClass="z-[80]">
                     {hint ? (
                         <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-300">
                             {hint === "workout"
-                                ? "Photos hang under your latest workout. Log one and wait for the coach to comment first."
+                                ? "Photos attach to an eligible workout. Log one before posting a photo."
                                 : "Photo posts are unavailable right now - the AI model configured on this server can't see pictures. (Organizer: pick a vision-capable model in Site Settings → AI.)"}
                         </p>
-                    ) : (
+                    ) : ready ? (
                         <PhotoComposer competitionId={competitionId} parentId={parentId}
                                        onDone={close} onPosted={onPosted}/>
+                    ) : (
+                        <div className="space-y-4">
+                            <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+                                {action.explanation}
+                            </p>
+                            <button type="button" onClick={continueToPicker}
+                                    className="w-full min-h-[44px] rounded-full bg-volt-400 px-4 py-2 text-sm font-bold text-ink-950 hover:bg-volt-300">
+                                Continue to camera or gallery
+                            </button>
+                        </div>
                     )}
                 </OverlaySheet>
             )}
@@ -112,6 +112,13 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
     const [posting, setPosting] = useState(false);
     const [postPhoto] = usePostDrillPhotoMutation();
     const dispatch = useDispatch();
+    // Delayed re-fetch timers: cleared on unmount so a composer closed
+    // right after posting doesn't dispatch into a gone component tree.
+    const refetchTimers = useRef([]);
+    useEffect(() => () => {
+        refetchTimers.current.forEach(clearTimeout);
+        refetchTimers.current = [];
+    }, []);
 
     function applyPicked(picked) {
         setError(null);
@@ -195,12 +202,11 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
             // The coach's reaction is generated asynchronously (usually a
             // few seconds) - two delayed re-fetches pick it up quickly,
             // the regular 60s poll is the backstop.
-            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(['DrillMessage', 'DrillRoast'])), 8000);
-            setTimeout(() => dispatch(drillInstructorApi.util.invalidateTags(['DrillMessage', 'DrillRoast'])), 20000);
+            const refetch = () => dispatch(drillInstructorApi.util.invalidateTags(['DrillMessage', 'DrillRoast']));
+            refetchTimers.current.push(setTimeout(refetch, 8000), setTimeout(refetch, 20000));
             onPosted?.(posted);
         } catch (err) {
-            const data = err?.data || {};
-            setError(data.image || data.caption || data.competition || "Could not post your picture - please try again.");
+            setError(errText(err, "Could not post your picture - please try again."));
         } finally {
             setPosting(false);
         }

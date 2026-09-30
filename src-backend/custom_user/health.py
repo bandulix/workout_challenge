@@ -591,7 +591,7 @@ def daily_health_sync(self):
             continue
         try:
             sync_health(user__id=user.id)
-        except Exception as exc:  # noqa: BLE001 - never sink the whole sweep
+        except Exception:  # noqa: BLE001 - never sink the whole sweep
             logger.exception('Health sync failed for user %s', user.pk)
 
     logger.info('Finished syncing Health.')

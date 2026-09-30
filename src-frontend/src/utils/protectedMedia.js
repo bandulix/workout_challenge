@@ -29,12 +29,16 @@ export function pictureResponseIsBanRisk(status) {
 // Authorization header and rendered from a local URL. Fetches are
 // deduplicated module-wide so N avatar components share one request.
 
+// Map keeps insertion order, so the head is the eviction candidate. A
+// hit re-inserts the key at the tail (true LRU): otherwise a long feed
+// evicts - and revokes the blob of - the avatar that is on screen right
+// now just because it was fetched first.
 const cache = new Map(); // url -> Promise<localURL | null>
 const failedAt = new Map(); // url -> timestamp of 4xx/204
 const FAIL_TTL_MS = 10 * 60 * 1000;
 // LRU caps: a long session otherwise accumulates every avatar / remix /
 // echo artwork as a blob URL forever. 200 is far beyond any screen.
-const MAX_CACHED_IMAGES = 200;
+export const MAX_CACHED_IMAGES = 200;
 const MAX_FAILED = 200;
 
 function evictOldest(map, max, onEvict) {
@@ -186,7 +190,11 @@ export function fetchProtectedImage(url, size) {
     if (failed && Date.now() - failed < FAIL_TTL_MS) {
         return Promise.resolve(null);
     }
-    if (!cache.has(path)) {
+    const hit = cache.get(path);
+    if (hit) {
+        cache.delete(path);
+        cache.set(path, hit);
+    } else {
         const promise = withSlot(() => authorizedGet(path))
             .catch((err) => {
                 // Drop failed fetches so the next mount retries (e.g. once
@@ -204,6 +212,11 @@ export function fetchProtectedImage(url, size) {
         evictOldest(cache, MAX_CACHED_IMAGES, revokeBlob);
     }
     return cache.get(path);
+}
+
+// Test seam: current eviction order, oldest first.
+export function protectedImageCacheOrder() {
+    return [...cache.keys()];
 }
 
 // Drop a cached image (e.g. after the user/persona re-uploaded their

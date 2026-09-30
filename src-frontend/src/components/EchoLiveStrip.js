@@ -16,6 +16,7 @@ import {confirmAction} from "../utils/dialogs";
 import {toast} from "../utils/toasts";
 import {sharePostCard} from "../utils/shareCard";
 import {echoSfxItems, useSfxObserver} from "../utils/sfx";
+import {noteworthyEchoes} from "../utils/echoVisibility";
 
 const LIVE = 3;
 
@@ -120,14 +121,13 @@ export default function EchoLiveStrip({competitionId, userId}) {
     const [showAll, setShowAll] = useState(false);
     // Index into galleryCards (echoes that actually have artwork).
     const [galleryIndex, setGalleryIndex] = useState(null);
-    const live = (echoes || [])
-        .filter((e) => e.status === "undefeated" || e.status === "contested")
-        .slice(0, LIVE);
+    const allEchoes = echoes || [];
+    const updates = noteworthyEchoes(allEchoes);
     useSfxObserver(`echoes:${competitionId}`, echoSfxItems(echoes, userId), echoes !== undefined);
 
     // Gallery cards for the fullscreen viewer: one per echo with art, in
-    // strip order. Tapping a tile opens the viewer at that echo.
-    const galleryEchoes = (echoes || []).filter((e) => e.image);
+    // archive order. Tapping a tile opens the viewer at that echo.
+    const galleryEchoes = allEchoes.filter((e) => e.image);
     const galleryCards = galleryEchoes.map((e) => ({
         image: e.image,
         title: e.title,
@@ -153,45 +153,42 @@ export default function EchoLiveStrip({competitionId, userId}) {
         }
     }
 
+    if (!allEchoes.length) return null;
+
+    const archiveButton = (
+        <button type="button" onClick={() => setShowAll(true)}
+                className="inline-flex min-h-[44px] items-center rounded-full btn-glass px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide transition">
+            Echo archive · {allEchoes.length}
+        </button>
+    );
+    const explainerButton = (
+        <button type="button" onClick={() => setShowExplainer(true)}
+                aria-label="How Echoes work"
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition">
+            <Info className="h-4 w-4"/>
+        </button>
+    );
     const head = (
-        <PaneHead title="Live Echoes" hint="Beat the mark, take the relic">
-            <button type="button" onClick={() => setShowExplainer(true)}
-                    aria-label="How echoes work"
-                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition">
-                <Info className="h-4 w-4"/>
-            </button>
-            {(echoes || []).length > live.length && (
-                <button type="button" onClick={() => setShowAll(true)}
-                        className="inline-flex min-h-[44px] items-center rounded-full btn-glass px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide transition">
-                    All {(echoes || []).length}
-                </button>
-            )}
+        <PaneHead title="Echo updates" hint="New, threatened, or recently taken">
+            {explainerButton}
+            {archiveButton}
         </PaneHead>
     );
 
     return (
         <div className="mb-4">
-            {head}
-            {live.length === 0 ? (
-                /* Empty state doubles as the explainer - otherwise the
-                   mechanic is invisible until the first relic exists. */
-                <div className="rounded-3xl glass-card p-4 flex items-center gap-3 text-ink-950 dark:text-white">
-                    <div className="h-11 w-11 shrink-0 rounded-2xl bg-volt-400/15 flex items-center justify-center">
-                        <Crown className="h-5 w-5 text-volt-600 dark:text-volt-400"/>
+            {updates.length > 0 ? (
+                <>
+                    {head}
+                    <div className="grid grid-cols-3 gap-3">
+                        {updates.slice(0, LIVE).map((echo) => (
+                            <EchoTile key={echo.id} echo={echo} onDelete={onDelete} busy={busy}
+                                      onOpenArt={openGallery}/>
+                        ))}
                     </div>
-                    <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-400">
-                        No relics yet. Log a standout session and the coach casts it into
-                        an <b>Echo</b> - beat someone's mark in the same sport and the
-                        relic is yours. Holders wear the crown.
-                    </p>
-                </div>
+                </>
             ) : (
-                <div className="grid grid-cols-3 gap-3">
-                    {live.map((echo) => (
-                        <EchoTile key={echo.id} echo={echo} onDelete={onDelete} busy={busy}
-                                  onOpenArt={openGallery}/>
-                    ))}
-                </div>
+                <div className="flex justify-end">{archiveButton}</div>
             )}
 
             {showExplainer && (
@@ -202,7 +199,7 @@ export default function EchoLiveStrip({competitionId, userId}) {
             {showAll && (
                 <Modal title="All Echoes" setShowModal={setShowAll}>
                     <div className="grid grid-cols-2 gap-3 px-1 pb-1">
-                        {(echoes || []).map((echo) => (
+                        {allEchoes.map((echo) => (
                             <EchoTile key={echo.id} echo={echo} onDelete={onDelete} busy={busy}
                                       onOpenArt={openGallery} showStatus/>
                         ))}

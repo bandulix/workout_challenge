@@ -7,7 +7,6 @@ from django.utils import timezone
 from django.core.cache import cache
 from workout_challenge.celery import app, is_task_already_executing
 from django.apps import apps
-from django.contrib.auth import get_user_model
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +63,17 @@ def recalc_points(self):
     # the next run - deleting the live queryset afterwards would swallow
     # them unprocessed (and leave points_capped stale).
     task_ids = list(all_tasks.values_list('pk', flat=True))
-    grouped_tasks = all_tasks.values('user', 'goal').annotate(start_datetime=Min('start_datetime'))
+    # Materialize once, restricted to the snapshot: a lazy queryset would
+    # re-run on every use (four times), the last time after the rows were
+    # deleted - returning an empty result to the caller.
+    grouped_tasks = list(
+        RecalcRequest.objects.filter(pk__in=task_ids)
+        .values('user', 'goal')
+        .annotate(start_datetime=Min('start_datetime'))
+    )
     # in_bulk: one query for all groups instead of one get() per group.
     goal_map = ActivityGoal.objects.in_bulk({t['goal'] for t in grouped_tasks})
+    gap_checks = set()
     for task_group in grouped_tasks:
         # The Scorer accumulates day AND week floor/cap buckets from zero,
         # so a recap must start at the beginning of the ISO week (local
@@ -87,6 +94,7 @@ def recalc_points(self):
         goal = goal_map[task_group['goal']]
 
         recap_points_queryset(points_lst, goal)
+        gap_checks.add((goal.competition_id, task_group['user']))
 
     # Evaluate before the delete below empties the queryset.
     goal_ids = {task_group['goal'] for task_group in grouped_tasks}
@@ -97,6 +105,17 @@ def recalc_points(self):
     # leaderboard refetch right after a workout shows the final numbers.
     competition_ids = ActivityGoal.objects.filter(pk__in=goal_ids).values_list('competition_id', flat=True)
     bump_stats_generation(competition_ids)
+
+    # Coach gap checks use the final capped totals, not transient raw scores.
+    from drill_instructor.tasks import post_material_rank_gap_change
+    for competition_id, user_id in sorted(gap_checks):
+        try:
+            post_material_rank_gap_change.delay(competition_id, user_id)
+        except Exception:  # noqa: BLE001 - notification must not break scoring
+            logger.exception(
+                'Could not enqueue coach gap check for competition %s user %s',
+                competition_id, user_id,
+            )
 
     logger.info('All points recalculated.')
     return [{k: str(v) for k, v in i.items()} for i in grouped_tasks]

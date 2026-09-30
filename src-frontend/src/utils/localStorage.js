@@ -14,6 +14,8 @@ const NEVER_PERSIST = new Set([
   "health_developer_password",
   "p256dh",
   "auth",
+  // Challenge invite secret: anyone reading the blob could join.
+  "join_code",
 ]);
 
 
@@ -60,5 +62,16 @@ export const saveState = (state) => {
     return true;
   } catch {
     return false;
+  }
+};
+
+// Drop the persisted RTK caches when the session is over (refresh token
+// dead, logout): the blob holds the previous user's feed/profile and
+// would otherwise be rehydrated for whoever signs in next on this device.
+export const clearPersistedState = () => {
+  try {
+    localStorage.removeItem('appState');
+  } catch {
+    /* private mode / quota */
   }
 };

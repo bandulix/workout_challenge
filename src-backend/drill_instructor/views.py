@@ -1,13 +1,13 @@
 import datetime
 import logging
-import mimetypes
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Exists, IntegerField, Max, OuterRef, Prefetch, ProtectedError, Q, Subquery
 from django.db.models.functions import Coalesce
-from django.http import FileResponse, Http404, HttpResponse
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -20,10 +20,9 @@ from rest_framework.views import APIView
 from workout_challenge.images import (
     ProtectedMediaRenderer,
     empty_picture_response,
-    protected_media_response,
     serve_picture,
 )
-from .llm_client import check_vision_capability
+from .llm_client import read_cached_capabilities
 from competition.models import Competition, Points
 from .models import (
     ACTIVITY_REACT_EMOJIS,
@@ -215,7 +214,7 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
         except ProtectedError:
             raise ValidationError(
                 {"detail": "This persona is still assigned to a challenge. Pick another coach there first."}
-            )
+            ) from None
 
     @action(detail=True, methods=["post"])
     def transfer(self, request, pk=None):
@@ -274,22 +273,6 @@ class DrillInstructorPersonaViewSet(viewsets.ModelViewSet):
         size = request.query_params.get("size")
         return serve_picture(field, request=request, size=size)
 
-    @action(detail=True, methods=["get"], url_path="midi", renderer_classes=[ProtectedMediaRenderer])
-    def midi(self, request, pk=None):
-        """Serve this coach's MIDI bed — authenticated only.
-
-        Same privacy model as pictures: never on public ``/media/``.
-        Django checks the JWT here; production nginx delivers bytes via
-        internal X-Accel-Redirect. Missing file is 204 (not 404).
-        """
-        try:
-            persona = self.get_object()
-        except Http404:
-            return empty_picture_response()
-        if not persona.midi:
-            return empty_picture_response()
-        return protected_media_response(persona.midi, request=request)
-
 
 class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
     """Per-competition Drill Instructor configuration.
@@ -334,6 +317,10 @@ class DrillInstructorConfigViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         self._ensure_owner(serializer.instance.competition)
+        # Defence in depth: the serializer drops ``competition`` on
+        # update, but a caller must not even be able to *name* a
+        # challenge they don't own.
+        self._ensure_owner(serializer.validated_data.get("competition", serializer.instance.competition))
         serializer.save()
 
     def perform_destroy(self, instance):
@@ -411,6 +398,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             DrillInstructorMessage.objects
             .filter(_competition_member(user))
             .filter(parent__isnull=True)
+            .exclude(kind__in=[DrillInstructorMessage.KIND_DUNCE, DrillInstructorMessage.KIND_SIGH])
             .select_related("config", "config__competition", "config__persona", "persona", "workout", "workout__user")
             # Ordered prefetch the serializer actually iterates - a plain
             # prefetch_related was defeated by get_replies' own order_by,
@@ -451,13 +439,16 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
     def list(self, request, *args, **kwargs):
         """Paginated when ``limit`` is set: ``{count, offset, limit, results}``.
 
-        Old clients that omit ``limit`` still get a bare array (full
-        history). The new APK always passes limit=15.
+        Old clients that omit ``limit`` still get a bare array, capped
+        at ``LIST_MAX`` newest roots - the history of a long-running
+        challenge is unbounded and serializing all of it (threads,
+        reacts, points) was an easy way to pin a worker. The new APK
+        always passes limit=15.
         """
         queryset = self.filter_queryset(self.get_queryset())
         limit_raw = request.query_params.get("limit")
         if limit_raw is None:
-            serializer = self.get_serializer(queryset, many=True)
+            serializer = self.get_serializer(list(queryset[:self.LIST_MAX]), many=True)
             return Response(serializer.data)
 
         try:
@@ -521,23 +512,29 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"body": f"Reply too long (max {self.MAX_REPLY_LEN} characters)."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        hour_ago = timezone.now() - datetime.timedelta(hours=1)
-        recent = DrillInstructorMessage.objects.filter(
-            kind=DrillInstructorMessage.KIND_REPLY, user=request.user, posted_at__gte=hour_ago,
-        ).count()
-        if recent >= self.MAX_REPLIES_PER_HOUR:
-            return Response(
-                {"body": f"Easy there - max {self.MAX_REPLIES_PER_HOUR} replies per hour. Give the coach a breather."},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
+        with transaction.atomic():
+            # Every reply costs an LLM call. Take the user's row lock
+            # before counting, exactly like ``photo`` does: a burst of
+            # concurrent replies would otherwise all pass the count and
+            # overshoot the hourly cap.
+            get_user_model().objects.select_for_update().get(pk=request.user.pk)
+            hour_ago = timezone.now() - datetime.timedelta(hours=1)
+            recent = DrillInstructorMessage.objects.filter(
+                kind=DrillInstructorMessage.KIND_REPLY, user=request.user, posted_at__gte=hour_ago,
+            ).count()
+            if recent >= self.MAX_REPLIES_PER_HOUR:
+                return Response(
+                    {"body": f"Easy there - max {self.MAX_REPLIES_PER_HOUR} replies per hour. Give the coach a breather."},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
 
-        reply = DrillInstructorMessage.objects.create(
-            config=config,
-            kind=DrillInstructorMessage.KIND_REPLY,
-            parent=root,
-            user=request.user,
-            body=body,
-        )
+            reply = DrillInstructorMessage.objects.create(
+                config=config,
+                kind=DrillInstructorMessage.KIND_REPLY,
+                parent=root,
+                user=request.user,
+                body=body,
+            )
 
         from .tasks import post_reply_reaction
         post_reply_reaction.delay(reply.id)
@@ -698,10 +695,29 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"competition": "The coach is benched for this competition - photo posts are paused."},
                             status=status.HTTP_400_BAD_REQUEST)
 
+        # Cheap quota gate before the upload is even looked at: the
+        # Pillow re-encode below is the expensive part of this endpoint
+        # and a capped user must not be able to burn CPU on it. The
+        # authoritative re-check runs under the row lock further down.
+        day_ago = timezone.now() - datetime.timedelta(hours=24)
+        if self._recent_photo_count(request.user, day_ago) >= self.MAX_PHOTOS_PER_DAY:
+            return self._photo_quota_response()
+
         # Photo posts only make sense when the coach can actually see
         # them: the feature is hidden in the UI and refused here when the
-        # configured LLM rejects image input (probed + cached).
-        if not check_vision_capability():
+        # configured LLM rejects image input. Cache-only read - the
+        # probe is a real (up to 10s) network call and must not run
+        # inside a request; queue it and ask the client to retry.
+        vision, _edit = read_cached_capabilities()
+        if vision is None:
+            if cache.add("drill-caps-probe-queued", 1, 120):
+                from .tasks import probe_llm_capabilities
+                probe_llm_capabilities.delay()
+            return Response(
+                {"image": "Checking whether the AI model can see pictures - please try again shortly."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        if not vision:
             return Response(
                 {"image": "The configured AI model can't see pictures - photo posts are unavailable on this server."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -724,17 +740,15 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"caption": f"Caption too long (max {self.MAX_PHOTO_CAPTION_LEN} characters)."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        day_ago = timezone.now() - datetime.timedelta(hours=24)
-        recent = DrillInstructorMessage.objects.filter(
-            kind=DrillInstructorMessage.KIND_PHOTO, user=request.user, posted_at__gte=day_ago,
-        ).count()
-        if recent >= self.MAX_PHOTOS_PER_DAY:
-            return Response(
-                {"image": f"That's enough pictures for today - max {self.MAX_PHOTOS_PER_DAY} per day."},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
-
         with transaction.atomic():
+            # Serialize per-user photo posts across different activity threads.
+            # Counting before acquiring this row lock lets concurrent requests
+            # both pass the quota check and overshoot the limit.
+            get_user_model().objects.select_for_update().get(pk=request.user.pk)
+            day_ago = timezone.now() - datetime.timedelta(hours=24)
+            if self._recent_photo_count(request.user, day_ago) >= self.MAX_PHOTOS_PER_DAY:
+                return self._photo_quota_response()
+
             parent = DrillInstructorMessage.objects.select_for_update().get(pk=parent.pk)
             if parent.replies.filter(kind=DrillInstructorMessage.KIND_PHOTO).exists():
                 return Response(
@@ -772,7 +786,7 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
             from .game import evaluate_photo_game
             evaluate_photo_game(message)
         except Exception:
-            pass
+            logger.warning("Photo game eval failed for message %s", message.pk, exc_info=True)
 
         from .tasks import post_reply_reaction
         post_reply_reaction.delay(message.id)
@@ -780,6 +794,20 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             DrillInstructorMessageSerializer(message, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
+        )
+
+    @staticmethod
+    def _recent_photo_count(user, since):
+        return DrillInstructorMessage.objects.filter(
+            kind=DrillInstructorMessage.KIND_PHOTO,
+            user_id=user.pk,
+            posted_at__gte=since,
+        ).count()
+
+    def _photo_quota_response(self):
+        return Response(
+            {"image": f"That's enough pictures for today - max {self.MAX_PHOTOS_PER_DAY} per day."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
         )
 
     @action(detail=True, methods=["get"], renderer_classes=[ProtectedMediaRenderer])
@@ -997,10 +1025,10 @@ class LegendEchoViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         # No writes on a read endpoint: season-end immortalization runs
         # from the beat sweep (drill_instructor.tasks.immortalize_finished_echoes).
-        from .echoes import pictured_first
+        from .echoes import pictured_first, visible_echoes
         user = self.request.user
         qs = (
-            LegendEcho.objects.filter(_competition_member(user))
+            visible_echoes(LegendEcho.objects.filter(_competition_member(user)))
             .select_related(
                 "origin_user", "holder", "config", "config__competition", "config__persona",
             )

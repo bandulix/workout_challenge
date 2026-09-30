@@ -69,11 +69,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
     const [enabled, setEnabled] = useState(true);
     const [persona, setPersona] = useState("");
     const [showPersonaEditor, setShowPersonaEditor] = useState(false);
-    const [commentOnActivity, setCommentOnActivity] = useState(true);
-    const [nudgeOnInactivity, setNudgeOnInactivity] = useState(true);
-    const [randomPush, setRandomPush] = useState(true);
-    const [sendPushOnActivity, setSendPushOnActivity] = useState(false);
-    const [dailyPrompt, setDailyPrompt] = useState("");
+    const [sendPushOnChanges, setSendPushOnChanges] = useState(false);
     const [testBody, setTestBody] = useState(PLACEHOLDER_BODY);
     const [fieldErrors, setFieldErrors] = useState({});
     const [formError, setFormError] = useState("");
@@ -83,19 +79,11 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
         if (existing) {
             setEnabled(!!existing.enabled);
             setPersona(existing.persona ?? "");
-            setCommentOnActivity(!!existing.comment_on_activity);
-            setNudgeOnInactivity(existing.nudge_on_inactivity !== false);
-            setRandomPush(existing.random_push !== false);
-            setSendPushOnActivity(!!existing.send_push_on_activity);
-            setDailyPrompt(existing.daily_prompt || "");
+            setSendPushOnChanges(!!existing.send_push_on_activity);
             setInitialSnapshot({
                 enabled: !!existing.enabled,
                 persona: existing.persona ?? "",
-                commentOnActivity: !!existing.comment_on_activity,
-                nudgeOnInactivity: existing.nudge_on_inactivity !== false,
-                randomPush: existing.random_push !== false,
-                sendPushOnActivity: !!existing.send_push_on_activity,
-                dailyPrompt: existing.daily_prompt || "",
+                sendPushOnChanges: !!existing.send_push_on_activity,
             });
         }
     }, [existing]);
@@ -112,11 +100,10 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             competition: competition.id,
             enabled,
             persona,
-            comment_on_activity: commentOnActivity,
-            nudge_on_inactivity: nudgeOnInactivity,
-            random_push: randomPush,
-            send_push_on_activity: sendPushOnActivity,
-            daily_prompt: dailyPrompt.trim(),
+            comment_on_activity: false,
+            nudge_on_inactivity: false,
+            random_push: false,
+            send_push_on_activity: sendPushOnChanges,
         };
 
         try {
@@ -176,16 +163,16 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
         <Modal title="Coach" landscape={true} setShowModal={setModalState}
                isLoading={configsLoading || personasLoading || addLoading || updateLoading || deleteLoading}
                confirmDiscard={useFormDirty(
-                   {enabled, persona, commentOnActivity, nudgeOnInactivity, randomPush, sendPushOnActivity, dailyPrompt},
+                   {enabled, persona, sendPushOnChanges},
                    initialSnapshot,
                )}>
             <SettingsGroup title="On duty"
-                           hint="Pick the starting coach. Everyone in the challenge can vote for next week's instructor — the winner takes over each Monday. Comments land in the feed, and optionally as a push.">
+                           hint="Pick the starting coach. Everyone in the challenge can vote for next week's instructor — the winner takes over each Monday. The coach posts when the standings gap or an Echo meaningfully changes.">
                 <ToggleRow
                     on={enabled}
                     onChange={setEnabled}
                     label="Activate the coach for this challenge"
-                    hint={enabled ? "On duty — comments and nudges go out." : "Benched — the coach stays quiet."}
+                    hint={enabled ? "On duty — the coach responds to meaningful gap and Echo changes." : "Benched — automatic coach posts are paused."}
                     error={fieldErrors.enabled}
                 />
                 {existing && (
@@ -246,66 +233,15 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                 )}
             </SettingsGroup>
 
-            <SettingsGroup title="What the coach does">
+            <SettingsGroup title="Event notifications"
+                           hint="Generic workout comments, random pep talks, and inactivity nudges are retired.">
                 <ToggleRow
-                    on={commentOnActivity}
-                    onChange={setCommentOnActivity}
-                    label="Comment on each workout"
-                    hint="A coach-voiced line after every activity logged in this challenge."
-                    error={fieldErrors.comment_on_activity}
-                />
-                <ToggleRow
-                    on={nudgeOnInactivity}
-                    onChange={setNudgeOnInactivity}
-                    label="Nudge when the group goes quiet"
-                    hint="If a whole day passes with no workout, one motivational post keeps the field honest."
-                    error={fieldErrors.nudge_on_inactivity}
-                />
-                <ToggleRow
-                    on={randomPush}
-                    onChange={setRandomPush}
-                    label="Pep talks at random times"
-                    hint="One coach-voiced ping per day between 07:00 and 22:00, whether anyone trained or not."
-                    error={fieldErrors.random_push}
-                />
-                <ToggleRow
-                    on={sendPushOnActivity}
-                    onChange={setSendPushOnActivity}
-                    label="Browser push for participants"
-                    hint="Also ping every subscribed phone. People opt in from Home."
+                    on={sendPushOnChanges}
+                    onChange={setSendPushOnChanges}
+                    label="Browser push on standings and Echo changes"
+                    hint="Includes standings/Echo changes and personal replies to posts. People opt in from Home."
                     error={fieldErrors.send_push_on_activity}
                 />
-                <div className="rounded-2xl glass-card px-3.5 py-3">
-                    <label htmlFor="daily-prompt" className="text-sm font-semibold text-ink-950 dark:text-gray-100">
-                        Daily briefing — your instruction to the AI
-                    </label>
-                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                        Sent to the AI <b>exactly as you write it (1:1)</b>, every morning — the coach
-                        answers in its own persona and builds on yesterday's post instead of repeating
-                        it (a third day without snow worries it more than the first). Empty means no
-                        briefing.
-                    </p>
-                    <ul className="mt-1.5 list-disc pl-4 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed space-y-0.5">
-                        <li>The coach already knows its own name and personality, and the challenge's
-                            name — you can write things like “Sign off as {existing?.persona_detail?.name || "your coach name"}”
-                            or “{competition?.name ? `Open with the day 3 weather worry for ${competition.name}` : "Open with today's plan"}”.</li>
-                        <li>Format and length are yours: “Always 3 bullet points”, “Max one sentence”, “End with a dare”.</li>
-                        <li>It can't fetch live data (weather, snow, results) — it says so in persona
-                            instead of inventing numbers.</li>
-                    </ul>
-                    <textarea
-                        id="daily-prompt"
-                        rows={3}
-                        maxLength={500}
-                        className={FIELD_INPUT_CLASS + " mt-2 w-full resize-none"}
-                        placeholder={"e.g. Post a morning motivation about the snow at Corviglia. Sign off with your coach name. Always end with one concrete workout dare."}
-                        value={dailyPrompt}
-                        onChange={(e) => setDailyPrompt(e.target.value)}
-                    />
-                    {fieldErrors.daily_prompt && (
-                        <p className="mt-1 text-xs text-red-500">{String(fieldErrors.daily_prompt)}</p>
-                    )}
-                </div>
             </SettingsGroup>
 
             {existing && (

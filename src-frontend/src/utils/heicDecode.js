@@ -30,12 +30,6 @@ async function convertHeic(file) {
     return withTimeout(heicTo({blob: file, type: "image/jpeg", quality: 0.9}));
 }
 
-export function looksLikeHeic(file) {
-    const type = (file?.type || "").toLowerCase();
-    if (/hei[cf]|heix/.test(type)) return true;
-    return /\.(heic|heif|heix)$/i.test(file?.name || "");
-}
-
 // Decode a picked photo to an ImageBitmap, converting HEIC via
 // heic2any when the platform decoder rejects it. Throws when the file
 // is genuinely undecodable.

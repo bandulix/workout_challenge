@@ -6,7 +6,6 @@ import {
     UsersRound,
     Flag,
     UserRoundPlus,
-    RefreshCw,
     Pencil,
     ThumbsUp,
     UserRoundPen,
@@ -782,22 +781,6 @@ export function ModifyGoalsButton({
                                   }) {
     return <GenericButton onClick={onClick} icon={icon} label={label} highlighted={highlighted} larger={larger}
                           IconObject={Flag} isLoading={isLoading} additionalClasses={additionalClasses}/>
-}
-
-
-
-
-export function SyncStravaButton({
-                                   onClick,
-                                   icon = true,
-                                   label = "Re-Sync with Strava",
-                                   highlighted = false,
-                                   larger = false,
-                                   isLoading = false,
-                                   additionalClasses = "",
-                               }) {
-    return <GenericButton onClick={onClick} icon={icon} label={label} highlighted={highlighted} larger={larger}
-                          IconObject={RefreshCw} isLoading={isLoading} additionalClasses={additionalClasses}/>
 }
 
 

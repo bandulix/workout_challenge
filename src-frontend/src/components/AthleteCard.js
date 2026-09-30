@@ -25,7 +25,7 @@ function sportsForUser(person, feed, userId) {
     return Object.entries(topSportCounts(mine, "workout__sport_type").groups);
 }
 
-export default function AthleteCard({person, dunce, weekTotal, weekBars, trendSpark, feed, onClose}) {
+export default function AthleteCard({person, weekTotal, weekBars, trendSpark, feed, onClose}) {
     if (!person) return null;
     const name = person.username || "Athlete";
     const rank = person.rank;
@@ -38,7 +38,7 @@ export default function AthleteCard({person, dunce, weekTotal, weekBars, trendSp
     return (
         <OverlaySheet title={name} onClose={onClose} zClass="z-[70]" labelledBy="athlete-card-name">
                 <div className="flex flex-col items-center text-center">
-                    <ProfileAvatar user={person} size={88} dunce={dunce}/>
+                    <ProfileAvatar user={person} size={88}/>
                     <h2 className="mt-3 font-display text-xl uppercase tracking-wide leading-tight">
                         {name}
                     </h2>
@@ -53,11 +53,6 @@ export default function AthleteCard({person, dunce, weekTotal, weekBars, trendSp
                         {" · "}
                         {Math.round(Number(person.scaling_distance ?? 1) * 100)}% distance
                     </p>
-                    {dunce && (
-                        <p className="mt-2 rounded-full bg-ink-950 text-volt-400 text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1">
-                            Wearing the megaphone
-                        </p>
-                    )}
                 </div>
 
                 <div className="mt-4 grid grid-cols-4 gap-1.5">

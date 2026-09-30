@@ -2,7 +2,6 @@ import datetime
 from decimal import Decimal
 
 from django.utils import timezone
-from django.conf import settings
 from django.db import models
 from django.db.models import Sum
 
@@ -204,7 +203,10 @@ class Workout(models.Model):
 
     def __str__(self):
         """str print-out of model entry"""
-        return f"{self.start_datetime} - {self.sport_type} ({self.duration / (1_000 * 60)} min / {self.kcal} kcal)"
+        # duration is a timedelta - dividing it by an int yields a timedelta,
+        # not minutes.
+        minutes = self.duration.total_seconds() / 60 if self.duration is not None else None
+        return f"{self.start_datetime} - {self.sport_type} ({minutes} min / {self.kcal} kcal)"
 
     def __init__(self, *args, **kwargs):
         """ save initial field values to be able to detect changes """
@@ -235,8 +237,10 @@ class Workout(models.Model):
         """
         do_score = kwargs.pop("score", True)
         is_create = self.pk is None
-        scaling_kcal = float((1 if kwargs.get('user', None) is None else kwargs.get('user').scaling_kcal) if self.user is None else self.user.scaling_kcal)
-        scaling_distance = float((1 if kwargs.get('user', None) is None else kwargs.get('user').scaling_distance) if self.user is None else self.user.scaling_distance)
+        # Model.save() never receives a `user` kwarg and the FK is non-null,
+        # so the athlete's own scaling factors are the only source.
+        scaling_kcal = float(self.user.scaling_kcal)
+        scaling_distance = float(self.user.scaling_distance)
         if self.sport_type == "Steps":
             self.intensity_category = 1
 
@@ -298,8 +302,8 @@ class Workout(models.Model):
             recorded_steps = Workout.objects.filter(user=self.user, start_datetime__date__in=target_dates, sport_type='Steps')
             if len(recorded_steps) > 0:
                 for steps in recorded_steps:
-                    setattr(steps, 'distance', None)
-                    setattr(steps, 'kcal', None)
+                    steps.distance = None
+                    steps.kcal = None
                     steps.save(score=True)
 
     def delete(self, *args, **kwargs):
@@ -312,9 +316,9 @@ class Workout(models.Model):
             recorded_steps = Workout.objects.filter(user=self.user, start_datetime__date=self.start_datetime, sport_type='Steps')
             if len(recorded_steps) > 0:
                 for steps in recorded_steps:
-                    setattr(steps, 'distance', None)
-                    setattr(steps, 'kcal', None)
-                    setattr(steps, 'duration', datetime.timedelta(seconds=0))
+                    steps.distance = None
+                    steps.kcal = None
+                    steps.duration = datetime.timedelta(seconds=0)
                     steps.save(score=True)
 
 

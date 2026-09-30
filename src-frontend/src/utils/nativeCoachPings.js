@@ -17,7 +17,11 @@ import {onAppResume} from "./appLifecycle";
 //   - silent without notification permission or when logged out.
 const LAST_KEY = "wc_last_coach_msg_id";
 const POLL_MS = 90000;
-const NOTIFY_KINDS = new Set(["activity", "push", "nudge", "reaction", "order", "sigh", "dunce", "handover", "echo", "claim", "war"]);
+const NOTIFY_KINDS = new Set(["activity", "push", "nudge", "reaction", "order", "handover", "echo", "claim", "war"]);
+
+export function isEligibleCoachKind(kind) {
+    return NOTIFY_KINDS.has(kind);
+}
 // One Android notification slot so a overlapping poll replaces instead
 // of stacking two banners. Capacitor ids are int32.
 const NOTIFY_ID = 71001;
@@ -46,7 +50,7 @@ async function fetchLatestCoachMessage() {
     // native) participant replies on your post / @mentions.
     let latest = null;
     for (const root of roots) {
-        if (NOTIFY_KINDS.has(root.kind) && (!latest || root.id > latest.id)) {
+        if (isEligibleCoachKind(root.kind) && (!latest || root.id > latest.id)) {
             latest = {
                 ...root,
                 _url: feedUrl(root),

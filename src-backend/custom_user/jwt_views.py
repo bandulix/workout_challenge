@@ -11,6 +11,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from custom_user.jwt_cookies import (
     clear_refresh_cookie,
     get_refresh_from_request,
+    is_native_client,
     is_nonsimple_token_post,
     set_refresh_cookie,
     strip_refresh_from_response_data,
@@ -31,7 +32,13 @@ class CookieTokenObtainPairView(TokenObtainPairView):
         if response.status_code != 200:
             return response
         refresh = response.data.get("refresh")
-        if refresh:
+        # Native clients keep the refresh JWT in secure storage and get it
+        # in the JSON body (strip_refresh_from_response_data leaves it in).
+        # Do NOT also drop it into the WebView cookie jar: the native
+        # WebView origin (https://localhost) is a CORS-allowed credentialed
+        # origin, so a cookie there would let any other page served on
+        # the device's https://localhost mint tokens for this user.
+        if refresh and not is_native_client(request):
             set_refresh_cookie(response, refresh)
         strip_refresh_from_response_data(response, request)
         return response
@@ -70,7 +77,15 @@ class CookieTokenRefreshView(TokenRefreshView):
         data = dict(serializer.validated_data)
         response = Response(data, status=status.HTTP_200_OK)
         new_refresh = data.get("refresh")
-        if new_refresh:
+        # Same rule as on obtain: a native client that presented the
+        # refresh in the body gets the rotated one back in the body only.
+        # When the token came from the cookie the caller demonstrably
+        # lives on the cookie jar (a spoofed native header must not strand
+        # a browser session with a blacklisted refresh and no cookie), so
+        # the cookie is re-issued regardless of the header.
+        if source != "cookie" and is_native_client(request):
+            pass
+        elif new_refresh:
             set_refresh_cookie(response, new_refresh)
         else:
             # Rotation disabled: keep the presented refresh in the cookie.

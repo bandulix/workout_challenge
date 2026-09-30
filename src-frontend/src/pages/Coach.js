@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useState} from "react";
 import {Link} from "react-router-dom";
-import {Megaphone, ChevronRight, Radio, ScrollText, Volume2, VolumeX} from "lucide-react";
+import {Megaphone, ChevronRight, Radio, ScrollText} from "lucide-react";
 import {PageWrapper} from "../utils/miscellaneous";
 
 import {SectionLoader} from "../utils/loaders";
@@ -16,7 +16,7 @@ import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {timeAgo} from "../utils/time";
 import usePollingInterval from "../utils/usePollingInterval";
 import useWideLayout from "../utils/useWideLayout";
-import {feedSfxItems, hallSfxItems, playSfx, useSfxEnabled, useSfxObserver} from "../utils/sfx";
+import {feedSfxItems, hallSfxItems, useSfxObserver} from "../utils/sfx";
 import {PaneHead} from "../components/uiBits";
 
 // ---------------------------------------------------------------------------
@@ -106,7 +106,6 @@ function CoachHeroWash({persona, mood}) {
 
 function CoachHero({persona, config, message: latest, briefing, ownedCompetitions, mood, lastOwnActivityId, meId}) {
     const trained = trainedSummary(mood);
-    const [sfxOn, setSfxOn] = useSfxEnabled();
 
     function activityCard(message, hero) {
         return (
@@ -143,20 +142,6 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                             {trained.label}
                         </span>
                     )}
-                    {/* Explicit sound control - the avatar is decoration, not
-                        a secret button (it gates ALL app SFX + the MIDI bed). */}
-                    <button type="button"
-                            onClick={() => {
-                                const next = !sfxOn;
-                                setSfxOn(next);
-                                if (next) playSfx("vote");
-                            }}
-                            aria-pressed={sfxOn}
-                            title="All app sounds and the coach music bed"
-                            className="ml-auto inline-flex min-h-[44px] items-center gap-1.5 rounded-full btn-glass px-3.5 py-2 text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 transition">
-                        {sfxOn ? <Volume2 className="h-4 w-4"/> : <VolumeX className="h-4 w-4"/>}
-                        {sfxOn ? "Sound on" : "Sound off"}
-                    </button>
                 </div>
 
                 <div className="mt-4 flex items-center gap-3 sm:gap-5">

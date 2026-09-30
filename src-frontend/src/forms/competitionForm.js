@@ -53,13 +53,53 @@ const fields = {
         "label": "Only organizer can assign teams",
     },
 
+    "expedition_enabled": {
+        "type": "checkbox",
+        "required": false,
+        "read_only": false,
+        "label": "Expedition: the group travels a shared route (Trail tab)",
+    },
+
+    "expedition_objective": {
+        "type": "select",
+        "required": false,
+        "read_only": false,
+        "label": "Objective",
+        "width": "max-sm:w-full w-1/2",
+        "placeholder": false,
+        "selectList": [
+            {value: "expedition", label: "Expedition - reach the far end together"},
+            {value: "rescue", label: "Rescue run - stay ahead of the storm"},
+            {value: "basecamp", label: "Base camp - hold the camp week after week"},
+            {value: "treasure", label: "Treasure hunt - hidden landmarks"},
+        ],
+    },
+
+    "expedition_theme": {
+        "type": "select",
+        "required": false,
+        "read_only": false,
+        "label": "Route",
+        "width": "max-sm:w-full w-1/2",
+        "placeholder": false,
+        "selectList": [
+            {value: "", label: "Surprise me (a route you haven't travelled)"},
+            {value: "summit", label: "Summit"},
+            {value: "ocean", label: "Ocean crossing"},
+            {value: "desert", label: "Desert caravan"},
+            {value: "space", label: "Space flight"},
+            {value: "relay", label: "Marathon relay"},
+        ],
+    },
+
 }
 
 
-export default function CompetitionForm({competition, setModalState, setShowTransferCompetitionModal}) {
+export default function CompetitionForm({competition, initialValues: prefillValues, isRematch = false, setModalState, setShowTransferCompetitionModal}) {
     const navigate = useNavigate();
 
-    const [values, setValues] = useState({});
+    const initialFormValues = competition ?? prefillValues ?? {};
+    const [values, setValues] = useState(initialFormValues);
     const [fieldErrors, setFieldErrors] = useState({});
     const [formError, setFormError] = useState('');
 
@@ -89,11 +129,14 @@ export default function CompetitionForm({competition, setModalState, setShowTran
     }, [updateError, createError, deleteError])
 
     // load current form values - and snapshot them for the dirty guard
-    const [initialValues, setInitialValues] = useState(competition ?? {});
+    const [initialValues, setInitialValues] = useState(initialFormValues);
     useEffect(() => {
         if (competition !== undefined) {
             setValues(competition);
             setInitialValues(competition);
+        } else if (prefillValues !== undefined) {
+            setValues(prefillValues);
+            setInitialValues(prefillValues);
         }
     }, [])
     
@@ -101,6 +144,16 @@ export default function CompetitionForm({competition, setModalState, setShowTran
     const finalFields = {...fields};
     if (!values.has_teams) {
         delete finalFields.organizer_assigns_teams;
+    }
+    // Objective and route only matter with the Expedition on; once the
+    // route is locked (challenge started) they are frozen server-side, so
+    // show them read-only instead of pretending they can change.
+    if (!values.expedition_enabled) {
+        delete finalFields.expedition_objective;
+        delete finalFields.expedition_theme;
+    } else if (values.expedition_locked) {
+        finalFields.expedition_objective = {...fields.expedition_objective, readOnly: true, label: "Objective (locked - the route has started)"};
+        finalFields.expedition_theme = {...fields.expedition_theme, readOnly: true, label: "Route (locked)"};
     }
 
     // form action button left
@@ -161,9 +214,14 @@ export default function CompetitionForm({competition, setModalState, setShowTran
     }
 
     return (
-        <Modal title="Challenge" landscape={true} setShowModal={setModalState}
+        <Modal title={isRematch ? "Prepare a rematch" : "Challenge"} landscape={true} setShowModal={setModalState}
                isLoading={updateIsLoading || createIsLoading || deleteIsLoading}
                confirmDiscard={useFormDirty(values, initialValues)}>
+            {isRematch && (
+                <p className="mb-3 text-sm text-gray-600 dark:text-gray-300">
+                    Review the fresh challenge window before creating it. Previous members are not added automatically; invite the group explicitly from the new challenge page.
+                </p>
+            )}
             <SingleForm fields={finalFields} values={values} setValues={setValues} errors={fieldErrors}/>
             <div className="text-center text-danger-text text-xs italic">{formError}</div>
             <div className="relative flex justify-between items-center">

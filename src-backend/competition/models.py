@@ -1,11 +1,10 @@
-import time, re, random, secrets
+import time, secrets
 from decimal import Decimal
 
 from django.db import models
-from django.db.models.signals import post_save
-from django.dispatch import receiver
 from django.core.validators import MinLengthValidator, RegexValidator, MinValueValidator
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from workouts.models import Workout, SPORT_TYPE_GROUPS, SPORT_TYPES
 from custom_user.models import CustomUser
@@ -115,6 +114,19 @@ class Competition(models.Model):
             new=is_create,
             changes=changed
         )
+        date_fields = {"start_date", "end_date"}
+        requested_fields = kwargs.get("update_fields")
+        dates_were_saved = requested_fields is None or bool(date_fields.intersection(requested_fields))
+        if not is_create and date_fields.intersection(changed) and dates_were_saved:
+            saved_dates = type(self).objects.only("start_date", "end_date").get(pk=self.pk)
+            campaign = ExpeditionCampaign.objects.filter(
+                competition_id=self.pk,
+                locked_at__isnull=True,
+            ).first()
+            if campaign and timezone.localdate() < campaign.start_date:
+                campaign.start_date = saved_dates.start_date
+                campaign.end_date = saved_dates.end_date
+                campaign.save(update_fields=["start_date", "end_date", "updated_at"])
         self._original = self._dict()  # reset
 
         # add default activity goals if new competition
@@ -279,3 +291,154 @@ class Points(models.Model):
     def __str__(self):
         """str print-out of model entry"""
         return f"{self.award if self.goal is None else self.goal} - {self.points_raw}"
+
+
+class ExpeditionCampaign(models.Model):
+    """Opt-in, challenge-scoped Expedition route and date lock."""
+
+    competition = models.OneToOneField(
+        Competition,
+        on_delete=models.CASCADE,
+        related_name="expedition",
+    )
+    enabled = models.BooleanField(
+        default=False,
+        help_text="Pilot flag: expose the Expedition to challenge participants.",
+    )
+    route_template = models.CharField(max_length=40, default="trail-v1", editable=False)
+    # What the route is dressed as and what the crew is trying to do. The
+    # theme rotates per organizer when left blank; the objective is picked
+    # per challenge. Both are frozen once the campaign is locked.
+    route_theme = models.CharField(
+        max_length=20, blank=True, default="",
+        help_text="Blank = rotate automatically (summit, ocean, desert, space, relay).",
+    )
+    objective = models.CharField(
+        max_length=20, default="expedition",
+        choices=(
+            ("expedition", "Expedition - reach the far end together"),
+            ("rescue", "Rescue run - stay ahead of the storm"),
+            ("basecamp", "Base camp - hold the camp week after week"),
+            ("treasure", "Treasure hunt - hidden landmarks"),
+        ),
+    )
+    # One-week rule changes, planned at launch: [{"week_start", "kind"}].
+    twist_plan = models.JSONField(default=list, blank=True, editable=False)
+    # Mutable twist bookkeeping (shortcut votes and result).
+    twist_state = models.JSONField(default=dict, blank=True, editable=False)
+    # Snapshot from Competition, refreshed before launch, then locked. These
+    # fields are not organizer-editable and never define a second duration.
+    start_date = models.DateField(editable=False)
+    end_date = models.DateField(editable=False)
+    participant_ids_snapshot = models.JSONField(default=list, blank=True, editable=False)
+    locked_at = models.DateTimeField(null=True, blank=True, editable=False)
+    finale_snapshot = models.JSONField(default=dict, blank=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            self.start_date = self.competition.start_date
+            self.end_date = self.competition.end_date
+            if not self.route_theme:
+                from .expedition_variants import pick_route_theme
+                self.route_theme = pick_route_theme(self.competition)
+        elif self.pk:
+            previous = type(self).objects.only(
+                "start_date", "end_date", "participant_ids_snapshot", "locked_at", "finale_snapshot",
+                "route_theme", "objective",
+            ).get(pk=self.pk)
+            if previous.locked_at:
+                self.start_date = previous.start_date
+                self.end_date = previous.end_date
+                self.participant_ids_snapshot = previous.participant_ids_snapshot
+                self.route_theme = previous.route_theme
+                self.objective = previous.objective
+            elif not self.route_theme:
+                from .expedition_variants import pick_route_theme
+                self.route_theme = pick_route_theme(self.competition)
+            if previous.finale_snapshot:
+                self.finale_snapshot = previous.finale_snapshot
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Expedition for {self.competition}"
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(end_date__gte=models.F("start_date")),
+                name="expedition_dates_are_ordered",
+            ),
+        ]
+
+
+class ExpeditionMilestone(models.Model):
+    """Stable route-stage/milestone identity and immutable completion snapshot."""
+
+    campaign = models.ForeignKey(
+        ExpeditionCampaign,
+        on_delete=models.CASCADE,
+        related_name="milestones",
+    )
+    stage_id = models.SlugField(max_length=40)
+    milestone_id = models.SlugField(max_length=40)
+    sequence = models.PositiveSmallIntegerField()
+    opens_on = models.DateField()
+    target_on = models.DateField()
+    progress_fraction = models.DecimalField(max_digits=5, decimal_places=4, default=1)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    coach_snapshot = models.JSONField(default=dict, blank=True)
+    # Rescue objective: the stamp survives only when the landmark was reached
+    # by its date. Always true for the other objectives.
+    stamped = models.BooleanField(default=True)
+    approved_asset_key = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        ordering = ["sequence"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["campaign", "milestone_id"],
+                name="unique_expedition_milestone_key",
+            ),
+            models.UniqueConstraint(
+                fields=["campaign", "sequence"],
+                name="unique_expedition_milestone_sequence",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.campaign}: {self.milestone_id}"
+
+
+class ExpeditionContribution(models.Model):
+    """Idempotent per-participant ISO-week normalized score rollup."""
+
+    campaign = models.ForeignKey(
+        ExpeditionCampaign,
+        on_delete=models.CASCADE,
+        related_name="contributions",
+    )
+    participant = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="expedition_contributions",
+    )
+    week_start = models.DateField()
+    normalized_points = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["week_start", "participant_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["campaign", "participant", "week_start"],
+                name="unique_expedition_participant_week",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["campaign", "week_start"], name="expedition_week_lookup"),
+        ]
+
+    def __str__(self):
+        return f"{self.campaign}: {self.participant_id} at {self.week_start}"

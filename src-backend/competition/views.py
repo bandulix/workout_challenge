@@ -8,7 +8,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from django.core.cache import cache
 from custom_user.throttles import ClientIPScopedThrottle
@@ -19,8 +19,6 @@ from django.db.models import Sum
 logger = logging.getLogger(__name__)
 
 from custom_user.permissions import IsCompetitionOwner, IsRelatedCompetitionOwner
-from custom_user.models import CustomUser
-from custom_user.point_recalc import recalc_points
 from .models import Competition, Team, ActivityGoal, Points
 from .serializers import CompetitionSerializer, TeamSerializer, ActivityGoalSerializer, PointsSerializer
 from .stats import get_competition_stats, get_competition_rank_summary
@@ -37,7 +35,7 @@ class CompetitionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # return all competitions the user is owner of or a participant of
         #time.sleep(3)  # throttle for testing
-        return Competition.objects.filter(Q(owner=self.request.user) | Q(user=self.request.user)).distinct().prefetch_related('user', 'activitygoal_set').order_by('-end_date', '-start_date', '-id')
+        return Competition.objects.filter(Q(owner=self.request.user) | Q(user=self.request.user)).distinct().select_related('expedition').prefetch_related('user', 'activitygoal_set').order_by('-end_date', '-start_date', '-id')
 
     def perform_create(self, serializer):
         # when creating a new competition, set the owner to the request user
@@ -396,7 +394,7 @@ def _feed_rows_for_ids(competition, workout_ids):
         return []
     import hashlib
     generation = cache.get(f"stats-generation:{competition}", 0)
-    sig = hashlib.sha1(",".join(str(w) for w in workout_ids).encode()).hexdigest()[:16]
+    sig = hashlib.sha1(",".join(str(w) for w in workout_ids).encode(), usedforsecurity=False).hexdigest()[:16]
     page_key = f"competition-feed-page:{competition}:g{generation}:{sig}"
     cached = cache.get(page_key)
     if cached is not None:
@@ -573,8 +571,6 @@ class JoinTeamView(APIView):
         if user is None:
             return Response({"message": "Not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        competition_teams = competition.team_set.all()
-
         target_is_self = (user.pk == request.user.pk)
         is_owner = (competition.owner_id == request.user.id)
 
@@ -590,26 +586,14 @@ class JoinTeamView(APIView):
         #   * A user can always move themselves (no need to be in no
         #     team first - that's what the dedup loop below enforces).
         #   * The competition owner can move any participant.
-        #   * Anyone else can only move a user who is currently in
-        #     *no* team in this competition - the previous version of
-        #     this check allowed anyone to silently re-assign un-teamed
-        #     participants to their own team, which let a regular
+        #   * Nobody else may move anyone - not even a participant who
+        #     currently has no team. An earlier version let any member
+        #     re-assign un-teamed participants, which let a regular
         #     participant scrape the participant list and shove people
-        #     into the wrong team.
-        target_in_a_team = competition_teams.filter(user=user).exists()
-
-        if not target_is_self and not is_owner and target_in_a_team:
+        #     into their own team.
+        if not target_is_self and not is_owner:
             return Response(
-                {"message": "Unauthorized. You can only change your own team or move team-less participants."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        # Only the owner or the target themselves can move people into
-        # a specific team when they had no team. Otherwise a regular
-        # participant could add team-less competitors into their team.
-        if not target_is_self and not is_owner and not target_in_a_team:
-            return Response(
-                {"message": "Unauthorized. Only the competition owner can assign un-teamed participants to a team."},
+                {"message": "Unauthorized. You can only change your own team; the competition owner assigns others."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 

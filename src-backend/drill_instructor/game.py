@@ -23,8 +23,8 @@ TAG_CATALOG = {
         "blurb": "First scorer in a live challenge.",
     },
     "ghost_killer": {
-        "title": "Ghost Killer",
-        "blurb": "Went from the dunce megaphone to first place.",
+        "title": "Found Your Stride",
+        "blurb": "Moved into first place through steady training.",
     },
     "photogenic": {
         "title": "Photogenic",
@@ -35,8 +35,8 @@ TAG_CATALOG = {
         "blurb": "Logged a workout on three different Mondays.",
     },
     "survived_the_dunce": {
-        "title": "Survived the Dunce",
-        "blurb": "Wore the megaphone and logged anyway.",
+        "title": "Showed Up Again",
+        "blurb": "Returned to training after a quieter stretch.",
     },
     "echo_immortal": {
         "title": "Echo Immortal",

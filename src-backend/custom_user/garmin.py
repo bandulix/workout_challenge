@@ -89,8 +89,13 @@ class GarminMfaRequired(Exception):
         self.method = method
 
 
-def _dump_mfa_state(client, email: str) -> str:
-    """Serialise the in-memory MFA state; returns the cache token."""
+def _dump_mfa_state(client, email: str, user_pk=None) -> str:
+    """Serialise the in-memory MFA state; returns the cache token.
+
+    ``user_pk`` pins the continuation to the account that started it:
+    the token alone must not let another signed-in user finish (and
+    thereby link) someone else's Garmin login.
+    """
     import secrets
 
     import requests
@@ -109,6 +114,7 @@ def _dump_mfa_state(client, email: str) -> str:
     widget_resp = getattr(c, "_widget_last_resp", None)
     state = {
         "email": email,
+        "user_pk": user_pk,
         "flow": getattr(c, "_mfa_flow", "portal"),
         "method": getattr(c, "_mfa_method", "email"),
         "login_params": getattr(c, "_mfa_login_params", {}) or {},
@@ -148,37 +154,42 @@ def _restore_mfa_client(token: str):
     return client
 
 
-def complete_mfa_login(mfa_token: str, mfa_code: str) -> "tuple[str, str]":
+def complete_mfa_login(mfa_token: str, mfa_code: str, user_pk=None) -> "tuple[str, str]":
     """Finish an MFA login with the emailed/SMSed code.
 
     Returns (token_blob, garmin_email) - the email rides in the cached
-    state so the second request never has to repeat it.
+    state so the second request never has to repeat it. A token started
+    by a different account is treated as unknown, and a rejected code
+    burns the token so it can't be used for repeated guesses.
     """
     import garminconnect
 
     from django.core.cache import cache
 
-    state = cache.get(MFA_CACHE_PREFIX + mfa_token)
-    if not state:
+    cache_key = MFA_CACHE_PREFIX + mfa_token
+    state = cache.get(cache_key)
+    if not state or state.get("user_pk") != user_pk:
         raise GarminAuthError("The verification session expired - please connect again.")
     client = _restore_mfa_client(mfa_token)
     try:
         client.resume_login(None, mfa_code.strip())
     except garminconnect.GarminConnectAuthenticationError as exc:
+        cache.delete(cache_key)
         raise GarminAuthError("Garmin rejected the verification code.") from exc
     except garminconnect.GarminConnectTooManyRequestsError as exc:
         raise GarminUnavailableError("Garmin rate-limited the login - try again in a few minutes.") from exc
     except Exception as exc:  # noqa: BLE001
         raise GarminUnavailableError("Could not reach Garmin Connect. Please try again later.") from exc
-    cache.delete(MFA_CACHE_PREFIX + mfa_token)
+    cache.delete(cache_key)
     return client.client.dumps(), state["email"]
 
 
-def login_and_get_tokens(email: str, password: str) -> str:
+def login_and_get_tokens(email: str, password: str, user_pk=None) -> str:
     """Validate credentials against Garmin and return the token blob.
 
     Raises GarminAuthError for bad credentials / MFA accounts and
-    GarminUnavailableError for network problems.
+    GarminUnavailableError for network problems. ``user_pk`` is bound
+    into the MFA continuation (see ``_dump_mfa_state``).
     """
     import garminconnect
 
@@ -194,7 +205,7 @@ def login_and_get_tokens(email: str, password: str) -> str:
 
     if needs_mfa:
         raise GarminMfaRequired(
-            mfa_token=_dump_mfa_state(client, email),
+            mfa_token=_dump_mfa_state(client, email, user_pk=user_pk),
             method=getattr(client.client, "_mfa_method", "email") or "email",
         )
     return client.client.dumps()
@@ -413,7 +424,7 @@ def daily_garmin_sync(self):
             user.garmin_tokens_enc = None
             user.garmin_email = None
             user.save()
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.exception('Garmin sync failed for user %s', user.pk)
 
     logger.info('Finished syncing Garmin.')

@@ -22,8 +22,10 @@ vi.mock("./authTokens", () => ({
 import {
     clearProtectedImageCache,
     fetchProtectedImage,
+    MAX_CACHED_IMAGES,
     pictureResponseIsBanRisk,
     pictureResponseIsEmpty,
+    protectedImageCacheOrder,
 } from "./protectedMedia";
 
 describe("pictureResponseIsEmpty", () => {
@@ -81,5 +83,57 @@ describe("fetchProtectedImage CrowdSec hygiene", () => {
         await Promise.all(urls.map((u) => fetchProtectedImage(u, "avatar")));
         await Promise.all(urls.map((u) => fetchProtectedImage(u, "avatar")));
         expect(fetchMock).toHaveBeenCalledTimes(urls.length);
+    });
+});
+
+describe("fetchProtectedImage LRU cache", () => {
+    let fetchMock;
+    let created;
+    let revoked;
+
+    beforeEach(() => {
+        clearProtectedImageCache();
+        created = 0;
+        revoked = [];
+        fetchMock = vi.fn().mockResolvedValue({status: 200, ok: true, blob: async () => new Blob(["x"])});
+        vi.stubGlobal("fetch", fetchMock);
+        vi.stubGlobal("URL", {
+            ...URL,
+            createObjectURL: () => `blob:img-${++created}`,
+            revokeObjectURL: (u) => revoked.push(u),
+        });
+    });
+    afterEach(() => {
+        clearProtectedImageCache();
+        vi.unstubAllGlobals();
+    });
+
+    it("moves a hit to the tail so the on-screen image is not evicted first", async () => {
+        await fetchProtectedImage("/api/user/1/picture/");
+        await fetchProtectedImage("/api/user/2/picture/");
+        await fetchProtectedImage("/api/user/3/picture/");
+        expect(protectedImageCacheOrder()).toEqual(["/api/user/1/picture/", "/api/user/2/picture/", "/api/user/3/picture/"]);
+
+        // A cache hit is not a refetch, but it is a "recently used".
+        expect(await fetchProtectedImage("/api/user/1/picture/")).toBe("blob:img-1");
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(protectedImageCacheOrder()).toEqual(["/api/user/2/picture/", "/api/user/3/picture/", "/api/user/1/picture/"]);
+    });
+
+    it("evicts the least recently used entry, not the first fetched", async () => {
+        for (let i = 1; i <= MAX_CACHED_IMAGES; i += 1) {
+            await fetchProtectedImage(`/api/user/${i}/picture/`);
+        }
+        // Touch the oldest right before the cache overflows.
+        const first = await fetchProtectedImage("/api/user/1/picture/");
+        await fetchProtectedImage("/api/user/new/picture/");
+        await Promise.resolve(); // revokeBlob resolves the evicted entry asynchronously
+
+        const order = protectedImageCacheOrder();
+        expect(order).toHaveLength(MAX_CACHED_IMAGES);
+        expect(order).toContain("/api/user/1/picture/");
+        expect(order).not.toContain("/api/user/2/picture/");
+        expect(revoked).toEqual(["blob:img-2"]);
+        expect(revoked).not.toContain(first);
     });
 });

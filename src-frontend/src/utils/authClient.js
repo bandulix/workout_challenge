@@ -1,6 +1,7 @@
 import store from "./store";
 import {usersApi} from "./reducers/usersSlice";
 import {sentryError} from "./reducers/baseQueryWithReauth";
+import {errText} from "./errors";
 import {
   applyAuthResponse,
   clearAuthSession,
@@ -8,33 +9,15 @@ import {
   getAccessToken,
 } from "./authTokens";
 
-function firstErrorMessage(parsedError) {
-  if (!parsedError) return null;
-  if (typeof parsedError.detail === "string") return parsedError.detail;
-  if (Array.isArray(parsedError.non_field_errors) && parsedError.non_field_errors.length) {
-    return parsedError.non_field_errors.join(" ");
-  }
-  for (const value of Object.values(parsedError)) {
-    if (Array.isArray(value) && value.length) return value.join(" ");
-    if (typeof value === "string") return value;
-  }
-  return null;
-}
-
-function rtkErrorMessage(result, fallback) {
-  const status = result.error?.status || result.error?.originalStatus || "";
-  const data = result.error?.data;
-  const detail = firstErrorMessage(data) || result.error?.error || "Unknown error";
-  return `${result.error?.statusText || "Error"} (${status}) - ${detail || fallback}`;
-}
-
 async function dispatchEndpoint(endpoint, body, sentryName) {
   try {
     const result = await store.dispatch(usersApi.endpoints[endpoint].initiate(body));
     if (result.data !== undefined && !result.error) {
       return [true, result.data];
     }
-    return [false, rtkErrorMessage(result, "Unknown error")];
+    // errText maps the DRF / fetchBaseQuery error shapes to one sentence
+    // (no "Error (401) - ..." status soup on the login form).
+    return [false, errText(result.error, "Unknown error")];
   } catch (error) {
     sentryError({result: error, errorSource: "manual-api", endpointName: sentryName});
     return [false, "Network or server error occurred. Please try again."];
@@ -89,8 +72,9 @@ export async function apiConfirmEmail(uid, token) {
   return [true, undefined];
 }
 
-export async function apiRefreshToken(_refreshToken) {
-  // Cookie (web) or secure storage (native) — ignore stale localStorage args.
+export async function apiRefreshToken() {
+  // The refresh token lives in the httpOnly cookie (web) or the secure
+  // store (native); callers never hand it over.
   try {
     const status = await ensureFreshAccessToken();
     if (status === "ok" && getAccessToken()) return [true, undefined];
@@ -106,13 +90,10 @@ export async function apiRefreshToken(_refreshToken) {
 
 export function sanitizeRedirect(value) {
   if (!value) return null;
-  let raw;
-  try {
-    raw = decodeURIComponent(value);
-  } catch (e) {
-    return null;
-  }
-  if (!raw || typeof raw !== "string") return null;
+  // The value comes from URLSearchParams.get(), which has already decoded
+  // it once - decoding again would throw on a legit path containing "%".
+  const raw = value;
+  if (typeof raw !== "string") return null;
   if (!raw.startsWith("/")) return null;
   if (raw.startsWith("//") || raw.startsWith("/\\")) return null;
   if (/^\/[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw)) return null;

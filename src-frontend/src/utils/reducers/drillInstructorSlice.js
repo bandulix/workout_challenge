@@ -24,9 +24,31 @@ export function drillMessagesMerge(current, incoming, {arg}) {
 export const drillInstructorApi = createApi({
     reducerPath: 'drillInstructorApi',
     baseQuery: baseQueryWithReauth,
-    tagTypes: ['DrillPersona', 'DrillConfig', 'DrillMessage', 'DrillRoast', 'DrillBallot', 'DrillEcho'],
+    tagTypes: ['DrillPersona', 'DrillConfig', 'DrillMessage', 'DrillRoast', 'DrillBallot', 'DrillEcho', 'ComebackBench'],
     ...liveQueryDefaults,
     endpoints: (builder) => ({
+        // ---- Private comeback bench -------------------------------------
+        getComebackBench: builder.query({
+            query: () => ({url: 'drill-instructor/comeback/', method: 'GET'}),
+            providesTags: ['ComebackBench'],
+        }),
+        updateComebackBench: builder.mutation({
+            query: (body) => ({url: 'drill-instructor/comeback/', method: 'PATCH', body}),
+            invalidatesTags: ['ComebackBench'],
+        }),
+        createComebackSupportOffer: builder.mutation({
+            query: (body) => ({url: 'drill-instructor/comeback/offers/', method: 'POST', body}),
+            invalidatesTags: ['ComebackBench'],
+        }),
+        respondToComebackSupportOffer: builder.mutation({
+            query: ({offerId, accepted}) => ({
+                url: `drill-instructor/comeback/offers/${offerId}/respond/`,
+                method: 'POST',
+                body: {accepted},
+            }),
+            invalidatesTags: ['ComebackBench'],
+        }),
+
         // ---- Personas ---------------------------------------------------
         getPersonas: builder.query({
             query: (params = {}) => ({
@@ -306,6 +328,10 @@ export const drillInstructorApi = createApi({
 export {pageResults as messageResults} from "../queryPage";
 
 export const {
+    useGetComebackBenchQuery,
+    useUpdateComebackBenchMutation,
+    useCreateComebackSupportOfferMutation,
+    useRespondToComebackSupportOfferMutation,
     useGetPersonasQuery,
     useAddPersonaMutation,
     useUpdatePersonaMutation,

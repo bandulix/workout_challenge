@@ -1192,6 +1192,10 @@ class HealthConnectorTests(TestCase):
         self.user = CustomUser.objects.create_user(
             email="health@example.com", password="test-pw", first_name="Hea", last_name="",
         )
+        # Linking Health requires a verified address (the 409 path adopts
+        # an Open Wearables user by e-mail).
+        self.user.is_verified = True
+        self.user.save(update_fields=["is_verified"])
         self.start = timezone.now().replace(microsecond=0) - datetime.timedelta(hours=5)
         self.duration = datetime.timedelta(minutes=30)
 

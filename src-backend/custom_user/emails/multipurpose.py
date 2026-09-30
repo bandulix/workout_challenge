@@ -1,5 +1,4 @@
 import logging
-import os
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -43,7 +42,7 @@ def _strip_control_chars(value: str) -> str:
     return "".join(ch for ch in (value or "") if ch == "\t" or (ord(ch) >= 32 and ch != "\x7f"))
 
 
-def send_email(subject, body, to_email, cc=[], reply_to=[]):
+def send_email(subject, body, to_email, cc=None, reply_to=None):
     """General function via which all emails are sent out."""
     subject = _strip_control_chars(subject)
 
@@ -51,7 +50,7 @@ def send_email(subject, body, to_email, cc=[], reply_to=[]):
         from_email = settings.EMAIL_FROM
         reply_to_email = (
             [from_email] if settings.EMAIL_REPLY_TO is None else settings.EMAIL_REPLY_TO
-        ) if reply_to == [] else reply_to
+        ) if not reply_to else reply_to
         # In DEBUG or to .local addresses, redirect to EMAIL_FROM so
         # emails don't escape to unintended recipients during dev.
         to_email = _strip_control_chars(to_email)

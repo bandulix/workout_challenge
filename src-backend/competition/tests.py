@@ -538,6 +538,8 @@ class LeaderboardAthleteCardTests(TestCase):
     """Public card fields on the stats leaderboard - no email or legal name."""
 
     def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
         for target in (
             "competition.scorer.trigger_recalc_points",
             "drill_instructor.tasks.post_workout_comment.delay",
@@ -585,6 +587,206 @@ class LeaderboardAthleteCardTests(TestCase):
         self.assertEqual(row["echoes_held"], 0)
         self.assertEqual(float(row["scaling_kcal"]), 1.0)
         self.assertEqual(float(row["scaling_distance"]), 1.0)
+
+    def test_rank_summary_identifies_the_closest_person_ahead(self):
+        from .stats import get_competition_rank_summary
+
+        closer = CustomUser.objects.create_user(
+            email="closer@example.com", password="test-pw", first_name="Closer", username="closer",
+        )
+        leader = CustomUser.objects.create_user(
+            email="leader@example.com", password="test-pw", first_name="Leader", username="leader",
+        )
+        closer.my_competitions.add(self.cup)
+        leader.my_competitions.add(self.cup)
+        goal = self.cup.activitygoal_set.first()
+        for user, points in ((closer, 55), (leader, 80)):
+            workout = Workout(
+                user=user, sport_type="Run", start_datetime=timezone.now(),
+                duration=datetime.timedelta(minutes=40), intensity_category=2,
+            )
+            workout.save(score=False)
+            Points.objects.create(goal=goal, workout=workout, points_raw=points, points_capped=points)
+
+        summary = get_competition_rank_summary(self.cup.id, self.alice.id)
+
+        self.assertEqual(summary["rival"], {"id": closer.id, "username": "closer"})
+        self.assertEqual(summary["points_to_catch"], 15.0)
+        self.assertEqual(summary["rival_rank"], 2)
+        self.assertEqual(summary["places_to_rival"], 1)
+
+    def test_rank_summary_selects_rivals_by_final_capped_points(self):
+        from .stats import get_competition_rank_summary
+
+        raw_leader = CustomUser.objects.create_user(
+            email="raw-leader@example.com", password="test-pw", username="raw-leader",
+        )
+        capped_leader = CustomUser.objects.create_user(
+            email="capped-leader@example.com", password="test-pw", username="capped-leader",
+        )
+        raw_leader.my_competitions.add(self.cup)
+        capped_leader.my_competitions.add(self.cup)
+        goal = self.cup.activitygoal_set.first()
+        for user, raw, capped in ((raw_leader, 100, 30), (capped_leader, 10, 45)):
+            workout = Workout(
+                user=user, sport_type="Run", start_datetime=timezone.now(),
+                duration=datetime.timedelta(minutes=40), intensity_category=2,
+            )
+            workout.save(score=False)
+            Points.objects.create(goal=goal, workout=workout, points_raw=raw, points_capped=capped)
+
+        summary = get_competition_rank_summary(self.cup.id, self.alice.id)
+
+        self.assertEqual(summary["rival"], {"id": capped_leader.id, "username": "capped-leader"})
+        self.assertEqual(summary["my_rank"], 2)
+        self.assertEqual(summary["rival_rank"], 1)
+        self.assertEqual(summary["points_to_catch"], 5.0)
+
+    def test_rank_summary_honors_a_pinned_rival_instead_of_the_nearest(self):
+        from .stats import get_competition_rank_summary
+
+        nearer = CustomUser.objects.create_user(
+            email="nearer@example.com", password="test-pw", username="nearer",
+        )
+        target = CustomUser.objects.create_user(
+            email="pinned@example.com", password="test-pw", username="pinned",
+        )
+        nearer.my_competitions.add(self.cup)
+        target.my_competitions.add(self.cup)
+        goal = self.cup.activitygoal_set.first()
+        for user, score in ((nearer, 55), (target, 80)):
+            workout = Workout(
+                user=user, sport_type="Run", start_datetime=timezone.now(),
+                duration=datetime.timedelta(minutes=40), intensity_category=2,
+            )
+            workout.save(score=False)
+            Points.objects.create(goal=goal, workout=workout, points_raw=score, points_capped=score)
+
+        summary = get_competition_rank_summary(
+            self.cup.id, self.alice.id, pinned_rival_id=target.id,
+        )
+
+        self.assertEqual(summary["rival"], {"id": target.id, "username": "pinned"})
+        self.assertEqual(summary["points_to_catch"], 40.0)
+        self.assertEqual(summary["rival_rank"], 1)
+        self.assertEqual(summary["places_to_rival"], 2)
+        self.assertTrue(summary["rival_is_pinned"])
+
+    def test_competition_list_uses_the_requested_home_pinned_rival(self):
+        nearer = CustomUser.objects.create_user(
+            email="list-nearer@example.com", password="test-pw", username="list-nearer",
+        )
+        target = CustomUser.objects.create_user(
+            email="list-pinned@example.com", password="test-pw", username="list-pinned",
+        )
+        nearer.my_competitions.add(self.cup)
+        target.my_competitions.add(self.cup)
+        goal = self.cup.activitygoal_set.first()
+        for user, score in ((nearer, 55), (target, 80)):
+            workout = Workout(
+                user=user, sport_type="Run", start_datetime=timezone.now(),
+                duration=datetime.timedelta(minutes=40), intensity_category=2,
+            )
+            workout.save(score=False)
+            Points.objects.create(goal=goal, workout=workout, points_raw=score, points_capped=score)
+
+        from rest_framework.test import APIClient
+        client = APIClient()
+        client.force_authenticate(self.alice)
+        response = client.get("/api/competition/", {
+            "home_rival_challenge": self.cup.id,
+            "home_rival_user": target.id,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.data if item["id"] == self.cup.id)
+        self.assertEqual(row["my_rank_summary"]["rival"], {"id": target.id, "username": "list-pinned"})
+        self.assertTrue(row["my_rank_summary"]["rival_is_pinned"])
+
+    def test_rank_summary_has_no_person_ahead_when_user_is_leading(self):
+        from .stats import get_competition_rank_summary
+
+        summary = get_competition_rank_summary(self.cup.id, self.alice.id)
+
+        self.assertEqual(summary["my_rank"], 1)
+        self.assertIsNone(summary["rival"])
+        self.assertIsNone(summary["points_to_catch"])
+
+    def test_rank_summary_falls_back_when_participant_has_no_score(self):
+        from .stats import get_competition_rank_summary
+
+        newcomer = CustomUser.objects.create_user(
+            email="newcomer@example.com", password="test-pw", username="newcomer",
+        )
+        newcomer.my_competitions.add(self.cup)
+
+        summary = get_competition_rank_summary(self.cup.id, newcomer.id)
+
+        self.assertIsNone(summary["my_rank"])
+        self.assertIsNone(summary["rival"])
+        self.assertIsNone(summary["points_to_catch"])
+        self.assertFalse(summary["gap_changed"])
+
+    def test_tied_participants_share_rank_and_are_not_each_others_rival(self):
+        from .stats import get_competition_rank_summary
+
+        tied = CustomUser.objects.create_user(
+            email="tied@example.com", password="test-pw", username="tied",
+        )
+        closer = CustomUser.objects.create_user(
+            email="closer-tie@example.com", password="test-pw", username="closer-tie",
+        )
+        tied.my_competitions.add(self.cup)
+        closer.my_competitions.add(self.cup)
+        goal = self.cup.activitygoal_set.first()
+        for user, score in ((tied, 40), (closer, 55)):
+            workout = Workout(
+                user=user, sport_type="Run", start_datetime=timezone.now(),
+                duration=datetime.timedelta(minutes=40), intensity_category=2,
+            )
+            workout.save(score=False)
+            Points.objects.create(goal=goal, workout=workout, points_raw=score, points_capped=score)
+
+        summary = get_competition_rank_summary(self.cup.id, self.alice.id)
+
+        self.assertEqual(summary["my_rank"], 2)
+        self.assertEqual(summary["rival"], {"id": closer.id, "username": "closer-tie"})
+        self.assertEqual(summary["rival_rank"], 1)
+        self.assertEqual(summary["places_to_rival"], 1)
+
+    def test_rank_summary_flags_only_a_material_gap_change(self):
+        from django.core.cache import cache
+        from .stats import get_competition_rank_summary
+
+        closer = CustomUser.objects.create_user(
+            email="closer-gap@example.com", password="test-pw", username="closer-gap",
+        )
+        closer.my_competitions.add(self.cup)
+        goal = self.cup.activitygoal_set.first()
+        workout = Workout(
+            user=closer, sport_type="Run", start_datetime=timezone.now(),
+            duration=datetime.timedelta(minutes=40), intensity_category=2,
+        )
+        workout.save(score=False)
+        points = Points.objects.create(goal=goal, workout=workout, points_raw=55, points_capped=55)
+        cache.clear()
+
+        first = get_competition_rank_summary(self.cup.id, self.alice.id)
+        self.assertFalse(first["gap_changed"])
+
+        points.points_raw = points.points_capped = 56
+        points.save(update_fields=["points_raw", "points_capped"])
+        small_change = get_competition_rank_summary(self.cup.id, self.alice.id)
+        self.assertFalse(small_change["gap_changed"])
+
+        points.points_raw = points.points_capped = 70
+        points.save(update_fields=["points_raw", "points_capped"])
+        material_change = get_competition_rank_summary(self.cup.id, self.alice.id)
+        self.assertTrue(material_change["gap_changed"])
+        self.assertEqual(material_change["rival"]["id"], closer.id)
+
+        unchanged = get_competition_rank_summary(self.cup.id, self.alice.id)
+        self.assertFalse(unchanged["gap_changed"])
 
 
 @override_settings(

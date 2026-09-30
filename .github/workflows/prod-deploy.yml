@@ -99,7 +99,7 @@ jobs:
 
 
   docker:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: autotag
     # Minimal token scope: read the repo, push the image to ghcr.io.
     # GITHUB_TOKEN doubles as the registry login - no extra secrets needed.
@@ -138,7 +138,7 @@ jobs:
     # GitHub Release - so every deployed version also ships a matching
     # app. Generic build (no baked backend URL): the app asks for the
     # server address once on first start, so one APK fits every instance.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [autotag, docker, release]
     permissions:
       contents: write  # gh release upload
@@ -169,7 +169,10 @@ jobs:
           CI: "false"
         run: npm ci && INLINE_RUNTIME_CHUNK=false npm run build && npx cap sync android
       - name: Install Android SDK platform 36
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
+        run: |
+          set -o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+          test -d "$ANDROID_HOME/platforms/android-36" || { echo "android-36 platform missing after sdkmanager"; exit 1; }
       - name: Set up release signing
         # Android refuses in-place updates when the signature changes.
         # Without signing material, every CI runner would generate a fresh
@@ -221,7 +224,7 @@ jobs:
 
 
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [autotag, docker]
     # The release only goes out once the image actually built and
     # pushed - a tag without a working image would be a broken promise.

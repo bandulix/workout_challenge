@@ -608,7 +608,19 @@ def _image_cache_key() -> str:
     return "drill-image-edit:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-def check_image_edit_capability() -> Optional[str]:
+def _is_timeout(exc) -> bool:
+    """True for client-side timeouts (openai.APITimeoutError, requests.Timeout,
+    socket timeouts). Named loosely on purpose: the SDKs raise many classes."""
+    name = type(exc).__name__.lower()
+    return "timeout" in name or "timedout" in name
+
+
+# The probe sends a real 1024x1024 edit. gpt-image-1 style models routinely
+# take 30-60s for that, so a short deadline would read "busy" as "can't".
+_IMAGE_PROBE_TIMEOUT = 90
+
+
+def check_image_edit_capability(force: bool = False) -> Optional[str]:
     """The image-edit model available for the roast remix, or None.
 
     Same philosophy as :func:`check_vision_capability`: probe once (one
@@ -616,14 +628,26 @@ def check_image_edit_capability() -> Optional[str]:
     Returns the model NAME so callers can pass it to
     :func:`generate_roast_image` without knowing the fallback logic.
     Never raises - any failure means "no image editing".
+
+    A dedicated ``LLM_IMAGE_*`` endpoint is taken at its word: the admin
+    named that model for editing, so it is returned without a probe and a
+    broken key or quota surfaces on the real edit (which retries) instead
+    of silently hiding the feature behind a cached "no".
+
+    ``force=True`` ignores a cached negative answer - used by the roast
+    retry task so one bad probe cannot mute the coach's picture replies.
     """
-    client, _model, candidates, style = _image_client()
+    client, configured_model, candidates, style = _image_client(timeout=_IMAGE_PROBE_TIMEOUT)
     if client is None:
         return None
 
     cache_key = _image_cache_key()
+    if _image_endpoint_config() is not None:
+        cache.set(cache_key, configured_model, _VISION_CACHE_TTL)
+        return configured_model
+
     cached = cache.get(cache_key)
-    if cached is not None:
+    if cached is not None and (cached or not force):
         return cached or None
 
     for candidate in candidates:
@@ -632,13 +656,20 @@ def check_image_edit_capability() -> Optional[str]:
                 client, style, candidate,
                 image_bytes=_probe_image_bytes(),
                 prompt="Return this image unchanged.",
-                timeout=30,
+                timeout=_IMAGE_PROBE_TIMEOUT,
             )
         except Exception as exc:  # noqa: BLE001 - OpenAI raises many subclasses
             status_code = getattr(exc, "status_code", None)
             if status_code == 400:
                 logger.info("Drill Instructor image-edit probe: model %s rejected (%s)", candidate, status_code)
                 continue  # definitive "this model can't" - try the next one
+            if _is_timeout(exc):
+                # The endpoint accepted the edit and is still rendering it:
+                # that IS the capability. Treating slowness as "no" is what
+                # used to switch the roast off on every busy afternoon.
+                logger.info("Drill Instructor image-edit probe: %s timed out - counting as capable", candidate)
+                cache.set(cache_key, candidate, _VISION_CACHE_TTL)
+                return candidate
             # Transient or indeterminate (network, 5xx, auth/billing 4xx)
             # - answer "no" for now, retry soon.
             logger.info("Drill Instructor image-edit probe failed (%s): %s", type(exc).__name__, str(exc)[:200])
@@ -709,20 +740,31 @@ def generate_roast_image(image_path: str, roast_prompt: str, model: str, extra_i
         except Exception as exc:  # noqa: BLE001
             logger.warning("Drill Instructor: could not prepare extra image %s: %s", path, exc)
     if wanted_extras and not extra_bytes:
-        return None, "coach portrait could not be prepared"
+        # A broken portrait file must not cost the athlete their remix -
+        # the coach just appears without the face lock this time.
+        logger.warning("Drill Instructor: no reference image could be prepared - editing the photo alone")
 
-    try:
-        result = _images_edit(
-            client, style, model,
-            image_bytes=image_bytes,
-            prompt=roast_prompt[:3900],  # dall-e-2 caps prompts at 4000 chars
-            timeout=180,
-            extra_images=extra_bytes or None,
-        )
-        return _extract_image_payload(result)
-    except Exception as exc:  # noqa: BLE001 - OpenAI raises many subclasses
-        logger.warning("Drill Instructor image edit failed: %s", exc)
-        return None, f"image edit failed ({type(exc).__name__}: {str(exc)[:200]})"
+    last_error = None
+    # Multi-image edits are the flaky part of every provider (payload
+    # limits, "images" vs "image" quirks, stricter moderation on faces).
+    # If the referenced edit fails, the photo-only edit is the fallback.
+    for attempt_extras in ([extra_bytes] if extra_bytes else []) + [[]]:
+        try:
+            result = _images_edit(
+                client, style, model,
+                image_bytes=image_bytes,
+                prompt=roast_prompt[:3900],  # dall-e-2 caps prompts at 4000 chars
+                timeout=180,
+                extra_images=attempt_extras or None,
+            )
+            payload, error = _extract_image_payload(result)
+            if payload:
+                return payload, None
+            last_error = error
+        except Exception as exc:  # noqa: BLE001 - OpenAI raises many subclasses
+            logger.warning("Drill Instructor image edit failed (%s reference images): %s", len(attempt_extras), exc)
+            last_error = f"image edit failed ({type(exc).__name__}: {str(exc)[:200]})"
+    return None, last_error
 
 
 MAX_ROAST_IMAGE_BYTES = 8 * 1024 * 1024
@@ -1495,99 +1537,46 @@ def build_workout_prompt(*, user_first_name: str, username: str, sport_type: str
     return "\n".join(parts)
 
 
-def build_group_push_prompt(*, competition_name: str, participant_first_names, leader_first_name: Optional[str] = None, leader_points: Optional[float] = None, days_left: Optional[int] = None, workouts_today: int = 0, previous_messages=None) -> str:
-    """Compose the user-message for the random daily group push.
+def _thread_lines(thread_history, per_entry=240, budget=2400):
+    """Render thread history for a prompt, oldest first.
 
-    Unlike the quiet-day nudge this fires regardless of activity, at a
-    random time - a persona-voiced pep talk that pushes the whole group:
-    fire them up, reference the standings, keep the competition alive.
+    Accepts the legacy list of entries or ``{"entries", "dropped"}`` from
+    ``_thread_history``. Wordless photo turns stay visible as markers so
+    the coach knows a picture happened; the newest turns win when the
+    character budget runs out.
     """
-    parts = [
-        f"Competition: {competition_name}",
-        "Situation: you are checking in on the group unannounced, at a "
-        "random moment - your job is to push them, keep the pressure on "
-        "and make everyone want to train today.",
-    ]
-    names = [n for n in (participant_first_names or []) if n]
-    if names:
-        parts.append("Participants: " + ", ".join(f"@{n}" for n in names[:8]))
-    if workouts_today > 0:
-        parts.append(f"Workouts logged today so far: {workouts_today}")
+    if isinstance(thread_history, dict):
+        entries = list(thread_history.get("entries") or [])
+        dropped = int(thread_history.get("dropped") or 0)
     else:
-        parts.append("Nobody has logged a workout yet today.")
-    if leader_first_name:
-        if leader_points:
-            parts.append(f"Current leader: @{leader_first_name} with {round(leader_points)} total points")
-        else:
-            parts.append(f"Current leader: @{leader_first_name}")
-    if days_left is not None:
-        if days_left <= 0:
-            parts.append("The competition ends TODAY.")
-        elif days_left == 1:
-            parts.append("Only 1 day left in the competition.")
-        else:
-            parts.append(f"{days_left} days left in the competition.")
-    parts.extend(_previous_messages_parts(previous_messages))
-    parts.append(
-        "Write one short pep talk (max 220 chars) addressed to the WHOLE "
-        "group in your persona's voice, calling out one or two athletes by "
-        "their @FirstName tokens. Push the group: fire them up, challenge "
-        "the laggards, keep the leader honest. React to the situation "
-        "above instead of reciting it. Never invent other names."
-    )
-    parts.append("Write your message now.")
-    return "\n".join(parts)
-
-
-def build_daily_briefing_prompt(*, competition_name: str, topic: str, previous_briefings=None) -> str:
-    """Compose the user-message for the owner-defined daily briefing.
-
-    The admin's text is passed to the model 1:1 (verbatim, only stripped
-    and capped at the field's 500 chars) as a standing instruction for the
-    daily morning post - the app must NOT rewrite it into a "topic", or
-    admins lose control over wording, length and format. The persona still
-    decides HOW it sounds (system prompt). The briefing is a continuing
-    arc, not a daily reset: previous posts are included and the coach must
-    evolve its take. Honesty guardrail: the model has no live data feed,
-    so it must never invent today's numbers.
-    """
-    instruction = str(topic or "").strip()[:480]
-    parts = [
-        f"Competition: {competition_name}",
-        "The challenge admin wrote the following standing instruction for "
-        "your daily morning post. It is passed to you verbatim (1:1) - "
-        "follow it exactly as written, in your persona's voice:",
-        f"\"\"\"{instruction}\"\"\"",
-        "Honesty rule: you have no live data feed. If the instruction needs "
-        "current facts you cannot know (today's weather, snow levels, "
-        "results, news), say plainly that you can't check them right now - "
-        "in your persona's style - and turn it into the day's plan or a "
-        "call to action instead. NEVER invent measurements, numbers or "
-        "forecasts.",
-    ]
-    briefings = [b for b in (previous_briefings or []) if b]
-    if briefings:
-        parts.append(
-            "Your previous briefings on this topic, newest first: "
-            + " | ".join(f"\"{b[:160]}\"" for b in briefings[:4])
-        )
-        parts.append(
-            "CONTINUE the story from those briefings - this is a running "
-            "arc, not a daily reset. If the situation has not changed "
-            "(still no snow, still the same lull), your reaction must "
-            "EVOLVE in your persona's style: growing worry, impatience, "
-            "gallows humour, fresh hope - a third bad day should read "
-            "differently from the first. Never restate yesterday's take."
-        )
-    else:
-        parts.append("This is your FIRST briefing on this topic - set the scene.")
-    parts.append(
-        "Write today's post now - in your persona's voice, following the "
-        "admin's instruction above exactly (including any length or format "
-        "it asks for; default: one short post, max 280 chars). No @mentions "
-        "unless the instruction itself names someone."
-    )
-    return "\n".join(parts)
+        entries = list(thread_history or [])
+        dropped = 0
+    rendered = []
+    for entry in entries:
+        body = str(entry.get("body") or "").strip()
+        if entry.get("has_image"):
+            marker = "[posted a remixed poster]" if entry.get("is_coach") else "[shared a photo]"
+            body = f"{marker} {body}".strip()
+        if not body:
+            continue
+        speaker = "You" if entry.get("is_coach") else f"@{entry.get('author')}"
+        rendered.append(f"- {speaker}: \"{body[:per_entry]}\"")
+    # Keep the newest turns inside the budget.
+    kept = []
+    used = 0
+    for line in reversed(rendered):
+        if kept and used + len(line) > budget:
+            dropped += 1
+            continue
+        kept.append(line)
+        used += len(line)
+    kept.reverse()
+    if not kept:
+        return []
+    header = "The thread so far (oldest first"
+    header += f", {dropped} earlier turn{'s' if dropped != 1 else ''} not shown" if dropped else ""
+    header += "):"
+    return [header] + kept
 
 
 def build_reply_prompt(*, competition_name: str, coach_message: str, reply_first_name: str, reply_body: str, thread_history=None, reply_has_photo: bool = False) -> str:
@@ -1603,16 +1592,11 @@ def build_reply_prompt(*, competition_name: str, coach_message: str, reply_first
     """
     parts = [
         f"Competition: {competition_name}",
-        "Situation: a participant publicly replied to one of your messages. React to it.",
-        f"Your message they replied to: \"{coach_message[:400]}\"",
+        "Situation: a participant publicly replied in a thread under one of your messages. React to it.",
+        f"Your message that started the thread: \"{coach_message[:400]}\"",
     ]
-    history = [h for h in (thread_history or []) if h.get("body")]
-    if history:
-        lines = ["The thread so far (oldest first):"]
-        for entry in history[:4]:
-            speaker = "You" if entry.get("is_coach") else f"@{entry.get('author')}"
-            lines.append(f"- {speaker}: \"{str(entry['body'])[:120]}\"")
-        parts.extend(lines)
+    thread_lines = _thread_lines(thread_history)
+    parts.extend(thread_lines)
     if reply_has_photo:
         if reply_body:
             parts.append(f"@{reply_first_name} now replied with a PHOTO (attached - you can see it) and wrote: \"{reply_body[:500]}\"")
@@ -1628,11 +1612,18 @@ def build_reply_prompt(*, competition_name: str, coach_message: str, reply_first
         "call back to the thread if useful, and push them back to training. "
         "Never invent other names."
     )
+    if thread_lines:
+        parts.append(
+            "This is a running conversation: answer the thread, not just the "
+            "last line. Pick up open questions or points made earlier, do "
+            "not repeat what you already said, and only @-mention people "
+            "who appear in the thread."
+        )
     parts.append("Write your reaction now.")
     return "\n".join(parts)
 
 
-def build_photo_prompt(*, competition_name: str, author_first_name: str, caption: str = "", can_see_image: bool = False, roasts_image: bool = False) -> str:
+def build_photo_prompt(*, competition_name: str, author_first_name: str, caption: str = "", can_see_image: bool = False, roasts_image: bool = False, thread_history=None) -> str:
     """Compose the user-message for the coach's reaction to a photo post.
 
     A participant shared a picture in the competition's feed. When the
@@ -1642,11 +1633,15 @@ def build_photo_prompt(*, competition_name: str, author_first_name: str, caption
     riffs on the caption instead of hallucinating image content. With
     ``roasts_image`` the coach also teases the remixed poster it is about
     to post (the roast image is generated right after the text reaction).
+    ``thread_history`` (same shape as for replies) lets the reaction fit
+    into a thread that already has replies under it.
     """
     parts = [
         f"Competition: {competition_name}",
         f"Situation: @{author_first_name} just shared a photo with the group.",
     ]
+    thread_lines = _thread_lines(thread_history)
+    parts.extend(thread_lines)
     if caption:
         parts.append(f"Their caption: \"{caption[:300]}\"")
     if can_see_image:
@@ -1673,44 +1668,4 @@ def build_photo_prompt(*, competition_name: str, author_first_name: str, caption
             "into one of your posters - it lands in the thread right after you."
         )
     parts.append("Write your reaction now.")
-    return "\n".join(parts)
-
-
-def build_inactivity_prompt(*, competition_name: str, participant_first_names, leader_first_name: Optional[str] = None, leader_points: Optional[float] = None, days_left: Optional[int] = None, previous_messages=None) -> str:
-    """Compose the user-message for a quiet-day (inactivity) nudge.
-
-    Sent when a running competition saw zero workouts on a given day.
-    Unlike the workout prompt this addresses the whole group, not a
-    single athlete - the goal is to wake the platoon up and get someone
-    to log something before the day is over.
-    """
-    parts = [
-        f"Competition: {competition_name}",
-        "Situation: a whole day passed and NOT A SINGLE participant logged "
-        "a workout. The group has gone quiet.",
-    ]
-    names = [n for n in (participant_first_names or []) if n]
-    if names:
-        parts.append("Participants: " + ", ".join(f"@{n}" for n in names[:8]))
-    if leader_first_name:
-        if leader_points:
-            parts.append(f"Current leader: @{leader_first_name} with {round(leader_points)} total points")
-        else:
-            parts.append(f"Current leader: @{leader_first_name}")
-    if days_left is not None:
-        if days_left <= 0:
-            parts.append("The competition ends TODAY.")
-        elif days_left == 1:
-            parts.append("Only 1 day left in the competition.")
-        else:
-            parts.append(f"{days_left} days left in the competition.")
-    parts.extend(_previous_messages_parts(previous_messages))
-    parts.append(
-        "Write one short sentence (max 220 chars) addressed to the WHOLE "
-        "group, calling them out by their @FirstName tokens (pick one or "
-        "two). Rouse them: mock the collective laziness, remind them the "
-        "competition is still on, and dare someone to log a workout today. "
-        "Never invent other names."
-    )
-    parts.append("Write your nudge now.")
     return "\n".join(parts)

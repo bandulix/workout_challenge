@@ -32,6 +32,9 @@ export default defineConfig(({mode}) => ({
         "process.env.REACT_APP_BACKEND_URL": JSON.stringify(process.env.REACT_APP_BACKEND_URL || ""),
     },
     esbuild: {
+        // Production source maps are disabled above; avoid generating and reparsing
+        // large inline maps during chunk minification as well. Keep dev mappings.
+        sourcemap: mode !== "production",
         loader: "jsx",
         include: /src\/.*\.js$/,
         exclude: [],
