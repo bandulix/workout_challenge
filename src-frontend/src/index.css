@@ -233,7 +233,8 @@
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow:
     0 16px 48px rgba(0, 0, 0, 0.55),
-    0 1px 0 rgba(255, 255, 255, 0.16) inset;
+    0 1px 0 rgba(255, 255, 255, 0.16) inset,
+    0 0 20px rgba(215, 255, 62, 0.05);
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass-dock,
@@ -634,6 +635,18 @@
   0%, 18% { background-position: 120% 0; }
   50% { background-position: -20% 0; }
   100% { background-position: -20% 0; }
+}
+
+/* Active tab: slim volt dash, not a filled chip. */
+.nav-active-bar {
+  display: block;
+  width: 14px;
+  height: 3px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: #d7ff3e;
+  box-shadow: 0 0 10px rgba(215, 255, 62, 0.7);
+  transform-origin: center;
 }
 
 html {
