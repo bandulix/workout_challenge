@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Coach reads the whole thread.** Replies to a feed post now hand the coach the full conversation so far (newest 12 turns), so it answers the thread, not a single line.
 
 ### Changed
+- **Season-first Home.** The trail is the first screen: your name, picture and the crew's route percentage above the route graphic, drawn straight on the gym-plate backdrop. Compete and Coach tops sit on the same backdrop with no painted box behind them. A one-time season poster introduces it.
+- **Log in two taps.** The Log sheet replaces the seven-field form: a grid of your recent sports, duration chips, intensity pills, one Save button — date, kcal and distance behind *More*. A saved workout visibly leaves the dock and the trail redraws. Editing an existing workout keeps the full form.
+- **Home in four beats.** Trail → your goal → this week and streak → latest workouts. The 30-day block and the 12/26-week bars moved behind *Stats* on the week card.
+- **Coach as a character.** Mood is the colour of the portrait ring instead of a status chip; on-duty and "trained today" sit quietly under the name.
+- **Leaderboard podium.** The top three stand on a podium with avatars and points; everyone else is a slim row. The per-row effort/distance text is gone.
+- **Less green.** Volt now means two things only — the primary action and earned value (points, ranks, streaks, pace). Eyebrows, links, hovers, status pills, icons and card glows are neutral.
+- **Plate buttons.** Action buttons are squared plates with a hard bottom edge that sinks on press, in sentence case: volt for the primary action, ink for secondary, outline for ghost. Chips and toggles keep their pills.
+- **Trail tab Expedition box** uses the same glass card as every other box.
 - **Photo = relic.** The always-on "+10P" camera is gone. The camera appears only when a photo has a purpose — planting or claiming an Echo, or a photo order — and says so before the picker opens. New flat photo points are no longer awarded; historical awards and board totals are untouched. An Echo without its photo by the deadline stays a personal mark but is not a visible relic.
 - **The coach always answers a picture.** Every photo post gets a remix or, if the image model is unavailable, a spoken reaction now and a retry ladder (1 min / 4 min / 15 min) for the remix — never silence. Vision/edit capability probes are longer-lived and a dedicated image model is trusted without probing.
 - **No more public shaming.** The dunce/last-place crowning and the generic daily coach chatter (inactivity nudges, random pep talks, briefings without an owner topic) are retired; the coach speaks when something happened. Positive comeback recognition stays.
