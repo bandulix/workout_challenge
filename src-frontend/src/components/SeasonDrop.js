@@ -50,7 +50,7 @@ export default function SeasonDrop() {
             className="fixed inset-0 z-[100] flex flex-col bg-ink-950 px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))] text-white"
             role="dialog"
         >
-            <p className="t-pane text-volt-400">New season</p>
+            <p className="t-pane text-white/55">New season</p>
             <h2 className="mt-3 font-display text-[3.25rem] uppercase leading-[0.9] tracking-tight">
                 The trail<br/>is open
             </h2>

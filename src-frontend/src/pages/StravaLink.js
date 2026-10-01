@@ -64,7 +64,7 @@ export function InitStravaLink() {
         <PageWrapper additionClasses="h-screen flex items-center justify-center">
             <div className="text-center">
                 <p className="p-2">Could not start the Strava linking (your session may have expired).</p>
-                <p className="p-0.5"><a className="text-volt-700 dark:text-volt-300 font-semibold hover:underline" href='/strava/link'>Click here
+                <p className="p-0.5"><a className=" font-semibold text-ink-950 dark:text-white underline" href='/strava/link'>Click here
                     to <b>try again</b></a></p>
             </div>
         </PageWrapper>
@@ -75,7 +75,7 @@ export function InitStravaLink() {
     return (
         <PageWrapper>
             {stateToken ? (
-                <>If you are not redirected automatically, follow this <a className="text-volt-700 dark:text-volt-300 font-semibold hover:underline"
+                <>If you are not redirected automatically, follow this <a className=" font-semibold text-ink-950 dark:text-white underline"
                                                                           href={(urlFirstPart + urlSecondPart)}>link to
                 Strava</a>.</>
             ) : (
@@ -154,9 +154,9 @@ export function ReturnStravaLink() {
             <PageWrapper additionClasses="h-screen flex items-center justify-center">
                 <div className="text-center">
                     <p className="p-2">{errorMsg}</p>
-                    <p className="p-0.5"><a className="text-volt-700 dark:text-volt-300 font-semibold hover:underline" href='/strava/link'>Click here
+                    <p className="p-0.5"><a className=" font-semibold text-ink-950 dark:text-white underline" href='/strava/link'>Click here
                         to <b>try again linking Strava</b></a></p>
-                    <p className="p-0.5"><a className="text-volt-700 dark:text-volt-300 font-semibold hover:underline" href='/dashboard'>Or go back to
+                    <p className="p-0.5"><a className=" font-semibold text-ink-950 dark:text-white underline" href='/dashboard'>Or go back to
                         the <b>Dashboard</b></a></p>
                 </div>
             </PageWrapper>

@@ -36,10 +36,10 @@ export default function VerifyEmailBanner() {
 
     return (
         <div className="pointer-events-none fixed inset-x-0 top-0 z-[70] px-3 pt-[max(0.5rem,env(safe-area-inset-top))]">
-            <div className="pointer-events-auto mx-auto max-w-lg rounded-2xl glass-card border border-volt-400/50 px-4 py-3 flex items-center gap-3"
+            <div className="pointer-events-auto mx-auto max-w-lg rounded-2xl glass-card px-4 py-3 flex items-center gap-3"
                  role="status">
                 <p className="min-w-0 flex-1 text-sm text-gray-700 dark:text-gray-200">
-                    Confirm <span className="font-bold text-volt-700 dark:text-volt-400">{user.email}</span> to get coach emails.
+                    Confirm <span className="font-bold text-ink-950 dark:text-white">{user.email}</span> to get coach emails.
                 </p>
                 <button type="button" disabled={isLoading} onClick={handleResend}
                         className="shrink-0 rounded-full bg-volt-400 px-3.5 py-2 min-h-[44px] text-[11px] font-bold uppercase tracking-wide text-ink-950 disabled:opacity-50">

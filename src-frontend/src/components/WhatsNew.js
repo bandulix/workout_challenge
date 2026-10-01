@@ -131,7 +131,7 @@ function WhatsNew() {
                     <PartyPopper className="h-5 w-5 text-ink-950"/>
                 </span>
                 <div className="min-w-0">
-                    <p className="font-display text-lg uppercase tracking-wide text-volt-600 dark:text-volt-400 leading-tight">Version {version}</p>
+                    <p className="font-display text-lg uppercase tracking-wide text-ink-950 dark:text-white leading-tight">Version {version}</p>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                         A few things that changed in this release.
                     </p>

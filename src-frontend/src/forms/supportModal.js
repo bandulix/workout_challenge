@@ -46,14 +46,14 @@ function AccordionMenu() {
             <>
                 No data is sold/shared to/with anyone. If you delete your account all data is unrecoverably deleted. There might be backups containing your user data for a few more weeks until the retention period is exceeded.
                 {SENTRY_DSN ? (
-                    <> <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://sentry.io/">Sentry.io</a> error and performance monitoring is enabled. In line with EU GDPR, if errors occur these are reported anonymized (no Personal-Identifiable-Information) to the administrator, plus basic loading-speed stats on about 25% of sessions. Please see Sentry.io&apos;s data privacy policy.</>
+                    <> <a className=" text-ink-950 dark:text-white underline" target="_blank" rel="noopener noreferrer" href="https://sentry.io/">Sentry.io</a> error and performance monitoring is enabled. In line with EU GDPR, if errors occur these are reported anonymized (no Personal-Identifiable-Information) to the administrator, plus basic loading-speed stats on about 25% of sessions. Please see Sentry.io&apos;s data privacy policy.</>
                 ) : null}
                 {" "}No user statistics or other analytics are collected by the website itself. The data you see when using the app is the data saved (e.g. personal profile, workout data, competition signups, points).
             </>
         )},
         {title: "Credits", content: (
             <>
-                Fork of <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick/workout_challenge">vanalmsick/workout_challenge</a> under the SSPL v1.0 license — see <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/bandulix/workout_challenge">github.com/bandulix/workout_challenge</a>. See <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="/credits.txt">here for stock image and sound credits</a>.
+                Fork of <a className=" text-ink-950 dark:text-white underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick/workout_challenge">vanalmsick/workout_challenge</a> under the SSPL v1.0 license — see <a className=" text-ink-950 dark:text-white underline" target="_blank" rel="noopener noreferrer" href="https://github.com/bandulix/workout_challenge">github.com/bandulix/workout_challenge</a>. See <a className=" text-ink-950 dark:text-white underline" target="_blank" rel="noopener noreferrer" href="/credits.txt">here for stock image and sound credits</a>.
             </>
         )},
     ];
@@ -65,10 +65,10 @@ function AccordionMenu() {
             ))}
             <div className="mt-3 rounded-2xl glass-inset px-4 py-3 text-center text-xs text-gray-500 dark:text-gray-400 space-y-1">
                 <p><b className="font-display uppercase tracking-wide text-ink-950 dark:text-gray-200">Workout Challenge</b></p>
-                <p>Fork of <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick/workout_challenge">vanalmsick/workout_challenge</a></p>
-                <p>Original work © 2025 <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick">github.com/vanalmsick</a><br/>
-                Fork modifications © 2026 <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/bandulix/workout_challenge">bandulix</a></p>
-                <p>Licensed under the <a className="text-volt-700 dark:text-volt-300 hover:underline" target="_blank" rel="noopener noreferrer" href="https://github.com/bandulix/workout_challenge/blob/main/LICENSE">Server Side Public License v1 (SSPL)</a></p>
+                <p>Fork of <a className=" text-ink-950 dark:text-white underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick/workout_challenge">vanalmsick/workout_challenge</a></p>
+                <p>Original work © 2025 <a className=" text-ink-950 dark:text-white underline" target="_blank" rel="noopener noreferrer" href="https://github.com/vanalmsick">github.com/vanalmsick</a><br/>
+                Fork modifications © 2026 <a className=" text-ink-950 dark:text-white underline" target="_blank" rel="noopener noreferrer" href="https://github.com/bandulix/workout_challenge">bandulix</a></p>
+                <p>Licensed under the <a className=" text-ink-950 dark:text-white underline" target="_blank" rel="noopener noreferrer" href="https://github.com/bandulix/workout_challenge/blob/main/LICENSE">Server Side Public License v1 (SSPL)</a></p>
             </div>
         </div>
     );

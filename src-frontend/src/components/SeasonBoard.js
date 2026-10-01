@@ -54,7 +54,7 @@ export default function SeasonBoard({competitionId, user, onOpen}) {
                 <div className="flex items-start gap-3 px-5 pt-7">
                     <ProfileAvatar className="shrink-0" size={44} user={user}/>
                     <div className="min-w-0 flex-1">
-                        <p className="t-pane text-volt-300">{title}</p>
+                        <p className="t-pane text-white/55">{title}</p>
                         <h1 className="t-hero truncate">{user?.first_name}</h1>
                         <DogTagRow tags={user?.dog_tags}/>
                     </div>
@@ -65,7 +65,7 @@ export default function SeasonBoard({competitionId, user, onOpen}) {
                 </div>
                 <div className="flex items-center justify-between px-5 pb-2 pt-1">
                     <span className="text-sm text-white/80">{count} on the trail</span>
-                    <ChevronRight aria-hidden="true" className="h-5 w-5 text-volt-400"/>
+                    <ChevronRight aria-hidden="true" className="h-5 w-5 text-white/60"/>
                 </div>
             </button>
         </>

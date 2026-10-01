@@ -53,7 +53,7 @@ export function LinkStravaScreen({setModal}) {
                                            level={"L"}/>
                             </div>
                             <p className="text-gray-600 dark:text-gray-400">Or <a
-                                className="text-volt-700 dark:text-volt-300 font-semibold hover:underline" href={url}
+                                className=" font-semibold text-ink-950 dark:text-white underline" href={url}
                                 target="_blank" rel="noopener noreferrer">click this link</a></p>
                         </div>
                     )

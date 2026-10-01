@@ -95,15 +95,15 @@ export default function RivalCard({model, onPin, onDismiss, isPinned = false, pl
                     className="group flex min-w-0 flex-1 items-start gap-3 rounded-xl text-inherit no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400 focus-visible:ring-offset-2"
                 >
                     {!plate && (
-                        <div className="mt-0.5 rounded-full bg-volt-400/15 p-2 text-volt-700 dark:text-volt-300">
+                        <div className="mt-0.5 rounded-full bg-white/10 p-2 text-ink-950 dark:text-white">
                             <Target className="h-5 w-5" aria-hidden="true"/>
                         </div>
                     )}
                     <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-x-2">
                             <p className={plate
-                                ? "text-xs font-bold uppercase tracking-[0.16em] text-volt-300"
-                                : "text-xs font-bold uppercase tracking-[0.16em] text-volt-700 dark:text-volt-300"}>
+                                ? "text-xs font-bold uppercase tracking-[0.16em] text-white/55"
+                                : "text-xs font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-white/55"}>
                                 {eyebrow}
                             </p>
                             <span className={plate
@@ -117,8 +117,8 @@ export default function RivalCard({model, onPin, onDismiss, isPinned = false, pl
                     </div>
                     <ChevronRight
                         className={"mt-1 h-5 w-5 shrink-0 transition group-hover:translate-x-0.5 " + (plate
-                            ? "text-white/40 group-hover:text-volt-300"
-                            : "text-gray-400 group-hover:text-volt-600 dark:text-gray-500")}
+                            ? "text-white/40 group-hover:text-white"
+                            : "text-gray-400 group-hover:text-ink-950 dark:text-gray-500")}
                         aria-hidden="true"
                     />
                 </Link>
@@ -126,8 +126,8 @@ export default function RivalCard({model, onPin, onDismiss, isPinned = false, pl
                     <button type="button" onClick={onPin}
                             aria-label={isPinned ? `Unpin @${model.rivalUsername}` : `Pin @${model.rivalUsername}`}
                             className={"min-h-[44px] min-w-[44px] rounded-full text-xs font-semibold " + (plate
-                                ? "text-white/70 hover:text-volt-300"
-                                : "text-gray-600 hover:text-volt-700 dark:text-gray-300 dark:hover:text-volt-300")}>
+                                ? "text-white/70 hover:text-white"
+                                : "text-gray-600 hover:text-ink-950 dark:text-gray-300 dark:hover:text-white")}>
                         {isPinned ? "Pinned" : "Pin"}
                     </button>
                 )}
@@ -152,7 +152,7 @@ export default function RivalCard({model, onPin, onDismiss, isPinned = false, pl
     }
 
     return (
-        <BoxSection additionalClasses="mb-4 border-l-4 border-volt-400">
+        <BoxSection additionalClasses="mb-4">
             {inner}
         </BoxSection>
     );

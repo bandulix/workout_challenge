@@ -20,7 +20,7 @@ export default function AppBackdrop({forceCinematic = false}) {
                 ? "bg-gradient-to-b from-ink-950/25 via-ink-950/40 to-ink-950/88"
                 : "bg-gradient-to-b from-ink-950/35 via-ink-950/50 to-ink-950/78")}/>
             {!cinematic && (
-                <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-80 w-80 rounded-full bg-volt-400/12 blur-3xl"/>
+                <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-80 w-80 rounded-full bg-white/10 blur-3xl"/>
             )}
         </div>
     );

@@ -61,7 +61,7 @@ function SyncSourceSection({user, onChanged}) {
     return (
         <div className="rounded-2xl glass-card p-4 space-y-3">
                 <div className="flex items-center gap-2">
-                    <Watch className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                    <Watch className="h-4 w-4 text-gray-500 dark:text-white/70"/>
                     <span className="font-display text-xs uppercase tracking-wider">Activity import source</span>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -152,7 +152,7 @@ function HealthSection({user, onChanged}) {
     return (
         <div className="rounded-2xl glass-card p-4 space-y-3">
                 <div className="flex items-center gap-2">
-                    <Smartphone className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                    <Smartphone className="h-4 w-4 text-gray-500 dark:text-white/70"/>
                     <span className="font-display text-xs uppercase tracking-wider">
                         {isNative ? "Google Health Connect" : "Apple / Google Health"}
                     </span>
@@ -216,7 +216,7 @@ function HealthSection({user, onChanged}) {
                     )}
                 </div>
 
-                {message && !invitation?.code && <p className="text-xs text-volt-700 dark:text-volt-300">{message}</p>}
+                {message && !invitation?.code && <p className="text-xs text-gray-700 dark:text-white/80">{message}</p>}
                 {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
     );
@@ -291,7 +291,7 @@ function GarminSection({user, onChanged}) {
     return (
         <div className="rounded-2xl glass-card p-4 space-y-3">
                 <div className="flex items-center gap-2">
-                    <Watch className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                    <Watch className="h-4 w-4 text-gray-500 dark:text-white/70"/>
                     <span className="font-display text-xs uppercase tracking-wider">Garmin Connect</span>
                     {linked && <LinkedPill/>}
                 </div>
@@ -344,7 +344,7 @@ function GarminSection({user, onChanged}) {
                     </>
                 )}
 
-                {message && <p className="text-xs text-volt-700 dark:text-volt-300">{message}</p>}
+                {message && <p className="text-xs text-gray-700 dark:text-white/80">{message}</p>}
                 {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
     );
@@ -384,7 +384,7 @@ export function PasswordSection() {
     return (
         <div className="rounded-2xl glass-card p-4 space-y-3">
             <div className="flex items-center gap-2">
-                <KeyRound className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                <KeyRound className="h-4 w-4 text-gray-500 dark:text-white/70"/>
                 <span className="font-display text-xs uppercase tracking-wider">Change password</span>
             </div>
             <input type="password" className={FIELD_INPUT_CLASS} placeholder="Current password"
@@ -420,7 +420,7 @@ function SettingsGroup({title, hint, children}) {
 
 function LinkedPill() {
     return (
-        <span className="ml-auto text-[10px] font-bold uppercase tracking-wide rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2 py-0.5">linked</span>
+        <span className="ml-auto text-[10px] font-bold uppercase tracking-wide rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 px-2 py-0.5">linked</span>
     );
 }
 
@@ -429,7 +429,7 @@ function SoundSettings() {
         <SettingsGroup title="Sounds" hint="Celebratory sound effects are always on.">
             <div className="rounded-2xl glass-card p-4 space-y-3">
                 <div className="flex items-center gap-2">
-                    <Volume2 className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                    <Volume2 className="h-4 w-4 text-gray-500 dark:text-white/70"/>
                     <span className="font-display text-xs uppercase tracking-wider">Sound effects always on</span>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -647,7 +647,7 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
             <SettingsGroup title="Connected services" hint="Only one source imports activities, so the same workout never lands twice.">
                 <div className="rounded-2xl glass-card p-4 space-y-3">
                     <div className="flex items-center gap-2">
-                        <Watch className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                        <Watch className="h-4 w-4 text-gray-500 dark:text-white/70"/>
                         <span className="font-display text-xs uppercase tracking-wider">Strava</span>
                         {stravaLinked && <LinkedPill/>}
                     </div>

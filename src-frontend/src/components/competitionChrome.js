@@ -35,7 +35,7 @@ export function HeaderIconButton({onClick, title, icon: Icon, danger = false, is
         <button onClick={onClick} title={title} aria-label={title} disabled={isLoading}
                 className={"p-2 rounded-full min-h-[40px] min-w-[40px] flex items-center justify-center transition active:scale-95 " +
                     (danger ? "text-gray-400 hover:text-red-500 hover:bg-red-500/10"
-                            : "text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 hover:bg-ink-950/[0.05] dark:hover:bg-white/[0.06]")}>
+                            : "text-gray-400 hover:text-ink-950 dark:hover:text-white hover:bg-ink-950/[0.05] dark:hover:bg-white/[0.06]")}>
             <Icon className={"h-5 w-5 " + (isLoading ? "animate-pulse" : "")}/>
         </button>
     );
@@ -101,7 +101,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                         <span className={"shrink-0 inline-flex items-center gap-1.5 text-sm font-extrabold tracking-wide " +
                             (endChip.kind === "last"
                                 ? "uppercase tracking-[0.12em] text-amber-700 dark:text-amber-300"
-                                : "text-volt-700 dark:text-volt-300")}>
+                                : "text-gray-700 dark:text-white/80")}>
                             {endChip.kind === "last" ? <Timer className="h-4 w-4"/> : null}
                             {endChip.text}
                         </span>
@@ -156,7 +156,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                                     <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Challenge goals</p>
                                     {isOwner && (
                                         <button type="button" onClick={() => setShowModifyGoals(true)}
-                                                className="text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition min-h-[44px] px-2">
+                                                className="text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[44px] px-2">
                                             Edit
                                         </button>
                                     )}
@@ -581,7 +581,7 @@ export function PointsChip({capped, raw, size = "md", message = null}) {
                                         <div className="pl-7">{pointsRowExplain(row)}</div>
                                     </div>
                                 ))}
-                                <div className="mt-3 flex items-baseline gap-2 border-t-2 border-volt-400/50 pt-3">
+                                <div className="mt-3 flex items-baseline gap-2 border-t-2 border-ink-950/10 dark:border-white/15 pt-3">
                                     <span className="w-5 shrink-0 text-center font-display text-lg text-volt-700 dark:text-volt-400">=</span>
                                     <span className="min-w-0 flex-1 font-semibold">This workout</span>
                                     <span className="font-display text-xl tabular-nums leading-none text-volt-700 dark:text-volt-400">
@@ -692,9 +692,9 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                             {message.echoes.map((echo) => (
                                 <div key={echo.id}
                                      className="flex items-center gap-2 rounded-2xl bg-volt-400/20 px-2.5 py-1.5 text-ink-950 dark:text-white">
-                                    <Crown className="h-4 w-4 shrink-0 text-volt-700 dark:text-volt-300"/>
+                                    <Crown className="h-4 w-4 shrink-0 text-gray-500 dark:text-white/70"/>
                                     <div className="min-w-0">
-                                        <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-volt-800 dark:text-volt-300">
+                                        <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-gray-500 dark:text-white/55">
                                             {echo.role === "claimed" ? "Claimed Echo" : "Legend Echo"}
                                         </p>
                                         <p className="text-xs font-bold truncate">{echo.title}</p>
@@ -767,7 +767,7 @@ function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
                         className="relative block w-full bg-ink-950 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
                     <img src={src} alt={message.body || `Shared by ${message.author_name || "a participant"}`}
                          className="w-full max-h-80 object-cover"/>
-                    <span className="absolute bottom-2 right-2 rounded-full bg-ink-950/75 text-volt-400 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 tabular-nums">
+                    <span className="absolute bottom-2 right-2 rounded-full bg-ink-950/75 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 tabular-nums">
                         {elapsedSince(message.posted_at, now)}
                     </span>
                 </button>
@@ -802,7 +802,7 @@ function AnnouncementPost({message, persona, canReply, defaultOpen}) {
     return (
         <FeedCard>
             <p className="mb-2 flex items-baseline justify-between gap-2">
-                <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-volt-700 dark:text-volt-400">
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-gray-500 dark:text-white/55">
                     {kind}
                 </span>
                 <span className="text-[11px] text-gray-400">{timeAgo(message.posted_at)}</span>
@@ -909,7 +909,7 @@ export function CoachCorner({competition, isOwner}) {
         if (!isOwner) return null;
         return (
             <div className="mb-4 relative overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white">
-                <div className="pointer-events-none absolute -top-16 -right-10 h-40 w-40 rounded-full bg-volt-400/25 blur-3xl"/>
+                <div className="pointer-events-none absolute -top-16 -right-10 h-40 w-40 rounded-full bg-white/10 blur-3xl"/>
                 <div className="relative flex flex-wrap items-center gap-4 p-5">
                     <img src="/personas/megaphone.svg" alt="" className="h-14 w-14 rounded-full animate-float-slow shrink-0"/>
                     <div className="flex-1 min-w-0">
@@ -989,7 +989,7 @@ export function CoachCorner({competition, isOwner}) {
                                     limit: FEED_PAGE,
                                     offset: all.length,
                                 })}
-                                className="mt-4 w-full min-h-[44px] rounded-2xl border border-volt-400/40 text-sm font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition disabled:opacity-50">
+                                className="mt-4 w-full min-h-[44px] rounded-2xl border border-ink-950/15 dark:border-white/20 text-sm font-bold uppercase tracking-wide text-ink-950 dark:text-white hover:bg-ink-950/5 dark:hover:bg-white/10 transition disabled:opacity-50">
                             Show {Math.min(hidden, FEED_PAGE)} more
                         </button>
                     )}

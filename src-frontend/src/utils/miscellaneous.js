@@ -83,7 +83,7 @@ function ErrorBoxSection({errorMsg, additionalClasses = ''}) {
                         className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
                     Reset & reload
                 </button>
-                <a href="/logout" className="text-sm font-semibold text-volt-700 dark:text-volt-300 hover:underline">Log out</a>
+                <a href="/logout" className="text-sm font-semibold  text-ink-950 dark:text-white underline">Log out</a>
                 {errorMsg && <p className="text-xs text-gray-400 font-mono break-all">{errorMsg}</p>}
             </div>
         </BoxSection>
@@ -126,7 +126,7 @@ class ErrorBoundary extends React.Component {
                         Reload the app
                     </button>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                        If the problem keeps coming back, <a href="/logout" className="text-volt-700 dark:text-volt-300 hover:underline">log out</a> and
+                        If the problem keeps coming back, <a href="/logout" className=" text-ink-950 dark:text-white underline">log out</a> and
                         log back in. If it still persists, contact the administrator.
                     </p>
                 </div>

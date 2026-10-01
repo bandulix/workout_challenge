@@ -73,7 +73,7 @@ function GettingStarted({user, competitions, workouts, configs, onJoin, onCreate
     if (hasChallenge && sourceDone && coachDone) return null;
 
     const btn = "inline-flex items-center rounded-full bg-volt-400 text-ink-950 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition min-h-[44px]";
-    const ghost = "inline-flex items-center rounded-full border border-volt-500/40 text-volt-700 dark:text-volt-300 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-400/10 transition min-h-[44px]";
+    const ghost = "inline-flex items-center rounded-full border border-ink-950/15 dark:border-white/20 text-ink-950 dark:text-white px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-ink-950/5 dark:hover:bg-white/10 transition min-h-[44px]";
 
     function Step({done, n, title, body, children}) {
         return (
@@ -199,7 +199,7 @@ function WorkoutRow({workout, onOpen, showDate = true}) {
         <li>
             <button type="button" onClick={() => onOpen(workout.id)} className={rowClass}>
                 <div className="h-10 w-10 rounded-2xl bg-volt-400/15 flex items-center justify-center shrink-0">
-                    <Dumbbell className="h-4 w-4 text-volt-600 dark:text-volt-400"/>
+                    <Dumbbell className="h-4 w-4 text-gray-500 dark:text-white/70"/>
                 </div>
                 <div className="min-w-0 flex-1">
                     <p className="font-semibold truncate">{sportLabelShort(workout.sport_type)} · {primary}</p>
@@ -377,7 +377,7 @@ function WorkoutsBox({workouts, user, setLinkStrava, summary}) {
                     </ul>
                     {older > 0 && (
                         <button type="button" onClick={() => setShowHistory(true)}
-                                className="mt-3 w-full min-h-[44px] rounded-2xl border border-volt-400/40 text-sm font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition">
+                                className="mt-3 w-full min-h-[44px] rounded-2xl border border-ink-950/15 dark:border-white/20 text-sm font-bold uppercase tracking-wide text-ink-950 dark:text-white hover:bg-ink-950/5 dark:hover:bg-white/10 transition">
                             {older} older {older === 1 ? "activity" : "activities"}
                         </button>
                     )}
@@ -545,28 +545,28 @@ function ThirtyDayStats({thirtyDayStats}) {
                 the labels out - 2x2 keeps them readable. */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                 <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
-                    <Dumbbell className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
+                    <Dumbbell className="w-5 h-5 text-gray-500 dark:text-white/70 shrink-0"/>
                     <div className="text-left">
                         <div className="text-[11px] tracking-wide text-gray-500">Workouts</div>
                         <div className="text-xl font-bold leading-tight t-stat">{thirtyDayStats.workouts}</div>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
-                    <Timer className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
+                    <Timer className="w-5 h-5 text-gray-500 dark:text-white/70 shrink-0"/>
                     <div className="text-left">
                         <div className="text-[11px] tracking-wide text-gray-500">Time</div>
                         <div className="text-xl font-bold leading-tight t-stat">{Math.floor(thirtyDayStats.time / 3600).toLocaleString()}<span className="text-sm font-semibold">hr </span>{Math.floor((thirtyDayStats.time % 3600) / 60)}<span className="text-sm font-semibold">min</span></div>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
-                    <Flame className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
+                    <Flame className="w-5 h-5 text-gray-500 dark:text-white/70 shrink-0"/>
                     <div className="text-left">
                         <div className="text-[11px] tracking-wide text-gray-500">Calories</div>
                         <div className="text-xl font-bold leading-tight t-stat">{thirtyDayStats.kcal.toLocaleString()}<span className="text-sm font-semibold">kcal</span></div>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
-                    <Ruler className="w-5 h-5 text-volt-600 dark:text-volt-400 shrink-0"/>
+                    <Ruler className="w-5 h-5 text-gray-500 dark:text-white/70 shrink-0"/>
                     <div className="text-left">
                         <div className="text-[11px] tracking-wide text-gray-500">Distance</div>
                         <div className="text-xl font-bold leading-tight t-stat">{Math.round(thirtyDayStats.distance).toLocaleString()}<span className="text-sm font-semibold">km</span></div>
@@ -684,11 +684,11 @@ function StreakCard({workouts, summary, onStats}) {
 
     return (
         <div className="relative overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white p-5 w-full">
-            <div className="pointer-events-none absolute -top-14 -right-14 h-40 w-40 rounded-full bg-volt-400/25 blur-3xl"/>
+            <div className="pointer-events-none absolute -top-14 -right-14 h-40 w-40 rounded-full bg-white/10 blur-3xl"/>
             <div className="relative">
                 <div className="flex items-center gap-4">
-                    <div className="h-14 w-14 rounded-2xl bg-volt-400/20 dark:bg-volt-400/15 flex items-center justify-center">
-                        <Flame className="h-7 w-7 text-volt-700 dark:text-volt-400"/>
+                    <div className="h-14 w-14 rounded-2xl bg-ink-950/5 dark:bg-white/10 flex items-center justify-center">
+                        <Flame className="h-7 w-7 text-gray-500 dark:text-white/70"/>
                     </div>
                     <div className="flex items-baseline gap-2">
                         <span className="font-display text-5xl text-volt-700 dark:text-volt-400">{weekStreak}</span>
@@ -727,7 +727,7 @@ function StreakCard({workouts, summary, onStats}) {
 
                 <div className="mt-4 flex items-center justify-between text-xs">
                     <span className="text-gray-600 dark:text-gray-400">This week</span>
-                    <span className={"inline-flex items-center gap-1 font-bold " + (whoGoalHit ? "text-volt-700 dark:text-volt-400" : "text-gray-700 dark:text-gray-300")}>
+                    <span className={"inline-flex items-center gap-1 font-bold " + (whoGoalHit ? "text-ink-950 dark:text-white" : "text-gray-700 dark:text-gray-300")}>
                         {whoGoalHit && <CheckCheck className="h-3.5 w-3.5"/>}
                         {weekMinutes} / {WHO_WEEKLY_MINUTES} min
                     </span>

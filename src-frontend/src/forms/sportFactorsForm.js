@@ -76,7 +76,7 @@ export default function SportFactorsForm({setModalState}) {
                                     inputMode="decimal"
                                     className={FIELD_INPUT_CLASS + " text-right py-1.5 " +
                                         ((parseFloat(factors[sport] ?? 1) !== 1.0 && factors[sport] !== '' && factors[sport] !== undefined)
-                                            ? "bg-volt-400/15 dark:bg-volt-400/10 border-volt-500/50"
+                                            ? "bg-ink-950/5 dark:bg-white/10 border-ink-950/30 dark:border-white/40"
                                             : "")}
                                     value={factors[sport] ?? ''}
                                     placeholder="1.00"

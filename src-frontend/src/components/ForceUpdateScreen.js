@@ -6,11 +6,11 @@ import ServerField from "./ServerField";
 function BrandFrame({children, tagline}) {
     return (
         <div className="relative z-10 min-h-screen overflow-hidden">
-            <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-96 w-96 rounded-full bg-volt-400/25 blur-3xl z-0"/>
+            <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-96 w-96 rounded-full bg-white/10 blur-3xl z-0"/>
             <div className="relative z-10 flex items-center justify-center min-h-screen px-4">
                 <div className="p-8 max-w-md w-full text-center text-white my-4 animate-slide-up">
                     <img src="/icon-192.png" alt="" width={56} height={56}
-                         className="h-14 w-14 mx-auto mb-5 rounded-2xl shadow-glow-volt animate-float-slow"/>
+                         className="h-14 w-14 mx-auto mb-5 rounded-2xl animate-float-slow"/>
                     <h1 className="font-display text-4xl uppercase leading-none mb-3">
                         Workout<br/>
                         <span className="text-volt-400">Challenge</span>
@@ -47,8 +47,8 @@ export default function ForceUpdateScreen({update}) {
     return (
         <BrandFrame tagline="Update required">
             <p className="text-base text-gray-200 mb-8 leading-relaxed">
-                This phone is on <b className="text-volt-300">{current}</b>.
-                The server is serving <b className="text-volt-300">{latest}</b>.
+                This phone is on <b className="text-white">{current}</b>.
+                The server is serving <b className="text-white">{latest}</b>.
                 Install over the top — your login and data stay.
             </p>
             <a href={apkDownloadHref()}

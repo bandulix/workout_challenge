@@ -28,7 +28,7 @@ export default function CompetitionArchiveRow({competition, archived = false, on
                     ) : !started ? (
                         <span className="text-xs text-gray-500 dark:text-gray-400">Not started</span>
                     ) : rank == null ? (
-                        <span className="text-xs font-semibold text-volt-600 dark:text-volt-300">Time to work out!</span>
+                        <span className="text-xs font-semibold text-gray-700 dark:text-white/80">Time to work out!</span>
                     ) : (
                         <>
                             <p className="font-display text-xl text-volt-600 dark:text-volt-400 leading-none">#{rank}</p>

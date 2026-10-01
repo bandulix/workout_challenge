@@ -146,14 +146,14 @@ function ProfileAvatar({user, size = 96, editable = false, className = "", onCli
             <button
                 type="button"
                 onClick={openPicker}
-                className="group relative block w-full h-full rounded-full overflow-hidden ring-2 ring-volt-400/60 focus:outline-none focus:ring-volt-400"
+                className="group relative block w-full h-full rounded-full overflow-hidden ring-2 ring-white/40 focus:outline-none focus:ring-volt-400"
                 aria-label="Change profile picture"
             >
                 {img}
                 <span className="absolute inset-0 bg-ink-950/45 opacity-0 group-hover:opacity-100 group-active:opacity-100 transition flex items-center justify-center">
                     {isLoading
                         ? <BeatLoader size={6} color="#d7ff3e"/>
-                        : <Camera className="h-6 w-6 text-volt-400"/>}
+                        : <Camera className="h-6 w-6 text-white/80"/>}
                 </span>
             </button>
             <EchoCrown count={holds} size={size}/>

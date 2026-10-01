@@ -60,7 +60,7 @@ function EchoArt({url, title, onOpen}) {
                 </button>
             ) : (
                 <div className="h-28 w-full bg-gradient-to-br from-ink-800 via-ink-900 to-black flex items-center justify-center">
-                    <Crown className="h-7 w-7 text-volt-400/70"/>
+                    <Crown className="h-7 w-7 text-white/30"/>
                 </div>
             )}
         </div>
@@ -77,7 +77,7 @@ function EchoTile({echo, onDelete, busy, onOpenArt, showStatus = false}) {
                     {echo.holder_name || "Held"} · {echo.metric_label}
                 </p>
                 {echo.status !== "immortal" && (echo.defenses || 0) > 0 && (
-                    <p className="mt-0.5 text-[10px] font-bold text-volt-600 dark:text-volt-400">
+                    <p className="mt-0.5 text-[10px] font-bold text-gray-500 dark:text-white/55">
                         Survived {echo.defenses}/3 takeovers
                     </p>
                 )}
@@ -92,7 +92,7 @@ function EchoTile({echo, onDelete, busy, onOpenArt, showStatus = false}) {
                         <Share2 className="h-3.5 w-3.5"/> Share
                     </button>
                     {showStatus && (
-                        <span className="shrink-0 rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">
+                        <span className="shrink-0 rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">
                             {STATUS_LABEL[echo.status] || echo.status}
                         </span>
                     )}
@@ -164,7 +164,7 @@ export default function EchoLiveStrip({competitionId, userId}) {
     const explainerButton = (
         <button type="button" onClick={() => setShowExplainer(true)}
                 aria-label="How Echoes work"
-                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-gray-400 hover:text-volt-600 dark:hover:text-volt-300 transition">
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-gray-400 hover:text-ink-950 dark:hover:text-white transition">
             <Info className="h-4 w-4"/>
         </button>
     );

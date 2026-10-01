@@ -46,9 +46,9 @@ export default function ExpeditionPostcard({title, finale, canRematch = false, o
     return (
         <section
             aria-label="Expedition postcard preview"
-            className="mt-5 rounded-3xl glass-card border-l-4 border-volt-400 p-4 text-ink-950 dark:text-white"
+            className="mt-5 rounded-3xl glass-card p-4 text-ink-950 dark:text-white"
         >
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-volt-700 dark:text-volt-300">Expedition finale · preview</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-white/55">Expedition finale · preview</p>
             <h3 className="mt-1 font-display text-sm uppercase tracking-wider">{challengeTitle}</h3>
             <p className="text-sm text-muted">Finished {date}</p>
             <div className="mt-3 rounded-2xl bg-ink-950/5 p-3 dark:bg-white/5">

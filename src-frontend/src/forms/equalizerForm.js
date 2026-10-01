@@ -218,7 +218,7 @@ export default function GoalEqualizerForm({user, setModalState}) {
             {formError && <p className="text-center text-danger-text text-xs italic">{formError}</p>}
             <p className="text-xs text-gray-500 dark:text-gray-400">
                 Want to verify the math? The formula is in the{" "}
-                <a className="text-volt-700 dark:text-volt-300 font-semibold hover:underline" target="_blank" rel="noopener noreferrer"
+                <a className=" font-semibold text-ink-950 dark:text-white underline" target="_blank" rel="noopener noreferrer"
                    href="https://github.com/vanalmsick/workout_challenge/blob/main/src-frontend/src/forms/equalizerForm.js">
                     public source
                 </a>.

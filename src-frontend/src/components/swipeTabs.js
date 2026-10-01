@@ -53,7 +53,7 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0, tabs = CHALLENGE_
                         className={"shrink-0 h-11 w-11 rounded-full flex items-center justify-center transition " +
                             (idx === 0
                                 ? "text-gray-300/80 dark:text-ink-600 cursor-default"
-                                : "text-gray-400 hover:text-volt-600 dark:hover:text-volt-400")}>
+                                : "text-gray-400 hover:text-ink-950 dark:hover:text-white")}>
                     <ChevronLeft className="h-4 w-4"/>
                 </button>
 
@@ -64,11 +64,11 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0, tabs = CHALLENGE_
                                 onClick={() => onChange(t.id)}
                                 className={"relative px-3.5 py-2 min-h-[44px] text-[11px] font-bold uppercase tracking-[0.16em] transition " +
                                     (tab === t.id
-                                        ? "text-volt-700 dark:text-volt-400"
+                                        ? "text-ink-950 dark:text-white"
                                         : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300")}>
                             {t.label}
                             <span aria-hidden="true"
-                                  className={"absolute left-1/2 -translate-x-1/2 bottom-0.5 h-[2px] rounded-full bg-volt-400 transition-all " +
+                                  className={"absolute left-1/2 -translate-x-1/2 bottom-0.5 h-[2px] rounded-full bg-ink-950 dark:bg-white transition-all " +
                                       (i === idx ? "w-4 opacity-100" : "w-0 opacity-0")}
                                   style={i === idx && dragRatio
                                       ? {transform: `translateX(calc(-50% + ${dragRatio * 28}px))`}
@@ -82,7 +82,7 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0, tabs = CHALLENGE_
                         className={"shrink-0 h-11 w-11 rounded-full flex items-center justify-center transition " +
                             (idx === last
                                 ? "text-gray-300/80 dark:text-ink-600 cursor-default"
-                                : "text-gray-400 hover:text-volt-600 dark:hover:text-volt-400")}>
+                                : "text-gray-400 hover:text-ink-950 dark:hover:text-white")}>
                     <ChevronRight className="h-4 w-4"/>
                 </button>
             </div>

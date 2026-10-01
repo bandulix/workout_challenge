@@ -215,7 +215,7 @@ export function OrderCard({order}) {
         <div>
             <PaneHead title="Order of the day" hint={order.competition_name}/>
             <article className={paneCardClass}>
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400 flex items-center gap-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-white/55 flex items-center gap-1.5">
                     <ScrollText className="h-3.5 w-3.5"/> Sealed order · {order.date}
                 </p>
                 <p className="mt-2 text-[15px] leading-relaxed">{order.brief}</p>
@@ -442,7 +442,7 @@ function ReactCount({count, light = false}) {
     const filled = n > 0;
     return (
         <span className={"inline-flex items-center gap-1 tabular-nums " +
-            (light ? "text-white" : "text-volt-700 dark:text-volt-300")}>
+            (light ? "text-white" : "text-ink-950 dark:text-white")}>
             <Zap className={"h-3.5 w-3.5 " + (filled
                 ? "fill-volt-400 text-volt-500"
                 : (light ? "text-white/70" : "text-gray-400"))}
@@ -473,7 +473,7 @@ function HallFrame({card, onOpen}) {
                         <img src={src} alt="" className="h-36 w-full object-cover"/>
                     ) : (
                         <div className="h-36 bg-ink-950/40 dark:bg-ink-900 flex items-center justify-center">
-                            <Trophy className="h-7 w-7 text-volt-400/50"/>
+                            <Trophy className="h-7 w-7 text-white/30"/>
                         </div>
                     )}
                     <span className="absolute bottom-2 right-2 inline-flex rounded-full bg-ink-950/75 px-2 py-0.5 backdrop-blur-sm">
@@ -548,7 +548,7 @@ export function HallOfRoasts({cards, persona}) {
             )}
             {many ? (
                 <button type="button" onClick={() => setExpanded((v) => !v)}
-                        className="mt-2 w-full min-h-[40px] rounded-2xl text-sm font-semibold text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition">
+                        className="mt-2 w-full min-h-[40px] rounded-2xl text-sm font-semibold text-ink-950 dark:text-white hover:bg-ink-950/5 dark:hover:bg-white/10 transition">
                     {expanded ? "Show less" : `Show all ${list.length}`}
                 </button>
             ) : null}

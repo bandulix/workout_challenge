@@ -68,7 +68,7 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
                             const mine = parseInt(teamId) === id;
                             const open = openTeam === id;
                             return (
-                                <li key={id} className={paneCardClass + (mine ? " ring-1 ring-volt-400/40" : "")}>
+                                <li key={id} className={paneCardClass + (mine ? " ring-1 ring-white/35" : "")}>
                                     <button type="button" onClick={() => setOpenTeam(open ? null : id)}
                                             className="w-full flex items-center gap-3 min-h-[44px] text-left">
                                         <span className="w-8 shrink-0 font-display text-lg text-gray-400">#{team.rank}</span>
@@ -233,7 +233,7 @@ function Podium({people, userId, onPick}) {
                                 </span>
                             </button>
                             <div className={"mt-2 flex w-full items-start justify-center rounded-t-xl bg-white/10 pt-2 " + slot.height +
-                                (mine ? " ring-1 ring-volt-400/40" : "")}>
+                                (mine ? " ring-1 ring-white/35" : "")}>
                                 <span className={"font-display text-xl " + (RANK_STYLES[rank] || "text-gray-400")}>#{rank}</span>
                             </div>
                         </li>
@@ -322,7 +322,7 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
                         <Podium people={podium} userId={userId} onPick={setCard}/>
                     )}
                     {meOnPodium && (
-                        <article className={paneCardClass + " mb-3 ring-1 ring-volt-400/40"}>
+                        <article className={paneCardClass + " mb-3 ring-1 ring-white/35"}>
                             <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">You</p>
                             {myCharts(me)}
                         </article>
@@ -335,7 +335,7 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
                         const weekTotal = week.reduce((s, n) => s + n, 0);
                         return (
                         <li key={personId ?? `lb-${index}`}
-                            className={paneCardClass + (mine ? " ring-1 ring-volt-400/40" : "")}>
+                            className={paneCardClass + (mine ? " ring-1 ring-white/35" : "")}>
                             <div className="flex items-center gap-3">
                                 <span className={"w-8 shrink-0 text-center font-display text-lg " + (RANK_STYLES[person.rank] || "text-gray-400")}>
                                     {person.rank !== null ? `#${person.rank}` : "–"}

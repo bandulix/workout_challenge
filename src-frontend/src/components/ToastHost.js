@@ -19,9 +19,9 @@ function ToastCard({toast, onClose}) {
                 className={"pointer-events-auto w-full max-w-sm animate-slide-up rounded-2xl glass-card px-4 py-3 flex items-center gap-3 text-left text-sm shadow-lg " +
                     (toast.kind === "error"
                         ? "border border-red-500/40 text-red-700 dark:text-red-300"
-                        : "border border-volt-400/40 text-gray-800 dark:text-gray-100")}>
+                        : "border border-ink-950/15 dark:border-white/20 text-gray-800 dark:text-gray-100")}>
             <Icon aria-hidden="true"
-                  className={"h-5 w-5 shrink-0 " + (toast.kind === "error" ? "text-red-500" : "text-volt-600 dark:text-volt-400")}/>
+                  className={"h-5 w-5 shrink-0 " + (toast.kind === "error" ? "text-red-500" : "text-ink-950 dark:text-white")}/>
             <span className="min-w-0 flex-1">{toast.message}</span>
             <X className="h-4 w-4 shrink-0 opacity-50" aria-hidden="true"/>
         </button>

@@ -39,30 +39,26 @@ function coachAccent(persona) {
     return COACH_FALLBACK.theme_color;
 }
 
-function coachAccentRgba(persona, alpha) {
-    const hex = coachAccent(persona).slice(1);
-    const r = parseInt(hex.slice(0, 2), 16);
-    const g = parseInt(hex.slice(2, 4), 16);
-    const b = parseInt(hex.slice(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function NavLink({to, icon: Icon, label, isActive, onClick}) {
+function NavLink({to, icon: Icon, label, isActive, onClick, children}) {
     const className =
         "relative flex flex-col items-center justify-center gap-1 py-2 px-2.5 min-w-[56px] min-h-[58px] transition-colors duration-200 " +
-        (isActive ? "text-ink-950 dark:text-volt-200" : "text-ink-800 dark:text-gray-400 hover:text-ink-950 dark:hover:text-volt-200");
+        (isActive ? "text-ink-950 dark:text-white" : "text-ink-800 dark:text-gray-400 hover:text-ink-950 dark:hover:text-white");
+    // Active tab: soft pill behind the icon and the only label in the row.
+    // Quiet tabs are icon-only; the accessible name stays on the control.
     const inner = (
         <>
-            <Icon className={"relative z-10 h-5 w-5 transition-transform duration-300 " + (isActive ? "scale-110" : "")}
-                  strokeWidth={isActive ? 2.4 : 1.8}
-                  fill={isActive ? "currentColor" : "none"}/>
-            <span className="relative z-10 flex flex-col items-center">
-                <span className={"text-[10px] font-bold uppercase tracking-wider leading-none " +
-                    (isActive ? "text-ink-950 dark:text-volt-200" : "")}>{label}</span>
+            <span className="relative flex h-8 w-12 items-center justify-center">
                 <span aria-hidden="true"
-                      className={"nav-active-bar transition-all duration-300 " +
-                          (isActive ? "opacity-100 scale-100" : "opacity-0 scale-50")}/>
+                      className={"absolute inset-0 rounded-2xl bg-ink-950/8 dark:bg-white/12 transition-all duration-300 " +
+                          (isActive ? "opacity-100 scale-100" : "opacity-0 scale-75")}/>
+                {children || (
+                    <Icon className={"relative z-10 h-5 w-5 transition-transform duration-300 " + (isActive ? "scale-110" : "")}
+                          strokeWidth={isActive ? 2.4 : 1.8}
+                          fill={isActive ? "currentColor" : "none"}/>
+                )}
             </span>
+            <span className={"text-[10px] font-bold uppercase tracking-wider leading-none transition-all duration-300 " +
+                (isActive ? "max-h-3 opacity-100" : "max-h-0 opacity-0 overflow-hidden")}>{label}</span>
         </>
     );
     if (!to || to === "#") {
@@ -100,7 +96,7 @@ function CompetitionPickerPanel({onClose, onCreate, currentId}) {
                             onClick={() => {onClose(); navigate(`/competition/${c.id}`);}}
                             className={"w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-2xl hover:bg-ink-950/8 dark:hover:bg-white/10 min-h-[48px] " +
                                 (String(c.id) === String(currentId) ? "bg-volt-400/15" : "")}>
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-volt-400/25 text-volt-800 dark:text-volt-300">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80">
                             <Flag className="h-4 w-4"/>
                         </span>
                         <span className="min-w-0 flex-1">
@@ -475,40 +471,27 @@ export default function BottomNav() {
                         }}
                     />
 
-                    {/* Centre stage: the Coach sits in a glass lens above the bar.
-                        Flattened into the row while a dock panel is open. */}
-                    <Link to="/coach"
-                          onClick={closeSheets}
-                          className={"relative z-10 flex flex-col items-center justify-center min-h-[44px] px-2 transition-[margin] duration-300 " +
-                              (sheetOpen ? "" : "-mt-8 md:-mt-9")}
-                          aria-label="Coach"
-                          aria-current={onCoach ? "page" : undefined}>
-                        <span className="relative">
-                            <span aria-hidden="true"
-                                  className="absolute -inset-2.5 rounded-full blur-md animate-volt-breathe"
-                                  style={{backgroundColor: coachAccentRgba(coachPersona, 0.28)}}/>
-                            <span className={"relative block rounded-full transition active:scale-95 " +
-                                (onCoach ? "animate-pulse-ring" : "")}
-                                  style={{
-                                      boxShadow: `0 0 0 2px ${coachAccent(coachPersona)}, 0 0 16px ${coachAccentRgba(coachPersona, 0.55)}`,
-                                      "--pulse-ring-color": coachAccentRgba(coachPersona, 0.55),
-                                  }}>
-                                <PersonaAvatar persona={coachPersona} size={58} glow/>
-                            </span>
-                        </span>
-                        <span className="text-[10px] font-bold leading-none mt-1.5 tracking-widest uppercase"
-                              style={{color: coachAccent(coachPersona), opacity: onCoach ? 1 : 0.75}}>
-                            Coach
-                        </span>
-                    </Link>
-
-                    <NavLink
-                        to="#"
-                        icon={Plus}
-                        label="Log"
-                        isActive={showLogWorkout}
+                    {/* Centre stage: Log is the one filled control on screen — a volt
+                        disc that breaks the top edge. Flattened while a panel is open. */}
+                    <button
+                        aria-label="Log a workout"
+                        aria-current={showLogWorkout ? "page" : undefined}
+                        className={"relative z-10 flex flex-col items-center justify-center min-h-[44px] px-2 transition-[margin] duration-300 " +
+                            (sheetOpen ? "" : "-mt-7 md:-mt-8")}
                         onClick={() => { closeSheets(); setShowLogWorkout(true); }}
-                    />
+                        type="button"
+                    >
+                        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-volt-400 text-ink-950 shadow-glow-volt-lg ring-4 ring-[rgba(11,11,12,0.85)] transition active:scale-95">
+                            <Plus className="h-7 w-7" strokeWidth={2.6}/>
+                        </span>
+                    </button>
+
+                    <NavLink to="/coach" label="Coach" isActive={onCoach} onClick={closeSheets}>
+                        <span className={"relative z-10 block rounded-full transition " + (onCoach ? "scale-110" : "")}
+                              style={{boxShadow: `0 0 0 2px ${coachAccent(coachPersona)}`}}>
+                            <PersonaAvatar persona={coachPersona} size={26} ring={false}/>
+                        </span>
+                    </NavLink>
 
                     <NavLink
                         to="#"

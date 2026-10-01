@@ -9,17 +9,17 @@ import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 function PersonaCard({persona, usedIn, onOpen}) {
     return (
         <button onClick={() => onOpen(persona)}
-                className="group min-w-0 rounded-3xl glass-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-volt-500/80">
+                className="group min-w-0 rounded-3xl glass-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-white/30">
             <PersonaAvatar persona={persona} size={64} className="mx-auto transition group-hover:scale-105"/>
             <p className="mt-3 text-center text-sm font-bold truncate">{persona.name}</p>
             <p className="text-center text-[11px] text-gray-400 truncate">{persona.tagline || persona.description}</p>
             <p className="mt-2 text-center min-h-[18px]">
                 {persona.mine ? (
-                    <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2 py-0.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 px-2 py-0.5">
                         Yours
                     </span>
                 ) : usedIn > 0 ? (
-                    <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2 py-0.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 px-2 py-0.5">
                         On duty ×{usedIn}
                     </span>
                 ) : null}
@@ -35,12 +35,12 @@ function PersonaDetail({persona, canEdit, onEdit}) {
             <PersonaAvatar persona={persona} size={96} glow/>
             {persona.tagline && <p className="mt-3 text-sm italic text-gray-500 dark:text-gray-400">“{persona.tagline}”</p>}
             {persona.mine && (
-                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
+                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
                     Your coach
                 </span>
             )}
             {persona.is_builtin && (
-                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
+                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
                     <Sparkles className="h-3 w-3"/> Built-in coach
                 </span>
             )}
@@ -114,7 +114,7 @@ export default function RoasterModal({setShowModal}) {
             {detailPersona ? (
                 <>
                     <button type="button" onClick={() => setDetailPersona(null)}
-                            className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-300 hover:text-volt-600 dark:hover:text-volt-300 transition">
+                            className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-300 hover:text-ink-950 dark:hover:text-white transition">
                         ← Back to coaches
                     </button>
                     <PersonaDetail
@@ -130,7 +130,7 @@ export default function RoasterModal({setShowModal}) {
                 <>
                     <div className="flex items-center justify-end">
                         <button type="button" onClick={() => setShowPersonaManager(true)}
-                                className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-300 hover:text-volt-600 dark:hover:text-volt-300 transition">
+                                className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-300 hover:text-ink-950 dark:hover:text-white transition">
                             <PencilLine className="h-3.5 w-3.5"/> Manage coaches
                         </button>
                     </div>
@@ -139,8 +139,8 @@ export default function RoasterModal({setShowModal}) {
                             <PersonaCard key={p.id} persona={p} usedIn={usageByPersona[p.id] || 0} onOpen={setDetailPersona}/>
                         ))}
                         <button type="button" onClick={() => setEditingPersona({})}
-                                className="min-w-0 rounded-3xl border-2 border-dashed border-gray-300 dark:border-ink-600 bg-transparent p-4 text-center hover:border-volt-500 hover:bg-volt-400/10 transition">
-                            <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-volt-400/20 text-volt-700 dark:text-volt-300">
+                                className="min-w-0 rounded-3xl border-2 border-dashed border-gray-300 dark:border-ink-600 bg-transparent p-4 text-center hover:border-white/40 hover:bg-ink-950/5 dark:hover:bg-white/10 transition">
+                            <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80">
                                 <Plus className="h-7 w-7"/>
                             </span>
                             <p className="mt-3 text-sm font-bold">Create yours</p>

@@ -208,7 +208,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                                         {p.tagline || p.description}
                                     </p>
                                     {p.mine && (
-                                        <p className="text-[10px] font-bold uppercase tracking-wide text-volt-700 dark:text-volt-300 mt-1">Yours</p>
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-white/55 mt-1">Yours</p>
                                     )}
                                     {!p.mine && p.is_shared && (
                                         <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mt-1">

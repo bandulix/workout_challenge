@@ -196,7 +196,7 @@ export function GlassSelect({
                 <span className={"min-w-0 truncate " + (!selected || current === "" ? "text-gray-500 dark:text-gray-400" : "")}>
                     {shown}
                 </span>
-                <ChevronDown className={"h-4 w-4 shrink-0 text-gray-400 transition " + (open ? "rotate-180 text-volt-400" : "")}/>
+                <ChevronDown className={"h-4 w-4 shrink-0 text-gray-400 transition " + (open ? "rotate-180 text-ink-950 dark:text-white" : "")}/>
             </button>
             {open && pos && (
                 <OverlayPortal>
@@ -365,7 +365,7 @@ export function OverlaySheet({title = null, onClose, children, isLoading = false
                     <div className="relative flex shrink-0 items-center justify-between gap-3 px-4 pt-4 pb-2 sm:px-8 sm:pt-5">
                         <h2 id={labelId} className="font-display text-sm uppercase tracking-wider">{title}</h2>
                         <button type="button"
-                                className="text-gray-400 hover:text-gray-600 dark:hover:text-volt-300 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                                className="text-gray-400 hover:text-gray-600 dark:hover:text-white min-h-[44px] min-w-[44px] flex items-center justify-center"
                                 onClick={requestClose}
                                 aria-label="Close">
                             <X className="h-5 w-5"/>
@@ -524,14 +524,14 @@ export function FormInput({
                             autoFocus={!isMobile && autoFocus}
                             aria-invalid={errorMsg ? true : undefined}
                             aria-describedby={errorMsg ? name + "-error" : undefined}
-                            className={(highlight ? " bg-volt-400/15 dark:bg-volt-400/10 border-volt-500/50 " : "") + additionalClasses}
+                            className={(highlight ? " bg-ink-950/5 dark:bg-white/10 border-ink-950/30 dark:border-white/40 " : "") + additionalClasses}
                         />
                     ) :
                     (
                         <>
                             {/* All Other Input Elements */}
                             <input
-                                className={FIELD_INPUT_CLASS + (highlight ? " bg-volt-400/15 dark:bg-volt-400/10 border-volt-500/50 ": "") + additionalClasses}
+                                className={FIELD_INPUT_CLASS + (highlight ? " bg-ink-950/5 dark:bg-white/10 border-ink-950/30 dark:border-white/40 ": "") + additionalClasses}
                                 id={name}
                                 name={name}
                                 type={(type === "duration") ? "time" : type}

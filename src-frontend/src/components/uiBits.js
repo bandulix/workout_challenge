@@ -6,7 +6,7 @@ export const VOLT = "#d7ff3e";
 
 export function SectionHead({title, hint, children}) {
     return (
-        <div className="flex flex-wrap items-center gap-2 border-b border-ink-950/10 dark:border-volt-400/15 pb-3 mb-1">
+        <div className="flex flex-wrap items-center gap-2 border-b border-ink-950/10 dark:border-white/10 pb-3 mb-1">
             <div className="flex-1 min-w-0 px-1">
                 <h2 className="text-sm font-semibold text-ink-950 dark:text-gray-200">{title}</h2>
                 {hint && <p className="text-xs text-gray-600 dark:text-gray-400">{hint}</p>}
@@ -39,7 +39,7 @@ export const paneCardClass =
 
 export function Chip({children}) {
     return (
-        <span className="shrink-0 rounded-full bg-volt-400/30 text-volt-800 dark:bg-volt-400/15 dark:text-volt-300 text-[11px] font-semibold px-2 py-0.5">
+        <span className="shrink-0 rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 text-[11px] font-semibold px-2 py-0.5">
             {children}
         </span>
     );

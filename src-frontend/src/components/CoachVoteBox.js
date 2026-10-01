@@ -72,7 +72,7 @@ export function CoachHandover({configId, enabled}) {
     const previous = ballot.previous_persona;
     return (
         <div className="mb-3 rounded-3xl glass-card px-4 py-3 ring-1 ring-volt-500/40 dark:ring-volt-400/40">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-700 dark:text-volt-400 flex items-center gap-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-white/55 flex items-center gap-1.5">
                 <Timer className="h-3.5 w-3.5"/> New coach
             </p>
             <div className="mt-2 flex items-center gap-3">
@@ -150,7 +150,7 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
                       hint={ballot.vote_count === 0
                           ? "Winner takes the megaphone Monday morning."
                           : `${ballot.vote_count} ${ballot.vote_count === 1 ? "vote" : "votes"} in`}>
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-volt-700 dark:text-volt-300 tabular-nums">
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-white/55 tabular-nums">
                     <Timer className="h-3.5 w-3.5"/>
                     {countdown}
                 </span>
@@ -212,7 +212,7 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
             </div>
             {many ? (
                 <button type="button" onClick={() => setExpanded((v) => !v)}
-                        className="mt-2 w-full min-h-[44px] rounded-2xl text-sm font-semibold text-volt-700 dark:text-volt-300 hover:bg-volt-400/10 transition">
+                        className="mt-2 w-full min-h-[44px] rounded-2xl text-sm font-semibold text-ink-950 dark:text-white hover:bg-ink-950/5 dark:hover:bg-white/10 transition">
                     {expanded ? "Show less" : `Show all ${candidates.length}`}
                 </button>
             ) : null}

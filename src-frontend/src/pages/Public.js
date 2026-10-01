@@ -43,17 +43,17 @@ function BaseHome({children, tagline}) {
 
     return (
         <div className="relative z-10 min-h-screen overflow-hidden">
-            <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-96 w-96 rounded-full bg-volt-400/25 blur-3xl z-0"/>
+            <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-96 w-96 rounded-full bg-white/10 blur-3xl z-0"/>
 
             <div className="relative z-10 flex items-center justify-center min-h-screen px-0 md:px-4">
                 <div className="p-8 max-w-2xl text-center text-white my-4 animate-slide-up">
 
                     <img src="/icon-192.png" alt="" width={56} height={56}
-                         className="h-14 w-14 mx-auto mb-5 rounded-2xl shadow-glow-volt animate-float-slow"/>
+                         className="h-14 w-14 mx-auto mb-5 rounded-2xl animate-float-slow"/>
                     <div className="flex justify-center -space-x-3 mb-6">
                         {["sergeant", "roast", "cheerleader", "butler", "zen"].map((p) => (
                             <img key={p} src={`/personas/${p}.svg`} alt=""
-                                 className="h-14 w-14 rounded-full border-2 border-ink-950 shadow-glow-volt"/>
+                                 className="h-14 w-14 rounded-full border-2 border-ink-950"/>
                         ))}
                     </div>
 
@@ -67,9 +67,9 @@ function BaseHome({children, tagline}) {
                     <div>
                         {tagline ?? (
                             <p className="text-base md:text-lg text-gray-200 mb-8 leading-relaxed">
-                                Compete with friends and co-workers <b className="text-volt-300">across devices</b>,
-                                using the <b className="text-volt-300">metrics you want</b>,
-                                <b className="text-volt-300"> respecting your privacy</b> —
+                                Compete with friends and co-workers <b className="text-white">across devices</b>,
+                                using the <b className="text-white">metrics you want</b>,
+                                <b className="text-white"> respecting your privacy</b> —
                                 while your personal AI coach keeps the banter coming.
                             </p>
                         )}
@@ -302,9 +302,9 @@ function LogInPage() {
     return (
         <BaseHome tagline={
             <p className="text-base md:text-lg text-gray-200 mb-8 leading-relaxed">
-                Welcome back, challenger. While you were away, your <b className="text-volt-300">rivals kept
-                training</b>, the <b className="text-volt-300">leaderboard kept moving</b> —
-                and your Drill Instructor <b className="text-volt-300">kept score</b>. Time to answer for it.
+                Welcome back, challenger. While you were away, your <b className="text-white">rivals kept
+                training</b>, the <b className="text-white">leaderboard kept moving</b> —
+                and your Drill Instructor <b className="text-white">kept score</b>. Time to answer for it.
             </p>
         } children={
             <div className="flex justify-center">
@@ -331,7 +331,7 @@ function LogInPage() {
                                         className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
                                         id="password" type="password" placeholder="******************" autoComplete="current-password" tabIndex="2"
                                         required={true}/>
-                                    <Link to={`/password/`} className="button italic text-sm text-volt-400 hover:text-volt-300"
+                                    <Link to={`/password/`} className="button italic text-sm text-white underline hover:text-white/80"
                                           tabIndex="3">
                                         Forgot Password?
                                     </Link>
@@ -343,7 +343,7 @@ function LogInPage() {
                                         Sign In
                                     </button>
                                     <Link to={`/signup/${location.search}`}
-                                          className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300 ml-2"
+                                          className="inline-block align-baseline font-bold text-sm text-white underline hover:text-white/80 ml-2"
                                           tabIndex="5">
                                         Create Account
                                     </Link>
@@ -521,7 +521,7 @@ function RegisterPage() {
                                     Create Account
                                 </button>
                                 <Link to={`/login/${location.search}`}
-                                      className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300 ml-2"
+                                      className="inline-block align-baseline font-bold text-sm text-white underline hover:text-white/80 ml-2"
                                       tabIndex="9">
                                     Go to sign in
                                 </Link>
@@ -582,7 +582,7 @@ function ResetPasswordPage() {
                                 Reset Password
                             </button>
                             <Link to="/login"
-                                  className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300 ml-2"
+                                  className="inline-block align-baseline font-bold text-sm text-white underline hover:text-white/80 ml-2"
                                   tabIndex="3">
                                 Back to sign in
                             </Link>
@@ -673,7 +673,7 @@ const NotFound = () => {
                 <h1 className="text-4xl font-bold mb-4">404</h1>
                 <p className="text-xl mb-4">Page Not Found</p>
                 <p className="mb-8">The page you're looking for doesn't exist or has been moved.</p>
-                <Link to="/dashboard" className="text-volt-700 dark:text-volt-300 font-semibold hover:underline">
+                <Link to="/dashboard" className=" font-semibold text-ink-950 dark:text-white underline">
                     Go to Home
                 </Link>
             </div>
@@ -720,7 +720,7 @@ function VerifyEmailPage() {
                         <>
                             <p className="text-gray-100 font-bold mb-2">This link is invalid or has expired.</p>
                             <p className="text-gray-400 text-sm mb-5">Log in and tap Resend on the banner at the top to get a new one.</p>
-                            <Link to="/login" className="inline-block align-baseline font-bold text-sm text-volt-400 hover:text-volt-300">
+                            <Link to="/login" className="inline-block align-baseline font-bold text-sm text-white underline hover:text-white/80">
                                 Back to sign in
                             </Link>
                         </>

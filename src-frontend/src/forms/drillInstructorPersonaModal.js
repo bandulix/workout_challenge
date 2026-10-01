@@ -218,7 +218,7 @@ export function PersonaEditModal({persona, setModalState}) {
                         aria-label="Upload a custom profile picture">
                     <PersonaAvatar persona={{...values, profile_picture: picturePreview}} size={72} glow/>
                     <span className="absolute inset-0 rounded-full bg-ink-950/45 opacity-0 group-hover:opacity-100 group-active:opacity-100 transition flex items-center justify-center">
-                        <Camera className="h-6 w-6 text-volt-400"/>
+                        <Camera className="h-6 w-6 text-white/80"/>
                     </span>
                 </button>
                 <input ref={fileInput} type="file" accept={PICTURE_ACCEPT} className="hidden" onChange={handlePictureFile}/>
@@ -433,9 +433,9 @@ export default function DrillInstructorPersonaModal({setModalState}) {
                                 <PersonaAvatar persona={persona} size={52}/>
                                 <div className="min-w-0 flex-1">
                                     <div className="font-bold truncate">{persona.name}{persona.is_builtin && (
-                                        <span className="ml-2 text-[10px] uppercase tracking-wide text-volt-600 dark:text-volt-400 font-bold">built-in</span>
+                                        <span className="ml-2 text-[10px] uppercase tracking-wide text-gray-500 dark:text-white/55 font-bold">built-in</span>
                                     )}{persona.mine && !persona.is_builtin && (
-                                        <span className="ml-2 text-[10px] uppercase tracking-wide text-volt-600 dark:text-volt-400 font-bold">yours</span>
+                                        <span className="ml-2 text-[10px] uppercase tracking-wide text-gray-500 dark:text-white/55 font-bold">yours</span>
                                     )}</div>
                                     <div className="text-xs text-gray-400 italic truncate">{persona.tagline}</div>
                                     <div className="text-sm text-gray-500 dark:text-gray-400 truncate">{persona.description}</div>
@@ -455,7 +455,7 @@ export default function DrillInstructorPersonaModal({setModalState}) {
             </div>
             <div className="relative flex justify-between items-center">
                 <AddButton onClick={() => setEditing({})} label="New coach" highlighted={true} larger={true}/>
-                <button className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-volt-300" onClick={() => refetch()}>Refresh</button>
+                <button className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-white" onClick={() => refetch()}>Refresh</button>
             </div>
             {editing !== null && (
                 <PersonaEditModal persona={editing} setModalState={(open) => {

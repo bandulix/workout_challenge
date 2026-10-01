@@ -29,7 +29,7 @@ export const ACTIVITY_REACTS = [
 const BY_ID = Object.fromEntries(ACTIVITY_REACTS.map((r) => [r.id, r]));
 
 const STAMP_BTN =
-    "inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-volt-700 dark:hover:text-volt-300 transition min-h-[32px]";
+    "inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[32px]";
 
 function finePointer() {
     return typeof window !== "undefined"
@@ -94,7 +94,7 @@ function Sheet({pos, children, panelRef, role, label}) {
         <div ref={panelRef} role={role} aria-label={label} tabIndex={-1}
              className="fixed z-[90] animate-pop-in"
              style={{left: pos.left, top: pos.top, bottom: pos.bottom, width: pos.width}}>
-            <div className="glass-sheet rounded-2xl p-2 shadow-glow-volt overflow-hidden">
+            <div className="glass-sheet rounded-2xl p-2 overflow-hidden">
                 <span className="glass-sheen rounded-[inherit]" aria-hidden="true"/>
                 <div className="relative">{children}</div>
             </div>
@@ -424,7 +424,7 @@ export function ActivityStampButton() {
             {api.picker && (
                 <Popover anchor={api.plusRef.current} onClose={() => api.setPicker(false)} width={268}
                          label="Pick a stamp">
-                    <p className="px-2 pt-1 pb-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-volt-700 dark:text-volt-400">
+                    <p className="px-2 pt-1 pb-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-gray-500 dark:text-white/55">
                         Stamp it
                     </p>
                     <div className="grid grid-cols-4 gap-1">

@@ -521,7 +521,7 @@ export function ExpeditionTeaser({expedition, onOpen}) {
     return (
         <button
             aria-label={`Open the Expedition trail: ${status.headline}, ${percent(progress)}% of the route`}
-            className="mb-4 flex w-full items-center gap-3 rounded-3xl glass-card px-3 py-2.5 text-left text-ink-950 transition hover:bg-volt-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400 dark:text-white"
+            className="mb-4 flex w-full items-center gap-3 rounded-3xl glass-card px-3 py-2.5 text-left text-ink-950 transition hover:bg-ink-950/5 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400 dark:text-white"
             data-no-swipe
             onClick={onOpen}
             type="button"
@@ -579,7 +579,7 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
     return (
         <section
             aria-labelledby="expedition-title"
-            className={`mb-4 overflow-hidden rounded-3xl p-4 text-white sm:p-5 ${seasonStageClass(expedition.route_theme)}`}
+            className="mb-4 overflow-hidden rounded-3xl glass-card p-4 text-ink-950 dark:text-white sm:p-5"
         >
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
@@ -599,7 +599,7 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                 </div>
                 <div className="flex items-center gap-2">
                     <button aria-controls="expedition-help" aria-expanded={helpOpen} aria-label="How the Expedition works"
-                        className="flex h-11 w-11 items-center justify-center rounded-full text-muted transition hover:bg-ink-950/5 hover:text-volt-700 dark:hover:bg-white/10 dark:hover:text-volt-300"
+                        className="flex h-11 w-11 items-center justify-center rounded-full text-muted transition hover:bg-ink-950/5 hover:text-ink-950 dark:hover:bg-white/10 dark:hover:text-white"
                         onClick={() => setHelpOpen((value) => !value)} type="button">
                         <Info size={18}/>
                     </button>
@@ -626,7 +626,7 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                 );
             })()}
 
-            <ExpeditionRouteMap stage expedition={expedition} progress={groupProgress}/>
+            <ExpeditionRouteMap expedition={expedition} progress={groupProgress}/>
 
             <div aria-label="Shared Expedition progress" aria-valuemax={100} aria-valuemin={0}
                 aria-valuenow={Number(groupProgress)} aria-valuetext={`${groupProgress}% of the shared route`}
@@ -669,7 +669,7 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                                             ? "border-dashed border-gray-400 bg-gray-300 text-white dark:border-ink-600 dark:bg-ink-600"
                                             : "border-volt-400 bg-volt-400 text-ink-950")
                                         : active
-                                            ? "border-volt-400 text-volt-700 shadow-glow-volt dark:text-volt-300"
+                                            ? "border-volt-400 text-volt-700 dark:text-volt-300"
                                             : "border-gray-300 text-gray-400 dark:border-ink-600 dark:text-gray-500")
                                         + (hidden ? " border-dashed" : "")}>
                                     {completed ? <Check size={14}/> : <Icon aria-hidden="true" className="h-4 w-4 shrink-0"/>}

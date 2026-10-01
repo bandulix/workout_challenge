@@ -28,7 +28,7 @@ function OfferKindIcons({className = ""}) {
     return (
         <span className={"inline-flex items-center gap-1 " + className} aria-hidden="true">
             {offerKinds.map(([value, , Icon]) => (
-                <span key={value} className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-volt-400/20 text-volt-800 dark:text-volt-300">
+                <span key={value} className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80">
                     <Icon className="h-3.5 w-3.5"/>
                 </span>
             ))}
@@ -76,7 +76,7 @@ export default function ComebackBench() {
             )}
 
             {incomingOffers.length > 0 && (
-                <div className="mb-3 rounded-lg border border-volt-500/30 p-3" aria-label="Private support offers">
+                <div className="mb-3 rounded-lg border border-ink-950/10 dark:border-white/15 p-3" aria-label="Private support offers">
                     <h3 className="text-sm font-bold">Private support offers</h3>
                     <ul className="mt-2 space-y-3">
                         {incomingOffers.map((offer) => (
