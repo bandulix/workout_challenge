@@ -9,7 +9,7 @@ import CoachVoteBox, {CoachHandover} from "../components/CoachVoteBox";
 import PushOptInCard from "../components/PushOptIn";
 import {ActivityCoachPost} from "../components/competitionChrome";
 import {messageResults, useGetPersonasQuery, useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
-import {HallOfRoasts, MOOD_CHIP, OrderCard, SquadOrbit, trainedSummary} from "../components/gameBits";
+import {HallOfRoasts, OrderCard, SquadOrbit, trainedSummary} from "../components/gameBits";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {timeAgo} from "../utils/time";
@@ -25,6 +25,14 @@ import {PaneHead} from "../components/uiBits";
 // ---------------------------------------------------------------------------
 
 const FALLBACK_PERSONA = {name: "Your Coach", tagline: "Waiting for orders.", avatar: "megaphone", theme_color: "#d7ff3e"};
+
+// Mood is carried by the portrait ring, not a word chip.
+const MOOD_RING = {
+    unleashed: "#d7ff3e",
+    proud: "#b8e62e",
+    watching: "#fbbf24",
+    disappointed: "#f87171",
+};
 
 const KIND_LABEL = {
     activity: "Workout",
@@ -108,38 +116,27 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
         );
     }
 
+    const ringColor = MOOD_RING[mood?.key] || persona.theme_color || "#d7ff3e";
     return (
         <div className="season-bleed relative overflow-hidden pb-2 text-white">
             <div className="relative px-5 pt-7 sm:px-8">
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-volt-300">
-                        <Radio className="h-3.5 w-3.5"/>
-                        {config ? "On duty" : "Coach"}
-                    </span>
-                    {config && mood?.label && (
-                        <span className={"rounded-full px-2 py-0.5 text-xs font-extrabold uppercase tracking-[0.16em] " +
-                            (MOOD_CHIP[mood.key] || "bg-white/10 text-white/80")}>
-                            {mood.label}
-                        </span>
-                    )}
-                    {trained && (
-                        <span className="rounded-full px-2 py-0.5 text-xs font-extrabold uppercase tracking-[0.14em] text-white/70"
-                              title={trained.hint}>
-                            {trained.label}
-                        </span>
-                    )}
-                </div>
-
-                <div className="mt-4 flex items-center gap-3 sm:gap-5">
-                    <div className="relative shrink-0">
-                        <SquadOrbit mood={mood} accent={persona.theme_color} showCaption={false}>
-                            <PersonaAvatar persona={persona} size={80} ring={false} glow={false}
+                <div className="flex items-center gap-4 sm:gap-6">
+                    <div className="relative shrink-0" title={mood?.label ? `${mood.label}${trained ? ` · ${trained.hint}` : ""}` : undefined}>
+                        <SquadOrbit mood={mood} accent={ringColor} showCaption={false}>
+                            <PersonaAvatar persona={persona} size={112} ring={false} glow={false}
                                            className="!w-full !h-full"/>
                         </SquadOrbit>
+                        {mood?.label && <span className="sr-only">Mood: {mood.label}</span>}
                     </div>
                     <div className="min-w-0 flex-1">
                         <h1 className="t-hero break-words xl:text-3xl">{persona.name}</h1>
-                        {persona.tagline && <p className="mt-1.5 break-words text-sm italic text-white/70">“{persona.tagline}”</p>}
+                        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs font-bold uppercase tracking-[0.18em] text-white/55">
+                            <span className="inline-flex items-center gap-1.5" style={{color: ringColor}}>
+                                <Radio className="h-3.5 w-3.5"/>{config ? "On duty" : "Coach"}
+                            </span>
+                            {trained && <span title={trained.hint}>· {trained.label}</span>}
+                        </p>
+                        {persona.tagline && <p className="mt-2 break-words text-sm italic text-white/70">“{persona.tagline}”</p>}
                     </div>
                 </div>
             </div>

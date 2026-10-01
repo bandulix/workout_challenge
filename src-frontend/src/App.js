@@ -19,6 +19,7 @@ import {
 } from "./pages/Public";
 import BottomNav from "./utils/bottomNav";
 import AppBackdrop from "./components/AppBackdrop";
+import LogFlight from "./components/LogFlight";
 import WhatsNew from "./components/WhatsNew";
 
 import VerifyEmailBanner from "./components/VerifyEmailBanner";
@@ -182,6 +183,7 @@ function AppShell() {
             </Routes>
 
             <BottomNav/>
+            <LogFlight/>
             <DialogHost/>
             <ToastHost/>
             {/* Release popup: changelog once per release. Web can reload;

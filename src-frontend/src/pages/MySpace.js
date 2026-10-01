@@ -34,6 +34,7 @@ import {
     ModifyGoalsButton,
 } from "../forms/basicComponents";
 import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
+import {ChevronRight} from "lucide-react";
 import {SectionLoader, SkeletonCard, SkeletonRows} from "../utils/loaders";
 import {useDispatch} from "react-redux";
 import {useSyncGarminMutation, useSyncStravaMutation, useSyncHealthMutation} from "../utils/reducers/linkSlice";
@@ -639,7 +640,7 @@ function SevenDayStats({sevenDayStats, user}) {
 // WHO recommendation: 150 minutes of moderate activity per week.
 const WHO_WEEKLY_MINUTES = 150;
 
-function StreakCard({workouts, summary}) {
+function StreakCard({workouts, summary, onStats}) {
 
     // Derived state via useMemo (not effect+setState): one render, no
     // stale-window between prop change and effect run.
@@ -682,7 +683,7 @@ function StreakCard({workouts, summary}) {
     const whoGoalHit = weekMinutes >= WHO_WEEKLY_MINUTES;
 
     return (
-        <div className="relative overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white p-5 w-full xl:w-72 shrink-0">
+        <div className="relative overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white p-5 w-full">
             <div className="pointer-events-none absolute -top-14 -right-14 h-40 w-40 rounded-full bg-volt-400/25 blur-3xl"/>
             <div className="relative">
                 <div className="flex items-center gap-4">
@@ -693,6 +694,15 @@ function StreakCard({workouts, summary}) {
                         <span className="font-display text-5xl text-volt-700 dark:text-volt-400">{weekStreak}</span>
                         <span className="uppercase text-xs tracking-[0.2em] text-gray-600 dark:text-gray-400">week<br/>streak</span>
                     </div>
+                    {onStats && (
+                        <button
+                            className="ml-auto inline-flex min-h-[44px] items-center gap-1 rounded-full px-3 text-xs font-bold uppercase tracking-wide text-gray-600 hover:text-ink-950 dark:text-gray-400 dark:hover:text-white"
+                            onClick={onStats}
+                            type="button"
+                        >
+                            Stats <ChevronRight aria-hidden="true" className="h-4 w-4"/>
+                        </button>
+                    )}
                 </div>
 
                 {/* this week's days */}
@@ -809,13 +819,10 @@ function StatsBox({workouts, user, summary}) {
     }, [workouts, user, summary]);
 
     return (
-        <div className="w-full flex flex-col xl:flex-row gap-4">
-            <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-                <ThirtyDayStats thirtyDayStats={thirtyDayStats}/>
-                <SevenDayStats sevenDayStats={sevenDayStats} user={user}/>
-                <TrainingHeatmap days={summary?.days}/>
-            </div>
-            <StreakCard workouts={workouts} summary={summary}/>
+        <div className="w-full flex flex-col gap-4">
+            <ThirtyDayStats thirtyDayStats={thirtyDayStats}/>
+            <SevenDayStats sevenDayStats={sevenDayStats} user={user}/>
+            <TrainingHeatmap days={summary?.days}/>
         </div>
     )
 }
@@ -880,6 +887,7 @@ export default function MySpace() {
 
     // ?action=log opens the workout form directly (PWA home-screen shortcut).
     const [quickLog, setQuickLog] = useState(query.get('action') === 'log');
+    const [statsOpen, setStatsOpen] = useState(false);
 
     useEffect(() => {
         // Consume one-shot URL params so a refresh does not reopen the
@@ -970,14 +978,12 @@ export default function MySpace() {
                         <div className="mb-4">
                             {
                                 (userLoading || workoutsIsLoading) ? (
-                                    <SkeletonCard height="h-80 mb-4"/>
+                                    <SkeletonCard height="h-48 mb-4"/>
                                 ) : (workoutsError) ? (
                                     <ErrorBoxSection additionalClasses="mb-4"
                                                      errorMsg={errText(workoutsError, 'Could not load your workouts. Please try again.')}/>
                                 ) : (
-                                    <BoxSection additionalClasses="h-full">
-                                        <StatsBox workouts={workouts} user={user} summary={workoutSummary}/>
-                                    </BoxSection>
+                                    <StreakCard workouts={workouts} summary={workoutSummary} onStats={() => setStatsOpen(true)}/>
                                 )
                             }
                         </div>
@@ -1016,6 +1022,11 @@ export default function MySpace() {
             {showCreateChallenge && <CompetitionForm setModalState={setShowCreateChallenge}/>}
             {showGettingStartedSettings && user && (
                 <SettingsForm user={user} setModalState={setShowGettingStartedSettings} setLinkStrava={setLinkStrava}/>
+            )}
+            {statsOpen && user && (
+                <Modal title="Stats" setShowModal={setStatsOpen}>
+                    <StatsBox workouts={workouts} user={user} summary={workoutSummary}/>
+                </Modal>
             )}
             {quickLog && user && (
                 <WorkoutForm setModalState={setQuickLog}

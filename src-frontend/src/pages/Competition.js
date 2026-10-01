@@ -199,6 +199,51 @@ function TrendSpark({series, compare}) {
     );
 }
 
+// Top three stand on a podium: avatars and points, first in the middle
+// and tallest. Everything else is a slim row below. Positions follow list
+// order (ties keep their shared rank label but still get a distinct block).
+const PODIUM_SLOTS = [
+    {index: 1, height: "h-16", avatar: 56},
+    {index: 0, height: "h-24", avatar: 72},
+    {index: 2, height: "h-12", avatar: 56},
+];
+
+function Podium({people, userId, onPick}) {
+    return (
+        <article className={paneCardClass + " mb-3 pb-0 overflow-hidden"} aria-label="Top three">
+            <ol className="grid grid-cols-3 items-end gap-2">
+                {PODIUM_SLOTS.map((slot) => {
+                    const person = people[slot.index];
+                    if (!person) return <li key={slot.index}/>;
+                    const personId = person.id ?? person.workout__user__id;
+                    const mine = personId === userId;
+                    const rank = person.rank ?? slot.index + 1;
+                    return (
+                        <li key={personId ?? slot.index} className="flex flex-col items-center">
+                            <button
+                                aria-label={`${person.username}, rank ${rank}`}
+                                className="flex flex-col items-center gap-1.5 active:scale-95 transition"
+                                onClick={() => onPick(person)}
+                                type="button"
+                            >
+                                <ProfileAvatar user={person} size={slot.avatar}/>
+                                <span className="max-w-[6.5rem] truncate text-sm font-semibold">{mine ? "You" : person.username}</span>
+                                <span className="rounded-full bg-volt-400 px-2 py-0.5 text-[11px] font-extrabold text-ink-950 shadow-glow-volt">
+                                    {Math.round(person.total_capped ?? 0).toLocaleString()}P
+                                </span>
+                            </button>
+                            <div className={"mt-2 flex w-full items-start justify-center rounded-t-xl bg-white/10 pt-2 " + slot.height +
+                                (mine ? " ring-1 ring-volt-400/40" : "")}>
+                                <span className={"font-display text-xl " + (RANK_STYLES[rank] || "text-gray-400")}>#{rank}</span>
+                            </div>
+                        </li>
+                    );
+                })}
+            </ol>
+        </article>
+    );
+}
+
 function IndividualLeaderboardBox({stats, userId, feed}) {
     // getWeekDates() ignores `stats`; the dep just re-anchors the week
     // labels whenever fresh stats land (a day rollover shows up on poll).
@@ -234,22 +279,60 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
     const people = stats?.leaderboard?.individual;
     if (!people) return <SkeletonRows n={4}/>;
 
+    const ranked = people.filter((p) => p.rank !== null);
+    const podium = ranked.length >= 3 ? ranked.slice(0, 3) : [];
+    const podiumIds = new Set(podium.map((p) => p.id ?? p.workout__user__id));
+    const rows = podium.length ? people.filter((p) => !podiumIds.has(p.id ?? p.workout__user__id)) : people;
+    const me = people.find((p) => (p.id ?? p.workout__user__id) === userId);
+    const meOnPodium = me && podiumIds.has(userId);
+
+    function myCharts(person) {
+        const personId = person.id ?? person.workout__user__id;
+        const week = weekValues(personId);
+        const weekTotal = week.reduce((s, n) => s + n, 0);
+        return (
+            <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 mb-1">
+                        This week · {Math.round(weekTotal)}P
+                    </p>
+                    <WeekBars values={week} labels={weekLabels} showLabels tall/>
+                </div>
+                <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 mb-1">
+                        Trend vs field
+                    </p>
+                    <TrendSpark series={cumulative(personId)} compare={fieldTrend}/>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div>
-            <PaneHead title="Leaderboard" hint="Week bars · trend vs the field"/>
+            <PaneHead title="Leaderboard"/>
 
             {(people.length === 0) ? (
                 <article className={paneCardClass}>
                     <EmptyState title="Waiting for the field" body="The first logged workout puts someone on the board."/>
                 </article>
             ) : (
+                <>
+                    {podium.length > 0 && (
+                        <Podium people={podium} userId={userId} onPick={setCard}/>
+                    )}
+                    {meOnPodium && (
+                        <article className={paneCardClass + " mb-3 ring-1 ring-volt-400/40"}>
+                            <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">You</p>
+                            {myCharts(me)}
+                        </article>
+                    )}
                 <ul className="space-y-3">
-                    {people.map((person, index) => {
+                    {rows.map((person, index) => {
                         const personId = person.id ?? person.workout__user__id;
                         const mine = userId === personId;
                         const week = weekValues(personId);
                         const weekTotal = week.reduce((s, n) => s + n, 0);
-                        const factors = effortLabel(person);
                         return (
                         <li key={personId ?? `lb-${index}`}
                             className={paneCardClass + (mine ? " ring-1 ring-volt-400/40" : "")}>
@@ -265,10 +348,7 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
                                     </span>
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <p className="font-semibold truncate">{person.username}</p>
-                                    {factors && (
-                                        <p className="text-[11px] text-gray-400">{factors}</p>
-                                    )}
+                                    <p className="font-semibold truncate">{mine ? "You" : person.username}</p>
                                     {(person.rank !== null && person.days_on_rank > 0) && (
                                         <p className="text-[11px] text-gray-400">
                                             on #{person.rank} for {person.days_on_rank} {person.days_on_rank === 1 ? "day" : "days"}
@@ -281,26 +361,12 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
                                     </div>
                                 )}
                             </div>
-                            {mine && (
-                                <div className="mt-3 grid grid-cols-2 gap-3">
-                                    <div className="min-w-0">
-                                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 mb-1">
-                                            This week · {Math.round(weekTotal)}P
-                                        </p>
-                                        <WeekBars values={week} labels={weekLabels} showLabels tall/>
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 mb-1">
-                                            Trend vs field
-                                        </p>
-                                        <TrendSpark series={cumulative(personId)} compare={fieldTrend}/>
-                                    </div>
-                                </div>
-                            )}
+                            {mine && myCharts(person)}
                         </li>
                         );
                     })}
                 </ul>
+                </>
             )}
             {card && (
                 <AthleteCard

@@ -24,6 +24,13 @@ function shownPercent(value) {
 // Identity first, route under it. Same wash, no second rectangle, no overlay.
 export default function SeasonBoard({competitionId, user, onOpen}) {
     const {data: expedition, isLoading} = useGetExpeditionByCompetitionQuery(competitionId, {skip: !competitionId});
+    // A fresh log redraws the route so the save is seen landing on the trail.
+    const [drawKey, setDrawKey] = React.useState(0);
+    React.useEffect(() => {
+        const onLogged = () => setDrawKey((k) => k + 1);
+        window.addEventListener("wc:logged", onLogged);
+        return () => window.removeEventListener("wc:logged", onLogged);
+    }, []);
     if (!competitionId) return null;
     if (isLoading && !expedition) {
         return <div aria-hidden="true" className="season-bleed mb-4 min-h-72 animate-pulse"/>;
@@ -54,7 +61,7 @@ export default function SeasonBoard({competitionId, user, onOpen}) {
                     <p className="font-display text-6xl leading-none tabular-nums text-volt-400">{percentLabel}%</p>
                 </div>
                 <div className="mt-3">
-                    <ExpeditionRouteMap expedition={expedition} progress={progress} stage/>
+                    <ExpeditionRouteMap expedition={expedition} key={drawKey} progress={progress} stage/>
                 </div>
                 <div className="flex items-center justify-between px-5 pb-2 pt-1">
                     <span className="text-sm text-white/80">{count} on the trail</span>
