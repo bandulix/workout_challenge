@@ -53,7 +53,7 @@ export function EmptyState({title, body, actionLabel, onAction, persona}) {
             {body && <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 max-w-xs">{body}</p>}
             {onAction && actionLabel && (
                 <button type="button" onClick={onAction}
-                        className="mt-4 px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
+                        className="mt-4 px-5 py-2.5 btn-plate text-sm font-bold transition">
                     {actionLabel}
                 </button>
             )}
@@ -64,7 +64,7 @@ export function EmptyState({title, body, actionLabel, onAction, persona}) {
 export function SyncChip({onClick, isLoading, short, long}) {
     return (
         <button type="button" onClick={onClick} disabled={isLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full btn-glass text-ink-950 dark:text-gray-200 text-sm font-semibold min-h-[44px] transition disabled:opacity-50">
+                className="inline-flex items-center gap-1.5 px-3 py-2 btn-plate-ink text-sm font-semibold min-h-[44px] transition disabled:opacity-50">
             <RefreshCw className={"h-4 w-4 " + (isLoading ? "animate-spin" : "")}/>
             <span className="sm:hidden">{isLoading ? "…" : short}</span>
             <span className="hidden sm:inline">{isLoading ? "Syncing…" : long}</span>

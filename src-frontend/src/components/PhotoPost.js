@@ -17,13 +17,13 @@ import {OverlaySheet} from "../forms/basicComponents";
 // duplicates none of that eligibility logic. The picture hangs under
 // the own activity it was started from (parentId).
 const PILL =
-    "inline-flex w-full items-center justify-center gap-2 rounded-full bg-volt-400 text-ink-950 px-4 sm:px-5 py-2.5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt min-h-[44px]";
+    "inline-flex w-full items-center justify-center gap-2 btn-plate px-4 sm:px-5 py-2.5 text-sm font-bold transition min-h-[44px]";
 const CHIP =
     "inline-flex items-center justify-center gap-1.5 rounded-full bg-volt-400 text-ink-950 px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt min-h-[36px]";
 const GHOST =
     "inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[32px] shrink-0";
 const ICON =
-    "shrink-0 min-h-[44px] min-w-[44px] rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 transition shadow-glow-volt flex items-center justify-center";
+    "shrink-0 min-h-[44px] min-w-[44px] btn-plate transition flex items-center justify-center";
 
 const PURPOSES = {
     echo: {
@@ -88,7 +88,7 @@ export default function PhotoPost({competitionId, visionCapable, parentId, onPos
                                 {action.explanation}
                             </p>
                             <button type="button" onClick={continueToPicker}
-                                    className="w-full min-h-[44px] rounded-full bg-volt-400 px-4 py-2 text-sm font-bold text-ink-950 hover:bg-volt-300">
+                                    className="w-full min-h-[44px] btn-plate px-4 py-2 text-sm font-bold">
                                 Continue to camera or gallery
                             </button>
                         </div>
@@ -273,7 +273,7 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
                 </div>
             )}
             <button type="button" onClick={handleSend} disabled={posting || !file}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-full bg-volt-400 text-ink-950 px-5 py-3 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none min-h-[48px]">
+                    className="w-full inline-flex items-center justify-center gap-2 btn-plate px-5 py-3 text-sm font-bold transition disabled:opacity-50 disabled:shadow-none min-h-[48px]">
                 {posting ? <BeatLoader size={6} color="#0b0b0c"/> : <><Send className="h-4 w-4"/> Post photo</>}
             </button>
             {error && <p className="text-sm text-red-500">{error}</p>}

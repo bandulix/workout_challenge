@@ -363,7 +363,7 @@ function EnergyRing({member, color, cap}) {
                     strokeDasharray={`${(energy / 100) * circumference} ${circumference}`} transform="rotate(-90 22 22)"/>
             </svg>
             <CrewRowFace member={member} color={color}/>
-            {charged && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 rounded-full bg-volt-400 p-0.5 text-ink-950"><Check size={8}/></span>}
+            {charged && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 btn-plate p-0.5"><Check size={8}/></span>}
         </span>
     );
 }

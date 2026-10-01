@@ -135,7 +135,7 @@ export default function RivalCard({model, onPin, onDismiss, isPinned = false, pl
             {onDismiss && (
                 <div className="mt-3 flex flex-wrap gap-2">
                     <button type="button" onClick={onDismiss}
-                            className="min-h-[44px] rounded-full btn-glass px-4 py-2 text-sm font-semibold">
+                            className="min-h-[44px] btn-plate-ink px-4 py-2 text-sm font-semibold">
                         Dismiss until tomorrow
                     </button>
                 </div>

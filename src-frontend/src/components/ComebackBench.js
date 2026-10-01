@@ -86,7 +86,7 @@ export default function ComebackBench() {
                                     <button type="button" disabled={isResponding}
                                             onClick={() => respondToOffer({offerId: offer.id, accepted: true})}
                                             aria-label={`Accept support offer from ${offer.sender_first_name}`}
-                                            className="inline-flex min-h-[44px] items-center rounded-full bg-volt-400 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink-950">
+                                            className="inline-flex min-h-[44px] items-center btn-plate px-4 py-2 text-xs font-bold">
                                         Accept
                                     </button>
                                     <button type="button" disabled={isResponding}
@@ -193,7 +193,7 @@ export function ComebackPreferences() {
                             </label>
                             <button type="button" onClick={sendSupportOffer}
                                     disabled={isCreatingOffer || !selectedValue}
-                                    className="inline-flex min-h-[44px] items-center rounded-full bg-volt-400 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink-950">
+                                    className="inline-flex min-h-[44px] items-center btn-plate px-4 py-2 text-xs font-bold">
                                 Offer support
                             </button>
                         </div>

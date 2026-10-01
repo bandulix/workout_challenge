@@ -172,7 +172,7 @@ function WelcomePage() {
         <BaseHome>
             <div>
                 <Link to={`/signup/${location.search}`}
-                      className="inline-block bg-volt-400 text-ink-950 shadow-glow-volt mx-2 px-8 py-3.5 rounded-full font-bold uppercase tracking-wide text-sm hover:bg-volt-300 transition active:scale-95">
+                      className="inline-block mx-2 px-8 py-3.5 btn-plate font-bold text-sm transition">
                     Create Account
                 </Link>
                 <Link to={`/login/${location.search}`}
@@ -338,7 +338,7 @@ function LogInPage() {
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <button
-                                        className="bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm transition focus:outline-none mr-2 sm:mr-16"
+                                        className="font-bold py-2.5 px-5 btn-plate text-sm transition focus:outline-none mr-2 sm:mr-16"
                                         type="submit" tabIndex="4">
                                         Sign In
                                     </button>
@@ -516,7 +516,7 @@ function RegisterPage() {
                             </div>
                             <div className="flex items-center justify-between">
                                 <button
-                                    className="bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm transition focus:outline-none mr-2 sm:mr-10"
+                                    className="font-bold py-2.5 px-5 btn-plate text-sm transition focus:outline-none mr-2 sm:mr-10"
                                     type="submit" tabIndex="8">
                                     Create Account
                                 </button>
@@ -577,7 +577,7 @@ function ResetPasswordPage() {
                         </div>
                         <div className="flex items-center justify-between">
                             <button
-                                className="bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm transition focus:outline-none mr-2 sm:mr-16"
+                                className="font-bold py-2.5 px-5 btn-plate text-sm transition focus:outline-none mr-2 sm:mr-16"
                                 type="submit" tabIndex="2">
                                 Reset Password
                             </button>
@@ -652,7 +652,7 @@ function SetNewPasswordPage() {
                         </div>
                         <div className="flex items-center justify-between">
                             <button
-                                className="bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm transition focus:outline-none mx-auto sm:mx-16"
+                                className="font-bold py-2.5 px-5 btn-plate text-sm transition focus:outline-none mx-auto sm:mx-16"
                                 type="submit" tabIndex="3">
                                 Reset Password
                             </button>
@@ -710,7 +710,7 @@ function VerifyEmailPage() {
                             <p className="text-gray-100 font-bold mb-2">Email confirmed.</p>
                             <p className="text-gray-400 text-sm mb-5">Welcome mail is on its way. You can use the app now.</p>
                             <button type="button"
-                                    className="bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm"
+                                    className="font-bold py-2.5 px-5 btn-plate text-sm"
                                     onClick={() => navigate("/coach")}>
                                 Open the app
                             </button>

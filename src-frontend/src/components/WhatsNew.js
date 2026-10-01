@@ -151,17 +151,17 @@ function WhatsNew() {
             <div className="relative flex justify-center gap-3 pt-2">
                 {isNativeApp() ? (
                     <button onClick={close}
-                            className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt">
+                            className="px-5 py-2.5 btn-plate text-sm font-bold transition">
                         Got it
                     </button>
                 ) : (
                     <>
                         <button onClick={close}
-                                className="px-5 py-2.5 rounded-full btn-glass text-sm font-semibold transition">
+                                className="px-5 py-2.5 btn-plate-ink text-sm font-semibold transition">
                             Later
                         </button>
                         <button onClick={reload}
-                                className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt">
+                                className="px-5 py-2.5 btn-plate text-sm font-bold transition">
                             Reload
                         </button>
                     </>

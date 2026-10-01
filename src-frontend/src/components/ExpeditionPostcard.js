@@ -58,12 +58,12 @@ export default function ExpeditionPostcard({title, finale, canRematch = false, o
             <p className="mt-2 text-xs text-muted">This preview leaves out individual activity and personal progress.</p>
             <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={sharePostcard}
-                    className="min-h-[44px] rounded-full bg-volt-400 px-4 py-2 text-sm font-bold text-ink-950 hover:bg-volt-300">
+                    className="min-h-[44px] btn-plate px-4 py-2 text-sm font-bold">
                     Share postcard
                 </button>
                 {canRematch && onRematch && (
                     <button type="button" onClick={onRematch}
-                        className="btn-glass min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold">
+                        className="btn-plate-ink min-h-[44px] px-4 py-2 text-sm font-semibold">
                         Prepare a rematch
                     </button>
                 )}

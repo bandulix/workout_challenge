@@ -53,7 +53,7 @@ export default function ForceUpdateScreen({update}) {
             </p>
             <a href={apkDownloadHref()}
                rel="noopener noreferrer"
-               className="inline-flex items-center justify-center gap-2 w-full min-h-[48px] rounded-full bg-volt-400 text-ink-950 px-8 py-3.5 font-bold uppercase tracking-wide text-sm hover:bg-volt-300 transition active:scale-95 shadow-glow-volt">
+               className="inline-flex items-center justify-center gap-2 w-full min-h-[48px] btn-plate px-8 py-3.5 font-bold text-sm transition">
                 <Download className="h-4 w-4"/>
                 Download update
             </a>

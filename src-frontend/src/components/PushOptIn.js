@@ -158,7 +158,7 @@ function PushOptInCard({compact = false}) {
             {!platform.standalone && (platform.isAndroid || window.deferredInstallPrompt) && (
                 <button
                     onClick={() => promptInstall()}
-                    className="mt-3 w-full flex items-center justify-center gap-2 rounded-2xl border border-ink-950/15 dark:border-white/20 text-ink-950 dark:text-white py-2.5 text-sm font-semibold hover:bg-ink-950/5 dark:hover:bg-white/10 transition"
+                    className="mt-3 w-full flex items-center justify-center gap-2 btn-ghost py-2.5 text-sm font-semibold transition"
                 >
                     <Download className="h-4 w-4"/> Install the app first for the full experience
                 </button>
@@ -173,14 +173,14 @@ function PushOptInCard({compact = false}) {
                     <button
                         onClick={handleUnsubscribe}
                         disabled={busy}
-                        className="mt-3 w-full flex items-center justify-center gap-2 rounded-2xl btn-glass text-ink-950 dark:text-gray-200 py-2.5 text-sm font-semibold transition disabled:opacity-50"
+                        className="mt-3 w-full flex items-center justify-center gap-2 btn-plate-ink py-2.5 text-sm font-semibold transition disabled:opacity-50"
                     >
                         <BellOff className="h-4 w-4"/> {busy ? "Turning off…" : "Turn off coach pings"}
                     </button>
                     <button
                         onClick={handleTestPing}
                         disabled={busy}
-                        className="mt-2 w-full flex items-center justify-center gap-2 rounded-2xl border border-ink-950/15 dark:border-white/20 text-ink-950 dark:text-white py-2 text-xs font-semibold hover:bg-ink-950/5 dark:hover:bg-white/10 transition disabled:opacity-50"
+                        className="mt-2 w-full flex items-center justify-center gap-2 btn-ghost py-2 text-xs font-semibold transition disabled:opacity-50"
                     >
                         <BellRing className="h-3.5 w-3.5"/> Send test ping
                     </button>
@@ -189,7 +189,7 @@ function PushOptInCard({compact = false}) {
                 <button
                     onClick={handleSubscribe}
                     disabled={busy}
-                    className="mt-3 w-full flex items-center justify-center gap-2 rounded-2xl bg-volt-400 text-ink-950 py-3 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50"
+                    className="mt-3 w-full flex items-center justify-center gap-2 btn-plate py-3 text-sm font-bold transition disabled:opacity-50"
                 >
                     <Bell className="h-4 w-4"/> {busy ? "Enabling…" : "Enable coach pings"}
                 </button>

@@ -67,7 +67,7 @@ export function LinkStravaScreen({setModal}) {
                     >
                         {current === 0 ? 'Close without linking' : 'Back'}
                     </button>
-                    <button type="button" className="bg-volt-400 text-ink-950 px-5 py-2.5 rounded-full text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt"
+                    <button type="button" className="px-5 py-2.5 btn-plate text-sm font-bold transition"
                             onClick={() => {
                                 if (current === 1) {
                                     close();

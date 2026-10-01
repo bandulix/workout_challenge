@@ -35,7 +35,7 @@ export default function LogFlight() {
     return createPortal(
         <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 bottom-24 z-[90] flex justify-center">
             <span
-                className="log-flight inline-flex items-center gap-2 rounded-full bg-volt-400 px-4 py-2 text-sm font-bold text-ink-950 shadow-glow-volt-lg"
+                className="log-flight inline-flex items-center gap-2 btn-plate px-4 py-2 text-sm font-bold"
                 key={flight.key}
             >
                 <Icon className="h-4 w-4"/>

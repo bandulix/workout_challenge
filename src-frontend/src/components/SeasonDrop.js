@@ -75,7 +75,7 @@ export default function SeasonDrop() {
                 <circle cx="308" cy="24" fill="#d7ff3e" r="9"/>
             </svg>
             <button
-                className="min-h-[52px] w-full rounded-full bg-volt-400 text-base font-bold uppercase tracking-widest text-ink-950 shadow-glow-volt hover:bg-volt-300"
+                className="min-h-[52px] w-full btn-plate text-base font-bold"
                 onClick={dismiss}
                 type="button"
             >

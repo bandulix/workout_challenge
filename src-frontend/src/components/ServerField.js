@@ -49,7 +49,7 @@ export default function ServerField({alwaysEditing = false}) {
                 The address of your Workout Challenge server (where you downloaded this app).
             </p>
             <button type="submit"
-                    className="mt-3 w-full bg-volt-400 hover:bg-volt-300 text-ink-950 font-bold py-2.5 px-5 rounded-full uppercase tracking-wide text-sm transition">
+                    className="mt-3 w-full font-bold py-2.5 px-5 btn-plate text-sm transition">
                 Save & reload
             </button>
         </form>

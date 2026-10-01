@@ -582,7 +582,7 @@ export function DogTagRow({tags}) {
                             {open.blurb || "A season achievement."}
                         </p>
                         <button type="button" onClick={() => setOpen(null)}
-                                className="mt-5 inline-flex min-h-[44px] items-center rounded-full bg-volt-400 text-ink-950 px-5 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition">
+                                className="mt-5 inline-flex min-h-[44px] items-center btn-plate px-5 text-sm font-bold transition">
                             Got it
                         </button>
                     </div>

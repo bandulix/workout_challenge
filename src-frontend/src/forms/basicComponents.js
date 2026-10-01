@@ -664,7 +664,7 @@ function GenericButton({onClick, icon, label, highlighted, larger, IconObject, i
     return (
         <button
             type="button"
-            className={"flex items-center gap-2 transition active:scale-[0.97] " + tapTargetClass + " " + (larger ? (label ? " px-5 py-2.5 font-semibold rounded-full " : " px-3 py-3 rounded-2xl ") : (label ? " px-4 py-2 rounded-full " : " p-2 rounded-2xl ")) + (isLoading ? " btn-glass shadow-none " : (highlighted ? " bg-volt-400 text-ink-950 font-bold hover:bg-volt-300 shadow-glow-volt " : " btn-glass ")) + additionalClasses}
+            className={"flex items-center gap-2 transition " + tapTargetClass + " " + (larger ? (label ? " px-5 py-2.5 font-semibold " : " px-3 py-3 ") : (label ? " px-4 py-2 " : " p-2 ")) + (isLoading ? " btn-plate-ink shadow-none " : (highlighted ? " btn-plate font-bold " : " btn-plate-ink ")) + additionalClasses}
             onClick={onClick}
             disabled={isLoading}
         >

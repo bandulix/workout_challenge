@@ -226,7 +226,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                     <div className="rounded-2xl glass-well p-4 text-center">
                         <p className="text-sm text-gray-500 dark:text-gray-400">No coaches yet.</p>
                         <button type="button" onClick={() => setShowPersonaEditor(true)}
-                                className="mt-2 inline-flex min-h-[44px] items-center rounded-full bg-volt-400 text-ink-950 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition">
+                                className="mt-2 inline-flex min-h-[44px] items-center btn-plate px-4 py-2 text-xs font-bold transition">
                             Create your coach
                         </button>
                     </div>
@@ -256,7 +256,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                             aria-label="Test message"
                         />
                         <button type="button" onClick={handleTest} disabled={testLoading}
-                                className="shrink-0 min-h-[44px] px-5 rounded-full bg-volt-400 text-ink-950 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
+                                className="shrink-0 min-h-[44px] px-5 btn-plate text-sm font-bold transition disabled:opacity-50 disabled:shadow-none">
                             {testLoading ? <BeatLoader size={6} color="#0b0b0c"/> : "Send"}
                         </button>
                     </div>

@@ -53,7 +53,7 @@ function PersonaDetail({persona, canEdit, onEdit}) {
             )}
             {canEdit && (
                 <button type="button" onClick={onEdit}
-                        className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-volt-400 text-ink-950 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition">
+                        className="mt-5 inline-flex items-center gap-1.5 btn-plate px-4 py-2 text-xs font-bold transition">
                     <PencilLine className="h-3.5 w-3.5"/> Edit
                 </button>
             )}

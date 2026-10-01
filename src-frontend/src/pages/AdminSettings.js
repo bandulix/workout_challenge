@@ -50,7 +50,7 @@ export default function AdminSettings() {
                         <div className="p-3">
                             <button
                                 onClick={() => setShowFactorsModal(true)}
-                                className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 font-bold text-sm flex items-center gap-2 transition"
+                                className="px-5 py-2.5 btn-plate font-bold text-sm flex items-center gap-2 transition"
                             >
                                 <Calculator className="h-4 w-4"/> Edit Points Factors
                             </button>

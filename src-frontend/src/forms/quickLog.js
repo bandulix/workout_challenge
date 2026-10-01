@@ -289,7 +289,7 @@ export default function QuickLogSheet({setModalState}) {
                 {error && <p className="mt-3 text-center text-xs italic text-danger-text" role="alert">{error}</p>}
 
                 <button
-                    className="mt-5 flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full bg-volt-400 text-base font-bold uppercase tracking-wide text-ink-950 shadow-glow-volt transition active:scale-[0.98] disabled:opacity-60"
+                    className="mt-5 flex min-h-[52px] w-full items-center justify-center gap-2 btn-plate text-base font-bold transition] disabled:opacity-60"
                     disabled={isLoading}
                     onClick={save}
                     type="button"

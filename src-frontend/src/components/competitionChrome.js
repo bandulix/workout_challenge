@@ -917,7 +917,7 @@ export function CoachCorner({competition, isOwner}) {
                         <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">An AI coach that comments on every workout - with push pings to keep everyone honest.</p>
                     </div>
                     <button onClick={() => setShowConfigModal(true)}
-                            className="shrink-0 rounded-full bg-volt-400 text-ink-950 px-4 py-2.5 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
+                            className="shrink-0 btn-plate px-4 py-2.5 text-xs font-bold transition">
                         Activate
                     </button>
                 </div>
@@ -989,7 +989,7 @@ export function CoachCorner({competition, isOwner}) {
                                     limit: FEED_PAGE,
                                     offset: all.length,
                                 })}
-                                className="mt-4 w-full min-h-[44px] rounded-2xl border border-ink-950/15 dark:border-white/20 text-sm font-bold uppercase tracking-wide text-ink-950 dark:text-white hover:bg-ink-950/5 dark:hover:bg-white/10 transition disabled:opacity-50">
+                                className="mt-4 w-full min-h-[44px] btn-ghost text-sm font-bold transition disabled:opacity-50">
                             Show {Math.min(hidden, FEED_PAGE)} more
                         </button>
                     )}

@@ -130,7 +130,7 @@ export default function JoinTeamForm({competition, setModalState, user, isOwner}
                         <BeatLoader color="#d7ff3e"/>
                     ) : (
                         <button type="submit" disabled={teamsLoading}
-                                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt disabled:opacity-50">
+                                className="inline-flex items-center gap-2 px-5 py-2.5 btn-plate text-sm font-bold transition disabled:opacity-50">
                             <PlusIcon className="w-3.5 h-3.5"/>
                             <span className="break-keep">
                                 {(isOwner) ? 'Create': 'Create & Join'}

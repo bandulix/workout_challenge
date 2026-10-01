@@ -174,7 +174,7 @@ function HealthSection({user, onChanged}) {
                         </p>
                         {apkAvailable ? (
                             <a href="/download/workout-challenge.apk" download
-                               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt">
+                               className="inline-flex items-center gap-2 px-5 py-2.5 btn-plate text-sm font-bold transition">
                                 <Download className="h-4 w-4"/> Download the app (APK)
                             </a>
                         ) : (
@@ -205,12 +205,12 @@ function HealthSection({user, onChanged}) {
 
                 <div className="flex gap-2">
                     <button onClick={handleLink} disabled={linkLoading}
-                            className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
+                            className="px-5 py-2.5 btn-plate text-sm font-bold transition disabled:opacity-50 disabled:shadow-none">
                         {linkLoading ? <BeatLoader size={6} color="#0b0b0c"/> : (linked ? (isNative ? "Reconnect Health" : "New connection code") : (isNative ? "Connect Health Connect" : "Connect Health App"))}
                     </button>
                     {linked && (
                         <button onClick={handleUnlink} disabled={unlinkLoading}
-                                className="px-4 py-2 rounded-full btn-glass text-sm font-semibold transition disabled:opacity-50">
+                                className="px-4 py-2 btn-plate-ink text-sm font-semibold transition disabled:opacity-50">
                             {unlinkLoading ? <BeatLoader size={6} color="#d7ff3e"/> : "Unlink Health"}
                         </button>
                     )}
@@ -303,7 +303,7 @@ function GarminSection({user, onChanged}) {
                             {user.garmin_last_synced_at && <> · last sync {user.garmin_last_synced_at_fmt?.date_readable}, {user.garmin_last_synced_at_fmt?.time_24h}</>}
                         </p>
                         <button onClick={handleUnlink} disabled={unlinkLoading}
-                                className="px-4 py-2 rounded-full btn-glass text-sm font-semibold transition disabled:opacity-50">
+                                className="px-4 py-2 btn-plate-ink text-sm font-semibold transition disabled:opacity-50">
                             {unlinkLoading ? <BeatLoader size={6} color="#d7ff3e"/> : "Unlink Garmin"}
                         </button>
                     </>
@@ -318,11 +318,11 @@ function GarminSection({user, onChanged}) {
                                value={mfaCode} onChange={(e) => setMfaCode(e.target.value)}/>
                         <div className="flex gap-2">
                             <button onClick={handleMfa} disabled={mfaLoading || !mfaCode.trim()}
-                                    className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
+                                    className="px-5 py-2.5 btn-plate text-sm font-bold transition disabled:opacity-50 disabled:shadow-none">
                                 {mfaLoading ? <BeatLoader size={6} color="#0b0b0c"/> : "Verify & link"}
                             </button>
                             <button onClick={() => { setMfa(null); setMfaCode(""); setError(null); }}
-                                    className="px-4 py-2 rounded-full btn-glass text-sm font-semibold transition">
+                                    className="px-4 py-2 btn-plate-ink text-sm font-semibold transition">
                                 Back
                             </button>
                         </div>
@@ -338,7 +338,7 @@ function GarminSection({user, onChanged}) {
                         <input type="password" className={FIELD_INPUT_CLASS} placeholder="Garmin Connect password" autoComplete="new-password"
                                value={password} onChange={(e) => setPassword(e.target.value)}/>
                         <button onClick={handleLink} disabled={linkLoading || !email || !password}
-                                className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
+                                className="px-5 py-2.5 btn-plate text-sm font-bold transition disabled:opacity-50 disabled:shadow-none">
                             {linkLoading ? <BeatLoader size={6} color="#0b0b0c"/> : "Connect Garmin"}
                         </button>
                     </>
@@ -397,7 +397,7 @@ export function PasswordSection() {
                    autoComplete="new-password" aria-label="New password (repeat)"
                    value={repeat} onChange={(e) => setRepeat(e.target.value)}/>
             <button onClick={handleChange} disabled={isLoading || !current || !next || !repeat}
-                    className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition shadow-glow-volt disabled:opacity-50 disabled:shadow-none">
+                    className="px-5 py-2.5 btn-plate text-sm font-bold transition disabled:opacity-50 disabled:shadow-none">
                 {isLoading ? <BeatLoader size={6} color="#0b0b0c"/> : "Change password"}
             </button>
             <p className="text-[11px] text-gray-400">You will be logged out everywhere and sign back in with the new password.</p>

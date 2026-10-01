@@ -72,8 +72,8 @@ function GettingStarted({user, competitions, workouts, configs, onJoin, onCreate
     const coachDone = coachOn || !owns;
     if (hasChallenge && sourceDone && coachDone) return null;
 
-    const btn = "inline-flex items-center rounded-full bg-volt-400 text-ink-950 px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-volt-300 transition min-h-[44px]";
-    const ghost = "inline-flex items-center rounded-full border border-ink-950/15 dark:border-white/20 text-ink-950 dark:text-white px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-ink-950/5 dark:hover:bg-white/10 transition min-h-[44px]";
+    const btn = "inline-flex items-center btn-plate px-4 py-2 text-xs font-bold transition min-h-[44px]";
+    const ghost = "inline-flex items-center btn-ghost px-4 py-2 text-xs font-bold transition min-h-[44px]";
 
     function Step({done, n, title, body, children}) {
         return (
@@ -269,7 +269,7 @@ function WorkoutHistory({initialItems, onOpen}) {
             ))}
             {hasMore && (
                 <button type="button" onClick={loadMore} disabled={loadingMore}
-                        className="mt-3 w-full min-h-[44px] rounded-2xl btn-glass text-sm font-bold uppercase tracking-wide transition disabled:opacity-50">
+                        className="mt-3 w-full min-h-[44px] btn-plate-ink text-sm font-bold transition disabled:opacity-50">
                     {loadingMore ? "Loading…" : "Load older activities"}
                 </button>
             )}
@@ -377,7 +377,7 @@ function WorkoutsBox({workouts, user, setLinkStrava, summary}) {
                     </ul>
                     {older > 0 && (
                         <button type="button" onClick={() => setShowHistory(true)}
-                                className="mt-3 w-full min-h-[44px] rounded-2xl border border-ink-950/15 dark:border-white/20 text-sm font-bold uppercase tracking-wide text-ink-950 dark:text-white hover:bg-ink-950/5 dark:hover:bg-white/10 transition">
+                                className="mt-3 w-full min-h-[44px] btn-ghost text-sm font-bold transition">
                             {older} older {older === 1 ? "activity" : "activities"}
                         </button>
                     )}

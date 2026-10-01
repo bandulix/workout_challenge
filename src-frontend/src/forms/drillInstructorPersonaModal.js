@@ -378,7 +378,7 @@ export function PersonaEditModal({persona, setModalState}) {
                                             setFormError(errText(err, "Could not hand over this coach. Please try again."));
                                         }
                                     }}
-                                    className="min-h-[44px] px-4 rounded-full btn-glass text-sm font-bold uppercase tracking-wide disabled:opacity-40">
+                                    className="min-h-[44px] px-4 btn-plate-ink text-sm font-bold disabled:opacity-40">
                                 Transfer
                             </button>
                         </div>

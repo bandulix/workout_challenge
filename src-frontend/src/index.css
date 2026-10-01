@@ -538,6 +538,67 @@
   .dark .glass-well { background: rgba(16, 16, 18, 0.92); }
 }
 
+/* Plate buttons: a gym plate you press. Squared 14px corners, a hard
+   bottom edge, sentence case. :active sinks the plate (edge -> 1px).
+   Primary = volt plate; secondary = ink plate; ghost = outline only.
+   Chips and selection toggles keep pills/glass — this is for actions. */
+.btn-plate,
+.btn-plate-ink {
+  border-radius: 14px;
+  transition: transform 120ms var(--ease-out), box-shadow 120ms var(--ease-out), background-color 160ms;
+  will-change: transform;
+}
+.btn-plate {
+  background: #d7ff3e;
+  color: #0b0b0c;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 -2px 0 rgba(11, 11, 12, 0.14) inset,
+    0 5px 0 #93b819,
+    0 10px 22px rgba(0, 0, 0, 0.35);
+}
+.btn-plate:hover { background: #e1ff5c; }
+.btn-plate:active,
+.btn-plate[aria-pressed="true"] {
+  transform: translateY(4px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 1px 0 #93b819,
+    0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.btn-plate-ink {
+  background: #1a1a1f;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 5px 0 #000,
+    0 10px 22px rgba(0, 0, 0, 0.35);
+}
+.btn-plate-ink:hover { background: #222228; }
+.btn-plate-ink:active {
+  transform: translateY(4px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.10) inset,
+    0 1px 0 #000,
+    0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.btn-plate:disabled,
+.btn-plate-ink:disabled {
+  transform: none;
+  opacity: 0.55;
+  box-shadow: none;
+}
+.btn-ghost {
+  border-radius: 14px;
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.85);
+  background: transparent;
+  transition: background-color 160ms, border-color 160ms;
+}
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.34); }
+.btn-ghost:active { background: rgba(255, 255, 255, 0.10); }
+
 /* Secondary actions: frost, not a grey slab. Primary stays solid volt. */
 .btn-glass {
   background: rgba(255, 253, 249, 0.40);

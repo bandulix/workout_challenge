@@ -110,7 +110,7 @@ export default function AthleteCard({person, weekTotal, weekBars, trendSpark, fe
                 {stravaId && (
                     <a href={`https://www.strava.com/athletes/${stravaId}`}
                        target="_blank" rel="noopener noreferrer"
-                       className="mt-4 inline-flex min-h-[44px] items-center rounded-full btn-glass px-4 text-xs font-bold uppercase tracking-wide">
+                       className="mt-4 inline-flex min-h-[44px] items-center btn-plate-ink px-4 text-xs font-bold">
                         Strava profile
                     </a>
                 )}

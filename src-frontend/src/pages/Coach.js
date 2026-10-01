@@ -173,7 +173,7 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
 
                     {!config && ownedCompetitions.length > 0 && (
                         <Link to={`/competition/${ownedCompetitions[0].id}?tab=feed&coach=setup`}
-                              className="mt-5 inline-flex items-center gap-2 rounded-full bg-volt-400 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink-950 shadow-glow-volt transition hover:bg-volt-300">
+                              className="mt-5 inline-flex items-center gap-2 btn-plate px-5 py-2.5 text-sm font-bold transition">
                             <Megaphone className="h-4 w-4"/> Set up your coach <ChevronRight className="h-4 w-4"/>
                         </Link>
                     )}

@@ -80,7 +80,7 @@ function ErrorBoxSection({errorMsg, additionalClasses = ''}) {
                     Reload usually fixes it. If it keeps happening, log out and back in.
                 </p>
                 <button type="button" onClick={handleReload}
-                        className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 text-sm font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt">
+                        className="px-5 py-2.5 btn-plate text-sm font-bold transition">
                     Reset & reload
                 </button>
                 <a href="/logout" className="text-sm font-semibold  text-ink-950 dark:text-white underline">Log out</a>
@@ -122,7 +122,7 @@ class ErrorBoundary extends React.Component {
                     </p>
                     <button
                         onClick={() => window.location.reload()}
-                        className="w-full px-5 py-3 rounded-full bg-volt-400 text-ink-950 font-bold uppercase tracking-wide text-sm hover:bg-volt-300 transition shadow-glow-volt">
+                        className="w-full px-5 py-3 btn-plate font-bold text-sm transition">
                         Reload the app
                     </button>
                     <p className="text-xs text-gray-500 dark:text-gray-400">

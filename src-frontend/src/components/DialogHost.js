@@ -35,7 +35,7 @@ export default function DialogHost() {
                     </button>
                 )}
                 <button type="button"
-                        className="min-h-[44px] px-5 rounded-full bg-volt-400 text-ink-950 font-bold text-sm uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt"
+                        className="min-h-[44px] px-5 btn-plate font-bold text-sm transition"
                         onClick={() => close(dialog.kind === "confirm" ? true : undefined)}>
                     {dialog.kind === "confirm" ? "Confirm" : "OK"}
                 </button>
