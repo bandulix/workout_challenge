@@ -710,9 +710,8 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                     )}
                 </div>
 
-                {/* Activity threads are neutral anchors (body often ""). Only
-                    paint the coach speech row when there is a real line —
-                    otherwise the avatar sits next to a blank quote slot. */}
+                {/* Safety: never paint a blank coach quote if body is empty
+                    (Expedition placeholders / generation failure before fallback). */}
                 {Boolean((message.body || "").trim()) && (
                     <>
                         <div className="flex justify-center">
@@ -1007,7 +1006,7 @@ export function CoachCorner({competition, isOwner}) {
             ) : (
                 <article className="rounded-3xl glass-card px-5 py-6 text-center">
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        No orders yet. Log a workout to start the feed — reply or drop a photo and the coach answers.
+                        No orders yet. Log a workout and the coach will have words.
                     </p>
                 </article>
             )}

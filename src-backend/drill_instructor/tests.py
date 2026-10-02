@@ -3581,7 +3581,7 @@ class MaterialCoachGapTests(TestCase):
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
 )
 class WorkoutCommentIdempotencyTests(TestCase):
-    """Legacy per-workout coach jobs stay silent; old records remain valid."""
+    """One KIND_ACTIVITY per workout with a real coach body; double enqueue is safe."""
 
     def setUp(self):
         for target in (
@@ -3625,34 +3625,76 @@ class WorkoutCommentIdempotencyTests(TestCase):
             intensity_category=2,
         )
 
-    def test_legacy_workout_queue_creates_activity_thread_without_coach_chatter(self):
+    def test_workout_queue_posts_coach_comment_body(self):
         from .tasks import post_workout_comment
 
         result = post_workout_comment(self.workout.id)
 
-        self.assertEqual(result["posted"], 0)
+        self.assertEqual(result["posted"], 1)
         root = DrillInstructorMessage.objects.get(
             config=self.config, workout=self.workout,
             kind=DrillInstructorMessage.KIND_ACTIVITY,
         )
-        self.assertEqual(root.body, "")
+        self.assertEqual(root.body, "Sarge says: solid run!")
         self.assertEqual(DrillInstructorMessage.objects.filter(
             config=self.config, workout=self.workout,
             kind=DrillInstructorMessage.KIND_REACTION,
         ).count(), 0)
 
-    def test_double_enqueue_creates_only_one_activity_thread(self):
+    def test_llm_failure_uses_static_fallback_body(self):
+        from .tasks import post_workout_comment
+
+        with mock.patch(
+            "drill_instructor.tasks.generate_message",
+            return_value=(None, "provider down"),
+        ):
+            result = post_workout_comment(self.workout.id)
+
+        self.assertEqual(result["posted"], 1)
+        root = DrillInstructorMessage.objects.get(
+            config=self.config, workout=self.workout,
+            kind=DrillInstructorMessage.KIND_ACTIVITY,
+        )
+        self.assertTrue(root.body.strip())
+        self.assertIn("Idem Sergeant", root.body)
+        self.assertIn("nice work", root.body.lower())
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.last_error, "provider down")
+
+    def test_fills_empty_expedition_placeholder(self):
+        from .tasks import post_workout_comment
+
+        DrillInstructorMessage.objects.create(
+            config=self.config, workout=self.workout,
+            kind=DrillInstructorMessage.KIND_ACTIVITY, body="",
+        )
+        result = post_workout_comment(self.workout.id)
+        self.assertEqual(result["posted"], 1)
+        root = DrillInstructorMessage.objects.get(
+            config=self.config, workout=self.workout,
+            kind=DrillInstructorMessage.KIND_ACTIVITY,
+        )
+        self.assertEqual(root.body, "Sarge says: solid run!")
+
+    def test_double_enqueue_posts_only_once(self):
         from .tasks import post_workout_comment
 
         first = post_workout_comment(self.workout.id)
         second = post_workout_comment(self.workout.id)
 
-        self.assertEqual(first["posted"], 0)
+        self.assertEqual(first["posted"], 1)
         self.assertEqual(second["posted"], 0)
         self.assertEqual(DrillInstructorMessage.objects.filter(
             config=self.config, workout=self.workout,
             kind=DrillInstructorMessage.KIND_ACTIVITY,
         ).count(), 1)
+        self.assertEqual(
+            DrillInstructorMessage.objects.get(
+                config=self.config, workout=self.workout,
+                kind=DrillInstructorMessage.KIND_ACTIVITY,
+            ).body,
+            "Sarge says: solid run!",
+        )
 
     def test_db_constraint_blocks_concurrent_duplicates(self):
         from django.db import IntegrityError
