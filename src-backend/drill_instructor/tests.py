@@ -1389,7 +1389,9 @@ class PhotoPostTests(TestCase):
             config=self.config, workout=workout,
             kind=DrillInstructorMessage.KIND_ACTIVITY,
         )
-        self.assertEqual(root.body, "")
+        # Logging always gets a coach line (LLM or static fallback).
+        # The pictured Echo stays unminted until the photo posts.
+        self.assertTrue((root.body or "").strip())
         self.assertEqual(process_echoes(workout, self.config), [])
         self.assertFalse(LegendEcho.objects.filter(origin_workout=workout).exists())
         self.client.force_authenticate(self.athlete)
