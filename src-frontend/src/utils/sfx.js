@@ -89,7 +89,7 @@ function haptic(name) {
         roast_reveal: [24],
         ring_full: [20, 40, 20, 40, 50],
     }[name];
-    if (pattern) navigator.vibrate?.(pattern);
+    if (pattern && typeof navigator !== "undefined") navigator.vibrate?.(pattern);
 }
 
 export function playSfx(name) {
