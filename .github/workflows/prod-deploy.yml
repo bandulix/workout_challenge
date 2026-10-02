@@ -170,9 +170,14 @@ jobs:
         run: npm ci && INLINE_RUNTIME_CHUNK=false npm run build && npx cap sync android
       - name: Install Android SDK platform 36
         run: |
-          set -o pipefail
+          # sdkmanager closes stdin when packages are installed; `yes` then
+          # gets SIGPIPE. With pipefail that fails the step even though
+          # sdkmanager itself succeeded (Broken pipe / exit 141).
+          set +o pipefail
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+          set -o pipefail
           test -d "$ANDROID_HOME/platforms/android-36" || { echo "android-36 platform missing after sdkmanager"; exit 1; }
+          test -d "$ANDROID_HOME/build-tools/36.0.0" || { echo "build-tools 36.0.0 missing after sdkmanager"; exit 1; }
       - name: Set up release signing
         # Android refuses in-place updates when the signature changes.
         # Without signing material, every CI runner would generate a fresh
