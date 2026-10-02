@@ -2,6 +2,7 @@ import React, {useEffect, useMemo, useState} from "react";
 import {Timer} from "lucide-react";
 import PersonaAvatar from "./PersonaAvatar";
 import {PaneHead} from "./uiBits";
+import {coachAccentStyle, accentHex} from "./gameBits";
 import {useGetCoachBallotQuery, useVoteCoachPersonaMutation} from "../utils/reducers/drillInstructorSlice";
 import usePollingInterval from "../utils/usePollingInterval";
 import {playSfx} from "../utils/sfx";
@@ -72,7 +73,7 @@ export function CoachHandover({configId, enabled}) {
     const previous = ballot.previous_persona;
     return (
         <div className="mb-3 rounded-3xl glass-card px-4 py-3 ring-1 ring-volt-500/40 dark:ring-volt-400/40">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-white/55 flex items-center gap-1.5">
+            <p className="t-caption text-gray-500 dark:text-white/55 flex items-center gap-1.5">
                 <Timer className="h-3.5 w-3.5"/> New coach
             </p>
             <div className="mt-2 flex items-center gap-3">
@@ -85,7 +86,7 @@ export function CoachHandover({configId, enabled}) {
                 <PersonaAvatar persona={current} size={44} glow/>
                 <div className="min-w-0">
                     <p className="font-display text-sm uppercase tracking-wide truncate">{current.name}</p>
-                    <p className="text-[11px] text-gray-600 dark:text-gray-400">
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
                         {previous ? `took over from ${previous.name}` : "took the megaphone"}
                     </p>
                 </div>
@@ -150,7 +151,7 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
                       hint={ballot.vote_count === 0
                           ? "Winner takes the megaphone Monday morning."
                           : `${ballot.vote_count} ${ballot.vote_count === 1 ? "vote" : "votes"} in`}>
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-white/55 tabular-nums">
+                <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-white/55 tabular-nums">
                     <Timer className="h-3.5 w-3.5"/>
                     {countdown}
                 </span>
@@ -162,15 +163,16 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
                         return (
                             <button key={c.id} type="button" onClick={() => setPickedId(c.id)}
                                     aria-pressed={on}
-                                    className={"shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide min-h-[44px] transition " +
-                                        (on ? "bg-volt-400 text-ink-950 shadow-glow-volt" : "btn-glass")}>
+                                    className={"shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide min-h-[44px] transition " +
+                                        (on ? "text-ink-950 shadow-glow-volt" : "btn-glass")}
+                                    style={on ? {backgroundColor: accentHex(c.persona_detail?.theme_color || c.persona?.theme_color), color: "#0b0b0c"} : undefined}>
                                 {c.competition_name || "Challenge"}
                             </button>
                         );
                     })}
                 </div>
             )}
-            <p className="px-1 mb-3 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+            <p className="px-1 mb-3 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
                 {ballot.vote_count === 0
                     ? "No votes yet. You can change your pick until the switch."
                     : `Switches ${countdown === "any moment" ? "now" : "in " + countdown}. You can change your vote until then.`}
@@ -190,20 +192,21 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
                                 data-selected={selected ? "true" : undefined}
                                 className={"min-w-0 rounded-3xl glass-card p-3 text-center transition active:scale-[0.97] disabled:opacity-60 " +
                                     (selected ? "" : "hover:bg-white/5")}
-                                style={selected
-                                    ? {boxShadow: `0 0 0 2px ${accent}, 0 0 18px ${accent}66`}
-                                    : undefined}>
+                                style={{
+                                    ...coachAccentStyle(accent),
+                                    ...(selected ? {boxShadow: `0 0 0 2px ${accent}, 0 0 18px ${accent}66`} : {}),
+                                }}>
                             <PersonaAvatar persona={c.persona} size={56} glow={selected || onDuty} className="mx-auto"/>
                             <p className="mt-2 text-[12px] font-bold leading-tight truncate">{c.persona.name}</p>
-                            <p className="mt-0.5 text-[10px] text-gray-400">
+                            <p className="mt-0.5 text-xs text-gray-400">
                                 {c.votes} {c.votes === 1 ? "vote" : "votes"}
                                 {c.leading && c.votes > 0 ? (tiedLeaders ? " · tie" : " · lead") : ""}
                             </p>
                             {selected ? (
-                                <p className="mt-1 text-[9px] font-extrabold uppercase tracking-wide"
+                                <p className="mt-1 text-xs font-extrabold uppercase tracking-wide"
                                    style={{color: accent}}>Your vote</p>
                             ) : onDuty ? (
-                                <p className="mt-1 text-[9px] font-extrabold uppercase tracking-wide"
+                                <p className="mt-1 text-xs font-extrabold uppercase tracking-wide"
                                    style={{color: accent}}>On duty</p>
                             ) : null}
                         </button>

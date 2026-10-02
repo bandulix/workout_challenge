@@ -73,11 +73,11 @@ function EchoTile({echo, onDelete, busy, onOpenArt, showStatus = false}) {
             <EchoArt url={echo.image} title={echo.title} onOpen={() => onOpenArt?.(echo)}/>
             <div className="px-2.5 py-2">
                 <p className="text-[12px] font-bold leading-tight truncate">{echo.title}</p>
-                <p className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 truncate">
                     {echo.holder_name || "Held"} · {echo.metric_label}
                 </p>
                 {echo.status !== "immortal" && (echo.defenses || 0) > 0 && (
-                    <p className="mt-0.5 text-[10px] font-bold text-gray-500 dark:text-white/55">
+                    <p className="mt-0.5 text-xs font-bold text-gray-500 dark:text-white/55">
                         Survived {echo.defenses}/3 takeovers
                     </p>
                 )}
@@ -88,11 +88,11 @@ function EchoTile({echo, onDelete, busy, onOpenArt, showStatus = false}) {
                                 text: echo.narrative,
                                 imageUrl: echo.image,
                             })}
-                            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full btn-glass px-3 py-1 text-[10px] font-bold uppercase tracking-wide">
+                            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full btn-glass px-3 py-1 text-xs font-bold uppercase tracking-wide">
                         <Share2 className="h-3.5 w-3.5"/> Share
                     </button>
                     {showStatus && (
-                        <span className="shrink-0 rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">
+                        <span className="shrink-0 rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 text-xs font-bold uppercase tracking-wide px-2 py-0.5">
                             {STATUS_LABEL[echo.status] || echo.status}
                         </span>
                     )}
@@ -157,7 +157,7 @@ export default function EchoLiveStrip({competitionId, userId}) {
 
     const archiveButton = (
         <button type="button" onClick={() => setShowAll(true)}
-                className="inline-flex min-h-[44px] items-center rounded-full btn-glass px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide transition">
+                className="inline-flex min-h-[44px] items-center rounded-full btn-glass px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition">
             Echo archive · {allEchoes.length}
         </button>
     );

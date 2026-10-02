@@ -55,7 +55,7 @@ const RING_CY = 50;
 const RING_R = 48.2;
 const VOLT = "#d7ff3e";
 
-function accentHex(color) {
+export function accentHex(color) {
     const raw = String(color || "").trim();
     if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw;
     if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
@@ -64,12 +64,22 @@ function accentHex(color) {
     return VOLT;
 }
 
-function accentRgba(color, alpha) {
+export function accentRgba(color, alpha) {
     const hex = accentHex(color).slice(1);
     const r = parseInt(hex.slice(0, 2), 16);
     const g = parseInt(hex.slice(2, 4), 16);
     const b = parseInt(hex.slice(4, 6), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/** CSS custom properties for persona chrome (--coach-accent*). */
+export function coachAccentStyle(color) {
+    const hex = accentHex(color);
+    return {
+        "--coach-accent": hex,
+        "--coach-accent-glow": accentRgba(hex, 0.5),
+        "--coach-accent-glow-strong": accentRgba(hex, 0.95),
+    };
 }
 
 function polar(cx, cy, r, deg) {
@@ -201,7 +211,7 @@ export function SquadOrbit({mood, children, showCaption = true, accent}) {
                 <p className={"font-display text-[0.95rem] tabular-nums tracking-wide " + countTone}>
                     {active}<span className="text-[0.7rem] font-sans font-bold text-gray-400"> of {total}</span>
                 </p>
-                <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                <p className="mt-0.5 t-caption text-gray-500 dark:text-gray-400">
                     trained today
                 </p>
             </div>
@@ -215,17 +225,17 @@ export function OrderCard({order}) {
         <div>
             <PaneHead title="Order of the day" hint={order.competition_name}/>
             <article className={paneCardClass}>
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-white/55 flex items-center gap-1.5">
+                <p className="t-caption text-gray-500 dark:text-white/55 flex items-center gap-1.5">
                     <ScrollText className="h-3.5 w-3.5"/> Sealed order · {order.date}
                 </p>
                 <p className="mt-2 text-[15px] leading-relaxed">{order.brief}</p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                     {order.completed ? (
-                        <span className="rounded-full bg-volt-400 text-ink-950 text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1">
+                        <span className="rounded-full bg-volt-400 text-ink-950 text-xs font-extrabold uppercase tracking-wide px-2.5 py-1">
                             You completed it
                         </span>
                     ) : (
-                        <span className="rounded-full bg-gray-200 text-gray-700 dark:bg-white/10 dark:text-gray-300 text-[10px] font-bold uppercase tracking-wide px-2.5 py-1">
+                        <span className="rounded-full bg-gray-200 text-gray-700 dark:bg-white/10 dark:text-gray-300 text-xs font-bold uppercase tracking-wide px-2.5 py-1">
                             Still open
                         </span>
                     )}
@@ -535,12 +545,12 @@ export function HallOfRoasts({cards, persona}) {
             ) : (
                 <div className="space-y-3">
                     <div>
-                        <p className="px-1 mb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Fresh off the roast</p>
+                        <p className="px-1 mb-1.5 t-caption text-gray-500 dark:text-gray-400">Fresh off the roast</p>
                         <div className="grid grid-cols-3 gap-3">{newest.map(frame)}</div>
                     </div>
                     {topReacted.length > 0 && (
                         <div>
-                            <p className="px-1 mb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Crowd favourites</p>
+                            <p className="px-1 mb-1.5 t-caption text-gray-500 dark:text-gray-400">Crowd favourites</p>
                             <div className="grid grid-cols-3 gap-3">{topReacted.map(frame)}</div>
                         </div>
                     )}
@@ -568,7 +578,7 @@ export function DogTagRow({tags}) {
             <div className="flex flex-wrap gap-1.5 mt-2">
                 {tags.map((t) => (
                     <button key={t.slug} type="button" onClick={() => setOpen(t)}
-                            className="inline-flex items-center gap-1 rounded-full border border-volt-700/40 bg-volt-400/25 text-volt-800 dark:border-ink-700/40 dark:bg-ink-900 dark:text-volt-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide min-h-[28px] hover:border-volt-500 hover:bg-volt-400/40 dark:hover:border-volt-400/70 dark:hover:bg-ink-800 transition">
+                            className="inline-flex items-center gap-1 rounded-full border border-volt-700/40 bg-volt-400/25 text-volt-800 dark:border-ink-700/40 dark:bg-ink-900 dark:text-volt-300 px-2 py-0.5 text-xs font-bold uppercase tracking-wide min-h-[28px] hover:border-volt-500 hover:bg-volt-400/40 dark:hover:border-volt-400/70 dark:hover:bg-ink-800 transition">
                         <span aria-hidden="true">{TAG_ICON[t.slug] || "★"}</span>
                         {t.title}
                     </button>
@@ -595,7 +605,7 @@ export function DogTagRow({tags}) {
 export function OrderRibbon({show}) {
     if (!show) return null;
     return (
-        <span className="shrink-0 rounded-full bg-volt-400 text-ink-950 text-[10px] font-extrabold uppercase tracking-wide px-2 py-0.5 inline-flex items-center gap-1">
+        <span className="shrink-0 rounded-full bg-volt-400 text-ink-950 text-xs font-extrabold uppercase tracking-wide px-2 py-0.5 inline-flex items-center gap-1">
             <Trophy className="h-3 w-3"/> Order <span className="tabular-nums">+5P</span>
         </span>
     );

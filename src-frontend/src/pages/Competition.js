@@ -7,7 +7,7 @@ import {
 import {SwipePages, challengeTabs} from "../components/swipeTabs";
 import {statsApi, useGetStatsByIdQuery} from "../utils/reducers/statsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
-import {SectionLoader, SkeletonRows} from "../utils/loaders";
+import {SkeletonCard, SkeletonRows} from "../utils/loaders";
 import {useGetFeedByIdQuery} from "../utils/reducers/feedSlice";
 import JoinTeamForm from "../forms/joinTeamForm";
 import CompetitionForm from "../forms/competitionForm";
@@ -87,7 +87,7 @@ function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
                                                     <span className="min-w-0">
                                                         <span className="block truncate">{member.username}</span>
                                                         {factors && (
-                                                            <span className="block text-[11px] text-gray-400">{factors}</span>
+                                                            <span className="block text-xs text-gray-400">{factors}</span>
                                                         )}
                                                     </span>
                                                     <span className="shrink-0">{Math.round(member.total_capped || 0).toLocaleString()}P</span>
@@ -153,7 +153,7 @@ function WeekBars({values, labels, showLabels = false, tall = false}) {
             {showLabels && labels && (
                 <div className="flex gap-[3px] mt-1">
                     {labels.map((label, i) => (
-                        <span key={i} className="flex-1 text-center text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                        <span key={i} className="flex-1 text-center text-xs font-bold uppercase tracking-wide text-gray-400">
                             {label}
                         </span>
                     ))}
@@ -228,7 +228,7 @@ function Podium({people, userId, onPick}) {
                             >
                                 <ProfileAvatar user={person} size={slot.avatar}/>
                                 <span className="max-w-[6.5rem] truncate text-sm font-semibold">{mine ? "You" : person.username}</span>
-                                <span className="rounded-full bg-volt-400 px-2 py-0.5 text-[11px] font-extrabold text-ink-950 shadow-glow-volt">
+                                <span className="rounded-full bg-volt-400 px-2 py-0.5 text-xs font-extrabold text-ink-950 shadow-glow-volt">
                                     {Math.round(person.total_capped ?? 0).toLocaleString()}P
                                 </span>
                             </button>
@@ -293,13 +293,13 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
         return (
             <div className="mt-3 grid grid-cols-2 gap-3">
                 <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 mb-1">
+                    <p className="t-caption text-gray-400 mb-1">
                         This week · {Math.round(weekTotal)}P
                     </p>
                     <WeekBars values={week} labels={weekLabels} showLabels tall/>
                 </div>
                 <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 mb-1">
+                    <p className="t-caption text-gray-400 mb-1">
                         Trend vs field
                     </p>
                     <TrendSpark series={cumulative(personId)} compare={fieldTrend}/>
@@ -343,14 +343,14 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
                                 <div className="relative shrink-0 mr-1.5">
                                     <ProfileAvatar user={person} size={46}
                                                    onClick={() => setCard(person)}/>
-                                    <span className="absolute -bottom-1 -right-2 rounded-full bg-volt-400 text-ink-950 text-[10px] font-extrabold px-1.5 py-0.5 shadow-glow-volt whitespace-nowrap">
+                                    <span className="absolute -bottom-1 -right-2 rounded-full bg-volt-400 text-ink-950 text-xs font-extrabold px-1.5 py-0.5 shadow-glow-volt whitespace-nowrap">
                                         {Math.round(person.total_capped ?? 0).toLocaleString()}P
                                     </span>
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <p className="font-semibold truncate">{mine ? "You" : person.username}</p>
                                     {(person.rank !== null && person.days_on_rank > 0) && (
-                                        <p className="text-[11px] text-gray-400">
+                                        <p className="text-xs text-gray-400">
                                             on #{person.rank} for {person.days_on_rank} {person.days_on_rank === 1 ? "day" : "days"}
                                         </p>
                                     )}
@@ -539,7 +539,7 @@ export default function Competition() {
     return (
         <PageWrapper>
             {(competitionLoading) ? (
-                <div className="container mx-auto p-4"><SectionLoader height={"h-48 mb-4"}/></div>
+                <div className="container mx-auto space-y-3 p-4" role="status" aria-label="Loading"><SkeletonCard height="h-48"/><SkeletonRows n={3}/></div>
             ) : (tab !== "feed" && statsError) ? (
                 <div className="container mx-auto p-4">
                     <ErrorBoxSection additionalClasses="mb-4" errorMsg={errText(statsError, 'Could not load the leaderboard. Please try again.')}/>

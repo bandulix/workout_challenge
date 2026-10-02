@@ -3,13 +3,14 @@ import {Link} from "react-router-dom";
 import {Megaphone, ChevronRight, Radio, ScrollText} from "lucide-react";
 import {PageWrapper} from "../utils/miscellaneous";
 
-import {SectionLoader} from "../utils/loaders";
+import {SkeletonCard} from "../utils/loaders";
 import PersonaAvatar from "../components/PersonaAvatar";
+import PortraitWash from "../components/PortraitWash";
 import CoachVoteBox, {CoachHandover} from "../components/CoachVoteBox";
 import PushOptInCard from "../components/PushOptIn";
 import {ActivityCoachPost} from "../components/competitionChrome";
 import {messageResults, useGetPersonasQuery, useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
-import {HallOfRoasts, OrderCard, SquadOrbit, trainedSummary} from "../components/gameBits";
+import {HallOfRoasts, OrderCard, SquadOrbit, trainedSummary, coachAccentStyle, accentHex} from "../components/gameBits";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {timeAgo} from "../utils/time";
@@ -26,13 +27,7 @@ import {PaneHead} from "../components/uiBits";
 
 const FALLBACK_PERSONA = {name: "Your Coach", tagline: "Waiting for orders.", avatar: "megaphone", theme_color: "#d7ff3e"};
 
-// Mood is carried by the portrait ring, not a word chip.
-const MOOD_RING = {
-    unleashed: "#d7ff3e",
-    proud: "#b8e62e",
-    watching: "#fbbf24",
-    disappointed: "#f87171",
-};
+// Mood drives orbit motion + labels; persona theme_color owns chrome accent.
 
 const KIND_LABEL = {
     activity: "Workout",
@@ -51,7 +46,7 @@ const KIND_LABEL = {
 };
 
 
-function CoachQuote({message, empty}) {
+function CoachQuote({message, empty, accentStyle}) {
     const body = message
         ? (message.kind === "photo"
             ? (message.body || `${message.author_name || "Someone"} shared a photo in the feed.`)
@@ -66,15 +61,17 @@ function CoachQuote({message, empty}) {
         : null;
 
     return (
-        <blockquote className="coach-quote relative rounded-2xl px-5 py-4 sm:px-6 sm:py-5 animate-pop-in">
+        <blockquote className="coach-quote relative overflow-hidden rounded-2xl px-5 py-4 sm:px-6 sm:py-5 animate-pop-in"
+                    style={accentStyle}>
+            <span className="coach-quote-mark" aria-hidden="true">“</span>
             {body ? (
                 <>
                     <p className="relative flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                        <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-gray-500 dark:text-white/55">
+                        <span className="t-caption text-gray-500 dark:text-white/55">
                             {kind}
                         </span>
                         {meta && (
-                            <span className="text-[11px] text-gray-500 dark:text-gray-400">{meta}</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">{meta}</span>
                         )}
                     </p>
                     <p className="relative mt-2.5 text-[15px] sm:text-[1.05rem] leading-relaxed break-words">
@@ -116,13 +113,17 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
         );
     }
 
-    const ringColor = MOOD_RING[mood?.key] || persona.theme_color || "#d7ff3e";
+    // Persona owns chrome (ring, On duty, quote border). Mood still drives
+    // orbit motion + sr-only label; sparse rings read --coach-accent.
+    const accent = accentHex(persona.theme_color);
+    const accentVars = coachAccentStyle(accent);
     return (
-        <div className="season-bleed relative overflow-hidden pb-2 text-white">
+        <div className="season-bleed relative overflow-hidden pb-2 text-white" style={accentVars}>
+            <div className="coach-hero-wash" aria-hidden="true"/>
             <div className="relative px-5 pt-7 sm:px-8">
                 <div className="flex items-center gap-4 sm:gap-6">
                     <div className="relative shrink-0" title={mood?.label ? `${mood.label}${trained ? ` · ${trained.hint}` : ""}` : undefined}>
-                        <SquadOrbit mood={mood} accent={ringColor} showCaption={false}>
+                        <SquadOrbit mood={mood} accent={accent} showCaption={false}>
                             <PersonaAvatar persona={persona} size={112} ring={false} glow={false}
                                            className="!w-full !h-full"/>
                         </SquadOrbit>
@@ -131,7 +132,7 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                     <div className="min-w-0 flex-1">
                         <h1 className="t-hero break-words xl:text-3xl">{persona.name}</h1>
                         <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs font-bold uppercase tracking-[0.18em] text-white/55">
-                            <span className="inline-flex items-center gap-1.5" style={{color: ringColor}}>
+                            <span className="inline-flex items-center gap-1.5" style={{color: accent}}>
                                 <Radio className="h-3.5 w-3.5"/>{config ? "On duty" : "Coach"}
                             </span>
                             {trained && <span title={trained.hint}>· {trained.label}</span>}
@@ -147,22 +148,30 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                     ) : (
                         <CoachQuote
                             message={latest}
-                            empty={config ? (
-                                <p className="text-[15px] leading-relaxed text-gray-700 dark:text-gray-300">
-                                    Standing by. Log a workout in <b>{config.competition_name || "your challenge"}</b> and the coach will have words.
-                                </p>
-                            ) : (
-                                <p className="text-[15px] leading-relaxed text-gray-700 dark:text-gray-300">
-                                    No coach assigned yet. {ownedCompetitions.length > 0
-                                        ? "Pick a coach and unleash them on your challenge."
-                                        : "Once your challenge's organizer enables the coach, the banter lands here."}
-                                </p>
-                            )}
+                            accentStyle={accentVars}
+                            empty={
+                                <div className="relative min-h-[4.5rem]">
+                                    <PortraitWash
+                                        src={persona.profile_picture}
+                                        color={accent}
+                                        intensity={0.35}
+                                    />
+                                    <p className="relative text-[15px] leading-relaxed text-gray-700 dark:text-gray-300">
+                                        {config
+                                            ? (persona.tagline
+                                                ? `“${persona.tagline}” Standing by — log a workout in ${config.competition_name || "your challenge"} and I'll have words.`
+                                                : `Standing by. Log a workout in ${config.competition_name || "your challenge"} and I'll have words.`)
+                                            : (ownedCompetitions.length > 0
+                                                ? "No coach on duty yet. Pick a persona and unleash them on your challenge."
+                                                : "Once your challenge's organizer enables the coach, the banter lands here.")}
+                                    </p>
+                                </div>
+                            }
                         />
                     )}
                     {briefing && briefing.id !== latest?.id && (
                         <div className="rounded-2xl glass-well px-5 py-4 animate-pop-in">
-                            <p className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-[0.18em] text-gray-500 dark:text-white/55">
+                            <p className="flex items-center gap-1.5 t-caption text-gray-500 dark:text-white/55">
                                 <ScrollText className="h-3.5 w-3.5"/> Daily briefing
                             </p>
                             <p className="mt-2 text-[14px] leading-relaxed break-words text-gray-800 dark:text-gray-200">
@@ -255,7 +264,13 @@ function CoachPage() {
     return (
         <PageWrapper>
             {isLoading ? (
-                <div className="container mx-auto p-4"><SectionLoader height="h-96"/></div>
+                <div className="container mx-auto max-w-3xl space-y-4 p-4 md:max-w-6xl" role="status" aria-label="Loading">
+                    <SkeletonCard height="h-56"/>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <SkeletonCard height="h-40"/>
+                        <SkeletonCard height="h-40"/>
+                    </div>
+                </div>
             ) : (
                 <>
                     <CoachHero persona={heroPersona} config={heroConfig} message={latestMessage}

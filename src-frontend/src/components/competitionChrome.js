@@ -19,7 +19,7 @@ import {ActivityReactProvider, ActivityStampButton, ActivityStampIcons} from "./
 import {CoachHandover} from "./CoachVoteBox";
 import PersonaAvatar from "./PersonaAvatar";
 import ProfileAvatar from "./ProfileAvatar";
-import {OrderRibbon, RoastGallery} from "./gameBits";
+import {OrderRibbon, RoastGallery, coachAccentStyle, accentHex} from "./gameBits";
 import {OverlaySheet} from "../forms/basicComponents";
 import {elapsedSince, timeAgo} from "../utils/time";
 import {useProtectedImage} from "../utils/protectedMedia";
@@ -122,7 +122,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                         {showGoals && (
                             <button type="button" onClick={() => setGoalsOpen((v) => !v)}
                                     aria-expanded={goalsOpen}
-                                    className={"rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide min-h-[44px] transition " +
+                                    className={"rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide min-h-[44px] transition " +
                                         (goalsOpen ? "bg-volt-400 text-ink-950 shadow-glow-volt" : "btn-glass")}>
                                 Goals
                             </button>
@@ -153,10 +153,10 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                         <div className="overflow-hidden">
                             <div className="px-5 sm:px-6 pb-5 pt-3">
                                 <div className="flex items-center justify-between gap-2 mb-2">
-                                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Challenge goals</p>
+                                    <p className="t-caption text-gray-400">Challenge goals</p>
                                     {isOwner && (
                                         <button type="button" onClick={() => setShowModifyGoals(true)}
-                                                className="text-[11px] font-bold uppercase tracking-wide text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[44px] px-2">
+                                                className="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[44px] px-2">
                                             Edit
                                         </button>
                                     )}
@@ -173,7 +173,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                                                 <div key={goal.id} className="rounded-2xl glass-inset px-3 py-2">
                                                     <div className="flex items-baseline justify-between gap-2">
                                                         <p className="text-sm font-semibold truncate">{goal.name}</p>
-                                                        <p className="text-[11px] text-gray-400 shrink-0">
+                                                        <p className="text-xs text-gray-400 shrink-0">
                                                             {Math.round(goal.goal).toLocaleString()} {goal.metric} / {goal.period}
                                                         </p>
                                                     </div>
@@ -186,7 +186,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                                                                 (empty ? "bg-ink-950/10 dark:bg-white/15" : complete ? "bg-volt-400" : "bg-gradient-to-r from-volt-600 to-volt-400")}
                                                                  style={{width: pct + "%"}}/>
                                                         </div>
-                                                        <span className="text-[11px] font-extrabold text-volt-700 dark:text-volt-300 w-10 text-right">
+                                                        <span className="text-xs font-extrabold text-volt-700 dark:text-volt-300 w-10 text-right">
                                                             {Math.round(pct)}P
                                                         </span>
                                                     </div>
@@ -284,10 +284,12 @@ function FeedCard({children}) {
 
 function CoachSpeech({persona, children}) {
     if (!children) return null;
+    const accentVars = coachAccentStyle(persona?.theme_color);
     return (
         <div className="flex items-start gap-2">
             <PersonaAvatar persona={persona} size={28} glow className="mt-0.5"/>
-            <blockquote className="coach-quote coach-quote--inline relative min-w-0 flex-1 rounded-2xl px-3.5 py-2.5">
+            <blockquote className="coach-quote coach-quote--inline relative min-w-0 flex-1 rounded-2xl px-3.5 py-2.5"
+                        style={accentVars}>
                 <p className="relative text-[15px] leading-relaxed break-words">{children}</p>
             </blockquote>
         </div>
@@ -636,7 +638,7 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                    never overlaps the athlete header beneath it. */
                 <div className="relative z-10 px-3.5 pt-3 sm:px-4 sm:pt-3.5">
                     <button type="button" onClick={(e) => { e.stopPropagation(); setLightbox("remix"); }}
-                            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-ink-950/60 text-white px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide backdrop-blur-sm transition hover:bg-ink-950/80">
+                            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-ink-950/60 text-white px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide backdrop-blur-sm transition hover:bg-ink-950/80">
                         View photo
                     </button>
                 </div>
@@ -661,7 +663,7 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                         <div className={"flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 flex-1 " + (hero ? "pr-28" : "")}>
                             <div className="min-w-0">
                                 <p className="font-semibold truncate leading-tight">{message.athlete_name || "Athlete"}</p>
-                                <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                                     {message.workout_summary || "Workout"} · {timeAgo(message.posted_at)}
                                 </p>
                             </div>
@@ -694,12 +696,12 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                                      className="flex items-center gap-2 rounded-2xl bg-volt-400/20 px-2.5 py-1.5 text-ink-950 dark:text-white">
                                     <Crown className="h-4 w-4 shrink-0 text-gray-500 dark:text-white/70"/>
                                     <div className="min-w-0">
-                                        <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-gray-500 dark:text-white/55">
+                                        <p className="t-caption text-gray-500 dark:text-white/55">
                                             {echo.role === "claimed" ? "Claimed Echo" : "Legend Echo"}
                                         </p>
                                         <p className="text-xs font-bold truncate">{echo.title}</p>
                                         {echo.metric_label && (
-                                            <p className="text-[10px] text-gray-600 dark:text-gray-400 truncate">{echo.metric_label}</p>
+                                            <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{echo.metric_label}</p>
                                         )}
                                     </div>
                                 </div>
@@ -712,7 +714,8 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                     <PersonaAvatar persona={persona} size={28} glow/>
                 </div>
                 {message.body ? (
-                    <blockquote className="coach-quote coach-quote--inline relative min-w-0 rounded-2xl px-3.5 py-2.5">
+                    <blockquote className="coach-quote coach-quote--inline relative min-w-0 rounded-2xl px-3.5 py-2.5"
+                                style={coachAccentStyle(persona?.theme_color)}>
                         <p className="relative text-[15px] leading-relaxed break-words">{message.body}</p>
                     </blockquote>
                 ) : <div/>}
@@ -756,7 +759,7 @@ function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
                     size={36}/>
                 <div className="min-w-0 flex-1">
                     <p className="font-semibold truncate leading-tight">{message.author_name || "Participant"}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">
+                    <p className="text-xs text-gray-400 mt-0.5">
                         {timeAgo(message.posted_at)}
                         {picturedReplies && message.workout_summary ? ` · ${message.workout_summary}` : ""}
                     </p>
@@ -767,7 +770,7 @@ function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
                         className="relative block w-full bg-ink-950 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
                     <img src={src} alt={message.body || `Shared by ${message.author_name || "a participant"}`}
                          className="w-full max-h-80 object-cover"/>
-                    <span className="absolute bottom-2 right-2 rounded-full bg-ink-950/75 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 tabular-nums">
+                    <span className="absolute bottom-2 right-2 rounded-full bg-ink-950/75 text-white text-xs font-bold uppercase tracking-wider px-2 py-0.5 tabular-nums">
                         {elapsedSince(message.posted_at, now)}
                     </span>
                 </button>
@@ -802,10 +805,10 @@ function AnnouncementPost({message, persona, canReply, defaultOpen}) {
     return (
         <FeedCard>
             <p className="mb-2 flex items-baseline justify-between gap-2">
-                <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-gray-500 dark:text-white/55">
+                <span className="t-caption text-gray-500 dark:text-white/55">
                     {kind}
                 </span>
-                <span className="text-[11px] text-gray-400">{timeAgo(message.posted_at)}</span>
+                <span className="text-xs text-gray-400">{timeAgo(message.posted_at)}</span>
             </p>
             <CoachSpeech persona={persona}>{message.body}</CoachSpeech>
             {src && (
@@ -816,7 +819,7 @@ function AnnouncementPost({message, persona, canReply, defaultOpen}) {
                 </button>
             )}
             {message.athlete_name && (
-                <p className="mt-2 pl-[36px] text-[11px] text-gray-400">→ {message.athlete_name}</p>
+                <p className="mt-2 pl-[36px] text-xs text-gray-400">→ {message.athlete_name}</p>
             )}
             <CoachThread message={message} persona={persona} canReply={canReply} defaultOpen={defaultOpen}/>
             {lightbox && src && (
@@ -838,17 +841,19 @@ function AnnouncementPost({message, persona, canReply, defaultOpen}) {
 
 function OnDutyStrip({config, persona}) {
     const enabled = Boolean(config?.enabled);
+    const accent = accentHex(persona?.theme_color);
     return (
-        <div className="mb-3 flex items-center gap-2.5 px-1">
+        <div className="mb-3 flex items-center gap-2.5 px-1" style={coachAccentStyle(accent)}>
             <PersonaAvatar persona={persona} size={36} glow={enabled}/>
             <div className="min-w-0">
                 <p className="font-display text-xs uppercase tracking-wider flex items-center gap-2">
                     <span className="truncate">{persona?.name || "Coach"}</span>
                     <span className={"inline-block h-2 w-2 rounded-full shrink-0 " +
-                        (enabled ? "bg-volt-400 shadow-glow-volt" : "bg-gray-400")}
+                        (enabled ? "" : "bg-gray-400")}
+                          style={enabled ? {backgroundColor: accent, boxShadow: `0 0 10px ${accent}88`} : undefined}
                           aria-hidden="true"/>
                 </p>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                <p className="text-xs text-gray-500 dark:text-gray-400" style={enabled ? {color: accent} : undefined}>
                     {enabled ? "On duty" : "Benched"}
                 </p>
             </div>

@@ -62,7 +62,7 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0, tabs = CHALLENGE_
                     {tabs.map((t, i) => (
                         <button key={t.id} type="button" role="tab" aria-selected={tab === t.id}
                                 onClick={() => onChange(t.id)}
-                                className={"relative px-3.5 py-2 min-h-[44px] text-[11px] font-bold uppercase tracking-[0.16em] transition " +
+                                className={"relative px-3.5 py-2 min-h-[44px] text-xs font-bold uppercase tracking-[0.16em] transition " +
                                     (tab === t.id
                                         ? "text-ink-950 dark:text-white"
                                         : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300")}>

@@ -42,7 +42,7 @@ export default function VerifyEmailBanner() {
                     Confirm <span className="font-bold text-ink-950 dark:text-white">{user.email}</span> to get coach emails.
                 </p>
                 <button type="button" disabled={isLoading} onClick={handleResend}
-                        className="shrink-0 rounded-full bg-volt-400 px-3.5 py-2 min-h-[44px] text-[11px] font-bold uppercase tracking-wide text-ink-950 disabled:opacity-50">
+                        className="shrink-0 btn-plate px-3.5 py-2 min-h-[44px] text-xs font-bold disabled:opacity-50">
                     Resend
                 </button>
                 <button type="button" onClick={dismiss} aria-label="Dismiss for this session"
