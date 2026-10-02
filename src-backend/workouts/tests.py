@@ -187,7 +187,9 @@ class WorkoutSummaryApiTests(TestCase):
     def _workout(self, days_ago, **overrides):
         # Noon UTC keeps the local-day bucket stable for any plausible
         # server timezone.
-        midday = timezone.now().replace(hour=12, minute=0, second=0, microsecond=0)
+        # Anchor to local midday. timezone.now() is UTC, so replace(hour=12)
+        # lands on yesterday once local time has crossed midnight but UTC has not.
+        midday = timezone.localtime().replace(hour=12, minute=0, second=0, microsecond=0)
         fields = dict(
             user=self.user,
             sport_type="Yoga",
