@@ -159,8 +159,8 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                                     <p className="relative text-[15px] leading-relaxed text-gray-700 dark:text-gray-300">
                                         {config
                                             ? (persona.tagline
-                                                ? `“${persona.tagline}” Standing by — log a workout in ${config.competition_name || "your challenge"} and I'll have words.`
-                                                : `Standing by. Log a workout in ${config.competition_name || "your challenge"} and I'll have words.`)
+                                                ? `“${persona.tagline}” Standing by — workouts in ${config.competition_name || "your challenge"} land here; reply or drop a photo and I'll answer.`
+                                                : `Standing by. Workouts in ${config.competition_name || "your challenge"} land here; reply or drop a photo and I'll answer.`)
                                             : (ownedCompetitions.length > 0
                                                 ? "No coach on duty yet. Pick a persona and unleash them on your challenge."
                                                 : "Once your challenge's organizer enables the coach, the banter lands here.")}

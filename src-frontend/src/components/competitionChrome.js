@@ -710,15 +710,20 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                     )}
                 </div>
 
-                <div className="flex justify-center">
-                    <PersonaAvatar persona={persona} size={28} glow/>
-                </div>
-                {message.body ? (
-                    <blockquote className="coach-quote coach-quote--inline relative min-w-0 rounded-2xl px-3.5 py-2.5"
-                                style={coachAccentStyle(persona?.theme_color)}>
-                        <p className="relative text-[15px] leading-relaxed break-words">{message.body}</p>
-                    </blockquote>
-                ) : <div/>}
+                {/* Activity threads are neutral anchors (body often ""). Only
+                    paint the coach speech row when there is a real line —
+                    otherwise the avatar sits next to a blank quote slot. */}
+                {Boolean((message.body || "").trim()) && (
+                    <>
+                        <div className="flex justify-center">
+                            <PersonaAvatar persona={persona} size={28} glow/>
+                        </div>
+                        <blockquote className="coach-quote coach-quote--inline relative min-w-0 rounded-2xl px-3.5 py-2.5"
+                                    style={coachAccentStyle(persona?.theme_color)}>
+                            <p className="relative text-[15px] leading-relaxed break-words">{message.body}</p>
+                        </blockquote>
+                    </>
+                )}
 
                 <>
                     <div aria-hidden="true"/>
@@ -1002,7 +1007,7 @@ export function CoachCorner({competition, isOwner}) {
             ) : (
                 <article className="rounded-3xl glass-card px-5 py-6 text-center">
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        No orders yet. Log a workout and the coach will have words.
+                        No orders yet. Log a workout to start the feed — reply or drop a photo and the coach answers.
                     </p>
                 </article>
             )}

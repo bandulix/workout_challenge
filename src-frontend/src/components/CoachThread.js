@@ -104,7 +104,7 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
 
             {open && (
                 <div className="mt-2 space-y-2.5 min-w-0">
-                    {replies.map((r) => (
+                    {replies.filter((r) => (r.body || "").trim() || r.image).map((r) => (
                         <div key={r.id} className="flex items-start gap-2">
                             {r.is_coach ? (
                                 <PersonaAvatar persona={persona} size={24}/>
@@ -116,7 +116,9 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
                                 {/* break-words: pasted URLs / unbreakable strings wrap
                                     instead of overflowing the viewport (page scrolled
                                     sideways on smartphones). */}
+                                {(r.body || "").trim() ? (
                                 <p className="text-sm leading-snug break-words dark:text-gray-100">{r.body}</p>
+                                ) : null}
                                 {r.image && (
                                     <ReplyImage url={r.image}
                                                 alt={r.body ? `Coach remix: ${r.body}` : "Coach remix"}
