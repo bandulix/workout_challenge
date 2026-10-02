@@ -710,15 +710,19 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                     )}
                 </div>
 
-                <div className="flex justify-center">
-                    <PersonaAvatar persona={persona} size={28} glow/>
-                </div>
-                {message.body ? (
-                    <blockquote className="coach-quote coach-quote--inline relative min-w-0 rounded-2xl px-3.5 py-2.5"
-                                style={coachAccentStyle(persona?.theme_color)}>
-                        <p className="relative text-[15px] leading-relaxed break-words">{message.body}</p>
-                    </blockquote>
-                ) : <div/>}
+                {/* Safety: never paint a blank coach quote if body is empty
+                    (Expedition placeholders / generation failure before fallback). */}
+                {Boolean((message.body || "").trim()) && (
+                    <>
+                        <div className="flex justify-center">
+                            <PersonaAvatar persona={persona} size={28} glow/>
+                        </div>
+                        <blockquote className="coach-quote coach-quote--inline relative min-w-0 rounded-2xl px-3.5 py-2.5"
+                                    style={coachAccentStyle(persona?.theme_color)}>
+                            <p className="relative text-[15px] leading-relaxed break-words">{message.body}</p>
+                        </blockquote>
+                    </>
+                )}
 
                 <>
                     <div aria-hidden="true"/>

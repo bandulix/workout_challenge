@@ -4,13 +4,14 @@ import os
 
 from django.apps import apps
 from django.core.cache import cache
+from django.db import IntegrityError
 from django.db.models import F, Sum
 from django.utils import timezone
 
 from workout_challenge.celery import app, is_task_already_executing
 
 from .formatters import format_workout_summary
-from .llm_client import build_echo_art_prompt, build_photo_prompt, build_reply_prompt, build_roast_caption_prompt, build_roast_image_prompt, check_image_edit_capability, check_vision_capability, draw_roast_treatment, generate_message, generate_roast_image, invent_coach_appearance, invent_roast_twist, max_roast_reference_images
+from .llm_client import build_echo_art_prompt, build_photo_prompt, build_reply_prompt, build_roast_caption_prompt, build_roast_image_prompt, build_workout_prompt, check_image_edit_capability, check_vision_capability, draw_roast_treatment, generate_message, generate_roast_image, invent_coach_appearance, invent_roast_twist, max_roast_reference_images
 
 try:
     from push_notifications.sender import send_push_to_user
@@ -119,6 +120,23 @@ def _echo_lines(config):
         return []
 
 
+def _recent_bodies(config, limit=2):
+    """The persona's last ``limit`` message bodies for this config.
+
+    Passed into the prompt builders so the instructor can refer back to
+    its own recent messages (continuity, callbacks) and avoid repeating
+    itself. Test messages are previews, not conversation; failed
+    generations never reached the group - both are excluded.
+    """
+    return list(
+        config.messages
+        .exclude(kind__in=["test", "reply"])
+        .filter(success=True)
+        .order_by("-posted_at")
+        .values_list("body", flat=True)[:limit]
+    )
+
+
 def _flag_message_failure(message, config, exc, label):
     """Standard coach-message failure path: flag the message (best-effort
     resave so the error is inspectable in the audit log), note the error
@@ -214,11 +232,14 @@ def _user_rank(workout, competition):
 
 @app.task(bind=True, max_retries=2, default_retry_delay=30, time_limit=120)
 def post_workout_comment(self, workout_id):
-    """Create a neutral activity thread, then process independent game events.
+    """Generate a coach comment for a workout, then run arcade / Echo events.
 
-    Generic AI workout chatter and its pushes are retired. The activity
-    thread remains the authenticated anchor for workout photos and Echoes;
-    its workout card is the activity itself, not a generated comment.
+    For every competition this workout belongs to that has an enabled
+    Drill Instructor with ``comment_on_activity``, generate one AI-voiced
+    line (static fallback if the LLM is down), persist it as
+    ``KIND_ACTIVITY``, and optionally push the athlete. Empty Expedition-era
+    placeholders are filled on re-run. Arcade still ensures an activity
+    thread exists when comments are off so photos and Echoes have an anchor.
     """
     Workout = apps.get_model("workouts", "Workout")
     DrillInstructorConfig = apps.get_model("drill_instructor", "DrillInstructorConfig")
@@ -236,11 +257,115 @@ def post_workout_comment(self, workout_id):
     start_day = timezone.localtime(start_dt).date() if timezone.is_aware(start_dt) else start_dt.date()
 
     Competition = apps.get_model("competition", "Competition")
-    # Generic per-workout coach comments are retired. Material standings
-    # changes are announced after point caps are recalculated; game and Echo
-    # events continue through the independent lifecycle below.
-    competitions = Competition.objects.none()
+    competitions = Competition.objects.filter(
+        start_date__lte=start_day,
+        end_date__gte=start_day,
+        user=workout.user,
+        drill_instructor__enabled=True,
+        drill_instructor__comment_on_activity=True,
+    ).select_related("drill_instructor", "drill_instructor__persona")
+
+    summary, duration_min = format_workout_summary(workout)
+
     posted = 0
+    for competition in competitions:
+        config = competition.drill_instructor
+        persona = config.persona
+
+        # Idempotency: one workout comment per competition per workout.
+        # Empty Expedition placeholders (body="") are filled so the coach
+        # always answers when generation is back on.
+        existing = DrillInstructorMessage.objects.filter(
+            config=config, workout=workout, kind=DrillInstructorMessage.KIND_ACTIVITY
+        ).first()
+        if existing is not None and (existing.body or "").strip():
+            logger.info(
+                "Drill Instructor: workout %s already commented in competition %s, skipping.",
+                workout_id, competition.id,
+            )
+            continue
+
+        rank, total_participants, my_total, leader_total, target_user = _user_rank(workout, competition)
+        user_prompt = build_workout_prompt(
+            user_first_name=workout.user.first_name or workout.user.username or "Athlete",
+            username=workout.user.username or "",
+            sport_type=workout.sport_type,
+            duration_minutes=duration_min or 0,
+            distance_km=float(workout.distance) if workout.distance is not None else None,
+            kcal=float(workout.kcal) if workout.kcal is not None else None,
+            intensity=workout.intensity_category or 0,
+            competition_name=competition.name,
+            points_capped=None,
+            user_rank=rank,
+            total_participants=total_participants,
+            leader_points=leader_total,
+            user_total_points=my_total,
+            target_first_name=(target_user.first_name if target_user else None),
+            previous_messages=_recent_bodies(config),
+            echo_lines=_echo_lines(config),
+        )
+
+        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
+        if not body:
+            body = f"{persona.name}: nice work on that {summary or workout.sport_type}!"
+
+        now = timezone.now()
+        if existing is not None:
+            existing.body = body
+            existing.posted_at = now
+            existing.success = True
+            existing.error = ""
+            try:
+                existing.save(update_fields=["body", "posted_at", "success", "error"])
+            except Exception as exc:  # noqa: BLE001 - never block the caller
+                _flag_message_failure(existing, config, exc, "message")
+                continue
+            message = existing
+            created = False
+        else:
+            message = DrillInstructorMessage(
+                config=config,
+                kind=DrillInstructorMessage.KIND_ACTIVITY,
+                workout=workout,
+                body=body,
+                posted_at=now,
+            )
+            try:
+                message.save()
+            except IntegrityError:
+                # Lost the check-then-save race against a concurrent task -
+                # the other one posted; nothing is actually wrong.
+                logger.info(
+                    "Drill Instructor: duplicate workout comment suppressed for competition %s.",
+                    competition.id,
+                )
+                continue
+            except Exception as exc:  # noqa: BLE001 - never block the caller
+                _flag_message_failure(message, config, exc, "message")
+                continue
+            created = True
+
+        _record_post(config, now, error=llm_error or "")
+        if created:
+            from custom_user.point_recalc import bump_feed_generation
+            bump_feed_generation([competition.id])
+        posted += 1
+        logger.info("Drill Instructor: stored message %s for competition %s", message.id, competition.id)
+
+        # Optional web push for the athlete. Sent before arcade (Echo
+        # mint / claim) so the workout comment is the one ping that
+        # lands; the group still gets the Echo line, the athlete does not
+        # get a second buzz 2 seconds later.
+        if config.send_push_on_activity:
+            _ping_user(
+                workout.user,
+                title=f"{competition.name} - {persona.name}",
+                body=body,
+                url=_feed_url(message),
+                icon=_persona_icon(persona),
+                competition_id=competition.id,
+                log_label="push",
+            )
 
     # Arcade rules (dunce, daily order, dog tags, Echo mint) run even
     # when the owner has workout comments switched off. After comments
