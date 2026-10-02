@@ -12,14 +12,14 @@ function PersonaCard({persona, usedIn, onOpen}) {
                 className="group min-w-0 rounded-3xl glass-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-white/30">
             <PersonaAvatar persona={persona} size={64} className="mx-auto transition group-hover:scale-105"/>
             <p className="mt-3 text-center text-sm font-bold truncate">{persona.name}</p>
-            <p className="text-center text-[11px] text-gray-400 truncate">{persona.tagline || persona.description}</p>
+            <p className="text-center text-xs text-gray-400 truncate">{persona.tagline || persona.description}</p>
             <p className="mt-2 text-center min-h-[18px]">
                 {persona.mine ? (
-                    <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 px-2 py-0.5">
+                    <span className="text-xs font-bold uppercase tracking-wide rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 px-2 py-0.5">
                         Yours
                     </span>
                 ) : usedIn > 0 ? (
-                    <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 px-2 py-0.5">
+                    <span className="text-xs font-bold uppercase tracking-wide rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 px-2 py-0.5">
                         On duty ×{usedIn}
                     </span>
                 ) : null}
@@ -35,19 +35,19 @@ function PersonaDetail({persona, canEdit, onEdit}) {
             <PersonaAvatar persona={persona} size={96} glow/>
             {persona.tagline && <p className="mt-3 text-sm italic text-gray-500 dark:text-gray-400">“{persona.tagline}”</p>}
             {persona.mine && (
-                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
+                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 px-2.5 py-1 text-xs font-bold uppercase tracking-wide">
                     Your coach
                 </span>
             )}
             {persona.is_builtin && (
-                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
+                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 px-2.5 py-1 text-xs font-bold uppercase tracking-wide">
                     <Sparkles className="h-3 w-3"/> Built-in coach
                 </span>
             )}
             <p className="mt-4 text-sm leading-relaxed text-gray-600 dark:text-gray-300 max-w-md">{persona.description}</p>
             {showBriefing && (
                 <div className="mt-5 w-full text-left">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 mb-2">Voice & style briefing</p>
+                    <p className="t-caption text-gray-400 mb-2">Voice & style briefing</p>
                     <pre className="whitespace-pre-wrap rounded-2xl glass-well p-4 text-xs leading-relaxed text-gray-700 dark:text-gray-300 max-h-56 overflow-y-auto">{persona.system_prompt}</pre>
                 </div>
             )}
@@ -144,7 +144,7 @@ export default function RoasterModal({setShowModal}) {
                                 <Plus className="h-7 w-7"/>
                             </span>
                             <p className="mt-3 text-sm font-bold">Create yours</p>
-                            <p className="text-[11px] text-gray-400">A coach in your voice</p>
+                            <p className="text-xs text-gray-400">A coach in your voice</p>
                         </button>
                     </div>
                     <div className="rounded-2xl glass-inset px-3 py-2 text-xs text-gray-600 dark:text-gray-400">

@@ -33,9 +33,9 @@ import {
     Modal,
     ModifyGoalsButton,
 } from "../forms/basicComponents";
-import {BoxSection, ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
+import {ErrorBoxSection, PageWrapper} from "../utils/miscellaneous";
 import {ChevronRight} from "lucide-react";
-import {SectionLoader, SkeletonCard, SkeletonRows} from "../utils/loaders";
+import {SkeletonCard, SkeletonRows} from "../utils/loaders";
 import {useDispatch} from "react-redux";
 import {useSyncGarminMutation, useSyncStravaMutation, useSyncHealthMutation} from "../utils/reducers/linkSlice";
 import {nativeHealthKickSync} from "../utils/nativeHealth";
@@ -47,7 +47,7 @@ import RivalCard from "../components/RivalCard";
 import ComebackBench from "../components/ComebackBench";
 import SeasonBoard, {pickSeasonChallenge} from "../components/SeasonBoard";
 import {DogTagRow} from "../components/gameBits";
-import {Chip, EmptyState, SectionHead, SyncChip, rowClass} from "../components/uiBits";
+import {Chip, EmptyState, PaneHead, paneCardClass, SyncChip, rowClass} from "../components/uiBits";
 import usePollingInterval from "../utils/usePollingInterval";
 import TrainingHeatmap from "../components/TrainingHeatmap";
 import {toast} from "../utils/toasts";
@@ -78,7 +78,7 @@ function GettingStarted({user, competitions, workouts, configs, onJoin, onCreate
     function Step({done, n, title, body, children}) {
         return (
             <li className="flex gap-3 py-2.5">
-                <span className={"shrink-0 mt-0.5 h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-bold " +
+                <span className={"shrink-0 mt-0.5 h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold " +
                     (done ? "bg-volt-400 text-ink-950" : "bg-ink-950/8 text-volt-800 dark:bg-ink-900 dark:text-volt-400")}>
                     {done ? <Check className="h-3.5 w-3.5"/> : n}
                 </span>
@@ -92,9 +92,9 @@ function GettingStarted({user, competitions, workouts, configs, onJoin, onCreate
     }
 
     return (
-        <BoxSection additionalClasses="mb-4">
-            <SectionHead title="Get started"/>
-            <ol className="mt-1 divide-y divide-gray-100 dark:divide-ink-700/60">
+        <div className={paneCardClass + " mb-4"}>
+            <PaneHead title="Get started"/>
+            <ol className="mt-1 divide-y divide-ink-700/60">
                 <Step done={hasChallenge} n="1" title="Join or create a challenge"
                       body="That's the league you score in with friends.">
                     <div className="mt-2 flex flex-wrap gap-2">
@@ -124,7 +124,7 @@ function GettingStarted({user, competitions, workouts, configs, onJoin, onCreate
                     </Step>
                 )}
             </ol>
-        </BoxSection>
+        </div>
     );
 }
 
@@ -137,7 +137,7 @@ function WelcomeBox({user, workouts, summary}) {
     const countTotal = summary?.total_count ?? fallback.total;
     const countGroups = summary?.by_sport ? Object.fromEntries(summary.by_sport) : fallback.groups;
     return (
-        <BoxSection additionalClasses={"mb-4"}>
+        <div className={paneCardClass + " mb-4"}>
             {/* Compact header: small avatar with the name beside it,
                 lifetime total and top sport counts on the right. On narrow
                 (smartphone) widths the count block wraps to a second row
@@ -162,7 +162,7 @@ function WelcomeBox({user, workouts, summary}) {
                     </div>
                 ))}
             </div>
-        </BoxSection>
+        </div>
     )
 }
 
@@ -257,10 +257,10 @@ function WorkoutHistory({initialItems, onOpen}) {
         <div className="max-h-[70vh] overflow-y-auto -mx-1 px-1">
             {groupWorkoutsByDay(items).map((group) => (
                 <section key={group.key} className="mb-2">
-                    <h3 className="sticky top-0 z-10 bg-[#efece4]/85 dark:bg-ink-850/95 backdrop-blur px-1 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    <h3 className="sticky top-0 z-10 bg-ink-850/95 px-1 py-2 t-caption text-gray-400">
                         {group.label}
                     </h3>
-                    <ul className="divide-y divide-gray-100 dark:divide-ink-700/60">
+                    <ul className="divide-y divide-ink-700/60">
                         {group.items.map((workout) => (
                             <WorkoutRow key={workout.id} workout={workout} showDate={false} onOpen={onOpen}/>
                         ))}
@@ -332,9 +332,9 @@ function WorkoutsBox({workouts, user, setLinkStrava, summary}) {
     }
 
     return (
-        <BoxSection>
+        <div className={paneCardClass}>
 
-            <SectionHead title="Latest workouts"
+            <PaneHead title="Latest workouts"
                          hint={sortedWorkouts.length > WORKOUT_PREVIEW ? `Latest ${WORKOUT_PREVIEW} of ${(summary?.total_count ?? sortedWorkouts.length)}` : null}>
                 {!stravaLinked && !garminLinked && !healthLinked && (
                     <SyncChip onClick={() => setShowSettings(true)} short="Link" long="Link a service"/>
@@ -361,7 +361,7 @@ function WorkoutsBox({workouts, user, setLinkStrava, summary}) {
                               }}
                               isLoading={healthSyncIsFetching || healthKickBusy} short="Sync" long="Sync Health"/>
                 )}
-            </SectionHead>
+            </PaneHead>
 
             {recentWorkouts.length === 0 ? (
                 <EmptyState title="No workouts yet"
@@ -370,7 +370,7 @@ function WorkoutsBox({workouts, user, setLinkStrava, summary}) {
                             onAction={() => setShowEditWorkoutModal(true)}/>
             ) : (
                 <>
-                    <ul className="divide-y divide-gray-100 dark:divide-ink-700/60 mt-1">
+                    <ul className="divide-y divide-ink-700/60 mt-1">
                         {recentWorkouts.map((workout) => (
                             <WorkoutRow key={workout.id} workout={workout} onOpen={openWorkout}/>
                         ))}
@@ -400,7 +400,7 @@ function WorkoutsBox({workouts, user, setLinkStrava, summary}) {
                 <SettingsForm user={user} setModalState={setShowSettings} setLinkStrava={setLinkStrava}/>
             )}
 
-        </BoxSection>
+        </div>
     )
 }
 
@@ -427,12 +427,12 @@ function CompetitionsBox({competitions, setJoinCompetition}) {
     }
 
     return (
-        <BoxSection additionalClasses={"mb-4"}>
-            <SectionHead title="My challenges">
+        <div className={paneCardClass + " mb-4"}>
+            <PaneHead title="My challenges">
                 <JoinButton additionalClasses="my-0.5 sm:my-0" onClick={() => setJoinCompetition(true)}/>
                 <AddButton additionalClasses="my-0.5 sm:my-0" label={"Create"}
                            onClick={() => setShowEditCompetitionModal(true)}/>
-            </SectionHead>
+            </PaneHead>
 
             {competitions.length === 0 ? (
                 <EmptyState title="No challenges yet"
@@ -440,7 +440,7 @@ function CompetitionsBox({competitions, setJoinCompetition}) {
                             actionLabel="Create a challenge"
                             onAction={() => setShowEditCompetitionModal(true)}/>
             ) : visibleCompetitions.length > 0 ? (
-                <ul className="divide-y divide-gray-100 dark:divide-ink-700/60 mt-1">
+                <ul className="divide-y divide-ink-700/60 mt-1">
                     {visibleCompetitions.map(competition => (
                         <CompetitionArchiveRow
                             key={competition.id}
@@ -463,7 +463,7 @@ function CompetitionsBox({competitions, setJoinCompetition}) {
                     <p className="pb-2 text-xs text-gray-500 dark:text-gray-400">
                         Archiving only hides a completed challenge from this browser. It does not delete or change challenge, score, or Echo history.
                     </p>
-                    <ul className="divide-y divide-gray-100 dark:divide-ink-700/60">
+                    <ul className="divide-y divide-ink-700/60">
                         {archivedCompetitions.map(competition => (
                             <CompetitionArchiveRow
                                 key={competition.id}
@@ -479,7 +479,7 @@ function CompetitionsBox({competitions, setJoinCompetition}) {
             {showEditCompetitionModal && (
                 <CompetitionForm setModalState={setShowEditCompetitionModal}/>
             )}
-        </BoxSection>
+        </div>
     )
 }
 
@@ -547,28 +547,28 @@ function ThirtyDayStats({thirtyDayStats}) {
                 <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
                     <Dumbbell className="w-5 h-5 text-gray-500 dark:text-white/70 shrink-0"/>
                     <div className="text-left">
-                        <div className="text-[11px] tracking-wide text-gray-500">Workouts</div>
+                        <div className="text-xs tracking-wide text-gray-500">Workouts</div>
                         <div className="text-xl font-bold leading-tight t-stat">{thirtyDayStats.workouts}</div>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
                     <Timer className="w-5 h-5 text-gray-500 dark:text-white/70 shrink-0"/>
                     <div className="text-left">
-                        <div className="text-[11px] tracking-wide text-gray-500">Time</div>
+                        <div className="text-xs tracking-wide text-gray-500">Time</div>
                         <div className="text-xl font-bold leading-tight t-stat">{Math.floor(thirtyDayStats.time / 3600).toLocaleString()}<span className="text-sm font-semibold">hr </span>{Math.floor((thirtyDayStats.time % 3600) / 60)}<span className="text-sm font-semibold">min</span></div>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
                     <Flame className="w-5 h-5 text-gray-500 dark:text-white/70 shrink-0"/>
                     <div className="text-left">
-                        <div className="text-[11px] tracking-wide text-gray-500">Calories</div>
+                        <div className="text-xs tracking-wide text-gray-500">Calories</div>
                         <div className="text-xl font-bold leading-tight t-stat">{thirtyDayStats.kcal.toLocaleString()}<span className="text-sm font-semibold">kcal</span></div>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
                     <Ruler className="w-5 h-5 text-gray-500 dark:text-white/70 shrink-0"/>
                     <div className="text-left">
-                        <div className="text-[11px] tracking-wide text-gray-500">Distance</div>
+                        <div className="text-xs tracking-wide text-gray-500">Distance</div>
                         <div className="text-xl font-bold leading-tight t-stat">{Math.round(thirtyDayStats.distance).toLocaleString()}<span className="text-sm font-semibold">km</span></div>
                     </div>
                 </div>
@@ -712,12 +712,12 @@ function StreakCard({workouts, summary, onStats}) {
                         const isToday = (new Date().getDay() + 6) % 7 === idx;
                         return (
                             <div key={idx} className="flex flex-col items-center gap-1.5">
-                                <span className="text-[10px] font-bold text-gray-600 dark:text-gray-500">{label}</span>
+                                <span className="text-xs font-bold text-gray-500">{label}</span>
                                 <span className={"h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold transition " +
                                     (active
                                         ? "bg-volt-400 text-ink-950 shadow-glow-volt"
                                         : "bg-ink-950/8 text-gray-500 dark:bg-ink-700/60") +
-                                    (isToday ? " ring-2 ring-volt-600/70 dark:ring-white/70 ring-offset-2 ring-offset-[#efece4] dark:ring-offset-ink-900" : "")}>
+                                    (isToday ? " ring-2 ring-white/70 ring-offset-2 ring-offset-ink-900" : "")}>
                                     {active ? <Check className="h-4 w-4"/> : label}
                                 </span>
                             </div>
@@ -929,7 +929,7 @@ export default function MySpace() {
                 <div className="w-full">
                     {
                         (userLoading || workoutsIsLoading || (competitionLoading && !competitions)) ? (
-                            <SectionLoader height={"h-48 mb-4"}/>
+                            <SkeletonCard height="h-48 mb-4"/>
                         ) : (userError) ? (
                             <ErrorBoxSection additionalClasses="mb-4"
                                              errorMsg={errText(userError, 'Could not load your account. Please try again.')}/>

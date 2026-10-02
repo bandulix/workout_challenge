@@ -66,13 +66,13 @@ export default function AthleteCard({person, weekTotal, weekBars, trendSpark, fe
                     <div className="mt-4 grid grid-cols-2 gap-3">
                         {weekBars && (
                             <div className="min-w-0">
-                                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 mb-1">This week</p>
+                                <p className="t-caption text-gray-400 mb-1">This week</p>
                                 {weekBars}
                             </div>
                         )}
                         {trendSpark && (
                             <div className="min-w-0">
-                                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 mb-1">Trend vs field</p>
+                                <p className="t-caption text-gray-400 mb-1">Trend vs field</p>
                                 {trendSpark}
                             </div>
                         )}
@@ -81,11 +81,11 @@ export default function AthleteCard({person, weekTotal, weekBars, trendSpark, fe
 
                 {sports.length > 0 && (
                     <div className="mt-4">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 mb-1.5">Sports</p>
+                        <p className="t-caption text-gray-400 mb-1.5">Sports</p>
                         <div className="flex flex-wrap gap-1.5">
                             {sports.map(([sport, n]) => (
                                 <span key={sport}
-                                      className="rounded-full glass-inset px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide">
+                                      className="rounded-full glass-inset px-2.5 py-1 text-xs font-bold uppercase tracking-wide">
                                     {sportLabelShort(sport)} · {n}
                                 </span>
                             ))}
@@ -94,7 +94,7 @@ export default function AthleteCard({person, weekTotal, weekBars, trendSpark, fe
                 )}
 
                 {echoes > 0 && (
-                    <p className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-volt-400 text-ink-950 text-[11px] font-extrabold uppercase tracking-wide px-3 py-1 shadow-glow-volt">
+                    <p className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-volt-400 text-ink-950 text-xs font-extrabold uppercase tracking-wide px-3 py-1 shadow-glow-volt">
                         <Crown className="h-3.5 w-3.5"/>
                         {echoes === 1 ? "Holds a Legend Echo" : `Holds ${echoes} Legend Echoes`}
                     </p>
@@ -102,7 +102,7 @@ export default function AthleteCard({person, weekTotal, weekBars, trendSpark, fe
 
                 {tags.length > 0 && (
                     <div className="mt-4 text-left">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">Dog tags</p>
+                        <p className="t-caption text-gray-400">Dog tags</p>
                         <DogTagRow tags={tags}/>
                     </div>
                 )}

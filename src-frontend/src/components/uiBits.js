@@ -39,7 +39,7 @@ export const paneCardClass =
 
 export function Chip({children}) {
     return (
-        <span className="shrink-0 rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 text-[11px] font-semibold px-2 py-0.5">
+        <span className="shrink-0 rounded-full bg-ink-950/5 text-gray-700 dark:bg-white/10 dark:text-white/80 text-xs font-semibold px-2 py-0.5">
             {children}
         </span>
     );

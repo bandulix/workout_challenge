@@ -29,7 +29,7 @@ export const ACTIVITY_REACTS = [
 const BY_ID = Object.fromEntries(ACTIVITY_REACTS.map((r) => [r.id, r]));
 
 const STAMP_BTN =
-    "inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[32px]";
+    "inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[32px]";
 
 function finePointer() {
     return typeof window !== "undefined"
@@ -259,13 +259,13 @@ function ReactChip({row, onToggle, onWho, delay, bursting, showWho}) {
                     </span>
                 )}
                 {row.count > 3
-                    ? <span className="text-[10px] leading-none">+{row.count - 3}</span>
-                    : row.count > 1 && !row.people?.length && <span className="text-[11px] leading-none">{row.count}</span>}
+                    ? <span className="text-xs leading-none">+{row.count - 3}</span>
+                    : row.count > 1 && !row.people?.length && <span className="text-xs leading-none">{row.count}</span>}
                 {bursting && <Sparks/>}
             </button>
             {hover && !showWho && row.people?.length > 0 && (
                 <HoverTip anchor={btnRef.current} width={220}>
-                    <p className="px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.18em] flex items-center gap-1.5"
+                    <p className="px-1 pb-1 t-caption flex items-center gap-1.5"
                        style={{color: spec.glow}}>
                         <StampGlyph id={row.emoji} size={16} glow={spec.glow}/>
                         {spec.label}
@@ -369,7 +369,7 @@ export function ActivityStampIcons() {
             {whoRow && (
                 <Popover anchor={api.chipRefs.current[api.who]} onClose={() => api.setWho(null)} width={220}
                          label={whoRow ? `Who stamped ${BY_ID[whoRow.emoji]?.label}` : "Who reacted"}>
-                    <p className="px-2 pt-1 pb-1.5 text-[10px] font-extrabold uppercase tracking-[0.18em] flex items-center gap-1.5"
+                    <p className="px-2 pt-1 pb-1.5 t-caption flex items-center gap-1.5"
                        style={{color: BY_ID[whoRow.emoji]?.glow}}>
                         <StampGlyph id={whoRow.emoji} size={16} glow={BY_ID[whoRow.emoji]?.glow}/>
                         {BY_ID[whoRow.emoji]?.label}
@@ -424,7 +424,7 @@ export function ActivityStampButton() {
             {api.picker && (
                 <Popover anchor={api.plusRef.current} onClose={() => api.setPicker(false)} width={268}
                          label="Pick a stamp">
-                    <p className="px-2 pt-1 pb-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-gray-500 dark:text-white/55">
+                    <p className="px-2 pt-1 pb-2 t-caption text-gray-500 dark:text-white/55">
                         Stamp it
                     </p>
                     <div className="grid grid-cols-4 gap-1">
@@ -434,7 +434,7 @@ export function ActivityStampButton() {
                                     className="react-pick flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 min-h-[56px] transition"
                                     style={{"--react-glow": spec.glow, animationDelay: `${i * 28}ms`}}>
                                 <StampGlyph id={spec.id} size={28} glow={spec.glow}/>
-                                <span className="text-[9px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 leading-tight text-center">
+                                <span className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 leading-tight text-center">
                                     {spec.label}
                                 </span>
                             </button>

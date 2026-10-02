@@ -19,9 +19,9 @@ import {OverlaySheet} from "../forms/basicComponents";
 const PILL =
     "inline-flex w-full items-center justify-center gap-2 btn-plate px-4 sm:px-5 py-2.5 text-sm font-bold transition min-h-[44px]";
 const CHIP =
-    "inline-flex items-center justify-center gap-1.5 rounded-full bg-volt-400 text-ink-950 px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide hover:bg-volt-300 transition shadow-glow-volt min-h-[36px]";
+    "inline-flex items-center justify-center gap-1.5 btn-plate px-3.5 py-2 text-xs font-bold transition min-h-[36px]";
 const GHOST =
-    "inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[32px] shrink-0";
+    "inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[32px] shrink-0";
 const ICON =
     "shrink-0 min-h-[44px] min-w-[44px] btn-plate transition flex items-center justify-center";
 
@@ -213,7 +213,7 @@ function PhotoComposer({competitionId, parentId, onDone, onPosted}) {
     }
 
     const pickClass =
-        "flex flex-col items-center justify-center gap-2 rounded-2xl btn-glass min-h-[7.5rem] px-4 py-5 text-[11px] font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 hover:text-ink-950 dark:hover:text-white transition cursor-pointer";
+        "flex flex-col items-center justify-center gap-2 rounded-2xl btn-glass min-h-[7.5rem] px-4 py-5 text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 hover:text-ink-950 dark:hover:text-white transition cursor-pointer";
 
     return (
         <div className="w-full min-w-0 space-y-4">

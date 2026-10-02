@@ -20,7 +20,7 @@ function ReplyImage({url, alt, elapsed}) {
                     className="relative mt-1.5 overflow-hidden rounded-xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
                 <img src={src} alt={alt} className="max-h-72 w-auto max-w-full"/>
                 {elapsed && (
-                    <span className="absolute bottom-1.5 right-1.5 rounded-full bg-ink-950/75 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 tabular-nums">
+                    <span className="absolute bottom-1.5 right-1.5 rounded-full bg-ink-950/75 text-white text-xs font-bold uppercase tracking-wider px-2 py-0.5 tabular-nums">
                         {elapsed}
                     </span>
                 )}
@@ -94,7 +94,7 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
             <div className="flex flex-wrap items-center gap-1.5">
             <button type="button" onClick={() => setOpen((v) => !v)}
                     aria-label={replies.length > 0 ? undefined : "Replies"}
-                    className="inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[32px]">
+                    className="inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[32px]">
                 <MessageCircle className="h-3.5 w-3.5"/>
                 {replies.length > 0 ? `${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : (canReply ? "Reply" : "")}
                 {(canReply || replies.length > 0) && (open ? <ChevronUp className="h-3 w-3"/> : <ChevronDown className="h-3 w-3"/>)}
@@ -122,7 +122,7 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
                                                 alt={r.body ? `Coach remix: ${r.body}` : "Coach remix"}
                                                 elapsed={elapsedSince(r.posted_at, now)}/>
                                 )}
-                                <p className="text-[11px] text-gray-400 mt-1">
+                                <p className="text-xs text-gray-400 mt-1">
                                     {r.is_coach ? (persona?.name || "Coach") : (r.author_name || "Participant")} · {timeAgo(r.posted_at)}
                                 </p>
                             </div>

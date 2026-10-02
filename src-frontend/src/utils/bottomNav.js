@@ -57,7 +57,7 @@ function NavLink({to, icon: Icon, label, isActive, onClick}) {
                   strokeWidth={isActive ? 2.4 : 1.8}
                   fill={isActive ? "currentColor" : "none"}/>
             <span className="relative z-10 flex flex-col items-center">
-                <span className={"text-[10px] font-bold uppercase tracking-wider leading-none " +
+                <span className={"text-xs font-bold uppercase tracking-wider leading-none " +
                     (isActive ? "text-ink-950 dark:text-volt-200" : "")}>{label}</span>
                 <span aria-hidden="true"
                       className={"nav-active-bar transition-all duration-300 " +
@@ -82,7 +82,7 @@ function NavLink({to, icon: Icon, label, isActive, onClick}) {
 function DockPanel({title, children}) {
     return (
         <div className="relative px-3 pt-3 pb-1 animate-dock-expand max-h-[min(58vh,32rem)] overflow-y-auto overscroll-contain">
-            <h3 className="font-display text-[11px] uppercase tracking-[0.18em] px-1 mb-2 text-ink-800 dark:text-gray-400">{title}</h3>
+            <h3 className="t-pane px-1 mb-2 text-ink-800 dark:text-gray-400">{title}</h3>
             {children}
         </div>
     );
@@ -105,7 +105,7 @@ function CompetitionPickerPanel({onClose, onCreate, currentId}) {
                         </span>
                         <span className="min-w-0 flex-1">
                             <span className="block font-semibold truncate">{c.name}</span>
-                            <span className="block text-[11px] text-gray-500 dark:text-gray-400">{c.start_date_fmt} – {c.end_date_fmt}</span>
+                            <span className="block text-xs text-gray-500 dark:text-gray-400">{c.start_date_fmt} – {c.end_date_fmt}</span>
                         </span>
                         <ChevronRight className="h-4 w-4 text-gray-400 shrink-0"/>
                     </button>
@@ -116,7 +116,7 @@ function CompetitionPickerPanel({onClose, onCreate, currentId}) {
             </div>
             <button
                 onClick={() => {onClose(); onCreate();}}
-                className="w-full mt-2 mb-1 px-3 py-3 rounded-2xl bg-volt-400 text-ink-950 font-bold uppercase tracking-wide text-sm min-h-[44px] shadow-glow-volt">
+                className="w-full mt-2 mb-1 px-3 py-3 btn-plate font-bold text-sm min-h-[44px]">
                 + Create a challenge
             </button>
         </DockPanel>
@@ -196,7 +196,7 @@ function NavModals({
                     <div className="text-center space-y-3 px-4">
                         <p className="text-red-500 text-sm">Your profile could not be loaded.</p>
                         <button onClick={() => refetchUser()}
-                                className="px-5 py-2.5 rounded-full bg-volt-400 text-ink-950 hover:bg-volt-300 text-sm font-bold uppercase tracking-wide transition">
+                                className="px-5 py-2.5 btn-plate text-sm font-bold transition">
                             Try again
                         </button>
                     </div>
@@ -346,7 +346,7 @@ export default function BottomNav() {
                                     <PersonaAvatar persona={coachPersona} size={48} glow/>
                                 </span>
                             </span>
-                            <span className="text-[9px] font-bold leading-none mt-1.5 tracking-widest uppercase"
+                            <span className="text-xs font-bold leading-none mt-1.5 tracking-widest uppercase"
                                   style={{color: coachAccent(coachPersona), opacity: onCoach ? 1 : 0.75}}>
                                 Coach
                             </span>
@@ -496,7 +496,7 @@ export default function BottomNav() {
                                 <PersonaAvatar persona={coachPersona} size={58} glow/>
                             </span>
                         </span>
-                        <span className="text-[10px] font-bold leading-none mt-1.5 tracking-widest uppercase"
+                        <span className="text-xs font-bold leading-none mt-1.5 tracking-widest uppercase"
                               style={{color: coachAccent(coachPersona), opacity: onCoach ? 1 : 0.75}}>
                             Coach
                         </span>

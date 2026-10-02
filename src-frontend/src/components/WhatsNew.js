@@ -42,7 +42,7 @@ export function ReleaseSpark() {
     return (
         <button type="button"
                 onClick={() => window.dispatchEvent(new CustomEvent("wc-whats-new-open"))}
-                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-volt-400 text-ink-950 px-3.5 py-1.5 text-[11px] font-extrabold uppercase tracking-widest shadow-glow-volt animate-pulse-ring transition hover:bg-volt-300"
+                className="inline-flex min-h-[44px] items-center gap-1.5 btn-plate px-3.5 py-1.5 text-xs font-extrabold uppercase tracking-widest animate-pulse-ring transition"
                 aria-label={`Version ${state.version} is new - open the release notes`}>
             <Sparkles className="h-4 w-4"/> New: {state.version}
         </button>
