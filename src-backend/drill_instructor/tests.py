@@ -1412,21 +1412,31 @@ class PhotoPostTests(TestCase):
         self.assertEqual(echo.holder_id, self.athlete.id)
         self.assertTrue(echo.image)
 
-    def test_photo_action_is_only_offered_for_an_echo_opportunity(self):
+    def test_photo_action_offers_a_share_on_an_ordinary_logged_workout(self):
         from types import SimpleNamespace
         from .serializers import DrillInstructorMessageSerializer
 
         root = self._activity_root(self.athlete)
         context = {"request": SimpleNamespace(user=self.athlete)}
         ordinary = DrillInstructorMessageSerializer(root, context=context).data
-        self.assertIn("photo_action", ordinary)
-        self.assertIsNone(ordinary["photo_action"])
+        self.assertEqual(ordinary["photo_action"], "share")
+
+        posted = self._post(self.athlete, parent=root)
+        self.assertEqual(posted.status_code, 201, posted.content)
+        after = DrillInstructorMessageSerializer(root, context=context).data
+        self.assertIsNone(after["photo_action"])
 
         Workout.objects.filter(pk=root.workout_id).update(duration=datetime.timedelta(minutes=45))
         root.workout.refresh_from_db()
         from .echoes import judge_echo
         self.assertIsNotNone(judge_echo(root.workout, self.config))
-        standout = DrillInstructorMessageSerializer(root, context=context).data
+        # The photo already attached, so the Echo label does not reopen the camera.
+        self.assertIsNone(DrillInstructorMessageSerializer(root, context=context).data["photo_action"])
+
+        fresh = self._activity_root(self.athlete)
+        Workout.objects.filter(pk=fresh.workout_id).update(duration=datetime.timedelta(minutes=45))
+        fresh.workout.refresh_from_db()
+        standout = DrillInstructorMessageSerializer(fresh, context=context).data
         self.assertEqual(standout["photo_action"], "echo")
 
     def test_photo_order_exposes_one_contextual_photo_action(self):

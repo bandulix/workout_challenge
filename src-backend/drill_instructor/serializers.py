@@ -642,24 +642,27 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
         order = DailyOrder.objects.filter(
             config_id=obj.config_id, date=timezone.localdate(), kind=DailyOrder.KIND_PHOTO,
         ).first()
-        if not order or order.completed_by.filter(pk=user.pk).exists():
-            return None
-        target_cache = self.context.setdefault("_photo_order_targets", {})
-        target_key = (obj.config_id, user.pk, cutoff.date())
-        if target_key not in target_cache:
-            target_cache[target_key] = (
-                DrillInstructorMessage.objects.filter(
-                    config_id=obj.config_id,
-                    kind=DrillInstructorMessage.KIND_ACTIVITY,
-                    workout__user_id=user.pk,
-                    posted_at__gte=cutoff,
+        if order and not order.completed_by.filter(pk=user.pk).exists():
+            target_cache = self.context.setdefault("_photo_order_targets", {})
+            target_key = (obj.config_id, user.pk, cutoff.date())
+            if target_key not in target_cache:
+                target_cache[target_key] = (
+                    DrillInstructorMessage.objects.filter(
+                        config_id=obj.config_id,
+                        kind=DrillInstructorMessage.KIND_ACTIVITY,
+                        workout__user_id=user.pk,
+                        posted_at__gte=cutoff,
+                    )
+                    .exclude(replies__kind=DrillInstructorMessage.KIND_PHOTO)
+                    .order_by("-posted_at")
+                    .values_list("pk", flat=True)
+                    .first()
                 )
-                .exclude(replies__kind=DrillInstructorMessage.KIND_PHOTO)
-                .order_by("-posted_at")
-                .values_list("pk", flat=True)
-                .first()
-            )
-        return "photo_order" if target_cache[target_key] == obj.pk else None
+            if target_cache[target_key] == obj.pk:
+                return "photo_order"
+        # Ordinary logged workouts still get a photo reply. Echo and today's
+        # photo order only change the label; they are not the only door.
+        return "share"
 
     def get_replies(self, obj):
         if obj.parent_id is not None:

@@ -39,4 +39,12 @@ describe("PhotoPost purpose gating", () => {
         fireEvent.click(action);
         expect(screen.getByText("This photo completes today's order; it does not add flat points.")).not.toBeNull();
     });
+
+    it("offers a photo reply on an ordinary logged workout", () => {
+        renderPhotoPost({purpose: "share", variant: "ghost"});
+        const action = screen.getByRole("button", {name: "Add a photo"});
+        fireEvent.click(action);
+        expect(screen.getByText("Attach a photo to this workout. The coach will see it and reply.")).not.toBeNull();
+        expect(screen.getByRole("button", {name: "Continue to camera or gallery"})).not.toBeNull();
+    });
 });

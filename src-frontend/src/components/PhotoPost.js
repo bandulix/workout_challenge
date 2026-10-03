@@ -9,10 +9,10 @@ import {errText} from "../utils/errors";
 import {isAcceptablePhoto, isNativeCameraAvailable, isPhotoPickCancel, pickNativePhoto} from "../utils/nativeCamera";
 import {OverlaySheet} from "../forms/basicComponents";
 
-// Photo sharing for the coach feed. The camera is NOT always visible:
-// the server decides whether this workout can plant/claim an Echo or
-// satisfy today's photo order and hands the client a `purpose`; without
-// one the button renders nothing (`if (!action) return null`). The photo
+// Photo sharing for the coach feed. The server decides the purpose:
+// "echo" plants/claims a relic, "photo_order" completes today's order,
+// and "share" is the ordinary photo reply on the athlete's own recent
+// workout. Without a purpose the button renders nothing. The photo
 // window and ownership are resolved + enforced server-side - the client
 // duplicates none of that eligibility logic. The picture hangs under
 // the own activity it was started from (parentId).
@@ -33,6 +33,10 @@ const PURPOSES = {
     photo_order: {
         label: "Complete today's photo order",
         explanation: "This photo completes today's order; it does not add flat points.",
+    },
+    share: {
+        label: "Add a photo",
+        explanation: "Attach a photo to this workout. The coach will see it and reply.",
     },
 };
 
