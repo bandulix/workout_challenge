@@ -89,7 +89,7 @@ describe("EchoLiveStrip", () => {
         expect(container.firstChild).toBeNull();
     });
 
-    it("parks the quiet archive pill in the header slot beside Goals", () => {
+    it("parks the quiet archive pill in the header row with Goals", () => {
         mocks.echoes = [oldEcho];
         const host = document.createElement("div");
         document.body.appendChild(host);
