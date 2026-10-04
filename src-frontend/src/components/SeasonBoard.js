@@ -57,7 +57,7 @@ export default function SeasonBoard({competitionId, user, onOpen}) {
                     ~390px phone that width truncated the name and squeezed
                     dog tags into a one-word column that stacked onto the trail. */}
                 <div className="flex items-center gap-3 px-5 pt-6 sm:pt-7 md:gap-4">
-                    <ProfileAvatar className="shrink-0" size={44} user={user}/>
+                    <ProfileAvatar className="shrink-0" size={52} user={user}/>
                     <div className="min-w-0 flex-1 md:flex-none md:max-w-[16rem]">
                         <p className="t-pane text-white/55">{title}</p>
                         <h1 className="t-hero truncate">{user?.first_name}</h1>
