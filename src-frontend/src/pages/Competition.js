@@ -438,6 +438,7 @@ export default function Competition() {
 
     const dispatch = useDispatch();
     const [showRematchForm, setShowRematchForm] = useState(false);
+    const [echoArchiveHost, setEchoArchiveHost] = useState(null);
     const {id} = useParams();
     const [searchParams, setSearchParams] = useSearchParams();
     const pollSlow = usePollingInterval(90000);
@@ -551,6 +552,7 @@ export default function Competition() {
                     isOwner={isOwner}
                     goals={competition?.goals || stats?.competition?.goals}
                     user={user}
+                    archiveSlotRef={setEchoArchiveHost}
                 />
             )}
 
@@ -569,7 +571,7 @@ export default function Competition() {
                         {!wide && hasTrail && (
                             <ExpeditionTeaser expedition={expedition} onOpen={() => setTab("trail")}/>
                         )}
-                        {competition && <EchoLiveStrip competitionId={competition.id} userId={user?.id}/>}
+                        {competition && <EchoLiveStrip competitionId={competition.id} userId={user?.id} archiveHost={echoArchiveHost} placeArchiveInHeader/>}
                         {competition && <CoachCorner competition={competition} isOwner={isOwner}/>}
                         </div>
                     );
