@@ -521,41 +521,44 @@ export function ExpeditionTeaser({expedition, onOpen}) {
     return (
         <button
             aria-label={`Open the Expedition trail: ${status.headline}, ${percent(progress)}% of the route`}
-            className="mb-4 flex w-full items-center gap-3 rounded-3xl glass-card px-3 py-2.5 text-left text-ink-950 transition hover:bg-ink-950/5 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400 dark:text-white"
+            className="mb-4 flex w-full flex-col gap-2.5 rounded-3xl glass-card px-3.5 py-3.5 text-left text-ink-950 transition hover:bg-ink-950/5 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400 dark:text-white"
             data-no-swipe
             onClick={onOpen}
             type="button"
         >
-            <svg aria-hidden="true" className="h-11 min-w-0 flex-1" preserveAspectRatio="xMidYMid meet" viewBox="0 0 320 44">
-                <line stroke="currentColor" strokeDasharray="2 3" strokeLinecap="round" strokeWidth="4"
-                    className="text-gray-300 dark:text-ink-600" x1={x(0)} x2={x(100)} y1="26" y2="26"/>
+            {/* Full pill width and a thick track. The teaser only renders
+                below the md rail, where a side-by-side label used to leave
+                this line a short sliver. */}
+            <svg aria-hidden="true" className="h-20 w-full" preserveAspectRatio="none" viewBox="0 0 320 72">
+                <line stroke="currentColor" strokeDasharray="3 4" strokeLinecap="round" strokeWidth="12"
+                    className="text-gray-300 dark:text-ink-600" x1={x(0)} x2={x(100)} y1="40" y2="40"/>
                 {segments.length === 0 && progress > 0 && (
-                    <line stroke="#d7ff3e" strokeLinecap="round" strokeWidth="6" x1={x(0)} x2={x(progress)} y1="26" y2="26"/>
+                    <line stroke="#d7ff3e" strokeLinecap="round" strokeWidth="14" x1={x(0)} x2={x(progress)} y1="40" y2="40"/>
                 )}
                 {segments.map((segment) => (
-                    <line key={segment.member.id} stroke={segment.color} strokeWidth="6"
-                        x1={x(segment.start)} x2={x(segment.start + segment.length)} y1="26" y2="26"/>
+                    <line key={segment.member.id} stroke={segment.color} strokeWidth="14"
+                        x1={x(segment.start)} x2={x(segment.start + segment.length)} y1="40" y2="40"/>
                 ))}
                 {Number.isFinite(pace) && pace > 0 && pace < 100 && (
                     <g className="text-gray-500 dark:text-gray-300">
-                        <line stroke="currentColor" strokeDasharray="2 2" strokeWidth="1.5" x1={x(pace)} x2={x(pace)} y1="6" y2="32"/>
-                        <path d={`M ${x(pace)} 6 l 9 3.5 l -9 3.5 z`} fill="currentColor"/>
+                        <line stroke="currentColor" strokeDasharray="2 2" strokeWidth="2" x1={x(pace)} x2={x(pace)} y1="8" y2="48"/>
+                        <path d={`M ${x(pace)} 8 l 12 5 l -12 5 z`} fill="currentColor"/>
                     </g>
                 )}
                 {ROUTE_POSITIONS.map((point) => {
                     const reached = statuses.get(point.milestoneId) === "completed";
                     return (
-                        <circle cx={x(point.progress)} cy="26" fill={reached ? "#d7ff3e" : "white"} key={point.milestoneId}
-                            r="4.5" stroke={reached ? "#d7ff3e" : "#64748b"} strokeWidth="2"/>
+                        <circle cx={x(point.progress)} cy="40" fill={reached ? "#d7ff3e" : "white"} key={point.milestoneId}
+                            r="7" stroke={reached ? "#d7ff3e" : "#64748b"} strokeWidth="2.5"/>
                     );
                 })}
                 {crew.length > 0
-                    ? <CrewMarker crew={crew} x={x(progress)} y={26}/>
-                    : <circle cx={x(progress)} cy="26" fill="white" r="6" stroke="#d7ff3e" strokeWidth="3"/>}
+                    ? <CrewMarker crew={crew} x={x(progress)} y={40}/>
+                    : <circle cx={x(progress)} cy="40" fill="white" r="8" stroke="#d7ff3e" strokeWidth="3"/>}
             </svg>
-            <span className="shrink-0 text-right">
-                <span className={`block text-sm font-semibold leading-tight ${status.tone}`}>{status.headline}</span>
-                <span className="block text-xs text-muted">
+            <span className="flex w-full items-end justify-between gap-3 shrink-0">
+                <span className={`min-w-0 text-sm font-semibold leading-snug ${status.tone}`}>{status.headline}</span>
+                <span className="shrink-0 text-xs text-muted">
                     {percent(progress)}% · Trail <span aria-hidden="true">›</span>
                 </span>
             </span>
