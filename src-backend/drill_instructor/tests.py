@@ -3237,6 +3237,115 @@ class CharacterCountSuffixTests(TestCase):
                 self.assertEqual(strip_character_count_suffix(value), expected)
 
 
+class SharedPromptRuleTests(TestCase):
+    """User prompts that go through generate_message do not state a
+    character budget. The persona owns the length. Only the morning
+    sealed order turns off the must-name rule."""
+
+    def _assert_no_length_budget(self, prompt):
+        self.assertNotRegex(
+            prompt,
+            r"(?i)chars|zeichen|characters|max\s+\d+|\d+\s*(?:character|char|zeichen)",
+        )
+
+    def test_chat_prompts_state_persona_length_not_a_character_budget(self):
+        from .llm_client import (
+            build_photo_prompt,
+            build_reply_prompt,
+            build_roast_caption_prompt,
+        )
+
+        reply = build_reply_prompt(
+            competition_name="Cup",
+            coach_message="Move.",
+            reply_first_name="Alex",
+            reply_body="Done.",
+        )
+        photo_blind = build_photo_prompt(
+            competition_name="Cup", author_first_name="Alex", caption="",
+            can_see_image=False,
+        )
+        photo_seen = build_photo_prompt(
+            competition_name="Cup", author_first_name="Alex", caption="hill",
+            can_see_image=True, roasts_image=True,
+        )
+        caption = build_roast_caption_prompt(
+            competition_name="Cup", author_first_name="Alex", caption="sweat",
+        )
+        for prompt in (reply, photo_blind, photo_seen, caption):
+            self._assert_no_length_budget(prompt)
+            self.assertIn("persona already defines", prompt)
+            self.assertIn("@Alex", prompt)
+        self.assertIn("React to what they actually said", reply)
+        self.assertIn("Never invent other names", reply)
+        self.assertIn("Never describe what might be in the picture", photo_blind)
+        self.assertNotIn("Never describe what might be in the picture", photo_seen)
+        self.assertIn("remixed their photo", photo_seen)
+        self.assertIn("presenting the picture", caption)
+        self.assertIn("Never invent other names", caption)
+
+    def _system_prompt(self, *, require_athlete_name=True):
+        from . import llm_client
+        client = mock.Mock()
+        client.chat.completions.create.return_value = mock.Mock(
+            choices=[mock.Mock(message=mock.Mock(content="@Alex go."))]
+        )
+        with mock.patch.object(
+            llm_client, "_resolved_client",
+            return_value=(client, {"provider": "custom", "model": "m", "base_url": None}, None),
+        ):
+            body, error = llm_client.generate_message(
+                system_prompt="You are a coach.",
+                user_prompt="Comment on the workout.",
+                require_athlete_name=require_athlete_name,
+            )
+        self.assertIsNone(error)
+        self.assertEqual(body, "@Alex go.")
+        return client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+
+    def test_guardrail_has_no_digit_cap_and_names_the_athlete_by_default(self):
+        system = self._system_prompt()
+        guardrail = system.split("Rules you must follow", 1)[1]
+        self.assertNotRegex(guardrail, r"(?i)zeichen|characters|character count|the cap")
+        self.assertNotRegex(guardrail, r"\d")
+        self.assertIn("Do not append a parenthetical count of how long the reply is.", guardrail)
+        self.assertIn(
+            "You MUST name the athlete by their @FirstName at least once.",
+            system,
+        )
+        self.assertIn("Stay within the length the persona above already defines.", guardrail)
+
+    def test_guardrail_omits_must_name_when_asked(self):
+        system = self._system_prompt(require_athlete_name=False)
+        self.assertNotIn("You MUST name the athlete", system)
+        self.assertIn("Rules you must follow", system)
+
+    def test_only_the_daily_order_disables_the_name_rule(self):
+        import ast
+        from pathlib import Path
+
+        package = Path(__file__).resolve().parent
+        offenders = []
+        for path in package.rglob("*.py"):
+            if "migrations" in path.parts or path.name.startswith("test"):
+                continue
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+                if name != "generate_message":
+                    continue
+                for keyword in node.keywords:
+                    if keyword.arg != "require_athlete_name":
+                        continue
+                    if isinstance(keyword.value, ast.Constant) and keyword.value.value is False:
+                        offenders.append(f"{path.name}:{node.lineno}")
+        self.assertEqual(len(offenders), 1)
+        self.assertTrue(offenders[0].startswith("tasks.py:"))
+
+
 class GenerateMessageImageTests(TestCase):
     """generate_message attaches the local picture as a base64 data-URL
     content part when image_path is given (the provider can't reach our
@@ -3822,6 +3931,23 @@ class ArcadeGameTests(TestCase):
         self.assertTrue(DrillInstructorMessage.objects.filter(
             config=self.config, kind=DrillInstructorMessage.KIND_ORDER,
         ).exists())
+
+    def test_daily_order_call_skips_must_name_and_states_no_length_budget(self):
+        from drill_instructor import llm_client
+        from .tasks import issue_daily_orders
+
+        issue_daily_orders()
+        kwargs = llm_client.generate_message.call_args.kwargs
+        self.assertIs(kwargs.get("require_athlete_name"), False)
+        prompt = kwargs["user_prompt"]
+        self.assertNotIn("You MUST name the athlete", prompt)
+        self.assertNotRegex(
+            prompt,
+            r"(?i)chars|zeichen|characters|max\s+\d+|\d+\s*(?:character|char|zeichen)",
+        )
+        self.assertIn("name nobody who isn't in the brief", prompt)
+        self.assertIn("persona already defines", prompt)
+        self.assertIn("SEALED ORDER", prompt)
 
     def test_logging_completes_log_one_order(self):
         from .game import evaluate_workout_game
