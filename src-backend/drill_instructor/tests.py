@@ -107,6 +107,57 @@ class PersonaAdminPermissionTests(TestCase):
         self.assertTrue(response.json()["mine"])
         self.assertEqual(response.json()["system_prompt"], "You cackle at skipped rest days.")
 
+    def test_coach_language_defaults_to_english(self):
+        self.assertEqual(self.persona.language, "en")
+        created = DrillInstructorPersona.objects.create(
+            name="Default Tongue", system_prompt="Be yourself.", created_by=self.regular,
+        )
+        self.assertEqual(created.language, "en")
+        self.assertEqual(
+            DrillInstructorPersona._meta.get_field("language").default, "en",
+        )
+
+    def test_coach_language_accepts_en_and_de_and_rejects_unknown(self):
+        self.client.force_authenticate(self.regular)
+        created = self.client.post(
+            "/api/drill-instructor/persona/",
+            {"name": "English Coach", "system_prompt": "Be yourself.", "language": "en"},
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201, created.content)
+        self.assertEqual(created.json()["language"], "en")
+        self.assertEqual(
+            DrillInstructorPersona.objects.get(name="English Coach").language, "en",
+        )
+
+        german = self.client.post(
+            "/api/drill-instructor/persona/",
+            {"name": "German Coach", "system_prompt": "Be yourself.", "language": "de"},
+            format="json",
+        )
+        self.assertEqual(german.status_code, 201, german.content)
+        self.assertEqual(german.json()["language"], "de")
+
+        bogus = self.client.post(
+            "/api/drill-instructor/persona/",
+            {"name": "Bogus Coach", "system_prompt": "Be yourself.", "language": "xx"},
+            format="json",
+        )
+        self.assertEqual(bogus.status_code, 400, bogus.content)
+        self.assertIn("language", bogus.json())
+        self.assertFalse(DrillInstructorPersona.objects.filter(name="Bogus Coach").exists())
+
+        own = DrillInstructorPersona.objects.get(name="English Coach")
+        patched = self.client.patch(
+            f"/api/drill-instructor/persona/{own.id}/",
+            {"language": "de"},
+            format="json",
+        )
+        self.assertEqual(patched.status_code, 200, patched.content)
+        own.refresh_from_db()
+        self.assertEqual(own.language, "de")
+        self.assertEqual(own.system_prompt, "Be yourself.")
+
     def test_regular_user_can_update_and_delete_own(self):
         own = DrillInstructorPersona.objects.create(
             name="My Roaster", system_prompt="Be loud.", created_by=self.regular,
@@ -3284,21 +3335,24 @@ class SharedPromptRuleTests(TestCase):
         self.assertIn("presenting the picture", caption)
         self.assertIn("Never invent other names", caption)
 
-    def _system_prompt(self, *, require_athlete_name=True):
+    def _system_prompt(self, *, require_athlete_name=True, language=None):
         from . import llm_client
         client = mock.Mock()
         client.chat.completions.create.return_value = mock.Mock(
             choices=[mock.Mock(message=mock.Mock(content="@Alex go."))]
         )
+        kwargs = dict(
+            system_prompt="You are a coach.",
+            user_prompt="Comment on the workout.",
+            require_athlete_name=require_athlete_name,
+        )
+        if language is not None:
+            kwargs["language"] = language
         with mock.patch.object(
             llm_client, "_resolved_client",
             return_value=(client, {"provider": "custom", "model": "m", "base_url": None}, None),
         ):
-            body, error = llm_client.generate_message(
-                system_prompt="You are a coach.",
-                user_prompt="Comment on the workout.",
-                require_athlete_name=require_athlete_name,
-            )
+            body, error = llm_client.generate_message(**kwargs)
         self.assertIsNone(error)
         self.assertEqual(body, "@Alex go.")
         return client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
@@ -3314,6 +3368,17 @@ class SharedPromptRuleTests(TestCase):
             system,
         )
         self.assertIn("Stay within the length the persona above already defines.", guardrail)
+
+    def test_guardrail_replies_in_the_coach_language(self):
+        german = self._system_prompt(language="de")
+        self.assertIn("Reply in German.", german)
+        self.assertNotIn("Zeichen", german)
+        self.assertNotRegex(german, r"\d")
+        english = self._system_prompt(language="en")
+        self.assertIn("Reply in English.", english)
+        self.assertNotIn("Zeichen", english)
+        missing = self._system_prompt()
+        self.assertIn("Reply in English.", missing)
 
     def test_guardrail_omits_must_name_when_asked(self):
         system = self._system_prompt(require_athlete_name=False)
@@ -3939,6 +4004,7 @@ class ArcadeGameTests(TestCase):
         issue_daily_orders()
         kwargs = llm_client.generate_message.call_args.kwargs
         self.assertIs(kwargs.get("require_athlete_name"), False)
+        self.assertEqual(kwargs.get("language"), "en")
         prompt = kwargs["user_prompt"]
         self.assertNotIn("You MUST name the athlete", prompt)
         self.assertNotRegex(

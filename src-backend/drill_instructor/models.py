@@ -4,6 +4,8 @@ from django.utils import timezone
 from competition.models import Competition
 from custom_user.models import CustomUser
 
+from .languages import COACH_LANGUAGES
+
 
 class DrillInstructorPersona(models.Model):
     """A reusable persona/style for the AI Drill Instructor.
@@ -62,6 +64,12 @@ class DrillInstructorPersona(models.Model):
         blank=True,
         default="",
         help_text="Hex accent colour (e.g. #d7ff3e) used for the persona's avatar ring and chat bubbles.",
+    )
+    language = models.CharField(
+        max_length=8,
+        choices=COACH_LANGUAGES,
+        default="en",
+        help_text="Language this coach replies in. Does not change the persona's voice.",
     )
     system_prompt = models.TextField()
     is_builtin = models.BooleanField(default=False)

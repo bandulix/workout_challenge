@@ -41,6 +41,29 @@ export const PERSONA_COLORS = [
     "#a78bfa", "#f43f5e", "#38bdf8", "#fbbf24", "#94a3b8",
 ];
 
+// One reply language per coach. Codes match the API; the UI shows names.
+export const COACH_LANGUAGES = [
+    ["en", "English"],
+    ["de", "German"],
+    ["es", "Spanish"],
+    ["fr", "French"],
+    ["pt", "Portuguese"],
+    ["it", "Italian"],
+    ["nl", "Dutch"],
+    ["pl", "Polish"],
+    ["tr", "Turkish"],
+    ["ru", "Russian"],
+    ["ar", "Arabic"],
+    ["hi", "Hindi"],
+    ["ja", "Japanese"],
+    ["ko", "Korean"],
+    ["zh", "Chinese"],
+];
+
+export function coachLanguageName(code) {
+    return COACH_LANGUAGES.find(([stored]) => stored === code)?.[1] || "English";
+}
+
 // Thumbnail for one full-body slot: staged uploads are blob: URLs,
 // saved pictures come through the authenticated media fetcher.
 function BodyThumb({url}) {
@@ -85,6 +108,7 @@ export function PersonaEditModal({persona, setModalState}) {
                 theme_color: persona.theme_color || PERSONA_COLORS[0],
                 system_prompt: persona.system_prompt || "",
                 is_shared: Boolean(persona.is_shared),
+                language: persona.language || "en",
             };
             setValues(loaded);
             setInitialValues(loaded);
@@ -332,6 +356,21 @@ export function PersonaEditModal({persona, setModalState}) {
                 </div>
 
                 <div className="px-4 w-full">
+                    <label htmlFor="coach-reply-language" className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
+                        Reply language{fieldErrors.language && <span className="text-red-600 font-normal italic"> ({fieldErrors.language})</span>}
+                    </label>
+                    <select id="coach-reply-language" className={inputClass} value={values.language || "en"}
+                            onChange={(e) => setValues({...values, language: e.target.value})}>
+                        {COACH_LANGUAGES.map(([code, name]) => (
+                            <option key={code} value={code}>{name}</option>
+                        ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                        This coach answers in {coachLanguageName(values.language)}. The persona's voice stays as written.
+                    </p>
+                </div>
+
+                <div className="px-4 w-full">
                     <label className="w-full text-gray-700 dark:text-gray-400 text-sm font-bold mb-2 mr-4">
                         Voice & style (system prompt)*{fieldErrors.system_prompt && <span className="text-red-600 font-normal italic"> ({fieldErrors.system_prompt})</span>}
                     </label>
@@ -439,6 +478,7 @@ export default function DrillInstructorPersonaModal({setModalState}) {
                                     )}</div>
                                     <div className="text-xs text-gray-400 italic truncate">{persona.tagline}</div>
                                     <div className="text-sm text-gray-500 dark:text-gray-400 truncate">{persona.description}</div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{coachLanguageName(persona.language)}</div>
                                 </div>
                                 {canEdit && (
                                     <div className="flex flex-col gap-1">

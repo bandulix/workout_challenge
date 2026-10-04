@@ -338,7 +338,7 @@ def mint_echo(workout, config, judgment=None, image_field=None):
     try:
         from .llm_client import generate_message
         narrative, _err = generate_message(
-            system_prompt=persona.system_prompt, user_prompt=prompt,
+            system_prompt=persona.system_prompt, language=persona.language, user_prompt=prompt,
         )
     except Exception as exc:  # noqa: BLE001
         logger.info("Echo narrative fell back for workout %s: %s", workout.pk, exc)

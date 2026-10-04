@@ -45,6 +45,7 @@ from .models import (
     DrillInstructorPersona,
     LegendEcho,
 )
+from .languages import COACH_LANGUAGES
 
 
 def _persona_picture_url(persona):
@@ -89,6 +90,7 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
         allow_blank=True,
         error_messages={"invalid": "Use a hex colour like #d7ff3e."},
     )
+    language = serializers.ChoiceField(choices=COACH_LANGUAGES, default="en")
 
     # Read path: the authenticated endpoint URL (see _persona_picture_url).
     # Write path: uploads arrive as ``profile_picture_upload`` (multipart)
@@ -139,6 +141,7 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
             "clear_body_picture_2",
             "clear_body_picture_3",
             "theme_color",
+            "language",
             "system_prompt",
             "is_builtin",
             "is_shared",
@@ -159,6 +162,13 @@ class DrillInstructorPersonaSerializer(serializers.ModelSerializer):
         if obj.created_by_id is None:
             return None
         return obj.created_by.first_name or obj.created_by.username or None
+
+    def validate_language(self, value):
+        code = (value or "").strip().lower()
+        allowed = {choice for choice, _name in COACH_LANGUAGES}
+        if code not in allowed:
+            raise serializers.ValidationError("Choose a supported coach language.")
+        return code
 
     def to_representation(self, instance):
         rep = super().to_representation(instance)

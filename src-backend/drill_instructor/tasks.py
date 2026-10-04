@@ -305,7 +305,7 @@ def post_workout_comment(self, workout_id):
             echo_lines=_echo_lines(config),
         )
 
-        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt)
+        body, llm_error = generate_message(system_prompt=persona.system_prompt, language=persona.language, user_prompt=user_prompt)
         if not body:
             body = f"{persona.name}: nice work on that {summary or workout.sport_type}!"
 
@@ -517,7 +517,7 @@ def post_reply_reaction(self, reply_id):
     )
 
     body, llm_error = generate_message(
-        system_prompt=persona.system_prompt,
+        system_prompt=persona.system_prompt, language=persona.language,
         user_prompt=user_prompt,
         image_path=reply_image_path,
     )
@@ -525,7 +525,7 @@ def post_reply_reaction(self, reply_id):
         # The probe said vision, the request failed anyway (model swapped,
         # provider-side reject) - retry text-only before the static line.
         body, llm_error = generate_message(
-            system_prompt=persona.system_prompt,
+            system_prompt=persona.system_prompt, language=persona.language,
             user_prompt=build_reply_prompt(
                 competition_name=config.competition.name,
                 coach_message=root.body,
@@ -613,13 +613,13 @@ def post_photo_reaction(self, photo_id):
         roasts_image=roast_model is not None,
     )
 
-    body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=user_prompt, image_path=image_path)
+    body, llm_error = generate_message(system_prompt=persona.system_prompt, language=persona.language, user_prompt=user_prompt, image_path=image_path)
     if not body and image_path is not None:
         # The probe said vision, the request failed anyway (model swapped,
         # provider-side reject) - retry text-only before falling back to
         # the static line.
         body, llm_error = generate_message(
-            system_prompt=persona.system_prompt,
+            system_prompt=persona.system_prompt, language=persona.language,
             user_prompt=build_photo_prompt(
                 competition_name=config.competition.name,
                 author_first_name=author_first_name,
@@ -687,13 +687,13 @@ def _post_photo_text_reaction(config, photo, parent):
         thread_history=history,
     )
     body, llm_error = generate_message(
-        system_prompt=persona.system_prompt,
+        system_prompt=persona.system_prompt, language=persona.language,
         user_prompt=build_photo_prompt(can_see_image=image_path is not None, **photo_prompt_kwargs),
         image_path=image_path,
     )
     if not body and image_path is not None:
         body, llm_error = generate_message(
-            system_prompt=persona.system_prompt,
+            system_prompt=persona.system_prompt, language=persona.language,
             user_prompt=build_photo_prompt(can_see_image=False, **photo_prompt_kwargs),
         )
     if not body:
@@ -958,7 +958,7 @@ def _post_photo_roast(config, photo, roast_model, image_path, parent=None):
         return None
 
     caption, _llm_error = generate_message(
-        system_prompt=persona.system_prompt,
+        system_prompt=persona.system_prompt, language=persona.language,
         user_prompt=build_roast_caption_prompt(
             competition_name=config.competition.name,
             author_first_name=author_first_name,
@@ -1304,7 +1304,7 @@ def issue_daily_orders(self):
             "isn't in the brief, and make it feel like a mission. Write it now."
         )
         body, llm_error = generate_message(
-            system_prompt=persona.system_prompt,
+            system_prompt=persona.system_prompt, language=persona.language,
             user_prompt=prompt,
             require_athlete_name=False,
         )
