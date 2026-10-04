@@ -3219,6 +3219,24 @@ class CapabilityCacheReadTests(TestCase):
         probe.assert_not_called()
 
 
+class CharacterCountSuffixTests(TestCase):
+    def test_strips_only_trailing_character_count_parentheticals(self):
+        from .llm_client import strip_character_count_suffix
+
+        cases = {
+            "Great work (214 Zeichen)": "Great work",
+            "Great work (214 Zeichen).": "Great work.",
+            "Great work (220 characters)": "Great work",
+            "Great work (220 chars)": "Great work",
+            "Great work (220 CHARACTERS)": "Great work",
+            "Great work (220 characters) and then more": "Great work (220 characters) and then more",
+            "214 km of jokes": "214 km of jokes",
+        }
+        for value, expected in cases.items():
+            with self.subTest(value=value):
+                self.assertEqual(strip_character_count_suffix(value), expected)
+
+
 class GenerateMessageImageTests(TestCase):
     """generate_message attaches the local picture as a base64 data-URL
     content part when image_path is given (the provider can't reach our

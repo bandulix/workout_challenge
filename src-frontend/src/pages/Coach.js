@@ -18,6 +18,7 @@ import usePollingInterval from "../utils/usePollingInterval";
 import useWideLayout from "../utils/useWideLayout";
 import {feedSfxItems, hallSfxItems, useSfxObserver} from "../utils/sfx";
 import {PaneHead} from "../components/uiBits";
+import {stripCharacterCountSuffix} from "../utils/coachText";
 
 // ---------------------------------------------------------------------------
 // The Coach page: the Drill Instructor as the heart of the app.
@@ -49,8 +50,8 @@ const KIND_LABEL = {
 function CoachQuote({message, empty, accentStyle}) {
     const body = message
         ? (message.kind === "photo"
-            ? (message.body || `${message.author_name || "Someone"} shared a photo in the feed.`)
-            : message.body)
+            ? (stripCharacterCountSuffix(message.body) || `${message.author_name || "Someone"} shared a photo in the feed.`)
+            : stripCharacterCountSuffix(message.body))
         : null;
     const kind = message ? (KIND_LABEL[message.kind] || "Latest") : null;
     const who = message
