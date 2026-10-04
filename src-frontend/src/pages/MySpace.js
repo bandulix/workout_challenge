@@ -427,7 +427,7 @@ function CompetitionsBox({competitions, setJoinCompetition}) {
     }
 
     return (
-        <div className={paneCardClass + " mb-4"}>
+        <div className={paneCardClass + " mb-4 h-full md:mb-0"}>
             <PaneHead title="My challenges">
                 <JoinButton additionalClasses="my-0.5 sm:my-0" onClick={() => setJoinCompetition(true)}/>
                 <AddButton additionalClasses="my-0.5 sm:my-0" label={"Create"}
@@ -683,7 +683,7 @@ function StreakCard({workouts, summary, onStats}) {
     const whoGoalHit = weekMinutes >= WHO_WEEKLY_MINUTES;
 
     return (
-        <div className="relative overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white p-5 w-full">
+        <div className="relative h-full overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white p-5 w-full">
             <div className="pointer-events-none absolute -top-14 -right-14 h-40 w-40 rounded-full bg-white/10 blur-3xl"/>
             <div className="relative">
                 <div className="flex items-center gap-4">
@@ -969,40 +969,40 @@ export default function MySpace() {
                 )}
                 {user && <ComebackBench/>}
 
-                {/* Stats (30 Day Activity, goals, streak) + Competitions +
-                    Workouts. md+ (foldable inner display and up): two
-                    columns - training left, challenges right - so the
-                    whole dashboard fits above the fold. */}
-                <div className="w-full md:grid md:grid-cols-3 md:gap-4 md:items-start stagger-in">
-                    <div className="md:col-span-2 stagger-in">
-                        <div className="mb-4">
-                            {
-                                (userLoading || workoutsIsLoading) ? (
-                                    <SkeletonCard height="h-48 mb-4"/>
-                                ) : (workoutsError) ? (
-                                    <ErrorBoxSection additionalClasses="mb-4"
-                                                     errorMsg={errText(workoutsError, 'Could not load your workouts. Please try again.')}/>
-                                ) : (
-                                    <StreakCard workouts={workouts} summary={workoutSummary} onStats={() => setStatsOpen(true)}/>
-                                )
-                            }
-                        </div>
-
-                        {/* My Workouts - the 5 most recent trainings */}
-                        <div className="mb-4">
-                            {
-                                (userLoading || workoutsIsLoading) ? (
-                                    <SkeletonRows n={5}/>
-                                ) : (workoutsError) ? (
-                                    <ErrorBoxSection
-                                        errorMsg={errText(workoutsError, 'Could not load your workouts. Please try again.')}/>
-                                ) : (
-                                    <WorkoutsBox workouts={workouts} user={user} setLinkStrava={setLinkStrava} summary={workoutSummary}/>
-                                )
-                            }
-                        </div>
+                {/* Phone stays one column: streak, workouts, challenges.
+                    md+ (fold and up): streak and challenges share one
+                    even row at the same height; latest workouts sits
+                    full width under them. */}
+                <div className="w-full md:grid md:grid-cols-2 md:items-stretch md:gap-4 stagger-in">
+                    <div className="mb-4 md:mb-0 md:h-full">
+                        {
+                            (userLoading || workoutsIsLoading) ? (
+                                <SkeletonCard height="h-48 mb-4"/>
+                            ) : (workoutsError) ? (
+                                <ErrorBoxSection additionalClasses="mb-4"
+                                                 errorMsg={errText(workoutsError, 'Could not load your workouts. Please try again.')}/>
+                            ) : (
+                                <StreakCard workouts={workouts} summary={workoutSummary} onStats={() => setStatsOpen(true)}/>
+                            )
+                        }
                     </div>
-                    <div className="mb-4">
+
+                    {/* My Workouts - the 5 most recent trainings.
+                        order-last keeps this under the pair on md
+                        without changing the phone stack. */}
+                    <div className="mb-4 md:col-span-2 md:order-last">
+                        {
+                            (userLoading || workoutsIsLoading) ? (
+                                <SkeletonRows n={5}/>
+                            ) : (workoutsError) ? (
+                                <ErrorBoxSection
+                                    errorMsg={errText(workoutsError, 'Could not load your workouts. Please try again.')}/>
+                            ) : (
+                                <WorkoutsBox workouts={workouts} user={user} setLinkStrava={setLinkStrava} summary={workoutSummary}/>
+                            )
+                        }
+                    </div>
+                    <div className="mb-4 md:mb-0 md:h-full">
                         {
                             (userLoading || competitionLoading) ? (
                                 <SkeletonRows n={3}/>

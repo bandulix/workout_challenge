@@ -237,7 +237,7 @@ function CrewMarker({crew, x, y}) {
     );
 }
 
-export function ExpeditionRouteMap({expedition, progress, bare = false, stage = false}) {
+export function ExpeditionRouteMap({expedition, progress, bare = false, stage = false, fillWidth = false}) {
     const theme = themeOf(expedition);
     const crewPosition = routePosition(progress);
     const pace = Number(expedition.pace_percent);
@@ -254,11 +254,11 @@ export function ExpeditionRouteMap({expedition, progress, bare = false, stage = 
         routePosition(((index + 1) / Math.max(1, Number(camp.weeks_total) || 1)) * 100)) : [];
 
     return (
-        <figure className={stage ? "h-full min-h-52 w-full" : (bare ? "" : "mt-3")}>
+        <figure className={stage ? (fillWidth ? "h-48 w-full" : "h-full min-h-52 w-full") : (bare ? "" : "mt-3")}>
             <svg
                 aria-label={`Shared route map, current position ${percent(progress)}%`}
                 className={stage ? "h-full w-full" : `h-auto w-full bg-gradient-to-b ${theme.sky} ${bare ? "" : "rounded-xl"}`}
-                preserveAspectRatio={stage ? "xMidYMid meet" : undefined}
+                preserveAspectRatio={stage ? (fillWidth ? "none" : "xMidYMid meet") : undefined}
                 role="img"
                 viewBox="0 0 420 190"
             >

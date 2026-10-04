@@ -6,6 +6,7 @@ import {ExpeditionRouteMap} from "./ExpeditionPanel";
 import ProfileAvatar from "./ProfileAvatar";
 import {DogTagRow} from "./gameBits";
 import SeasonDrop from "./SeasonDrop";
+import useWideLayout from "../utils/useWideLayout";
 
 /** The running expedition Home should lead with. Prefers the rival card's challenge. */
 export function pickSeasonChallenge(competitions, preferred) {
@@ -23,6 +24,7 @@ function shownPercent(value) {
 
 // Identity first, route under it. Same wash, no second rectangle, no overlay.
 export default function SeasonBoard({competitionId, user, onOpen}) {
+    const wide = useWideLayout();
     const {data: expedition, isLoading} = useGetExpeditionByCompetitionQuery(competitionId, {skip: !competitionId});
     // A fresh log redraws the route so the save is seen landing on the trail.
     const [drawKey, setDrawKey] = React.useState(0);
@@ -54,9 +56,9 @@ export default function SeasonBoard({competitionId, user, onOpen}) {
                 {/* Percent stays the hero number, but not at text-6xl: on a
                     ~390px phone that width truncated the name and squeezed
                     dog tags into a one-word column that stacked onto the trail. */}
-                <div className="flex items-center gap-3 px-5 pt-6 sm:pt-7">
+                <div className="flex items-center gap-3 px-5 pt-6 sm:pt-7 md:gap-4">
                     <ProfileAvatar className="shrink-0" size={44} user={user}/>
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 md:flex-none md:max-w-[16rem]">
                         <p className="t-pane text-white/55">{title}</p>
                         <h1 className="t-hero truncate">{user?.first_name}</h1>
                     </div>
@@ -67,8 +69,11 @@ export default function SeasonBoard({competitionId, user, onOpen}) {
                         <DogTagRow tags={user.dog_tags}/>
                     </div>
                 )}
-                <div className="mt-5 sm:mt-4">
-                    <ExpeditionRouteMap expedition={expedition} key={drawKey} progress={progress} stage/>
+                <div className="mt-5 sm:mt-4 md:mt-3">
+                    {/* Phone keeps the intrinsic trail. On the short fold the
+                        same art is stretched across the hero so it is not a
+                        small graphic floating under the name. */}
+                    <ExpeditionRouteMap expedition={expedition} fillWidth={wide} key={drawKey} progress={progress} stage/>
                 </div>
                 <div className="flex items-center justify-between px-5 pb-1 pt-2">
                     <span className="text-sm text-white/80">{count} on the trail</span>
