@@ -1,4 +1,5 @@
 import React, {useState} from "react";
+import {createPortal} from "react-dom";
 import {Crown, Info, Share2, Trash2} from "lucide-react";
 import {useDispatch} from "react-redux";
 import {PaneHead} from "./uiBits";
@@ -109,7 +110,7 @@ function EchoTile({echo, onDelete, busy, onOpenArt, showStatus = false}) {
     );
 }
 
-export default function EchoLiveStrip({competitionId, userId}) {
+export default function EchoLiveStrip({competitionId, userId, archiveHost = null, placeArchiveInHeader = false}) {
     const dispatch = useDispatch();
     const poll = usePollingInterval(90000);
     const {data: echoes} = useGetEchoesQuery(
@@ -171,26 +172,11 @@ export default function EchoLiveStrip({competitionId, userId}) {
     const head = (
         <PaneHead title="Echo updates" hint="New, threatened, or recently taken">
             {explainerButton}
-            {archiveButton}
+            {!(archiveHost || placeArchiveInHeader) && archiveButton}
         </PaneHead>
     );
-
-    return (
-        <div className="mb-4">
-            {updates.length > 0 ? (
-                <>
-                    {head}
-                    <div className="grid grid-cols-3 gap-3">
-                        {updates.slice(0, LIVE).map((echo) => (
-                            <EchoTile key={echo.id} echo={echo} onDelete={onDelete} busy={busy}
-                                      onOpenArt={openGallery}/>
-                        ))}
-                    </div>
-                </>
-            ) : (
-                <div className="flex justify-end">{archiveButton}</div>
-            )}
-
+    const overlays = (
+        <>
             {showExplainer && (
                 <Modal title="How Echoes work" setShowModal={setShowExplainer}>
                     <EchoExplainer/>
@@ -210,6 +196,43 @@ export default function EchoLiveStrip({competitionId, userId}) {
                 <RoastGallery cards={galleryCards} index={galleryIndex} onIndex={setGalleryIndex}
                               onClose={() => setGalleryIndex(null)}/>
             )}
-        </div>
+        </>
+    );
+    // Quiet relics have no updates pane. Park the archive pill in the
+    // season header beside Goals so it does not float over the feed.
+    // While the header slot is still mounting, render nothing rather
+    // than flashing the pill back into the feed column.
+    const archiveInHeader = archiveHost ? createPortal(archiveButton, archiveHost) : null;
+    const archiveInHeaderSlot = Boolean(archiveHost || placeArchiveInHeader);
+
+    if (updates.length === 0 && archiveInHeaderSlot) {
+        return (
+            <>
+                {archiveInHeader}
+                {overlays}
+            </>
+        );
+    }
+
+    return (
+        <>
+            {archiveInHeader}
+            <div className="mb-4">
+                {updates.length > 0 ? (
+                    <>
+                        {head}
+                        <div className="grid grid-cols-3 gap-3">
+                            {updates.slice(0, LIVE).map((echo) => (
+                                <EchoTile key={echo.id} echo={echo} onDelete={onDelete} busy={busy}
+                                          onOpenArt={openGallery}/>
+                            ))}
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex justify-end">{archiveButton}</div>
+                )}
+                {overlays}
+            </div>
+        </>
     );
 }

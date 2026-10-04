@@ -88,4 +88,25 @@ describe("EchoLiveStrip", () => {
         const {container} = render(<EchoLiveStrip competitionId={3} userId={5}/>);
         expect(container.firstChild).toBeNull();
     });
+
+    it("parks the quiet archive pill in the header slot beside Goals", () => {
+        mocks.echoes = [oldEcho];
+        const host = document.createElement("div");
+        document.body.appendChild(host);
+        render(<EchoLiveStrip competitionId={3} userId={5} archiveHost={host}/>);
+        const button = screen.getByRole("button", {name: /echo archive · 1/i});
+        expect(host.contains(button)).toBe(true);
+        host.remove();
+    });
+
+    it("keeps a live archive pill in the header slot instead of the updates pane", () => {
+        mocks.echoes = [newEcho, oldEcho];
+        const host = document.createElement("div");
+        document.body.appendChild(host);
+        render(<EchoLiveStrip competitionId={3} userId={5} archiveHost={host}/>);
+        const button = screen.getByRole("button", {name: /echo archive · 2/i});
+        expect(host.contains(button)).toBe(true);
+        expect(screen.getByText("Echo updates")).toBeInTheDocument();
+        host.remove();
+    });
 });

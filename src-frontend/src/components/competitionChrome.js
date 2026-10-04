@@ -42,7 +42,7 @@ export function HeaderIconButton({onClick, title, icon: Icon, danger = false, is
     );
 }
 
-export function CompetitionHead({competition, feed, isOwner, goals, user}) {
+export function CompetitionHead({competition, feed, isOwner, goals, user, archiveSlotRef}) {
 
     const [showEditCompetitionModal, setShowEditCompetitionModal] = useState(false);
     const [showInviteCompetitionModal, setShowInviteCompetitionModal] = useState(false);
@@ -108,7 +108,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                         </span>
                     ) : null}
                 </div>
-                <div className="mt-2.5 flex items-center gap-3">
+                <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
                     <div className="flex items-baseline gap-1.5 shrink-0">
                         <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
                         <span className="uppercase text-xs tracking-wide text-white/60">workouts</span>
@@ -119,7 +119,10 @@ export function CompetitionHead({competition, feed, isOwner, goals, user}) {
                             <span className="uppercase text-xs tracking-wide text-gray-500">{sportLabelShort(label)}</span>
                         </div>
                     ))}
-                    <div className="flex items-center shrink-0 ml-auto gap-1">
+                    <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
+                        {/* Echo archive portals in here so it stays with Goals
+                            when this cluster wraps, instead of sitting over the feed. */}
+                        <div ref={archiveSlotRef} className="contents"/>
                         {showGoals && (
                             <button type="button" onClick={() => setGoalsOpen((v) => !v)}
                                     aria-expanded={goalsOpen}
