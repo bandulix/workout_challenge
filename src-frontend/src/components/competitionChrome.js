@@ -108,6 +108,21 @@ export function CompetitionHead({competition, feed, isOwner, goals, user, archiv
                         </span>
                     ) : null}
                 </div>
+                {/* Goals and Echo Archive share this row, directly under
+                    the title. On a phone the stats row is already full, so
+                    the pill cannot share it: a wrap lands on the hero.
+                    This row does not wrap. */}
+                <div className="flex w-full flex-nowrap items-center justify-end gap-1 has-[button]:mt-2.5">
+                    <div ref={archiveSlotRef} className="flex shrink-0 items-center"/>
+                    {showGoals && (
+                        <button type="button" onClick={() => setGoalsOpen((v) => !v)}
+                                aria-expanded={goalsOpen}
+                                className={"shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide min-h-[44px] transition " +
+                                    (goalsOpen ? "bg-volt-400 text-ink-950 shadow-glow-volt" : "btn-glass")}>
+                            Goals
+                        </button>
+                    )}
+                </div>
                 <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
                     <div className="flex items-baseline gap-1.5 shrink-0">
                         <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
@@ -120,17 +135,6 @@ export function CompetitionHead({competition, feed, isOwner, goals, user, archiv
                         </div>
                     ))}
                     <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
-                        {/* Echo archive portals in here so it stays with Goals
-                            when this cluster wraps, instead of sitting over the feed. */}
-                        <div ref={archiveSlotRef} className="contents"/>
-                        {showGoals && (
-                            <button type="button" onClick={() => setGoalsOpen((v) => !v)}
-                                    aria-expanded={goalsOpen}
-                                    className={"rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide min-h-[44px] transition " +
-                                        (goalsOpen ? "bg-volt-400 text-ink-950 shadow-glow-volt" : "btn-glass")}>
-                                Goals
-                            </button>
-                        )}
                         {isOwner && (
                             <HeaderIconButton title="Settings" icon={Settings} onClick={() => setShowEditCompetitionModal(competition.id)}/>
                         )}

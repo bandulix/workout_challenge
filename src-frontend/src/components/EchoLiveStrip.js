@@ -198,10 +198,11 @@ export default function EchoLiveStrip({competitionId, userId, archiveHost = null
             )}
         </>
     );
-    // Quiet relics have no updates pane. Park the archive pill in the
-    // season header beside Goals so it does not float over the feed.
-    // While the header slot is still mounting, render nothing rather
-    // than flashing the pill back into the feed column.
+    // Park the archive pill in the season-header row with Goals.
+    // That row sits under the title and does not wrap, so the pill
+    // cannot drop onto the hero. While the header slot is still
+    // mounting, render nothing rather than flashing the pill into
+    // the feed column.
     const archiveInHeader = archiveHost ? createPortal(archiveButton, archiveHost) : null;
     const archiveInHeaderSlot = Boolean(archiveHost || placeArchiveInHeader);
 
