@@ -1299,11 +1299,15 @@ def issue_daily_orders(self):
         prompt = (
             f"Competition: {competition.name}. Situation: you are issuing today's "
             f"SEALED ORDER to the whole group. The order is: \"{brief}\" "
-            "Write one short bark (max 220 chars) in your persona's voice that "
-            "delivers that order, names nobody who isn't in the brief, and "
-            "makes it feel like a mission. Write it now."
+            "Write one bark in your persona's voice and the length that "
+            "persona already defines. Deliver that order, name nobody who "
+            "isn't in the brief, and make it feel like a mission. Write it now."
         )
-        body, llm_error = generate_message(system_prompt=persona.system_prompt, user_prompt=prompt)
+        body, llm_error = generate_message(
+            system_prompt=persona.system_prompt,
+            user_prompt=prompt,
+            require_athlete_name=False,
+        )
         if not body:
             body = f"{persona.name}: ORDER OF THE DAY — {brief}"
         try:
