@@ -35,6 +35,21 @@ from django.core.cache import cache
 logger = logging.getLogger(__name__)
 
 
+_CHARACTER_COUNT_SUFFIX_RE = re.compile(
+    r"\s*\(\s*\d+\s*(?:zeichen|characters?|chars?)\s*\)(?P<punct>[.!?])?\s*$",
+    re.IGNORECASE,
+)
+
+
+def strip_character_count_suffix(text: str) -> str:
+    """Remove an LLM's trailing character-count aside, if present."""
+    if not text:
+        return text
+    return _CHARACTER_COUNT_SUFFIX_RE.sub(
+        lambda match: match.group("punct") or "", text
+    ).strip()
+
+
 def _safe_outbound_url(url: Optional[str], *, allow_loopback: bool = False) -> Optional[str]:
     """Return ``url`` if it is safe to fetch, else None.
 
@@ -238,7 +253,8 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
         "above, and never produce user IDs that weren't supplied. "
         "You MUST name the athlete by their @FirstName at least once. "
         "Stay within the length limit the persona above defines "
-        "(hard cap: 450 characters)."
+        "(hard cap: 450 characters). Do not mention the character count, "
+        "the cap, or the word 'Zeichen' in your reply."
     )
 
     user_content = safe_user_prompt
@@ -285,6 +301,7 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
     # inside the webapp and (optionally) sent as a web push
     # notification, both of which have modest length budgets.
     raw = re.sub(r"\s+", " ", raw).strip()
+    raw = strip_character_count_suffix(raw)
     if len(raw) > 600:
         raw = raw[:597].rsplit(" ", 1)[0] + "..."
     return raw, None

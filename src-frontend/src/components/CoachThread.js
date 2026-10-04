@@ -8,6 +8,7 @@ import {drillInstructorApi, useReplyToDrillMessageMutation} from "../utils/reduc
 import {useProtectedImage} from "../utils/protectedMedia";
 import {elapsedSince, timeAgo} from "../utils/time";
 import {RoastGallery} from "./gameBits";
+import {stripCharacterCountSuffix} from "../utils/coachText";
 
 function ReplyImage({url, alt, elapsed}) {
     // Card JPEG in the thread; the gallery fetches the original.
@@ -116,12 +117,12 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
                                 {/* break-words: pasted URLs / unbreakable strings wrap
                                     instead of overflowing the viewport (page scrolled
                                     sideways on smartphones). */}
-                                {(r.body || "").trim() ? (
-                                <p className="text-sm leading-snug break-words dark:text-gray-100">{r.body}</p>
+                                {(r.is_coach ? stripCharacterCountSuffix(r.body) : (r.body || "")).trim() ? (
+                                <p className="text-sm leading-snug break-words dark:text-gray-100">{r.is_coach ? stripCharacterCountSuffix(r.body) : r.body}</p>
                                 ) : null}
                                 {r.image && (
                                     <ReplyImage url={r.image}
-                                                alt={r.body ? `Coach remix: ${r.body}` : "Coach remix"}
+                                                alt={r.body ? `Coach remix: ${r.is_coach ? stripCharacterCountSuffix(r.body) : r.body}` : "Coach remix"}
                                                 elapsed={elapsedSince(r.posted_at, now)}/>
                                 )}
                                 <p className="text-xs text-gray-400 mt-1">
