@@ -60,6 +60,20 @@ describe("SeasonBoard", () => {
         expect(onOpen).toHaveBeenCalledOnce();
     });
 
+    it("shows the full user name on its own line instead of ellipsizing it beside the percent", () => {
+        useGetExpeditionByCompetitionQuery.mockReturnValue({data: expedition, isLoading: false});
+        render(<SeasonBoard competitionId={4} user={{first_name: "Bjoern Alexander"}} onOpen={vi.fn()}/>);
+
+        const heading = screen.getByRole("heading", {name: "Bjoern Alexander"});
+        expect(heading.textContent).toBe("Bjoern Alexander");
+        expect(heading.className).not.toMatch(/\btruncate\b/);
+        // Season title stays in the percent row. The user name does not,
+        // so a phone-width hero is not forced to clip it to a few characters.
+        const percent = screen.getByText("43.2%");
+        expect(percent.parentElement.contains(heading)).toBe(false);
+        expect(percent.parentElement.contains(screen.getByText("Ocean crossing"))).toBe(true);
+    });
+
     it("renders nothing when the challenge has no expedition", () => {
         useGetExpeditionByCompetitionQuery.mockReturnValue({data: {enabled: false}, isLoading: false});
         const {container} = render(<SeasonBoard competitionId={4} user={{first_name: "Morgan"}} onOpen={vi.fn()}/>);
