@@ -428,9 +428,9 @@ function CompetitionsBox({competitions, setJoinCompetition}) {
 
     return (
         <div className={paneCardClass + " mb-4 h-full md:mb-0"}>
-            <PaneHead title="My challenges">
-                <JoinButton additionalClasses="my-0.5 sm:my-0" onClick={() => setJoinCompetition(true)}/>
-                <AddButton additionalClasses="my-0.5 sm:my-0" label={"Create"}
+            <PaneHead title="My challenges" contained>
+                <JoinButton additionalClasses="my-0 !min-h-[44px] !px-2.5 sm:!px-4 md:!px-2.5 lg:!px-4" onClick={() => setJoinCompetition(true)}/>
+                <AddButton additionalClasses="my-0 !min-h-[44px] !px-2.5 sm:!px-4 md:!px-2.5 lg:!px-4" label={"Create"}
                            onClick={() => setShowEditCompetitionModal(true)}/>
             </PaneHead>
 
