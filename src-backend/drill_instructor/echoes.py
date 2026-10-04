@@ -306,7 +306,8 @@ def _mint_prompt(config, athlete, sport, value, unit, reasons, power):
         f"Competition: {config.competition.name}. @{athlete} just earned a "
         f"LEGEND ECHO for a {sport} ({value:g} {unit}). "
         f"Reasons: {', '.join(reasons)}. Power {power}. "
-        "Write 2-4 sentences in your persona voice declaring this a living "
+        "Write in your persona voice, staying within the shared length "
+        "already given, declaring this a living "
         "trophy on the feed. The next athlete to beat that mark takes it. "
         f"Name @{athlete}. Do not invent other names."
     )
