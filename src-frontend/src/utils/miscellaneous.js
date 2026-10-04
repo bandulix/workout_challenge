@@ -137,15 +137,15 @@ class ErrorBoundary extends React.Component {
 
 
 function PageWrapper({additionClasses = '', children}) {
-    // pb-28 reserves space under the floating glass dock (mobile inset
-    // + coach bump). At md+ (foldable inner display and up) the nav is
-    // a left rail instead, so the bottom padding collapses and the
-    // content shifts right of the rail (md:pl-[112px]) - but only off
-    // public pages (login & co show no rail and stay centered).
+    // The floating dock (bar + coach bump + its own safe-area inset)
+    // covers the bottom of the scroll. max-md padding clears that so
+    // the last card can sit fully above it. At md+ the nav is a left
+    // rail, so bottom padding collapses and content shifts right of
+    // the rail (md:pl-[112px]) - but only off public pages.
     const isPublic = isPublicPath(useLocation().pathname);
     const chrome = isPublic ? "" : "md:pl-[112px] md:pb-6 ";
     return (
-        <div className={"relative z-10 min-h-screen text-ink-950 dark:text-white p-2 sm:p-6 pb-28 " + chrome + additionClasses}>
+        <div className={"relative z-10 min-h-screen text-ink-950 dark:text-white p-2 sm:p-6 max-md:pb-[calc(8.75rem+env(safe-area-inset-bottom))] " + chrome + additionClasses}>
             <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-[#efece4]/30 to-transparent dark:from-volt-400/5" aria-hidden="true"/>
             {children}
         </div>
