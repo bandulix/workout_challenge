@@ -53,16 +53,17 @@ export default function SeasonBoard({competitionId, user, onOpen}) {
                 onClick={onOpen}
                 type="button"
             >
-                {/* Percent stays the hero number, but not at text-6xl: on a
-                    ~390px phone that width truncated the name and squeezed
-                    dog tags into a one-word column that stacked onto the trail. */}
-                <div className="flex items-center gap-3 px-5 pt-6 sm:pt-7 md:gap-4">
+                {/* Percent stays the hero number (text-5xl, not text-6xl).
+                    The user name is on its own line under that row so a
+                    ~390px phone can show the full name. It used to share
+                    the row and ellipsize to a couple of characters. */}
+                <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 px-5 pt-6 sm:pt-7 md:gap-x-4">
                     <ProfileAvatar className="shrink-0" size={52} user={user}/>
-                    <div className="min-w-0 flex-1 md:flex-none md:max-w-[16rem]">
-                        <p className="t-pane text-white/55">{title}</p>
-                        <h1 className="t-hero truncate">{user?.first_name}</h1>
+                    <div className="flex items-center justify-between gap-3">
+                        <p className="t-pane min-w-0 text-white/55">{title}</p>
+                        <p className="shrink-0 font-display text-5xl leading-none tabular-nums text-volt-400 sm:text-6xl">{percentLabel}%</p>
                     </div>
-                    <p className="shrink-0 font-display text-5xl leading-none tabular-nums text-volt-400 sm:text-6xl">{percentLabel}%</p>
+                    <h1 className="t-hero col-start-2 break-words">{user?.first_name}</h1>
                 </div>
                 {Array.isArray(user?.dog_tags) && user.dog_tags.length > 0 && (
                     <div className="px-5 pt-3">
