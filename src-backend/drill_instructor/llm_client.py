@@ -242,6 +242,11 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
     reply must name the athlete by ``@FirstName``. The morning sealed
     order turns it off: that bark addresses the group and must not be
     told to name someone who is not in the brief.
+
+    Every coach, built-in or custom, gets the same reply length from
+    the guardrail: one short message, at most 220 characters. That
+    limit overrides any length written in the persona. Voice stays in
+    the persona text.
     """
     client, config, error = _resolved_client()
     if client is None:
@@ -257,14 +262,14 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
     # history the builders append (the closing instruction must never
     # be truncated off).
     safe_user_prompt = (user_prompt or "").strip()[:2400]
-    # Length belongs to the persona. Do not put a numeric cap or a
-    # count-aside ban in this text: models echo those tokens.
+    # One length for every coach. The number lives only in this
+    # guardrail so a persona's own length line cannot override it.
+    # Do not name Zeichen here: models echo that token as a suffix.
     name_rule = (
         "You MUST name the athlete by their @FirstName at least once. "
         if require_athlete_name else ""
     )
-    # Language name only. A code, a count, or a length cap does not
-    # belong here: the model echoes those tokens.
+    # Language name only. A code does not belong here: the model echoes it.
     language_rule = f"Reply in {coach_language_name(language)}. "
     guardrail = (
         "\n\nRules you must follow regardless of the persona above: "
@@ -273,7 +278,8 @@ def generate_message(*, system_prompt: str, user_prompt: str, model: Optional[st
         "above, and never produce user IDs that weren't supplied. "
         + name_rule
         + language_rule
-        + "Stay within the length the persona above already defines. "
+        + "Write one short message, at most 220 characters. "
+        "This limit overrides any length written in the persona. "
         "Do not append a parenthetical count of how long the reply is."
     )
 
@@ -1494,8 +1500,8 @@ def build_roast_caption_prompt(*, competition_name: str, author_first_name: str,
     if caption:
         parts.append(f"Their original caption: \"{caption[:200]}\"")
     parts.append(
-        "Write one line in your persona's voice and the length that "
-        "persona already defines, presenting the picture and addressing "
+        "Write one line in your persona's voice, staying within the "
+        "shared length already given, presenting the picture and addressing "
         f"@{author_first_name} by their @FirstName token. Stay true to "
         "YOUR personality - a kind coach celebrates, a savage one roasts. "
         "Never invent other names."
@@ -1565,7 +1571,8 @@ def build_workout_prompt(*, user_first_name: str, username: str, sport_type: str
         parts.append("Living Legend Echoes still undefeated in this challenge (reference them if it fits, do not invent extra ones):")
         parts.extend(f"- {line}" for line in echo_lines[:3])
     parts.append(
-        "Write your comment in your persona's voice and length. You MUST "
+        "Write your comment in your persona's voice, staying within the "
+        "shared length already given. You MUST "
         "name the athlete with their @FirstName at least once and the "
         "call-out target with their @FirstName - a comment without names "
         "is a failure. Never invent other names. Never just repeat the "
@@ -1644,8 +1651,8 @@ def build_reply_prompt(*, competition_name: str, coach_message: str, reply_first
     else:
         parts.append(f"@{reply_first_name} now replied: \"{reply_body[:500]}\"")
     parts.append(
-        "Write one reaction in your persona's voice and the length that "
-        "persona already defines, addressing "
+        "Write one reaction in your persona's voice, staying within the "
+        "shared length already given, addressing "
         f"@{reply_first_name} by their @FirstName token. React "
         "to what they actually said - answer questions, take the banter, "
         "call back to the thread if useful, and push them back to training. "
@@ -1696,8 +1703,8 @@ def build_photo_prompt(*, competition_name: str, author_first_name: str, caption
             "that they dropped photo proof into the feed."
         )
     parts.append(
-        "Write one reaction in your persona's voice and the length that "
-        "persona already defines, addressing "
+        "Write one reaction in your persona's voice, staying within the "
+        "shared length already given, addressing "
         f"@{author_first_name} by their @FirstName token."
         + ("" if can_see_image else " Never describe what might be in the picture,")
         + " Never invent other names."

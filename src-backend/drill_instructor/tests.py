@@ -3289,21 +3289,25 @@ class CharacterCountSuffixTests(TestCase):
 
 
 class SharedPromptRuleTests(TestCase):
-    """User prompts that go through generate_message do not state a
-    character budget. The persona owns the length. Only the morning
-    sealed order turns off the must-name rule."""
+    """User prompts that go through generate_message do not state their
+    own character budget. Every coach shares one length, set in the
+    guardrail. Only the morning sealed order turns off the must-name rule."""
 
     def _assert_no_length_budget(self, prompt):
         self.assertNotRegex(
             prompt,
             r"(?i)chars|zeichen|characters|max\s+\d+|\d+\s*(?:character|char|zeichen)",
         )
+        self.assertNotIn("persona already defines", prompt)
+        self.assertNotIn("2-4 sentences", prompt)
 
-    def test_chat_prompts_state_persona_length_not_a_character_budget(self):
+    def test_chat_prompts_stay_within_the_shared_length(self):
+        from .echoes import _mint_prompt
         from .llm_client import (
             build_photo_prompt,
             build_reply_prompt,
             build_roast_caption_prompt,
+            build_workout_prompt,
         )
 
         reply = build_reply_prompt(
@@ -3323,9 +3327,25 @@ class SharedPromptRuleTests(TestCase):
         caption = build_roast_caption_prompt(
             competition_name="Cup", author_first_name="Alex", caption="sweat",
         )
-        for prompt in (reply, photo_blind, photo_seen, caption):
+        workout = build_workout_prompt(
+            user_first_name="Alex",
+            username="alex",
+            sport_type="Run",
+            duration_minutes=30,
+            distance_km=5,
+            kcal=200,
+            intensity=2,
+            competition_name="Cup",
+            points_capped=10,
+            user_rank=2,
+            total_participants=4,
+        )
+        config = mock.Mock()
+        config.competition.name = "Cup"
+        echo = _mint_prompt(config, "Alex", "running", 12.0, "km", ["personal best"], 40)
+        for prompt in (reply, photo_blind, photo_seen, caption, workout, echo):
             self._assert_no_length_budget(prompt)
-            self.assertIn("persona already defines", prompt)
+            self.assertIn("shared length already given", prompt)
             self.assertIn("@Alex", prompt)
         self.assertIn("React to what they actually said", reply)
         self.assertIn("Never invent other names", reply)
@@ -3357,23 +3377,25 @@ class SharedPromptRuleTests(TestCase):
         self.assertEqual(body, "@Alex go.")
         return client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
 
-    def test_guardrail_has_no_digit_cap_and_names_the_athlete_by_default(self):
+    def test_guardrail_shares_one_length_and_names_the_athlete_by_default(self):
         system = self._system_prompt()
         guardrail = system.split("Rules you must follow", 1)[1]
-        self.assertNotRegex(guardrail, r"(?i)zeichen|characters|character count|the cap")
-        self.assertNotRegex(guardrail, r"\d")
+        self.assertNotIn("Zeichen", guardrail)
+        self.assertNotRegex(guardrail, r"(?i)character count|the cap")
+        self.assertIn("Write one short message, at most 220 characters.", guardrail)
+        self.assertIn("This limit overrides any length written in the persona.", guardrail)
         self.assertIn("Do not append a parenthetical count of how long the reply is.", guardrail)
         self.assertIn(
             "You MUST name the athlete by their @FirstName at least once.",
             system,
         )
-        self.assertIn("Stay within the length the persona above already defines.", guardrail)
+        self.assertNotIn("persona above already defines", guardrail)
 
     def test_guardrail_replies_in_the_coach_language(self):
         german = self._system_prompt(language="de")
         self.assertIn("Reply in German.", german)
         self.assertNotIn("Zeichen", german)
-        self.assertNotRegex(german, r"\d")
+        self.assertIn("220", german)
         english = self._system_prompt(language="en")
         self.assertIn("Reply in English.", english)
         self.assertNotIn("Zeichen", english)
@@ -4012,7 +4034,8 @@ class ArcadeGameTests(TestCase):
             r"(?i)chars|zeichen|characters|max\s+\d+|\d+\s*(?:character|char|zeichen)",
         )
         self.assertIn("name nobody who isn't in the brief", prompt)
-        self.assertIn("persona already defines", prompt)
+        self.assertIn("shared length already given", prompt)
+        self.assertNotIn("persona already defines", prompt)
         self.assertIn("SEALED ORDER", prompt)
 
     def test_logging_completes_log_one_order(self):

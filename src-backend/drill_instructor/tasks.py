@@ -1299,8 +1299,8 @@ def issue_daily_orders(self):
         prompt = (
             f"Competition: {competition.name}. Situation: you are issuing today's "
             f"SEALED ORDER to the whole group. The order is: \"{brief}\" "
-            "Write one bark in your persona's voice and the length that "
-            "persona already defines. Deliver that order, name nobody who "
+            "Write one bark in your persona's voice, staying within the "
+            "shared length already given. Deliver that order, name nobody who "
             "isn't in the brief, and make it feel like a mission. Write it now."
         )
         body, llm_error = generate_message(
