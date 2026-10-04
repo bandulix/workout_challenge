@@ -57,7 +57,7 @@ function NavLink({to, icon: Icon, label, isActive, onClick}) {
                   strokeWidth={isActive ? 2.4 : 1.8}
                   fill={isActive ? "currentColor" : "none"}/>
             <span className="relative z-10 flex flex-col items-center">
-                <span className={"text-xs font-bold uppercase tracking-wider leading-none " +
+                <span className={"whitespace-nowrap text-xs font-bold uppercase tracking-wide leading-none " +
                     (isActive ? "text-ink-950 dark:text-volt-200" : "")}>{label}</span>
                 <span aria-hidden="true"
                       className={"nav-active-bar transition-all duration-300 " +
@@ -346,7 +346,7 @@ export default function BottomNav() {
                                     <PersonaAvatar persona={coachPersona} size={48} glow/>
                                 </span>
                             </span>
-                            <span className="text-xs font-bold leading-none mt-1.5 tracking-widest uppercase"
+                            <span className="whitespace-nowrap text-xs font-bold leading-none mt-1.5 tracking-widest uppercase"
                                   style={{color: coachAccent(coachPersona), opacity: onCoach ? 1 : 0.75}}>
                                 Coach
                             </span>

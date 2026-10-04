@@ -578,7 +578,7 @@ export function DogTagRow({tags}) {
             <div className="flex flex-wrap gap-1.5 mt-2">
                 {tags.map((t) => (
                     <button key={t.slug} type="button" onClick={() => setOpen(t)}
-                            className="inline-flex items-center gap-1 rounded-full border border-volt-700/40 bg-volt-400/25 text-volt-800 dark:border-ink-700/40 dark:bg-ink-900 dark:text-volt-300 px-2 py-0.5 text-xs font-bold uppercase tracking-wide min-h-[28px] hover:border-volt-500 hover:bg-volt-400/40 dark:hover:border-volt-400/70 dark:hover:bg-ink-800 transition">
+                            className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-volt-700/40 bg-volt-400/25 text-volt-800 dark:border-ink-700/40 dark:bg-ink-900 dark:text-volt-300 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide min-h-[28px] hover:border-volt-500 hover:bg-volt-400/40 dark:hover:border-volt-400/70 dark:hover:bg-ink-800 transition">
                         <span aria-hidden="true">{TAG_ICON[t.slug] || "★"}</span>
                         {t.title}
                     </button>

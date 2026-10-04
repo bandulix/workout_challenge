@@ -565,7 +565,13 @@ class ExpeditionProgressTests(TestCase):
         from custom_user.models import RecalcRequest
 
         today = timezone.localdate()
-        final_date = today - datetime.timedelta(days=1)
+        # The stored 15 points have to land in a full ISO week (cap 100).
+        # Ending the route on "yesterday" makes the opening week a single
+        # Sunday whenever local today is a Sunday, and 100 * 1/7 quantizes
+        # to 14.29, which then clips the score. Pin the finale to the latest
+        # Sunday strictly before local today so both weeks are Mon-Sun.
+        days_since_sunday = (today.weekday() + 1) % 7
+        final_date = today - datetime.timedelta(days=days_since_sunday or 7)
         start_date = final_date - datetime.timedelta(days=13)
         self.competition.start_date = start_date
         self.competition.end_date = final_date
