@@ -22,8 +22,6 @@ from .expedition import (
     settle_shortcut,
     synchronize_expedition,
 )
-
-logger = logging.getLogger(__name__)
 from .expedition_variants import (
     OBJECTIVE_TREASURE,
     SHORTCUT_CHOICES,
@@ -32,6 +30,8 @@ from .expedition_variants import (
     route_theme,
 )
 from .models import Competition, ExpeditionCampaign
+
+logger = logging.getLogger(__name__)
 
 
 def _milestone_status(milestone, progress_percent, today, end_date):
