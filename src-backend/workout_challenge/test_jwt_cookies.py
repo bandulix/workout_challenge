@@ -115,3 +115,28 @@ class CookieJwtAuthTests(TestCase):
         self.assertEqual(out.status_code, 200, out.content)
         again = self.client.post("/api/token/refresh/", {}, format="json")
         self.assertEqual(again.status_code, 401)
+
+
+class RefreshCookieValidationTests(TestCase):
+    def test_set_refresh_cookie_rejects_injection(self):
+        from custom_user.jwt_cookies import set_refresh_cookie
+        from django.http import HttpResponse
+
+        response = HttpResponse()
+        with self.assertRaises(ValueError):
+            set_refresh_cookie(response, 'abc; Path=/; HttpOnly')
+        with self.assertRaises(ValueError):
+            set_refresh_cookie(response, 'not-a-jwt')
+        with self.assertRaises(ValueError):
+            set_refresh_cookie(response, 'a.b.c\nd')
+
+    def test_set_refresh_cookie_accepts_jwt_shape(self):
+        from custom_user.jwt_cookies import REFRESH_COOKIE_NAME, set_refresh_cookie
+        from django.http import HttpResponse
+
+        token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature"
+        response = HttpResponse()
+        set_refresh_cookie(response, token)
+        self.assertIn(REFRESH_COOKIE_NAME, response.cookies)
+        self.assertEqual(response.cookies[REFRESH_COOKIE_NAME].value, token)
+

@@ -741,10 +741,14 @@ class CrossProviderDuplicateGuardTests(TestCase):
             result = _sync_user_activities(self.user)
 
         self.assertEqual(result["created"], 0)
-        self.assertEqual(result["duplicates_skipped"], 1)
+        # Linking garmin_id and filling blank distance/kcal counts as an
+        # update (same pattern as Health Connect), not a pure skip.
+        self.assertEqual(result["updated"], 1)
+        self.assertEqual(result["duplicates_skipped"], 0)
         self.assertEqual(Workout.objects.filter(user=self.user).count(), 1)
         self.existing.refresh_from_db()
         self.assertEqual(self.existing.garmin_id, "112233")
+        self.assertEqual(float(self.existing.distance), 8.0)
 
     def test_garmin_sync_never_imports_step_summaries(self):
         """All-day step records are not workouts: they must be skipped -
@@ -1986,4 +1990,52 @@ class TokenCryptoTests(TestCase):
         from custom_user.token_crypto import decrypt_token
         self.assertEqual(decrypt_token("gAAAA-not-a-real-token"), "")
         self.assertEqual(decrypt_token("legacy-plaintext-token"), "legacy-plaintext-token")
+
+
+class GarminDistanceMappingTests(TestCase):
+    """Garmin list payloads are metres; bike exports sometimes nest the
+    figure or (rarely) already ship kilometres — keep both honest."""
+
+    def test_metres_become_kilometres(self):
+        from .garmin import activity_to_workout_props, distance_km_from_garmin
+        activity = {
+            "activityId": 1,
+            "activityType": {"typeKey": "cycling"},
+            "startTimeGMT": "2026-10-01T10:00:00.000Z",
+            "duration": 3600,
+            "distance": 28000,
+        }
+        user = CustomUser.objects.create_user(
+            email="bike@example.com", password="test-pw", first_name="B",
+        )
+        props = activity_to_workout_props(user, activity)
+        self.assertEqual(props["distance"], 28.0)
+        self.assertEqual(props["sport_type"], "Ride")
+        self.assertEqual(distance_km_from_garmin(activity, 3600), 28.0)
+
+    def test_summary_dto_distance_and_elapsed_fallback(self):
+        from .garmin import activity_to_workout_props
+        activity = {
+            "activityId": 2,
+            "activityType": {"typeKey": "biking_road"},
+            "startTimeGMT": "2026-10-02T10:00:00.000Z",
+            "elapsedDuration": 5400,
+            "summaryDTO": {"distance": 42000},
+        }
+        user = CustomUser.objects.create_user(
+            email="bike2@example.com", password="test-pw", first_name="B2",
+        )
+        props = activity_to_workout_props(user, activity)
+        self.assertIsNotNone(props)
+        self.assertEqual(props["distance"], 42.0)
+        self.assertEqual(props["duration"].total_seconds(), 5400)
+
+    def test_small_kilometre_value_not_divided_again(self):
+        from .garmin import distance_km_from_garmin
+        activity = {
+            "activityType": {"typeKey": "cycling"},
+            "distance": 28.0,
+        }
+        # 28 km in 70 minutes → athletic cycling pace band.
+        self.assertEqual(distance_km_from_garmin(activity, 70 * 60), 28.0)
 
