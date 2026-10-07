@@ -1,5 +1,6 @@
 """Read-only API for enabled, participant-visible Expeditions."""
 
+import logging
 from decimal import Decimal
 
 from django.core.cache import cache
@@ -21,6 +22,8 @@ from .expedition import (
     settle_shortcut,
     synchronize_expedition,
 )
+
+logger = logging.getLogger(__name__)
 from .expedition_variants import (
     OBJECTIVE_TREASURE,
     SHORTCUT_CHOICES,
@@ -88,7 +91,11 @@ class ExpeditionView(APIView):
                     today=today,
                 )
         except ValueError as error:
-            return Response({"detail": str(error)}, status=400)
+            logger.info("Expedition progress rejected: %s", error)
+            return Response(
+                {"detail": "Invalid expedition campaign state."},
+                status=400,
+            )
 
         campaign.refresh_from_db()
         finale_snapshot = campaign.finale_snapshot

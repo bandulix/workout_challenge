@@ -30,6 +30,8 @@ describe("safeImageSrc", () => {
         expect(safeImageSrc("https://localhost/not-capacitor/x")).toBeNull();
         expect(safeImageSrc(null)).toBeNull();
         expect(safeImageSrc("")).toBeNull();
+        expect(safeImageSrc("/personas/x.svg\" onerror=alert(1)")).toBeNull();
+        expect(safeImageSrc("data:image/svg+xml;base64,abc")).toBeNull();
     });
 });
 

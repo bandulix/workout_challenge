@@ -2,7 +2,7 @@ import datetime
 from unittest import mock
 
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework.test import APIClient
 
 from custom_user.models import CustomUser
@@ -745,3 +745,16 @@ class OriginHostnamesTests(TestCase):
             origin_hostnames(["http://localhost:3000", "https://example.com:443", "http://127.0.0.1"]),
             ["localhost", "example.com", "127.0.0.1"],
         )
+
+
+class WarnDebugPublicHostsTests(SimpleTestCase):
+    def test_warning_logs_count_not_hostnames(self):
+        from workout_challenge.sec_hardening import warn_debug_with_public_hosts
+        with self.assertLogs("workout_challenge.sec_hardening", level="WARNING") as logs:
+            warn_debug_with_public_hosts(
+                debug=True, allowed_hosts=["example.com", "app.example.com"],
+            )
+        joined = "\n".join(logs.output)
+        self.assertIn("2 non-local", joined)
+        self.assertNotIn("example.com", joined)
+

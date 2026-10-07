@@ -551,9 +551,23 @@ class LinkGarminMfaView(APIView):
         try:
             token_blob, email = complete_mfa_login(mfa_token, mfa_code, user_pk=request.user.pk)
         except GarminAuthError as exc:
-            logger.info("Garmin MFA completion failed for user %s", request.user.pk, exc_info=True)
-            return Response({"message": str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            logger.info(
+                "Garmin MFA completion failed for user %s: %s",
+                request.user.pk,
+                exc,
+                exc_info=True,
+            )
+            # Whitelisted client copy only — never echo exception text
+            # (CodeQL py/stack-trace-exposure). Branch on the known
+            # GarminAuthError messages raised in garmin.py.
+            detail = str(exc).lower()
+            if "expired" in detail:
+                message = "The verification session expired - please connect again."
+            elif "verification code" in detail:
+                message = "Garmin rejected the verification code."
+            else:
+                message = "Garmin verification failed - check the code and try again."
+            return Response({"message": message}, status=status.HTTP_400_BAD_REQUEST)
         except GarminUnavailableError:
             logger.info("Garmin unavailable during MFA link for user %s", request.user.pk, exc_info=True)
             return Response({"message": "Could not reach Garmin - please try again later."},

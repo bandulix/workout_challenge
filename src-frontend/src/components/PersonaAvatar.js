@@ -40,11 +40,31 @@ function isCapacitorLocalSrc(url) {
 // else - e.g. a protocol-relative //host or an exotic scheme - is
 // refused outright.
 export function safeImageSrc(url) {
-    if (typeof url !== "string") return null;
-    if (url.startsWith("blob:")) return url;
-    if (url.startsWith("data:image/")) return url;
-    if (url.startsWith("/") && !url.startsWith("//")) return url;
-    if (isCapacitorLocalSrc(url)) return url;
+    if (typeof url !== "string" || !url) return null;
+    // HTML / attribute meta-characters never belong in an img src
+    // (CodeQL js/xss-through-dom barrier).
+    if (/[\u0000-\u001F<>"'`]/.test(url)) return null;
+
+    if (url.startsWith("blob:") && url.length > 5) {
+        // Reconstruct so the sink never receives the raw DOM-derived string.
+        return "blob:" + url.slice("blob:".length);
+    }
+    // Raster data URLs only — reject svg+xml and non-image types.
+    const dataMatch = /^data:image\/(png|jpe?g|gif|webp|bmp)(;base64)?,/i.exec(url);
+    if (dataMatch) {
+        return "data:image/" + url.slice("data:image/".length);
+    }
+    if (url.startsWith("/") && !url.startsWith("//")) {
+        return "/" + url.slice(1);
+    }
+    if (isCapacitorLocalSrc(url)) {
+        try {
+            const parsed = new URL(url);
+            return parsed.toString();
+        } catch {
+            return null;
+        }
+    }
     return null;
 }
 
@@ -90,7 +110,7 @@ function PersonaAvatar({persona, size = 48, ring = true, glow = false, className
                 </div>
             ) : src ? (
                 <img
-                    src={src}
+                    src={safeImageSrc(src) || undefined}
                     alt=""
                     draggable={false}
                     className="w-full h-full object-cover select-none"
