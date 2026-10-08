@@ -279,26 +279,74 @@ def _estimate_intensity(avg_hr, kcal, duration_seconds) -> int:
     return 1
 
 
+def _as_float(value):
+    try:
+        if value in (None, ""):
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _garmin_duration_seconds(activity: dict):
+    """Prefer moving/workout duration; fall back to elapsed for indoor/bike."""
+    for key in ("duration", "movingDuration", "elapsedDuration"):
+        seconds = _as_float(activity.get(key))
+        if seconds and seconds > 0:
+            return seconds
+    return None
+
+
+def distance_km_from_garmin(activity: dict, duration_s) -> float | None:
+    """Garmin activity list → kilometres.
+
+    Canonical unit is metres (``distance``). Some payloads nest the same
+    figure under ``summaryDTO`` / ``distanceInMeters``, and a few bike
+    exports have shipped an already-kilometre value — mirror the Health
+    Connect unit heuristic so cycling stops landing at 0.03 km or 28000 km
+    (issues #43 / #44).
+    """
+    raw = activity.get("distance")
+    if raw in (None, "", 0):
+        raw = activity.get("distanceInMeters")
+    if raw in (None, "", 0):
+        summary = activity.get("summaryDTO") or activity.get("activitySummary") or {}
+        if isinstance(summary, dict):
+            raw = summary.get("distance") or summary.get("distanceInMeters")
+    metres = _as_float(raw)
+    if metres is None or metres <= 0:
+        return None
+    if metres >= 200:
+        return round(metres / 1000, 2)
+    duration_min = (duration_s or 0) / 60
+    sport = map_sport_type(activity)
+    max_min_per_km = 60 if sport in ("Walk", "Hike") else 20
+    # Athletic pace band: treat small numbers as kilometres already.
+    if metres >= 0.2 and duration_min >= metres * 2.5 and duration_min <= metres * max_min_per_km:
+        return round(metres, 2)
+    return round(metres / 1000, 2)
+
+
 def activity_to_workout_props(user, activity: dict) -> dict | None:
     activity_id = activity.get("activityId")
     start_dt = _parse_start(activity)
-    duration_s = activity.get("duration")
+    duration_s = _garmin_duration_seconds(activity)
     if activity_id is None or start_dt is None or not duration_s:
         return None
 
-    distance_m = activity.get("distance") or 0
     kcal = activity.get("activeKilocalories") or activity.get("calories")
     avg_hr = activity.get("averageHR") or activity.get("averageHeartRateInBeatsPerMinute")
+    duration_int = int(duration_s)
 
     return {
         "user": user,
         "garmin_id": str(activity_id),
         "sport_type": map_sport_type(activity),
         "start_datetime": start_dt,
-        "duration": datetime.timedelta(seconds=int(duration_s)),
-        "distance": None if not distance_m else round(float(distance_m) / 1000, 2),
+        "duration": datetime.timedelta(seconds=duration_int),
+        "distance": distance_km_from_garmin(activity, duration_s),
         "kcal": None if kcal is None else round(float(kcal)),
-        "intensity_category": _estimate_intensity(avg_hr, kcal, int(duration_s)),
+        "intensity_category": _estimate_intensity(avg_hr, kcal, duration_int),
     }
 
 
@@ -367,10 +415,23 @@ def _sync_user_activities(user, days_back=RECENT_SYNC_DAYS) -> dict:
             provider="garmin", sport_type=props.get("sport_type"),
         )
         if dup is not None:
+            # Manual / earlier empty copy should pick up Garmin kilometres
+            # and kcal instead of staying blank (issue #44).
+            filled = False
             if not dup.garmin_id:
                 dup.garmin_id = garmin_id
-                dup.save(update_fields=["garmin_id"])
-            duplicates += 1
+                filled = True
+            if props.get("distance") and not dup.distance:
+                dup.distance = props["distance"]
+                filled = True
+            if props.get("kcal") and not dup.kcal:
+                dup.kcal = props["kcal"]
+                filled = True
+            if filled:
+                dup.save()
+                updated += 1
+            else:
+                duplicates += 1
             continue
         Workout.objects.create(**props)
         created += 1

@@ -55,8 +55,13 @@ def warn_debug_with_public_hosts(*, debug: bool, allowed_hosts) -> None:
     local = {"127.0.0.1", "localhost", "::1", "0.0.0.0", "testserver"}  # noqa: S104 - allow-list of local names, not a bind
     public = [h for h in allowed_hosts if h and h not in local]
     if public:
+        # Log a count only — never the host list (CodeQL
+        # py/clear-text-logging-sensitive-data; host config can sit next to
+        # other secrets in the process environment).
         logger.warning(
-            "DEBUG=true with non-local ALLOWED_HOSTS %s - security controls are "
-            "relaxed. Never run a reachable deployment with DEBUG enabled.",
-            public,
+            "DEBUG=true with %d non-local ALLOWED_HOSTS entr%s - security "
+            "controls are relaxed. Never run a reachable deployment with "
+            "DEBUG enabled.",
+            len(public),
+            "y" if len(public) == 1 else "ies",
         )
