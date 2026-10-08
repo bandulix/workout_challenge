@@ -10,6 +10,8 @@ EncryptedSharedPreferences / Capacitor Secure Storage (cross-origin
 WebViews cannot always rely on the cookie jar alone).
 """
 
+import re
+
 from django.conf import settings
 
 
@@ -41,9 +43,29 @@ def refresh_cookie_kwargs():
     }
 
 
+
+# Refresh JWTs are three base64url segments. Reject anything else before
+# it reaches Set-Cookie so a forged body value cannot inject extra
+# cookie attributes (CodeQL py/cookie-injection).
+_REFRESH_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$")
+
+
+def _validated_refresh_token(refresh_token: str) -> str:
+    if not isinstance(refresh_token, str):
+        raise ValueError("Refresh token must be a string")
+    token = refresh_token.strip()
+    if not token or not _REFRESH_TOKEN_RE.fullmatch(token):
+        raise ValueError("Refresh token format is invalid")
+    # Cookie-header delimiters / control chars must never appear.
+    if any(ch in token for ch in (";", ",", "\n", "\r", "\0", " ")):
+        raise ValueError("Refresh token contains invalid characters")
+    return token
+
+
 def set_refresh_cookie(response, refresh_token: str):
+    token = _validated_refresh_token(refresh_token)
     kwargs = refresh_cookie_kwargs()
-    response.set_cookie(value=refresh_token, **kwargs)
+    response.set_cookie(value=token, **kwargs)
     return response
 
 

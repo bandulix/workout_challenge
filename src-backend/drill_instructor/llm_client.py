@@ -352,8 +352,22 @@ _VISION_RETRY_TTL = 60 * 5
 
 
 def _key_fingerprint(api_key: Optional[str]) -> str:
-    # Never the key itself - just enough to tell two keys apart.
-    return hashlib.sha256((api_key or "").encode()).hexdigest()[:8]
+    """Opaque vision-cache partition id when the LLM credential rotates.
+
+    This is deliberately *not* password hashing (and must not call a
+    general-purpose crypto digest on the credential — CodeQL
+    py/weak-sensitive-data-hashing). We only need a short stable id so a
+    rotated key does not inherit a stale capability verdict.
+    """
+    raw = api_key or ""
+    if not raw:
+        return "none"
+    # FNV-1a over the UTF-8 bytes — a checksum, not a password KDF.
+    h = 2166136261
+    for b in raw.encode("utf-8"):
+        h ^= b
+        h = (h * 16777619) & 0xFFFFFFFF
+    return f"{len(raw):x}-{h:08x}"
 
 
 def _vision_cache_key(config) -> str:

@@ -1,5 +1,6 @@
 """Read-only API for enabled, participant-visible Expeditions."""
 
+import logging
 from decimal import Decimal
 
 from django.core.cache import cache
@@ -29,6 +30,8 @@ from .expedition_variants import (
     route_theme,
 )
 from .models import Competition, ExpeditionCampaign
+
+logger = logging.getLogger(__name__)
 
 
 def _milestone_status(milestone, progress_percent, today, end_date):
@@ -88,7 +91,11 @@ class ExpeditionView(APIView):
                     today=today,
                 )
         except ValueError as error:
-            return Response({"detail": str(error)}, status=400)
+            logger.info("Expedition progress rejected: %s", error)
+            return Response(
+                {"detail": "Invalid expedition campaign state."},
+                status=400,
+            )
 
         campaign.refresh_from_db()
         finale_snapshot = campaign.finale_snapshot
