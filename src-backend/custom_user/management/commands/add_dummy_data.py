@@ -1,7 +1,7 @@
 from django.core.management import BaseCommand, CommandError
 from django.conf import settings
-import datetime, random
-from datetime import timedelta
+import random
+from datetime import date, datetime, timedelta
 
 from competition.models import Competition, ActivityGoal, Team, Award
 from workouts.models import Workout
@@ -20,6 +20,15 @@ class Command(BaseCommand):
         # it must never run against a production deployment.
         if not settings.DEBUG:
             raise CommandError("add_dummy_data is a development tool and refuses to run with DEBUG=false.")
+
+        # Competition.save() concatenates end_date with a timedelta when
+        # seeding default goals — pass real date objects, not ISO strings.
+        today = date.today()
+        who_start = date(today.year, 1, 1)
+        who_end = date(today.year, 12, 31)
+        distance_start = date(today.year, 1, 1)
+        distance_end = date(today.year, 12, 31)
+
         test_users = [
             {
                 "email": "user1@admin.local",
@@ -50,21 +59,31 @@ class Command(BaseCommand):
 
         user_obj_dict = {}
         for user_i in test_users:
+            existing = CustomUser.objects.filter(email=user_i["email"]).first()
+            if existing:
+                user_obj_dict[user_i["email"]] = existing
+                self.stdout.write(f"User already exists: {user_i['email']}")
+                continue
             user_obj = CustomUser.objects.create_user(**user_i)
             user_obj.set_password(user_i["password"])
+            user_obj.is_verified = True
             user_obj.save()
-
             user_obj_dict[user_i["email"]] = user_obj
 
-
+        if Competition.objects.filter(join_code="WHOComp").exists():
+            self.stdout.write("Demo competitions already seeded — skipping.")
+            self.stdout.write(
+                "Sign in with user1@admin.local / password (or user2 / user3)."
+            )
+            return
 
         test_competitions = [
             {
                 "owner": CustomUser.objects.get(email="user1@admin.local"),
                 "name": "WHO Competition",
                 "join_code": "WHOComp",
-                "start_date": "2025-05-01",
-                "end_date": "2025-12-31",
+                "start_date": who_start,
+                "end_date": who_end,
                 "has_teams": True,
                 "teams": [
                     {
@@ -121,8 +140,8 @@ class Command(BaseCommand):
                 "owner": CustomUser.objects.get(email="user2@admin.local"),
                 "name": "100k 1k Competition",
                 "join_code": "100k1k",
-                "start_date": "2025-01-01",
-                "end_date": "2025-12-31",
+                "start_date": distance_start,
+                "end_date": distance_end,
                 "teams": [
                     {
                         "name": "Team 1",
@@ -187,9 +206,9 @@ class Command(BaseCommand):
 
 
         test_workouts = []
-        today = datetime.datetime.now()
-        curr_datetime = today - datetime.timedelta(days=30*6)  # 6 months ago
-        while curr_datetime < today:
+        now = datetime.now()
+        curr_datetime = now - timedelta(days=30 * 6)  # 6 months ago
+        while curr_datetime < now:
             today_entries = random.randint(0, len(test_users))
             user_entries = random.sample(test_users, k=today_entries)
             for user_i in user_entries:
@@ -207,31 +226,19 @@ class Command(BaseCommand):
                         'strava_id': random.randint(0, 999999999) if random.sample([True, False], k=1)[0] else None,
                 }
 
-                #points_i = []
-                #user_i_obj = CustomUser.objects.get(email=user_i['email'])
-                #for competitions_i in user_i_obj.my_competitions.all():
-                #    if (curr_datetime.date() >= competitions_i.start_date) & (curr_datetime.date() <= competitions_i.end_date):
-                #        for goal_i in competitions_i.activitygoal_set.all():
-                #            points = duration_i * random.uniform(0.75, 2.5) / 25
-                #            points_i.append({
-                #                "goal": goal_i,
-                #                "points_raw": points,
-                #                "points_capped": points,
-                #            })
-
-                test_workouts.append({**workout_i}) #, 'points': points_i})
+                test_workouts.append({**workout_i})
                 curr_datetime += timedelta(minutes=random.uniform(2, 4) * 60 * 24)
 
-
         for workout_i in test_workouts:
-            #points = workout_i.pop("points", [])
             user_email = workout_i.pop("user", None)
             user = CustomUser.objects.get(email=user_email)
             workout_obj = Workout(user=user, **workout_i)
             workout_obj.save()
 
-            #for point_i in points:
-            #    point_obj = Points(workout=workout_obj, **point_i)
-            #    point_obj.save()
-
+        self.stdout.write(self.style.SUCCESS(
+            f"Seeded {len(user_obj_dict)} users, "
+            f"{Competition.objects.count()} competitions, "
+            f"{Workout.objects.count()} workouts."
+        ))
+        self.stdout.write("Sign in with user1@admin.local / password (or user2 / user3).")
 
