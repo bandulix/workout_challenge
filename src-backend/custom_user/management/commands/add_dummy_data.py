@@ -70,7 +70,8 @@ class Command(BaseCommand):
             user_obj.save()
             user_obj_dict[user_i["email"]] = user_obj
 
-        if Competition.objects.filter(join_code="WHOComp").exists():
+        # Competition normalises join_code to uppercase on save.
+        if Competition.objects.filter(join_code__iexact="WHOComp").exists():
             self.stdout.write("Demo competitions already seeded — skipping.")
             self.stdout.write(
                 "Sign in with user1@admin.local / password (or user2 / user3)."
