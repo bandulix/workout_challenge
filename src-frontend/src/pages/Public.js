@@ -48,7 +48,7 @@ function BaseHome({children, tagline}) {
             <div className="relative z-10 flex items-center justify-center min-h-screen px-0 md:px-4">
                 <div className="p-8 max-w-2xl text-center text-white my-4 animate-slide-up">
 
-                    <img src="/icon-192.png" alt="" width={56} height={56}
+                    <img src="/icon-192.png" alt="Workout Challenge" width={56} height={56}
                          className="h-14 w-14 mx-auto mb-5 rounded-2xl animate-float-slow"/>
                     <div className="flex justify-center -space-x-3 mb-6">
                         {["sergeant", "roast", "cheerleader", "butler", "zen"].map((p) => (
@@ -171,13 +171,13 @@ function WelcomePage() {
     return (
         <BaseHome>
             <div>
-                <Link to={`/signup/${location.search}`}
-                      className="inline-block mx-2 px-8 py-3.5 btn-plate font-bold text-sm transition">
-                    Create Account
-                </Link>
                 <Link to={`/login/${location.search}`}
-                      className="inline-block bg-white/10 backdrop-blur text-white border border-white/25 mx-2 px-8 py-3.5 rounded-full font-bold uppercase tracking-wide text-sm hover:bg-white/20 transition active:scale-95">
+                      className="inline-block mx-2 px-8 py-3.5 btn-plate font-bold text-sm transition">
                     Log In
+                </Link>
+                <Link to={`/signup/${location.search}`}
+                      className="inline-block mx-2 px-8 py-3.5 btn-plate-ink font-bold text-sm transition">
+                    Create Account
                 </Link>
             </div>
         </BaseHome>
@@ -197,7 +197,9 @@ function goAfterLogin(navigate, location, params) {
         navigate(`/dashboard${location.search}`);
         return;
     }
-    navigate(`/coach${location.search}`);
+    // First session onboarding (Join / Create / Connect) lives on Home.
+    // Returning users with a remembered path still restore via Welcome.
+    navigate(`/dashboard${location.search}`);
 }
 
 
@@ -320,7 +322,7 @@ function LogInPage() {
                                     </label>
                                     <input
                                         className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                        id="email" type="email" placeholder="Email" autoComplete="email" autoFocus tabIndex="1"
+                                        id="email" type="email" placeholder="Email" autoComplete="email" autoFocus
                                         required={true}/>
                                 </div>
                                 <div className="mb-6">
@@ -329,22 +331,20 @@ function LogInPage() {
                                     </label>
                                     <input
                                         className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                        id="password" type="password" placeholder="******************" autoComplete="current-password" tabIndex="2"
+                                        id="password" type="password" placeholder="******************" autoComplete="current-password"
                                         required={true}/>
-                                    <Link to={`/password/`} className="button italic text-sm text-white underline hover:text-white/80"
-                                          tabIndex="3">
+                                    <Link to={`/password/`} className="button italic text-sm text-white underline hover:text-white/80">
                                         Forgot Password?
                                     </Link>
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <button
                                         className="font-bold py-2.5 px-5 btn-plate text-sm transition focus:outline-none mr-2 sm:mr-16"
-                                        type="submit" tabIndex="4">
+                                        type="submit">
                                         Sign In
                                     </button>
                                     <Link to={`/signup/${location.search}`}
-                                          className="inline-block align-baseline font-bold text-sm text-white underline hover:text-white/80 ml-2"
-                                          tabIndex="5">
+                                          className="inline-block align-baseline font-bold text-sm text-white underline hover:text-white/80 ml-2">
                                         Create Account
                                     </Link>
                                 </div>
@@ -402,7 +402,7 @@ function RegisterPage() {
                 if (success_login) {
                     dispatch({type: "RESET_STORE"});
                     await notice("Account created. Confirm your email — we sent a link. Coach emails start after that.");
-                    navigate(params.get("join") ? `/dashboard/?${params.toString()}` : `/coach`);
+                    navigate(params.toString() ? `/dashboard?${params.toString()}` : "/dashboard");
                 } else {
                     // Account exists but auto-login failed - send them to
                     // the login form instead of a confusing error pair.
@@ -452,7 +452,7 @@ function RegisterPage() {
                                 </label>
                                 <input
                                     className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="email" type="email" placeholder="Email" autoComplete="email" autoFocus tabIndex="1"/>
+                                    id="email" type="email" placeholder="Email" autoComplete="email" autoFocus/>
                             </div>
                             <div className="mb-4">
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="first_name">
@@ -460,7 +460,7 @@ function RegisterPage() {
                                 </label>
                                 <input
                                     className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="first_name" type="text" placeholder="First Name" autoComplete="given-name" tabIndex="2"/>
+                                    id="first_name" type="text" placeholder="First Name" autoComplete="given-name"/>
                             </div>
                             <div className="mb-4">
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="last_name">
@@ -468,7 +468,7 @@ function RegisterPage() {
                                 </label>
                                 <input
                                     className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="last_name" type="text" placeholder="Last Name" autoComplete="family-name" tabIndex="3"/>
+                                    id="last_name" type="text" placeholder="Last Name" autoComplete="family-name"/>
                             </div>
                             <div className="mb-4">
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="gender">
@@ -478,7 +478,6 @@ function RegisterPage() {
                                     id="gender"
                                     name="gender"
                                     value={gender}
-                                    tabIndex="4"
                                     placeholder="Please choose"
                                     onChange={setGender}
                                     includeBlank={false}
@@ -491,7 +490,7 @@ function RegisterPage() {
                                 </label>
                                 <input
                                     className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="password1" type="password" placeholder="******************" autoComplete="new-password" tabIndex="5"/>
+                                    id="password1" type="password" placeholder="******************" autoComplete="new-password"/>
                             </div>
                             <div className="mb-6">
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="password2">
@@ -499,7 +498,7 @@ function RegisterPage() {
                                 </label>
                                 <input
                                     className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="password2" type="password" placeholder="******************" autoComplete="new-password" tabIndex="6"/>
+                                    id="password2" type="password" placeholder="******************" autoComplete="new-password"/>
                             </div>
                             <div className="mb-6">
                                 <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="invite_token">
@@ -507,7 +506,7 @@ function RegisterPage() {
                                 </label>
                                 <input
                                     className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                    id="invite_token" type="text" placeholder="Ask your inviter for the token" tabIndex="7"/>
+                                    id="invite_token" type="text" placeholder="Ask your inviter for the token"/>
                                 <p className="text-xs text-gray-500 mt-1">
                                     {joinCode
                                         ? "You opened a challenge invite link - no token needed."
@@ -517,12 +516,11 @@ function RegisterPage() {
                             <div className="flex items-center justify-between">
                                 <button
                                     className="font-bold py-2.5 px-5 btn-plate text-sm transition focus:outline-none mr-2 sm:mr-10"
-                                    type="submit" tabIndex="8">
+                                    type="submit">
                                     Create Account
                                 </button>
                                 <Link to={`/login/${location.search}`}
-                                      className="inline-block align-baseline font-bold text-sm text-white underline hover:text-white/80 ml-2"
-                                      tabIndex="9">
+                                      className="inline-block align-baseline font-bold text-sm text-white underline hover:text-white/80 ml-2">
                                     Go to sign in
                                 </Link>
                             </div>
@@ -554,7 +552,7 @@ function ResetPasswordPage() {
         if (success) {
             notice('Success! Please check your email for a reset link.');
             setIsLoading(false);
-            navigate(`/`);
+            navigate(`/login`);
         } else {
             setErrorMessage(msg);
             setIsLoading(false);
@@ -573,17 +571,16 @@ function ResetPasswordPage() {
                             </label>
                             <input
                                 className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                id="email" type="email" placeholder="Email" autoComplete="email" autoFocus tabIndex="1"/>
+                                id="email" type="email" placeholder="Email" autoComplete="email" autoFocus/>
                         </div>
                         <div className="flex items-center justify-between">
                             <button
                                 className="font-bold py-2.5 px-5 btn-plate text-sm transition focus:outline-none mr-2 sm:mr-16"
-                                type="submit" tabIndex="2">
+                                type="submit">
                                 Reset Password
                             </button>
                             <Link to="/login"
-                                  className="inline-block align-baseline font-bold text-sm text-white underline hover:text-white/80 ml-2"
-                                  tabIndex="3">
+                                  className="inline-block align-baseline font-bold text-sm text-white underline hover:text-white/80 ml-2">
                                 Back to sign in
                             </Link>
                         </div>
@@ -640,7 +637,7 @@ function SetNewPasswordPage() {
                             </label>
                             <input
                                 className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                id="password1" type="password" placeholder="******************" autoComplete="new-password" tabIndex="1" autoFocus/>
+                                id="password1" type="password" placeholder="******************" autoComplete="new-password" autoFocus/>
                         </div>
                         <div className="mb-6">
                             <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="password2">
@@ -648,12 +645,12 @@ function SetNewPasswordPage() {
                             </label>
                             <input
                                 className="appearance-none border border-ink-700/60 rounded-xl w-full py-2.5 px-3 bg-ink-900 text-gray-100 placeholder-gray-500 leading-tight focus:outline-none focus:border-volt-500 transition"
-                                id="password2" type="password" placeholder="******************" autoComplete="new-password" tabIndex="2"/>
+                                id="password2" type="password" placeholder="******************" autoComplete="new-password"/>
                         </div>
                         <div className="flex items-center justify-between">
                             <button
                                 className="font-bold py-2.5 px-5 btn-plate text-sm transition focus:outline-none mx-auto sm:mx-16"
-                                type="submit" tabIndex="3">
+                                type="submit">
                                 Reset Password
                             </button>
                         </div>
@@ -711,7 +708,7 @@ function VerifyEmailPage() {
                             <p className="text-gray-400 text-sm mb-5">Welcome mail is on its way. You can use the app now.</p>
                             <button type="button"
                                     className="font-bold py-2.5 px-5 btn-plate text-sm"
-                                    onClick={() => navigate("/coach")}>
+                                    onClick={() => navigate("/dashboard")}>
                                 Open the app
                             </button>
                         </>

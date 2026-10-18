@@ -11,7 +11,7 @@ import TransferOwnershipForm from "../forms/transferOwnershipForm";
 import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
 import ActivityGoalsForm from "../forms/activityGoalsForm";
 import {sportLabelShort} from "../forms/workoutForm";
-import {PaneHead, paneCardClass} from "./uiBits";
+import {EmptyState, PaneHead, paneCardClass} from "./uiBits";
 import {topSportCounts} from "../utils/sportCounts";
 import CoachThread from "./CoachThread";
 import PhotoPost from "./PhotoPost";
@@ -925,7 +925,17 @@ export function CoachCorner({competition, isOwner}) {
     }, [replyTargetId, page, loaded, fetchMore, competition.id]);
 
     if (!config) {
-        if (!isOwner) return null;
+        if (!isOwner) {
+            return (
+                <div className="mb-4 rounded-3xl glass-card text-ink-950 dark:text-white">
+                    <EmptyState
+                        title="Coach isn’t on yet"
+                        body="Ask the organizer to Activate the AI coach. Meanwhile, log a workout or check the leaderboard."
+                        persona={{avatar: "megaphone", theme_color: "#d7ff3e"}}
+                    />
+                </div>
+            );
+        }
         return (
             <div className="mb-4 relative overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white">
                 <div className="pointer-events-none absolute -top-16 -right-10 h-40 w-40 rounded-full bg-white/10 blur-3xl"/>
@@ -936,7 +946,7 @@ export function CoachCorner({competition, isOwner}) {
                         <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">An AI coach that comments on every workout - with push pings to keep everyone honest.</p>
                     </div>
                     <button onClick={() => setShowConfigModal(true)}
-                            className="shrink-0 btn-plate px-4 py-2.5 text-xs font-bold transition">
+                            className="shrink-0 btn-plate px-4 py-2.5 min-h-[44px] text-xs font-bold transition">
                         Activate
                     </button>
                 </div>

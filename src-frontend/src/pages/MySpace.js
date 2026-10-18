@@ -964,7 +964,7 @@ export default function MySpace() {
                         onJoin={() => setJoinCompetition(true)}
                         onCreate={() => setShowCreateChallenge(true)}
                         onSettings={() => setShowGettingStartedSettings(true)}
-                        onOpenChallenge={(id) => navigate(`/competition/${id}?tab=feed`)}
+                        onOpenChallenge={(id) => navigate(`/competition/${id}?tab=feed&coach=setup`)}
                     />
                 )}
                 {user && <ComebackBench/>}

@@ -541,10 +541,6 @@ export default function Competition() {
         <PageWrapper>
             {(competitionLoading) ? (
                 <div className="container mx-auto space-y-3 p-4" role="status" aria-label="Loading"><SkeletonCard height="h-48"/><SkeletonRows n={3}/></div>
-            ) : (tab !== "feed" && statsError) ? (
-                <div className="container mx-auto p-4">
-                    <ErrorBoxSection additionalClasses="mb-4" errorMsg={errText(statsError, 'Could not load the leaderboard. Please try again.')}/>
-                </div>
             ) : (
                 <CompetitionHead
                     competition={competition}
@@ -554,6 +550,11 @@ export default function Competition() {
                     user={user}
                     archiveSlotRef={setEchoArchiveHost}
                 />
+            )}
+            {!competitionLoading && statsError && (
+                <div className="container mx-auto px-4">
+                    <ErrorBoxSection additionalClasses="mb-4" errorMsg={errText(statsError, 'Could not load the leaderboard. Please try again.')}/>
+                </div>
             )}
 
             <div className="container mx-auto p-4">

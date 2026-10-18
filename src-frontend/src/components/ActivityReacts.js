@@ -29,7 +29,7 @@ export const ACTIVITY_REACTS = [
 const BY_ID = Object.fromEntries(ACTIVITY_REACTS.map((r) => [r.id, r]));
 
 const STAMP_BTN =
-    "inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[32px]";
+    "inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[44px]";
 
 function finePointer() {
     return typeof window !== "undefined"

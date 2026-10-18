@@ -237,7 +237,7 @@ export default function BottomNav() {
     // slashes (/login/) used to miss the exact-path check, so the dock
     // sat on the login screen.
     const onPublic = isPublicPath(location.pathname);
-    const {data: user, error: userError, refetch: refetchUser} = useGetUserByIdQuery('me', {skip: onPublic});
+    const {data: user, error: userError, isLoading: userLoading, refetch: refetchUser} = useGetUserByIdQuery('me', {skip: onPublic});
     const {data: competitions} = useGetCompetitionsQuery(undefined, {skip: onPublic || !user});
     const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: onPublic || !user});
     const isStaff = !!user?.is_staff;
@@ -302,8 +302,36 @@ export default function BottomNav() {
         showSupport, setShowSupport,
         linkStrava, setLinkStrava,
     };
-    if (onPublic || !user) {
+    if (onPublic) {
         return null;
+    }
+
+    // Keep primary chrome while /me loads or fails so authenticated sessions
+    // are never left without Home / Log out.
+    if (!user) {
+        return (
+            <nav className="wc-dock fixed inset-x-0 bottom-0 z-40 overflow-visible pointer-events-none pb-[max(0.5rem,env(safe-area-inset-bottom))] md:bottom-5 md:pb-0"
+                 aria-label="Primary navigation" aria-busy={userLoading || undefined}>
+                <div className="glass-dock pointer-events-auto mx-3 flex items-center justify-around rounded-[1.75rem] px-2 py-1 md:mx-auto md:w-max md:rounded-full">
+                    {userError ? (
+                        <>
+                            <button type="button" onClick={() => refetchUser()}
+                                    className="px-4 py-3 min-h-[44px] text-xs font-bold uppercase tracking-wide text-volt-200">
+                                Retry
+                            </button>
+                            <Link to="/logout"
+                                  className="px-4 py-3 min-h-[44px] text-xs font-bold uppercase tracking-wide text-red-400">
+                                Log out
+                            </Link>
+                        </>
+                    ) : (
+                        <span className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-gray-500" role="status">
+                            Loading…
+                        </span>
+                    )}
+                </div>
+            </nav>
+        );
     }
 
     const sheetOpen = showCompetitionPicker || showSettingsSheet;
@@ -359,7 +387,7 @@ export default function BottomNav() {
                             isActive={onCompetition || showCompetitionPicker}
                             onClick={() => {
                                 setShowSettingsSheet(false);
-                                if (onCompetition) {
+                                if (onCompetition || (competitions || []).length !== 1) {
                                     setShowCompetitionPicker((open) => !open);
                                     return;
                                 }
@@ -461,7 +489,7 @@ export default function BottomNav() {
                         isActive={onCompetition || showCompetitionPicker}
                         onClick={() => {
                             setShowSettingsSheet(false);
-                            if (onCompetition) {
+                            if (onCompetition || (competitions || []).length !== 1) {
                                 setShowCompetitionPicker((open) => !open);
                                 return;
                             }

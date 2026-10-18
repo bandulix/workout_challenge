@@ -54,7 +54,7 @@ function RememberPath() {
 function RequireAuth({children}) {
     const location = useLocation();
     if (!hasAuthMarker() && !getAccessToken()) {
-        const dest = sanitizeRedirect(location.pathname + location.search) || "/coach";
+        const dest = sanitizeRedirect(location.pathname + location.search) || "/dashboard";
         return <Navigate to={`/login?redirect=${encodeURIComponent(dest)}`} replace/>;
     }
     return children;

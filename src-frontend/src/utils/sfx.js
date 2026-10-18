@@ -1,4 +1,5 @@
 import {useEffect, useRef} from "react";
+import {prefersReducedMotion} from "./motion";
 
 // Short in-app stings from Kenney Interface Sounds (CC0). Always on;
 // browsers unlock playback after a real tap.
@@ -89,7 +90,9 @@ function haptic(name) {
         roast_reveal: [24],
         ring_full: [20, 40, 20, 40, 50],
     }[name];
-    if (pattern && typeof navigator !== "undefined") navigator.vibrate?.(pattern);
+    if (!pattern || typeof navigator === "undefined") return;
+    if (prefersReducedMotion()) return;
+    navigator.vibrate?.(pattern);
 }
 
 export function playSfx(name) {

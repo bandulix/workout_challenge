@@ -30,6 +30,11 @@
    - Interactive targets >= 44px. Button icons >= h-4 w-4.
 --------------------------------------------------------------------------- */
 
+/* Verify-email banner is fixed; PageWrapper clears it when this is set. */
+html.wc-verify-banner .wc-page-wrap {
+  padding-top: 4.75rem;
+}
+
 :root {
   --volt: #d7ff3e;
   --ink: #0b0b0c;
