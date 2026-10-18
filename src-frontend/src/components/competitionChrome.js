@@ -11,7 +11,7 @@ import TransferOwnershipForm from "../forms/transferOwnershipForm";
 import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
 import ActivityGoalsForm from "../forms/activityGoalsForm";
 import {sportLabelShort} from "../forms/workoutForm";
-import {PaneHead, paneCardClass} from "./uiBits";
+import {EmptyState, PaneHead, paneCardClass} from "./uiBits";
 import {topSportCounts} from "../utils/sportCounts";
 import CoachThread from "./CoachThread";
 import PhotoPost from "./PhotoPost";
@@ -97,7 +97,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user, archiv
                 <div className="mt-0.5 flex items-center justify-between gap-3">
                     <p className="text-xs text-white/60">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
                     {endChip && endChip.kind === "ended" ? (
-                        <span className="shrink-0 text-xs text-white/50">{endChip.text}</span>
+                        <span className="shrink-0 text-xs text-muted">{endChip.text}</span>
                     ) : endChip ? (
                         <span className={"shrink-0 inline-flex items-center gap-1.5 text-sm font-extrabold tracking-wide " +
                             (endChip.kind === "last"
@@ -705,7 +705,7 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                                      className="flex items-center gap-2 rounded-2xl bg-volt-400/20 px-2.5 py-1.5 text-ink-950 dark:text-white">
                                     <Crown className="h-4 w-4 shrink-0 text-gray-500 dark:text-white/70"/>
                                     <div className="min-w-0">
-                                        <p className="t-caption text-gray-500 dark:text-white/55">
+                                        <p className="t-caption text-muted">
                                             {echo.role === "claimed" ? "Claimed Echo" : "Legend Echo"}
                                         </p>
                                         <p className="text-xs font-bold truncate">{echo.title}</p>
@@ -819,7 +819,7 @@ function AnnouncementPost({message, persona, canReply, defaultOpen}) {
     return (
         <FeedCard>
             <p className="mb-2 flex items-baseline justify-between gap-2">
-                <span className="t-caption text-gray-500 dark:text-white/55">
+                <span className="t-caption text-muted">
                     {kind}
                 </span>
                 <span className="text-xs text-gray-400">{timeAgo(message.posted_at)}</span>
@@ -925,7 +925,17 @@ export function CoachCorner({competition, isOwner}) {
     }, [replyTargetId, page, loaded, fetchMore, competition.id]);
 
     if (!config) {
-        if (!isOwner) return null;
+        if (!isOwner) {
+            return (
+                <div className="mb-4 rounded-3xl glass-card text-ink-950 dark:text-white">
+                    <EmptyState
+                        title="Coach isn’t on yet"
+                        body="Ask the organizer to Activate the AI coach. Meanwhile, log a workout or check the leaderboard."
+                        persona={{avatar: "megaphone", theme_color: "#d7ff3e"}}
+                    />
+                </div>
+            );
+        }
         return (
             <div className="mb-4 relative overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white">
                 <div className="pointer-events-none absolute -top-16 -right-10 h-40 w-40 rounded-full bg-white/10 blur-3xl"/>
@@ -936,7 +946,7 @@ export function CoachCorner({competition, isOwner}) {
                         <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">An AI coach that comments on every workout - with push pings to keep everyone honest.</p>
                     </div>
                     <button onClick={() => setShowConfigModal(true)}
-                            className="shrink-0 btn-plate px-4 py-2.5 text-xs font-bold transition">
+                            className="shrink-0 btn-plate px-4 py-2.5 min-h-[44px] text-xs font-bold transition">
                         Activate
                     </button>
                 </div>

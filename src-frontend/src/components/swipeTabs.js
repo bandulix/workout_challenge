@@ -60,7 +60,9 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0, tabs = CHALLENGE_
                 <div className="flex items-center gap-0.5" role="tablist"
                      aria-label="Challenge pages. Swipe left or right to switch.">
                     {tabs.map((t, i) => (
-                        <button key={t.id} type="button" role="tab" aria-selected={tab === t.id}
+                        <button key={t.id} type="button" role="tab" id={`challenge-tab-${t.id}`}
+                                aria-selected={tab === t.id}
+                                aria-controls={`challenge-panel-${t.id}`}
                                 onClick={() => onChange(t.id)}
                                 className={"relative px-3.5 py-2 min-h-[44px] text-xs font-bold uppercase tracking-[0.16em] transition " +
                                     (tab === t.id
@@ -202,8 +204,10 @@ export function SwipePages({tab, onChange, onPeek, children, tabs = CHALLENGE_TA
                     const mount = near || seen.has(i);
                     return (
                         <div key={tabs[i]?.id || i}
+                             id={tabs[i]?.id ? `challenge-panel-${tabs[i].id}` : undefined}
                              className="shrink-0"
                              role="tabpanel"
+                             aria-labelledby={tabs[i]?.id ? `challenge-tab-${tabs[i].id}` : undefined}
                              aria-hidden={i !== idx}
                              style={{
                                  width: paneW || `${100 / pages.length}%`,

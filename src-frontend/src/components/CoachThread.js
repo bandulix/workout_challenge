@@ -95,7 +95,7 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
             <div className="flex flex-wrap items-center gap-1.5">
             <button type="button" onClick={() => setOpen((v) => !v)}
                     aria-label={replies.length > 0 ? undefined : "Replies"}
-                    className="inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[32px]">
+                    className="inline-flex items-center gap-1.5 rounded-full btn-glass px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-ink-950 dark:hover:text-white transition min-h-[44px]">
                 <MessageCircle className="h-3.5 w-3.5"/>
                 {replies.length > 0 ? `${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : (canReply ? "Reply" : "")}
                 {(canReply || replies.length > 0) && (open ? <ChevronUp className="h-3 w-3"/> : <ChevronDown className="h-3 w-3"/>)}

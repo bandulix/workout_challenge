@@ -641,6 +641,12 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                 <span className="font-display text-4xl leading-none tabular-nums text-volt-400">{groupProgress}%</span>
             </div>
 
+            {Number(groupProgress) === 0 && (
+                <p className="mt-3 text-sm text-muted" role="note">
+                    Log workouts to move the crew along the trail. Landmark chips below show each stop’s status.
+                </p>
+            )}
+
             <CrewRow expedition={expedition}/>
 
             <ol aria-label="Expedition milestones" className="mt-4 grid grid-cols-4 gap-1 text-center">
@@ -657,8 +663,11 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                         ? `${title}: reached late — the storm took the stamp`
                         : `${title}: ${STATUS_LABELS[milestone.status] || "Ahead"}` + (completed && coach?.name ? ` with ${coach.name}` : "");
                     return (
-                        <li className="flex min-w-0 flex-col items-center gap-0.5" key={milestone.milestone_id}
-                            title={label}>
+                        <li className="flex min-w-0 flex-col items-center gap-0.5" key={milestone.milestone_id}>
+                            <button type="button"
+                                    className="flex w-full min-h-[44px] flex-col items-center gap-0.5 rounded-xl px-0.5 py-1 text-center transition hover:bg-ink-950/5 dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400"
+                                    title={label}
+                                    aria-label={label}>
                             {coachStamp ? (
                                 // The coach who saw the crew through stamps the reached landmark.
                                 <span className="block h-7 w-7 overflow-hidden rounded-full border-2 border-volt-400 bg-white dark:bg-ink-900">
@@ -673,7 +682,7 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                                             : "border-volt-400 bg-volt-400 text-ink-950")
                                         : active
                                             ? "border-volt-400 text-volt-700 dark:text-volt-300"
-                                            : "border-gray-300 text-gray-400 dark:border-ink-600 dark:text-gray-500")
+                                            : "border-gray-300 text-muted dark:border-ink-600")
                                         + (hidden ? " border-dashed" : "")}>
                                     {completed ? <Check size={14}/> : <Icon aria-hidden="true" className="h-4 w-4 shrink-0"/>}
                                 </span>
@@ -682,6 +691,7 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                             <span className="text-xs text-muted">
                                 {completed ? (unstamped ? "Late" : STATUS_LABELS.completed) : hidden ? "Hidden" : routeDate(milestone.target_on)}
                             </span>
+                            </button>
                         </li>
                     );
                 })}

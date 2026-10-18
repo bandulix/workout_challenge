@@ -102,12 +102,12 @@ export default function RivalCard({model, onPin, onDismiss, isPinned = false, pl
                     <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-x-2">
                             <p className={plate
-                                ? "text-xs font-bold uppercase tracking-[0.16em] text-white/55"
-                                : "text-xs font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-white/55"}>
+                                ? "text-xs font-bold uppercase tracking-[0.16em] text-muted"
+                                : "text-xs font-bold uppercase tracking-[0.16em] text-muted"}>
                                 {eyebrow}
                             </p>
                             <span className={plate
-                                ? "text-xs font-semibold text-white/50"
+                                ? "text-xs font-semibold text-muted"
                                 : "text-xs font-semibold text-gray-500 dark:text-gray-400"}>
                                 {plate ? model.challengeName : `· ${model.challengeName}`}
                             </span>

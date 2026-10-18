@@ -1,10 +1,7 @@
 import React, {useEffect, useState} from "react";
 import {createPortal} from "react-dom";
 import {sportIcon, sportLabelShort} from "../utils/sports";
-
-function prefersReducedMotion() {
-    return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-}
+import {prefersReducedMotion} from "../utils/motion";
 
 // After a save, the workout visibly leaves the dock and heads for the
 // trail: one chip rises from the bottom centre and fades. Mounted once at

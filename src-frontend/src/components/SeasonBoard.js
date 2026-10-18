@@ -60,7 +60,7 @@ export default function SeasonBoard({competitionId, user, onOpen}) {
                 <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 px-5 pt-6 sm:pt-7 md:gap-x-4">
                     <ProfileAvatar className="shrink-0" size={52} user={user}/>
                     <div className="flex items-center justify-between gap-3">
-                        <p className="t-pane min-w-0 text-white/55">{title}</p>
+                        <p className="t-pane min-w-0 text-muted">{title}</p>
                         <p className="shrink-0 font-display text-5xl leading-none tabular-nums text-volt-400 sm:text-6xl">{percentLabel}%</p>
                     </div>
                     <h1 className="t-hero col-start-2 break-words">{user?.first_name}</h1>

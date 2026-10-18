@@ -1,4 +1,4 @@
-import {useState} from "react";
+import {useEffect, useState} from "react";
 import {useLocation} from "react-router-dom";
 import {X} from "lucide-react";
 import {useGetUserByIdQuery, useEmailVerifyResendMutation} from "../utils/reducers/usersSlice";
@@ -8,6 +8,7 @@ import {toast} from "../utils/toasts";
 // Snooze per browser: the banner returns on the next visit until the
 // address is confirmed (it's important), but it must be dismissible.
 const SNOOZE_KEY = "wc_verify_banner_snoozed";
+const BANNER_CLASS = "wc-verify-banner";
 
 export default function VerifyEmailBanner() {
     const location = useLocation();
@@ -17,7 +18,16 @@ export default function VerifyEmailBanner() {
     const [snoozed, setSnoozed] = useState(() => {
         try { return sessionStorage.getItem(SNOOZE_KEY) === "1"; } catch { return false; }
     });
-    if (onPublic || !user || user.is_verified || snoozed) return null;
+    const visible = !onPublic && user && !user.is_verified && !snoozed;
+
+    useEffect(() => {
+        const root = document.documentElement;
+        if (visible) root.classList.add(BANNER_CLASS);
+        else root.classList.remove(BANNER_CLASS);
+        return () => root.classList.remove(BANNER_CLASS);
+    }, [visible]);
+
+    if (!visible) return null;
 
     async function handleResend() {
         try {

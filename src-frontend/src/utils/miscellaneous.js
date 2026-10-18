@@ -84,7 +84,12 @@ function ErrorBoxSection({errorMsg, additionalClasses = ''}) {
                     Reset & reload
                 </button>
                 <a href="/logout" className="text-sm font-semibold  text-ink-950 dark:text-white underline">Log out</a>
-                {errorMsg && <p className="text-xs text-gray-400 font-mono break-all">{errorMsg}</p>}
+                {errorMsg && (
+                    <details className="w-full text-left">
+                        <summary className="cursor-pointer text-xs text-gray-500 dark:text-gray-400">Technical details</summary>
+                        <p className="mt-1 text-xs text-gray-400 font-mono break-all">{errorMsg}</p>
+                    </details>
+                )}
             </div>
         </BoxSection>
     )
@@ -144,8 +149,10 @@ function PageWrapper({additionClasses = '', children}) {
     // the rail (md:pl-[112px]) - but only off public pages.
     const isPublic = isPublicPath(useLocation().pathname);
     const chrome = isPublic ? "" : "md:pl-[112px] md:pb-6 ";
+    // When the verify-email banner is visible, html.wc-verify-banner +
+    // .wc-page-wrap (see index.css) clears the fixed overlay.
     return (
-        <div className={"relative z-10 min-h-screen text-ink-950 dark:text-white p-2 sm:p-6 max-md:pb-[calc(8.75rem+env(safe-area-inset-bottom))] " + chrome + additionClasses}>
+        <div className={"wc-page-wrap relative z-10 min-h-screen text-ink-950 dark:text-white p-2 sm:p-6 max-md:pb-[calc(8.75rem+env(safe-area-inset-bottom))] " + chrome + additionClasses}>
             <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-[#efece4]/30 to-transparent dark:from-volt-400/5" aria-hidden="true"/>
             {children}
         </div>

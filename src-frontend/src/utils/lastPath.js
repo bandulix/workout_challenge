@@ -26,12 +26,12 @@ export function rememberPath(pathname, search = "") {
 export function readLastPath() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return "/coach";
+        if (!raw) return "/dashboard";
         const u = new URL(raw, window.location.origin);
-        if (u.origin !== window.location.origin) return "/coach";
-        if (!isRestorablePath(u.pathname)) return "/coach";
+        if (u.origin !== window.location.origin) return "/dashboard";
+        if (!isRestorablePath(u.pathname)) return "/dashboard";
         return u.pathname + u.search;
     } catch {
-        return "/coach";
+        return "/dashboard";
     }
 }

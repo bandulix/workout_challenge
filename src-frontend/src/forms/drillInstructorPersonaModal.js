@@ -472,9 +472,9 @@ export default function DrillInstructorPersonaModal({setModalState}) {
                                 <PersonaAvatar persona={persona} size={52}/>
                                 <div className="min-w-0 flex-1">
                                     <div className="font-bold truncate">{persona.name}{persona.is_builtin && (
-                                        <span className="ml-2 text-[10px] uppercase tracking-wide text-gray-500 dark:text-white/55 font-bold">built-in</span>
+                                        <span className="ml-2 text-[10px] uppercase tracking-wide text-muted font-bold">built-in</span>
                                     )}{persona.mine && !persona.is_builtin && (
-                                        <span className="ml-2 text-[10px] uppercase tracking-wide text-gray-500 dark:text-white/55 font-bold">yours</span>
+                                        <span className="ml-2 text-[10px] uppercase tracking-wide text-muted font-bold">yours</span>
                                     )}</div>
                                     <div className="text-xs text-gray-400 italic truncate">{persona.tagline}</div>
                                     <div className="text-sm text-gray-500 dark:text-gray-400 truncate">{persona.description}</div>

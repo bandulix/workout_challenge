@@ -68,7 +68,7 @@ function CoachQuote({message, empty, accentStyle}) {
             {body ? (
                 <>
                     <p className="relative flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                        <span className="t-caption text-gray-500 dark:text-white/55">
+                        <span className="t-caption text-muted">
                             {kind}
                         </span>
                         {meta && (
@@ -132,7 +132,7 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                     </div>
                     <div className="min-w-0 flex-1">
                         <h1 className="t-hero break-words xl:text-3xl">{persona.name}</h1>
-                        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs font-bold uppercase tracking-[0.18em] text-white/55">
+                        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs font-bold uppercase tracking-[0.18em] text-muted">
                             <span className="inline-flex items-center gap-1.5" style={{color: accent}}>
                                 <Radio className="h-3.5 w-3.5"/>{config ? "On duty" : "Coach"}
                             </span>
@@ -172,7 +172,7 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                     )}
                     {briefing && briefing.id !== latest?.id && (
                         <div className="rounded-2xl glass-well px-5 py-4 animate-pop-in">
-                            <p className="flex items-center gap-1.5 t-caption text-gray-500 dark:text-white/55">
+                            <p className="flex items-center gap-1.5 t-caption text-muted">
                                 <ScrollText className="h-3.5 w-3.5"/> Daily briefing
                             </p>
                             <p className="mt-2 text-[14px] leading-relaxed break-words text-gray-800 dark:text-gray-200">

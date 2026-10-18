@@ -1,6 +1,6 @@
 import React, {Suspense, lazy, useEffect, useState} from "react";
 import {Link, useLocation, useNavigate} from "react-router-dom";
-import {Flag, Home, Plus, User2, Settings, Scale, BadgeHelp, Shield, LogOut, ChevronRight, Bot, HeartHandshake} from "lucide-react";
+import {Flag, Home, Plus, User2, Settings, Scale, BadgeHelp, Shield, LogOut, ChevronRight, ChevronUp, Bot, HeartHandshake} from "lucide-react";
 // The dock's modal forms are heavy (forms + qrcode + persona editor) and
 // only ever render on demand - lazy-load them out of the entry chunk.
 const WorkoutForm = lazy(() => import("../forms/workoutForm"));
@@ -47,18 +47,22 @@ function coachAccentRgba(persona, alpha) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function NavLink({to, icon: Icon, label, isActive, onClick}) {
+function NavLink({to, icon: Icon, label, isActive, onClick, ariaLabel, switchCue = false}) {
     const className =
         "relative flex flex-col items-center justify-center gap-1 py-2 px-2.5 min-w-[56px] min-h-[58px] transition-colors duration-200 " +
         (isActive ? "text-ink-950 dark:text-volt-200" : "text-ink-800 dark:text-gray-400 hover:text-ink-950 dark:hover:text-volt-200");
+    const a11y = ariaLabel || label;
     const inner = (
         <>
             <Icon className={"relative z-10 h-5 w-5 transition-transform duration-300 " + (isActive ? "scale-110" : "")}
                   strokeWidth={isActive ? 2.4 : 1.8}
                   fill={isActive ? "currentColor" : "none"}/>
             <span className="relative z-10 flex flex-col items-center">
-                <span className={"whitespace-nowrap text-xs font-bold uppercase tracking-wide leading-none " +
-                    (isActive ? "text-ink-950 dark:text-volt-200" : "")}>{label}</span>
+                <span className={"inline-flex items-center gap-0.5 whitespace-nowrap text-xs font-bold uppercase tracking-wide leading-none " +
+                    (isActive ? "text-ink-950 dark:text-volt-200" : "")}>
+                    {label}
+                    {switchCue && <ChevronUp className="h-3 w-3 opacity-70" aria-hidden="true"/>}
+                </span>
                 <span aria-hidden="true"
                       className={"nav-active-bar transition-all duration-300 " +
                           (isActive ? "opacity-100 scale-100" : "opacity-0 scale-50")}/>
@@ -67,13 +71,13 @@ function NavLink({to, icon: Icon, label, isActive, onClick}) {
     );
     if (!to || to === "#") {
         return (
-            <button onClick={onClick} className={className} aria-label={label} aria-current={isActive ? "page" : undefined}>
+            <button onClick={onClick} className={className} aria-label={a11y} aria-current={isActive ? "page" : undefined}>
                 {inner}
             </button>
         );
     }
     return (
-        <Link to={to} onClick={onClick} className={className} aria-label={label} aria-current={isActive ? "page" : undefined}>
+        <Link to={to} onClick={onClick} className={className} aria-label={a11y} aria-current={isActive ? "page" : undefined}>
             {inner}
         </Link>
     );
@@ -82,7 +86,7 @@ function NavLink({to, icon: Icon, label, isActive, onClick}) {
 function DockPanel({title, children}) {
     return (
         <div className="relative px-3 pt-3 pb-1 animate-dock-expand max-h-[min(58vh,32rem)] overflow-y-auto overscroll-contain">
-            <h3 className="t-pane px-1 mb-2 text-ink-800 dark:text-gray-400">{title}</h3>
+            <h3 className="t-pane text-muted px-1 mb-2">{title}</h3>
             {children}
         </div>
     );
@@ -237,7 +241,7 @@ export default function BottomNav() {
     // slashes (/login/) used to miss the exact-path check, so the dock
     // sat on the login screen.
     const onPublic = isPublicPath(location.pathname);
-    const {data: user, error: userError, refetch: refetchUser} = useGetUserByIdQuery('me', {skip: onPublic});
+    const {data: user, error: userError, isLoading: userLoading, refetch: refetchUser} = useGetUserByIdQuery('me', {skip: onPublic});
     const {data: competitions} = useGetCompetitionsQuery(undefined, {skip: onPublic || !user});
     const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: onPublic || !user});
     const isStaff = !!user?.is_staff;
@@ -302,14 +306,66 @@ export default function BottomNav() {
         showSupport, setShowSupport,
         linkStrava, setLinkStrava,
     };
-    if (onPublic || !user) {
+    if (onPublic) {
         return null;
+    }
+
+    // Keep primary chrome while /me loads or fails so authenticated sessions
+    // are never left without Home / Log out.
+    if (!user) {
+        return (
+            <nav className="wc-dock fixed inset-x-0 bottom-0 z-40 overflow-visible pointer-events-none pb-[max(0.5rem,env(safe-area-inset-bottom))] md:bottom-5 md:pb-0"
+                 aria-label="Primary navigation" aria-busy={userLoading || undefined}>
+                <div className="glass-dock pointer-events-auto mx-3 flex items-center justify-around rounded-[1.75rem] px-2 py-1 md:mx-auto md:w-max md:rounded-full">
+                    {userError ? (
+                        <>
+                            <button type="button" onClick={() => refetchUser()}
+                                    className="px-4 py-3 min-h-[44px] text-xs font-bold uppercase tracking-wide text-volt-200">
+                                Retry
+                            </button>
+                            <Link to="/logout"
+                                  className="px-4 py-3 min-h-[44px] text-xs font-bold uppercase tracking-wide text-red-400">
+                                Log out
+                            </Link>
+                        </>
+                    ) : (
+                        <span className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-gray-500" role="status">
+                            Loading…
+                        </span>
+                    )}
+                </div>
+            </nav>
+        );
     }
 
     const sheetOpen = showCompetitionPicker || showSettingsSheet;
     const closeSheets = () => {
         setShowCompetitionPicker(false);
         setShowSettingsSheet(false);
+    };
+    const challengeCount = (competitions || []).length;
+    const competeSwitchable = challengeCount !== 1;
+    const competeNav = {
+        switchCue: challengeCount > 1,
+        ariaLabel: challengeCount > 1
+            ? "Compete — choose challenge"
+            : challengeCount === 0
+                ? "Compete — create or join a challenge"
+                : "Compete",
+        onClick: () => {
+            setShowSettingsSheet(false);
+            if (onCompetition || competeSwitchable) {
+                setShowCompetitionPicker((open) => !open);
+                return;
+            }
+            const dest = lastChallenge(competitions);
+            if (dest) {
+                setShowCompetitionPicker(false);
+                navigate(`/competition/${dest.id}`);
+            } else {
+                setShowCompetitionPicker((open) => !open);
+            }
+        },
     };
 
     // lg+ (foldable landscape / dual-screen, desktop): vertical left
@@ -357,20 +413,9 @@ export default function BottomNav() {
                             icon={Flag}
                             label="Compete"
                             isActive={onCompetition || showCompetitionPicker}
-                            onClick={() => {
-                                setShowSettingsSheet(false);
-                                if (onCompetition) {
-                                    setShowCompetitionPicker((open) => !open);
-                                    return;
-                                }
-                                const dest = lastChallenge(competitions);
-                                if (dest) {
-                                    setShowCompetitionPicker(false);
-                                    navigate(`/competition/${dest.id}`);
-                                } else {
-                                    setShowCompetitionPicker((open) => !open);
-                                }
-                            }}
+                            switchCue={competeNav.switchCue}
+                            ariaLabel={competeNav.ariaLabel}
+                            onClick={competeNav.onClick}
                         />
                         <NavLink
                             to="#"
@@ -459,20 +504,9 @@ export default function BottomNav() {
                         icon={Flag}
                         label="Compete"
                         isActive={onCompetition || showCompetitionPicker}
-                        onClick={() => {
-                            setShowSettingsSheet(false);
-                            if (onCompetition) {
-                                setShowCompetitionPicker((open) => !open);
-                                return;
-                            }
-                            const dest = lastChallenge(competitions);
-                            if (dest) {
-                                setShowCompetitionPicker(false);
-                                navigate(`/competition/${dest.id}`);
-                            } else {
-                                setShowCompetitionPicker((open) => !open);
-                            }
-                        }}
+                        switchCue={competeNav.switchCue}
+                        ariaLabel={competeNav.ariaLabel}
+                        onClick={competeNav.onClick}
                     />
 
                     {/* Centre stage: the Coach sits in a glass lens above the bar.
