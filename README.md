@@ -1,42 +1,96 @@
 # Workout Challenge
 
 > ### ⚠️ This is a fork
-> **Original project:** [vanalmsick/workout_challenge](https://github.com/vanalmsick/workout_challenge) — Copyright © 2025 [github.com/vanalmsick](https://github.com/vanalmsick).
-> This fork is maintained at [bandulix/workout_challenge](https://github.com/bandulix/workout_challenge).
+> **Original project:** [vanalmsick/workout_challenge](https://github.com/vanalmsick/workout_challenge) — Copyright © 2025 [github.com/vanalmsick](https://github.com/vanalmsick).  
+> This fork is maintained at [bandulix/workout_challenge](https://github.com/bandulix/workout_challenge).  
 > Both are licensed under the **Server Side Public License v1 (SSPL)** — see [LICENSE](LICENSE) and [NOTICE](NOTICE). What this fork changes: [CHANGELOG.md](CHANGELOG.md) and [below](#changes-from-the-original).
 >
 > 🤖 This fork was vibe-coded — designed and built with AI assistance, guided and reviewed by a human.
 
-An **AI Drill Instructor** comments on every workout, remixes your photos, and pings your lock screen. Self-hosted fitness rivalries on the metrics you choose — kilometres, minutes, calories, steps — imported from **Strava, Garmin, or Health Connect**. Native **Android app** and installable **PWA**. Your data stays on your server.
+# Your crew. Your coach. Your trail.
 
-- **A coach, not a spreadsheet.** Personas roast, cheer, and nudge — and always answer a photo with a remix. Stamp a workout (WTF!, GOAT, Oof, …). Order of the Day, Hall of Roasts, Legend Echoes (beat the mark, take the relic — 3 takeovers make it immortal; the photo *is* the relic), weekly coach vote in the last 72 hours before Monday. Owners can give the coach a daily briefing topic, and custom coaches get a portrait plus full-body photos so remixes look like them.
-- **Expedition.** Turn a challenge into a shared route: the crew's points move everyone along a themed trail (summit, ocean, desert, space, relay) with landmarks spread across the challenge dates and a finale on the last day. Rescue runs, base camps, treasure hunts, storm/rope weeks and shortcut votes keep seasons different; a postcard and one-tap rematch close them.
-- **Home that moves you.** One named rival and what would close the gap, a private comeback note when your week goes quiet (never a public call-out), and opt-in nudges from challenge-mates.
-- **Any watch, no lock-in.** Strava, Garmin Connect, or Apple Health / Google Health Connect. One source per athlete so nothing is counted twice.
-- **Your rules.** Custom goals, teams, caps, and a live leaderboard — 1 point per 1% of a goal.
-- **Yours to host.** Docker Compose. PWA on any phone; sideload APK for one-tap Health Connect.
+**Workout Challenge** is the self-hosted fitness rivalry that talks back.
+
+An **AI Drill Instructor** comments on every workout, remixes your photos, and pings your lock screen. Turn a challenge into a shared **Expedition** — the crew climbs a summit, crosses an ocean, or races a storm together. Sync **Strava, Garmin, or Health Connect**. Install the **PWA** or the **Android APK**. Your data stays on *your* server.
 
 <p align="center">
-  <a href="docs/imgs/preview-mobile-coach-dark.png"><img src="docs/imgs/preview-mobile-coach-dark.png" width="200" alt="Coach page — Workout Challenge"></a>
-  <a href="docs/imgs/preview-mobile-competition-dark.png"><img src="docs/imgs/preview-mobile-competition-dark.png" width="200" alt="Challenge feed — Workout Challenge"></a>
-  <a href="docs/imgs/preview-mobile-myspace-dark.png"><img src="docs/imgs/preview-mobile-myspace-dark.png" width="200" alt="Home — Workout Challenge"></a>
+  <a href="docs/imgs/preview-mobile-coach-dark.png"><img src="docs/imgs/preview-mobile-coach-dark.png" width="200" alt="Coach — Order of the Day, weekly vote, Hall of Roasts"></a>
+  <a href="docs/imgs/preview-mobile-trail-dark.png"><img src="docs/imgs/preview-mobile-trail-dark.png" width="200" alt="Expedition Trail — shared route, crew faces, shortcut vote"></a>
+  <a href="docs/imgs/preview-mobile-myspace-dark.png"><img src="docs/imgs/preview-mobile-myspace-dark.png" width="200" alt="Home — season trail, Close the Gap, comeback bench"></a>
 </p>
-<p align="center"><i>Coach, challenge feed, and Home.</i></p>
+<p align="center"><i>Coach · Expedition Trail · Home</i></p>
 
-## Run it
+---
+
+## Killer features
+
+### 🗣️ A coach, not a spreadsheet
+Personas roast, cheer, and nudge — Drill Sergeant, Roast Master, Zen, Butler, Cheerleader, or your own custom coach with portrait + full-body shots so remixes look like *them*. Stamp a workout (WTF!, GOAT, Oof…). **Order of the Day**, **Hall of Roasts**, **Legend Echoes** (beat the mark, take the relic — 3 takeovers make it immortal; the photo *is* the relic). Weekly coach vote in the last 72 hours before Monday. Owners can brief the coach with a daily topic.
+
+### 🗺️ Expedition — the season is a route
+Flip *Expedition* on and the crew’s points move everyone along a themed trail (summit, ocean, desert, space, relay). Landmarks land on the calendar; the finale waits for the last day. Rescue runs, base camps, treasure hunts, storm/rope weeks, and shortcut votes keep seasons different. Close with a postcard and one-tap rematch.
+
+### 🏠 Home that moves you (without shaming you)
+One named rival and what would close the gap. A private comeback note when your week goes quiet — never a public call-out. Opt-in nudges from challenge-mates. Season-first Home puts the trail under your name.
+
+### ⌚ Any watch, no lock-in
+**Strava**, **Garmin Connect**, or **Apple Health / Google Health Connect**. One activity source per athlete so nothing is counted twice.
+
+### 📐 Your rules, your host
+Custom goals, teams, caps, live leaderboard — **1 point per 1% of a goal**. Docker Compose. PWA on any phone; sideload APK for one-tap Health Connect.
+
+<p align="center">
+  <a href="docs/imgs/preview-mobile-competition-dark.png"><img src="docs/imgs/preview-mobile-competition-dark.png" width="220" alt="Challenge feed with coach orders and Echo relics"></a>
+  <a href="docs/imgs/preview-competition-dark.png"><img src="docs/imgs/preview-competition-dark.png" width="420" alt="Desktop challenge — feed + expedition side by side"></a>
+</p>
+<p align="center"><i>Challenge feed · Desktop (feed + trail)</i></p>
+
+---
+
+## Try it in three commands
 
 ```bash
 git clone https://github.com/bandulix/workout_challenge.git
 cd workout_challenge
-cp .env.example .env    # SECRET_KEY, POSTGRES_PASSWORD, FLOWER_PASSWORD
-docker compose up -d    # pulls ghcr.io/bandulix/workout_challenge
+cp .env.example .env
 ```
 
-`FLOWER_PASSWORD` must differ from `SECRET_KEY`. In production set `MAIN_HOST` / `HOSTS` to your public **HTTPS** origin and `DEBUG=false`. Keep `APP_BIND=127.0.0.1` behind a TLS reverse proxy that redirects 80→443 and forwards `X-Forwarded-For` and `X-Forwarded-Proto` (throttles, HSTS and the HTTPS-only link flows key on them). The Android app also needs `https://localhost` in `HOSTS`. Migrations run at container start. Never run a reachable instance with `DEBUG=true` — it relaxes several security controls at once (the app logs a warning if you do).
+Set at least these in `.env` (generate a Django secret with the one-liner in `.env.example`):
 
-Update: `git pull && docker compose pull workoutchallenge && docker compose up -d`.
+```bash
+SECRET_KEY=…                 # required
+POSTGRES_PASSWORD=…          # required
+FLOWER_PASSWORD=…            # required, MUST differ from SECRET_KEY
+DEBUG=true                   # local try-out only — never on a public host
+APP_BIND=0.0.0.0
+APP_PORT=8080
+MAIN_HOST=http://localhost:8080
+HOSTS=http://localhost:8080,http://127.0.0.1:8080,https://localhost
+```
+
+```bash
+docker compose up -d
+# wait ~30s for migrations, then seed a demo challenge + workouts:
+docker compose exec workoutchallenge python manage.py add_dummy_data
+```
+
+Open **http://localhost:8080** and sign in:
+
+| Email | Password |
+| --- | --- |
+| `user1@admin.local` | `password` |
+| `user2@admin.local` | `password` |
+| `user3@admin.local` | `password` |
+
+First user is staff. Tap **Coach**, **Compete → Trail**, and **Home** to see the killer loop.
+
+> Production: set `DEBUG=false`, put a TLS reverse proxy in front (`APP_BIND=127.0.0.1`), and set `MAIN_HOST` / `HOSTS` to your public **HTTPS** origin (plus `https://localhost` for the Android app). Never leave a reachable instance on `DEBUG=true`.
+
+Update later: `git pull && docker compose pull workoutchallenge && docker compose up -d`.
 
 Image: [`ghcr.io/bandulix/workout_challenge`](https://github.com/bandulix/workout_challenge/pkgs/container/workout_challenge). The Docker Hub image `vanalmsick/workout_challenge` is the original app, not this fork.
+
+---
 
 ## Optional setup
 
@@ -46,7 +100,7 @@ Image: [`ghcr.io/bandulix/workout_challenge`](https://github.com/bandulix/workou
 
 **AI coach** — challenge owner: megaphone on the challenge page → pick a persona → activate. Any OpenAI-compatible LLM via `LLM_*` in `.env` (an image-capable model or a dedicated `LLM_IMAGE_*` model enables photo remixes). Push: Coach page → Enable coach pings.
 
-**Expedition** — challenge owner: Edit challenge → *Expedition* on, pick objective and theme ("Surprise me" rotates). Locked once the route has started; participants see it on the challenge's Trail tab.
+**Expedition** — challenge owner: Edit challenge → *Expedition* on, pick objective and theme ("Surprise me" rotates). Locked once the route has started; participants see it on the challenge’s **Trail** tab.
 
 **Strava** — [create an API app](https://www.strava.com/settings/api). Since June 2026 Strava requires a paid subscription for Standard-Tier API access; Health Connect needs no Strava at all.
 
@@ -66,15 +120,28 @@ Phones reach it at `MAIN_HOST/health` by default. In the Android app, Health Con
 
 Secrets at rest and backup notes: [docs/security-secrets-and-backups.md](docs/security-secrets-and-backups.md). Quick backups (DB + uploads): `scripts/backup.sh` — always before an upgrade.
 
-## Develop
+---
+
+## Develop / test the code
 
 ```bash
-cd src-backend && python manage.py test --settings=workout_challenge.test_settings   # backend suite
-cd src-backend && ruff check .                                                       # backend lint gate (ruff.toml)
-cd src-frontend && npm test && npx eslint src                                        # frontend tests + lint
+# Backend suite (SQLite + in-memory cache — no Docker required)
+cd src-backend && python manage.py test --settings=workout_challenge.test_settings
+cd src-backend && ruff check .
+
+# Frontend
+cd src-frontend && npm test && npx eslint src
 ```
 
-Backend migrations for `competition`, `workouts` and `custom_user` live in `src-backend/db_migrations/` (outside the runtime data volume so a named volume can't shadow them). CI gates every push on both suites and builds the Docker image + signed APK on release. Product direction for Expedition and the retention loop: [docs/expedition-product-roadmap.md](docs/expedition-product-roadmap.md).
+Backend migrations for `competition`, `workouts` and `custom_user` live in `src-backend/db_migrations/` (outside the runtime data volume so a named volume can’t shadow them). CI gates every push on both suites and builds the Docker image + signed APK on release. Product direction for Expedition and the retention loop: [docs/expedition-product-roadmap.md](docs/expedition-product-roadmap.md).
+
+Seed a richer local UI (coach + expedition + workouts) while developing with `DEBUG=true`:
+
+```bash
+cd src-backend && python manage.py migrate && python manage.py add_dummy_data
+```
+
+---
 
 ## Changes from the original
 
