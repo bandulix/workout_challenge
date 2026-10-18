@@ -73,7 +73,7 @@ export function CoachHandover({configId, enabled}) {
     const previous = ballot.previous_persona;
     return (
         <div className="mb-3 rounded-3xl glass-card px-4 py-3 ring-1 ring-volt-500/40 dark:ring-volt-400/40">
-            <p className="t-caption text-gray-500 dark:text-white/55 flex items-center gap-1.5">
+            <p className="t-caption text-muted flex items-center gap-1.5">
                 <Timer className="h-3.5 w-3.5"/> New coach
             </p>
             <div className="mt-2 flex items-center gap-3">
@@ -151,7 +151,7 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
                       hint={ballot.vote_count === 0
                           ? "Winner takes the megaphone Monday morning."
                           : `${ballot.vote_count} ${ballot.vote_count === 1 ? "vote" : "votes"} in`}>
-                <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-white/55 tabular-nums">
+                <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-muted tabular-nums">
                     <Timer className="h-3.5 w-3.5"/>
                     {countdown}
                 </span>

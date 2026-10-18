@@ -225,7 +225,7 @@ export function OrderCard({order}) {
         <div>
             <PaneHead title="Order of the day" hint={order.competition_name}/>
             <article className={paneCardClass}>
-                <p className="t-caption text-gray-500 dark:text-white/55 flex items-center gap-1.5">
+                <p className="t-caption text-muted flex items-center gap-1.5">
                     <ScrollText className="h-3.5 w-3.5"/> Sealed order · {order.date}
                 </p>
                 <p className="mt-2 text-[15px] leading-relaxed">{order.brief}</p>

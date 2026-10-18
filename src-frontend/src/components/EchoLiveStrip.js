@@ -78,7 +78,7 @@ function EchoTile({echo, onDelete, busy, onOpenArt, showStatus = false}) {
                     {echo.holder_name || "Held"} · {echo.metric_label}
                 </p>
                 {echo.status !== "immortal" && (echo.defenses || 0) > 0 && (
-                    <p className="mt-0.5 text-xs font-bold text-gray-500 dark:text-white/55">
+                    <p className="mt-0.5 text-xs font-bold text-muted">
                         Survived {echo.defenses}/3 takeovers
                     </p>
                 )}

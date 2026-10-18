@@ -22,7 +22,7 @@ export function PaneHead({title, hint, children, contained = false}) {
     return (
         <div className={"mb-3 px-1" + (contained ? " min-w-0" : "")}>
             <div className={"flex items-center " + (contained ? "min-w-0 gap-2" : "gap-3")}>
-                <h2 className={"t-pane text-gray-500 dark:text-gray-400 " + (contained ? "min-w-0 shrink truncate" : "shrink-0")}>{title}</h2>
+                <h2 className={"t-pane text-muted " + (contained ? "min-w-0 shrink truncate" : "shrink-0")}>{title}</h2>
                 <span className={"flex-1 h-px bg-ink-950/10 dark:bg-white/10" + (contained ? " min-w-0" : "")} aria-hidden="true"/>
                 {/* -my-3.5: 44px-tall action children would otherwise
                     grow the row and push the title text down ~14px
@@ -36,7 +36,7 @@ export function PaneHead({title, hint, children, contained = false}) {
                     </div>
                 )}
             </div>
-            {hint && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</p>}
+            {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
         </div>
     );
 }

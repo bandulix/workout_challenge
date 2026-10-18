@@ -424,7 +424,7 @@ export function ActivityStampButton() {
             {api.picker && (
                 <Popover anchor={api.plusRef.current} onClose={() => api.setPicker(false)} width={268}
                          label="Pick a stamp">
-                    <p className="px-2 pt-1 pb-2 t-caption text-gray-500 dark:text-white/55">
+                    <p className="px-2 pt-1 pb-2 t-caption text-muted">
                         Stamp it
                     </p>
                     <div className="grid grid-cols-4 gap-1">

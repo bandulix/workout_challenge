@@ -844,8 +844,14 @@ body {
 /* Semantic text tokens - theme-aware and contrast-checked over glass.
    Use these instead of hard-coded gray/amber/red shades, which tend to
    be picked for dark mode and then go invisible on the light theme. */
+/* Muted body/caption text — keep ≥4.5:1 on ink and glass surfaces.
+   Prefer this over ad-hoc text-white/55 or gray-500 on dark washes. */
 .text-muted { color: #4b5563; }
-.dark .text-muted { color: #9ca3af; }
+.dark .text-muted { color: #b4bac4; }
+.t-pane.text-muted,
+.t-caption.text-muted { color: inherit; }
+.dark .t-pane.text-muted,
+.dark .t-caption.text-muted { color: #b4bac4; }
 .text-warning-text { color: #b45309; }
 .dark .text-warning-text { color: #fbbf24; }
 .text-danger-text { color: #dc2626; }

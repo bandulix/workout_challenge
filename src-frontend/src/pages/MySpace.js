@@ -137,32 +137,28 @@ function WelcomeBox({user, workouts, summary}) {
     const countTotal = summary?.total_count ?? fallback.total;
     const countGroups = summary?.by_sport ? Object.fromEntries(summary.by_sport) : fallback.groups;
     return (
-        <div className={paneCardClass + " mb-4"}>
-            {/* Compact header: small avatar with the name beside it,
-                lifetime total and top sport counts on the right. On narrow
-                (smartphone) widths the count block wraps to a second row
-                (flex-wrap + basis on the name) so a longer first name is
-                no longer crushed between the avatar and the counter. */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 sm:px-3">
+        // Passive greeting — no glass card. Cards stay for interactive lists.
+        <header className="mb-5 px-1 sm:px-2">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <ProfileAvatar user={user} size={64} editable className="shrink-0"/>
                 <div className="flex-1 min-w-0 basis-40">
-                    <p className="text-xs text-gray-600 dark:text-gray-400">Welcome back,</p>
-                    <h1 className="text-xl font-display uppercase tracking-wide truncate">{user.first_name}</h1>
+                    <p className="text-xs text-muted">Welcome back,</p>
+                    <h1 className="t-hero text-xl truncate">{user.first_name}</h1>
                     <DogTagRow tags={user.dog_tags}/>
                     <div className="mt-1 empty:hidden"><ReleaseSpark/></div>
                 </div>
                 <div className="flex items-baseline gap-1.5 shrink-0 ml-auto sm:ml-0">
-                    <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
-                    <span className="uppercase text-xs tracking-wide text-gray-500">workouts</span>
+                    <span className="t-stat text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
+                    <span className="t-caption text-muted">workouts</span>
                 </div>
                 {Object.entries(countGroups).map(([label, count], index) => (
                     <div key={"stat" + index} className="hidden lg:flex lg:flex-col lg:items-center shrink-0 px-1">
-                        <span className="text-lg font-semibold leading-tight">{count}</span>
-                        <span className="uppercase text-xs tracking-wide text-gray-500">{sportLabelShort(label)}</span>
+                        <span className="t-stat text-lg font-semibold leading-tight">{count}</span>
+                        <span className="t-caption text-muted">{sportLabelShort(label)}</span>
                     </div>
                 ))}
             </div>
-        </div>
+        </header>
     )
 }
 
@@ -683,20 +679,20 @@ function StreakCard({workouts, summary, onStats}) {
     const whoGoalHit = weekMinutes >= WHO_WEEKLY_MINUTES;
 
     return (
-        <div className="relative h-full overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white p-5 w-full">
-            <div className="pointer-events-none absolute -top-14 -right-14 h-40 w-40 rounded-full bg-white/10 blur-3xl"/>
+        // Passive streak summary — open pane, not a glass card.
+        <div className="relative h-full w-full text-ink-950 dark:text-white py-1">
             <div className="relative">
                 <div className="flex items-center gap-4">
                     <div className="h-14 w-14 rounded-2xl bg-ink-950/5 dark:bg-white/10 flex items-center justify-center">
-                        <Flame className="h-7 w-7 text-gray-500 dark:text-white/70"/>
+                        <Flame className="h-7 w-7 text-muted"/>
                     </div>
                     <div className="flex items-baseline gap-2">
                         <span className="font-display text-5xl text-volt-700 dark:text-volt-400">{weekStreak}</span>
-                        <span className="uppercase text-xs tracking-[0.2em] text-gray-600 dark:text-gray-400">week<br/>streak</span>
+                        <span className="t-caption text-muted">week<br/>streak</span>
                     </div>
                     {onStats && (
                         <button
-                            className="ml-auto inline-flex min-h-[44px] items-center gap-1 rounded-full px-3 text-xs font-bold uppercase tracking-wide text-gray-600 hover:text-ink-950 dark:text-gray-400 dark:hover:text-white"
+                            className="ml-auto inline-flex min-h-[44px] items-center gap-1 rounded-full px-3 text-xs font-bold uppercase tracking-wide text-muted hover:text-ink-950 dark:hover:text-white"
                             onClick={onStats}
                             type="button"
                         >
@@ -712,11 +708,11 @@ function StreakCard({workouts, summary, onStats}) {
                         const isToday = (new Date().getDay() + 6) % 7 === idx;
                         return (
                             <div key={idx} className="flex flex-col items-center gap-1.5">
-                                <span className="text-xs font-bold text-gray-500">{label}</span>
+                                <span className="text-xs font-bold text-muted">{label}</span>
                                 <span className={"h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold transition " +
                                     (active
                                         ? "bg-volt-400 text-ink-950 shadow-glow-volt"
-                                        : "bg-ink-950/8 text-gray-500 dark:bg-ink-700/60") +
+                                        : "bg-ink-950/8 text-muted dark:bg-ink-700/60") +
                                     (isToday ? " ring-2 ring-white/70 ring-offset-2 ring-offset-ink-900" : "")}>
                                     {active ? <Check className="h-4 w-4"/> : label}
                                 </span>
@@ -726,7 +722,7 @@ function StreakCard({workouts, summary, onStats}) {
                 </div>
 
                 <div className="mt-4 flex items-center justify-between text-xs">
-                    <span className="text-gray-600 dark:text-gray-400">This week</span>
+                    <span className="text-muted">This week</span>
                     <span className={"inline-flex items-center gap-1 font-bold " + (whoGoalHit ? "text-ink-950 dark:text-white" : "text-gray-700 dark:text-gray-300")}>
                         {whoGoalHit && <CheckCheck className="h-3.5 w-3.5"/>}
                         {weekMinutes} / {WHO_WEEKLY_MINUTES} min

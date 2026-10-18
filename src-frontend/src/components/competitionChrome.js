@@ -97,7 +97,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user, archiv
                 <div className="mt-0.5 flex items-center justify-between gap-3">
                     <p className="text-xs text-white/60">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
                     {endChip && endChip.kind === "ended" ? (
-                        <span className="shrink-0 text-xs text-white/50">{endChip.text}</span>
+                        <span className="shrink-0 text-xs text-muted">{endChip.text}</span>
                     ) : endChip ? (
                         <span className={"shrink-0 inline-flex items-center gap-1.5 text-sm font-extrabold tracking-wide " +
                             (endChip.kind === "last"
@@ -705,7 +705,7 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                                      className="flex items-center gap-2 rounded-2xl bg-volt-400/20 px-2.5 py-1.5 text-ink-950 dark:text-white">
                                     <Crown className="h-4 w-4 shrink-0 text-gray-500 dark:text-white/70"/>
                                     <div className="min-w-0">
-                                        <p className="t-caption text-gray-500 dark:text-white/55">
+                                        <p className="t-caption text-muted">
                                             {echo.role === "claimed" ? "Claimed Echo" : "Legend Echo"}
                                         </p>
                                         <p className="text-xs font-bold truncate">{echo.title}</p>
@@ -819,7 +819,7 @@ function AnnouncementPost({message, persona, canReply, defaultOpen}) {
     return (
         <FeedCard>
             <p className="mb-2 flex items-baseline justify-between gap-2">
-                <span className="t-caption text-gray-500 dark:text-white/55">
+                <span className="t-caption text-muted">
                     {kind}
                 </span>
                 <span className="text-xs text-gray-400">{timeAgo(message.posted_at)}</span>
