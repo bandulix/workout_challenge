@@ -51,7 +51,7 @@ function Tile({person, score, max, accent, label}) {
             </div>
             <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-muted">{label}</p>
             <p className="truncate font-display text-sm uppercase tracking-wide">{person?.username || "Athlete"}</p>
-            <p className="t-stat font-display text-2xl" style={{color: label === "You" ? "var(--volt)" : "var(--other)"}}>{pointsLabel(score)}</p>
+            <p className="t-stat font-display text-2xl" style={{color: label === "You" ? "var(--volt-ink)" : "var(--other)"}}>{pointsLabel(score)}</p>
         </article>
     );
 }

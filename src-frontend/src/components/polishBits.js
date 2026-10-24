@@ -292,7 +292,7 @@ export function StampWall({earned = []}) {
                 {RELICS.map((relic) => {
                     const have = relic.slugs.filter((slug) => bySlug.has(slug)).length;
                     return (
-                        <li key={relic.title} className="flex flex-col items-center rounded-[20px] px-2 py-3" style={{border: "1px solid var(--hairline)"}}>
+                        <li key={relic.title} className="flex flex-col items-center rounded-[20px] px-2 py-3" style={{background: "var(--surface-1)", border: "1px solid var(--hairline)"}}>
                             <MetricRing size="sm" value={have} max={relic.slugs.length} display={`${have}/${relic.slugs.length}`} label={relic.title}/>
                         </li>
                     );
@@ -309,9 +309,9 @@ export function StampWall({earned = []}) {
                                     aria-label={got ? stamp.title : `${stamp.title}, locked`}
                                     className={"relative flex min-h-[96px] w-full flex-col items-center justify-center gap-1 rounded-[20px] px-2 py-3 text-center " +
                                         (got
-                                            ? "bg-ink-950/5 ring-1 ring-volt-400/80 dark:bg-ink-850" + (fresh ? " volt-flash" : "")
-                                            : "text-muted opacity-40")}
-                                    style={got ? undefined : {border: "1px solid var(--hairline)"}}>
+                                            ? "text-ink-950 ring-1 ring-volt-400/80 dark:text-white" + (fresh ? " volt-flash" : "")
+                                            : "text-muted")}
+                                    style={{background: "var(--surface-1)", border: got ? undefined : "1px solid var(--hairline)"}}>
                                 {fresh && <span className="t-label absolute right-2 top-2 text-volt-400">New</span>}
                                 {got?.count > 1 && (
                                     <span className="t-stat absolute left-2 top-2 rounded-full bg-volt-400 px-1.5 text-[11px] font-bold text-ink-950">{got.count}</span>

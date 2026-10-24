@@ -2,18 +2,20 @@
 
 Idempotent. Marks the demo user email-verified, then fills the WHO
 challenge with a few athletes, two weeks of mixed workouts, feed cards
-(including a photo remix, a roast, stamps, and orders), a live ride duel
+(including a photo and a remix from bundled Unsplash fixtures, a roast, stamps, and orders), a live ride duel
 with a dead-heat day, a W-L-T record, expedition progress, and readiness
 in all three bands.
 """
 
 from datetime import timedelta
-from io import BytesIO
+from pathlib import Path
 
 from django.conf import settings
 from django.core.cache import cache
 from django.core.files.base import ContentFile
+from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
+from django.db import connection
 from django.utils import timezone
 
 from competition.models import Competition, Duel, DuelNote, Team
@@ -30,6 +32,13 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if not settings.DEBUG:
             raise CommandError("seed_demo refuses to run with DEBUG=false.")
+        call_command("migrate", interactive=False, verbosity=1)
+        tables = set(connection.introspection.table_names())
+        if "competition_duel" not in tables:
+            raise CommandError(
+                "competition_duel is missing after migrate. "
+                "The duel migration has to be applied before the demo can seed."
+            )
 
         users = self._users()
         competition = Competition.objects.filter(join_code__iexact="WHOCOMP").first()
@@ -59,13 +68,13 @@ class Command(BaseCommand):
 
     def _users(self):
         specs = [
-            ("user1@admin.local", "Charlotte", "Doe", True),
-            ("user2@admin.local", "Tom", "Smith-Bloggs", True),
-            ("user3@admin.local", "Ursula", "von der Leyen", False),
-            ("user4@admin.local", "Mina", "Okonkwo", False),
+            ("user1@admin.local", "Charlotte", "Doe", "Charlotte D.", True),
+            ("user2@admin.local", "Tom", "Smith-Bloggs", "Tom S.B.", True),
+            ("user3@admin.local", "Ursula", "von der Leyen", "Ursula V.", False),
+            ("user4@admin.local", "Mina", "Okonkwo", "Mina O.", False),
         ]
         found = {}
-        for email, first, last, staff in specs:
+        for email, first, last, username, staff in specs:
             user = CustomUser.objects.filter(email=email).first()
             if user is None:
                 user = CustomUser.objects.create_user(
@@ -75,6 +84,9 @@ class Command(BaseCommand):
             user.is_verified = True
             user.first_name = first
             user.last_name = last
+            # username is sticky: save() only invents one when the field is
+            # empty, which left the podium on "User v.d.L." after a rename.
+            user.username = username
             user.save()
             found[email] = user
             self.stdout.write(f"Verified {email}")
@@ -201,7 +213,7 @@ class Command(BaseCommand):
             posted_at=remix_parent.posted_at + timedelta(minutes=4),
             success=True,
         )
-        remix.image.save("demo-remix.png", ContentFile(_png()), save=True)
+        remix.image.save("demo-remix.jpg", ContentFile(_scene("dusk")), save=True)
 
         photo = DrillInstructorMessage(
             config=config,
@@ -212,7 +224,7 @@ class Command(BaseCommand):
             posted_at=self._at(3, 9),
             success=True,
         )
-        photo.image.save("demo-photo.png", ContentFile(_png(color=(48, 72, 64))), save=True)
+        photo.image.save("demo-photo.jpg", ContentFile(_scene("trail")), save=True)
         posts.append(photo)
 
         activity(by_key["lift"], "Forty minutes under the bar. Leave the ego on the rack.", by_key["lift"].start_datetime)
@@ -357,11 +369,13 @@ class Command(BaseCommand):
             return 0
 
 
-def _png(color=(32, 48, 72)):
-    from PIL import Image, ImageDraw
-    image = Image.new("RGB", (800, 480), color)
-    draw = ImageDraw.Draw(image)
-    draw.polygon([(40, 420), (280, 180), (460, 340), (620, 80), (780, 420)], fill=(215, 255, 62))
-    buf = BytesIO()
-    image.save(buf, format="PNG")
-    return buf.getvalue()
+# Unsplash Licence (https://unsplash.com/license). Attribution is not
+# required; the photo ids are recorded so the source stays findable.
+# fixtures/demo-photo.jpg  photo-1441974231531-c6227db76b6e  forest path
+# fixtures/demo-remix.jpg  photo-1464822759023-fed622ff2c3b  alpine ridge
+_FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+def _scene(kind="trail"):
+    name = "demo-photo.jpg" if kind == "trail" else "demo-remix.jpg"
+    return (_FIXTURES / name).read_bytes()

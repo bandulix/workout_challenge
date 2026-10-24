@@ -51,7 +51,7 @@ describe("DuelView", () => {
             ],
         }}/>);
         expect(screen.getByText("Dead heat")).toBeTruthy();
-        expect(screen.getByText("2026-10-20")).toBeTruthy();
+        expect(screen.getByText("Day 2 · Tue 20")).toBeTruthy();
     });
 
     it("lets the person who owes it mark the forfeit, and shares the postcard", async () => {

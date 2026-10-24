@@ -134,6 +134,22 @@ export function WeightBar({label, detail, share, tone = "var(--good)"}) {
     );
 }
 
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** "Day 1 · Sat 18", or "Today · Sat 24" when the row is the local today. */
+export function duelDayLabel(iso, index = 0, today = new Date()) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+    if (!match) return String(iso || "");
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(year, month - 1, day);
+    const stamp = `${WEEKDAYS[date.getDay()]} ${day}`;
+    const isToday = today.getFullYear() === year && today.getMonth() === month - 1 && today.getDate() === day;
+    if (isToday) return `Today · ${stamp}`;
+    return `Day ${index + 1} · ${stamp}`;
+}
+
 export function PairedBars({rows, youLabel = "You", themLabel = "Them"}) {
     const list = Array.isArray(rows) ? rows : [];
     const peak = Math.max(1, ...list.flatMap((row) => [Number(row.you) || 0, Number(row.them) || 0]));
@@ -144,18 +160,20 @@ export function PairedBars({rows, youLabel = "You", themLabel = "Them"}) {
                 <span className="inline-flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-full" style={{background: "var(--volt)"}}/>{youLabel}</span>
                 <span className="inline-flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-full" style={{background: "var(--other)"}}/>{themLabel}</span>
             </div>
-            <ul className="space-y-2">
-                {list.map((row) => {
+            <ul className="space-y-1">
+                {list.map((row, index) => {
                     const you = Number(row.you) || 0;
                     const them = Number(row.them) || 0;
                     const level = you > 0 && Math.abs(you - them) < 0.05;
+                    const raw = row.label || row.date;
+                    const caption = /^\d{4}-\d{2}-\d{2}/.test(String(raw || "")) ? duelDayLabel(raw, index) : raw;
                     return (
-                    <li key={row.date || row.label}>
+                    <li key={row.date || row.label || index}>
                         <div className="mb-0.5 flex justify-between t-micro text-muted">
-                            <span>{row.label || row.date}</span>
+                            <span>{caption}</span>
                             {level ? <span className="font-bold uppercase tracking-wide" style={{color: "var(--mid)"}}>Dead heat</span> : null}
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-0.5">
                             <div className="h-1.5 overflow-hidden rounded-full" style={{background: "var(--hairline)"}}>
                                 <div className="h-full rounded-full" style={{width: `${((Number(row.you) || 0) / peak) * 100}%`, background: "var(--volt)"}}/>
                             </div>
@@ -196,14 +214,14 @@ export function RecordPills({record}) {
     const ties = record?.ties || 0;
     if (!wins && !losses && !ties) return null;
     const pills = [
-        ["W", wins, "var(--good)"],
-        ["L", losses, "var(--low)"],
-        ["T", ties, "var(--mid)"],
+        ["W", wins, "var(--good-ink)"],
+        ["L", losses, "var(--low-ink)"],
+        ["T", ties, "var(--mid-ink)"],
     ];
     return (
         <span className="inline-flex gap-1" aria-label={`Duels ${wins}-${losses}-${ties}`}>
             {pills.map(([mark, count, color]) => (
-                <span key={mark} className="t-stat t-label rounded-full px-2 py-0.5" style={{color, border: "1px solid var(--hairline)"}}>
+                <span key={mark} className="t-stat t-label rounded-full px-2 py-0.5" style={{color, background: "var(--surface-1)", border: "1px solid var(--hairline)"}}>
                     {mark} {count}
                 </span>
             ))}

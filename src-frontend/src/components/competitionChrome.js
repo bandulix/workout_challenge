@@ -93,18 +93,18 @@ export function CompetitionHead({competition, feed, isOwner, goals, user, archiv
     const showGoals = scoredGoals.length > 0 || isOwner;
 
     return (
-        <div className="season-bleed mb-2 overflow-hidden pb-2 text-white">
+        <div className="season-bleed mb-2 overflow-hidden pb-2 text-ink-950 dark:text-white">
             <div className="p-5 sm:p-6">
-                <h1 className="font-display text-xl uppercase tracking-wide text-white">{competition.name}</h1>
+                <h1 className="font-display text-xl uppercase tracking-wide">{competition.name}</h1>
                 <div className="mt-0.5 flex items-center justify-between gap-3">
-                    <p className="text-xs text-white/60">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
+                    <p className="text-xs text-muted">{competition.start_date_fmt} - {competition.end_date_fmt}</p>
                     {endChip && endChip.kind === "ended" ? (
                         <span className="shrink-0 text-xs text-muted">{endChip.text}</span>
                     ) : endChip ? (
                         <span className={"shrink-0 inline-flex items-center gap-1.5 text-sm font-extrabold tracking-wide " +
                             (endChip.kind === "last"
                                 ? "uppercase tracking-[0.12em] text-amber-700 dark:text-amber-300"
-                                : "text-gray-700 dark:text-white/80")}>
+                                : "text-ink-950 dark:text-white/80")}>
                             {endChip.kind === "last" ? <Timer className="h-4 w-4"/> : null}
                             {endChip.text}
                         </span>
@@ -128,7 +128,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user, archiv
                 <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
                     <div className="flex items-baseline gap-1.5 shrink-0">
                         <span className="text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
-                        <span className="uppercase text-xs tracking-wide text-white/60">workouts</span>
+                        <span className="uppercase text-xs tracking-wide text-muted">workouts</span>
                     </div>
                     {Object.entries(countGroups).map(([label, count], index) => (
                         <div key={"stat" + index} className="hidden lg:flex lg:flex-col lg:items-center shrink-0 px-1">

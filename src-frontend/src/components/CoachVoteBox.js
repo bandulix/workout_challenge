@@ -203,11 +203,9 @@ export default function CoachVoteBox({configs, preferredConfigId}) {
                                 {c.leading && c.votes > 0 ? (tiedLeaders ? " · tie" : " · lead") : ""}
                             </p>
                             {selected ? (
-                                <p className="mt-1 text-xs font-extrabold uppercase tracking-wide"
-                                   style={{color: accent}}>Your vote</p>
+                                <p className="accent-ink mt-1 text-xs font-extrabold uppercase tracking-wide">Your vote</p>
                             ) : onDuty ? (
-                                <p className="mt-1 text-xs font-extrabold uppercase tracking-wide"
-                                   style={{color: accent}}>On duty</p>
+                                <p className="accent-ink mt-1 text-xs font-extrabold uppercase tracking-wide">On duty</p>
                             ) : null}
                         </button>
                     );

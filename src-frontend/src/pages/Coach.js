@@ -122,7 +122,7 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
     const accent = accentHex(persona.theme_color);
     const accentVars = coachAccentStyle(accent);
     return (
-        <div className="season-bleed relative overflow-hidden pb-2 text-white" style={accentVars}>
+        <div className="season-bleed relative overflow-hidden pb-2 text-ink-950 dark:text-white" style={accentVars}>
             <div className="coach-hero-wash" aria-hidden="true"/>
             <div className="relative px-5 pt-7 sm:px-8">
                 <div className="flex items-center gap-4 sm:gap-6">
@@ -136,12 +136,12 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                     <div className="min-w-0 flex-1">
                         <h1 className="t-hero break-words xl:text-3xl">{persona.name}</h1>
                         <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs font-bold uppercase tracking-[0.18em] text-muted">
-                            <span className="inline-flex items-center gap-1.5" style={{color: accent}}>
+                            <span className="accent-ink inline-flex items-center gap-1.5">
                                 <Radio className="h-3.5 w-3.5"/>{config ? "On duty" : "Coach"}
                             </span>
                             {trained && <span title={trained.hint}>· {trained.label}</span>}
                         </p>
-                        {persona.tagline && <p className="mt-2 break-words text-sm italic text-white/70">“{persona.tagline}”</p>}
+                        {persona.tagline && <p className="mt-2 break-words text-sm italic text-muted">“{persona.tagline}”</p>}
                     </div>
                 </div>
             </div>

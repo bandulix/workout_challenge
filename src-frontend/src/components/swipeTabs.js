@@ -67,7 +67,7 @@ export function ChallengeTabBar({tab, onChange, dragRatio = 0, tabs = CHALLENGE_
                                 className={"relative px-3.5 py-2 min-h-[44px] text-xs font-bold uppercase tracking-[0.16em] transition " +
                                     (tab === t.id
                                         ? "text-ink-950 dark:text-white"
-                                        : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300")}>
+                                        : "text-muted hover:text-ink-950 dark:hover:text-white")}>
                             {t.label}
                             <span aria-hidden="true"
                                   className={"absolute left-1/2 -translate-x-1/2 bottom-0.5 h-[2px] rounded-full bg-ink-950 dark:bg-white transition-all " +
