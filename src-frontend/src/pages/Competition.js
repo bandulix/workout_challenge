@@ -1,7 +1,8 @@
 import {useNavigationType, useParams, useSearchParams} from 'react-router-dom';
-import React, {useEffect, useMemo, useState} from "react";
+import React, {useEffect, useMemo, useRef, useState} from "react";
 import {useGetCompetitionByIdQuery, useGetExpeditionByCompetitionQuery} from "../utils/reducers/competitionsSlice";
 import {
+    Trophy,
     UsersRound,
 } from "lucide-react";
 import {SwipePages, challengeTabs} from "../components/swipeTabs";
@@ -28,6 +29,10 @@ import AthleteCard from "../components/AthleteCard";
 import usePollingInterval from "../utils/usePollingInterval";
 import {CompetitionHead, CoachCorner} from "../components/competitionChrome";
 import EchoLiveStrip from "../components/EchoLiveStrip";
+import {ScoreRing, Segmented} from "../components/polishBits";
+import {rankPeople, windowTotal} from "../utils/boardPeriod";
+import {challengeCountdownLabel} from "../utils/challenge";
+import {prefersReducedMotion} from "../utils/motion";
 import useWideLayout from "../utils/useWideLayout";
 
 
@@ -199,61 +204,130 @@ function TrendSpark({series, compare}) {
     );
 }
 
-// Top three stand on a podium: avatars and points, first in the middle
-// and tallest. Everything else is a slim row below. Positions follow list
-// order (ties keep their shared rank label but still get a distinct block).
-const PODIUM_SLOTS = [
-    {index: 1, height: "h-16", avatar: 56},
-    {index: 0, height: "h-24", avatar: 72},
-    {index: 2, height: "h-12", avatar: 56},
+const PERIODS = [
+    {id: "week", label: "Week"},
+    {id: "month", label: "Month"},
+    {id: "all", label: "All"},
 ];
 
-function Podium({people, userId, onPick}) {
+function personIdOf(person) {
+    return person?.id ?? person?.workout__user__id;
+}
+
+function RankMark({rank}) {
+    const prev = useRef(rank);
+    const [pop, setPop] = useState(false);
+    useEffect(() => {
+        if (prev.current !== rank && prev.current != null && rank != null && !prefersReducedMotion()) {
+            setPop(true);
+            const id = window.setTimeout(() => setPop(false), 250);
+            prev.current = rank;
+            return () => window.clearTimeout(id);
+        }
+        prev.current = rank;
+        return undefined;
+    }, [rank]);
     return (
-        <article className={paneCardClass + " mb-3 pb-0 overflow-hidden"} aria-label="Top three">
-            <ol className="grid grid-cols-3 items-end gap-2">
-                {PODIUM_SLOTS.map((slot) => {
-                    const person = people[slot.index];
-                    if (!person) return <li key={slot.index}/>;
-                    const personId = person.id ?? person.workout__user__id;
-                    const mine = personId === userId;
-                    const rank = person.rank ?? slot.index + 1;
-                    return (
-                        <li key={personId ?? slot.index} className="flex flex-col items-center">
-                            <button
-                                aria-label={`${person.username}, rank ${rank}`}
-                                className="flex flex-col items-center gap-1.5 active:scale-95 transition"
-                                onClick={() => onPick(person)}
-                                type="button"
-                            >
-                                <ProfileAvatar user={person} size={slot.avatar}/>
-                                <span className="max-w-[6.5rem] truncate text-sm font-semibold">{mine ? "You" : person.username}</span>
-                                <span className="rounded-full bg-volt-400 px-2 py-0.5 text-xs font-extrabold text-ink-950 shadow-glow-volt">
-                                    {Math.round(person.total_capped ?? 0).toLocaleString()}P
-                                </span>
-                            </button>
-                            <div className={"mt-2 flex w-full items-start justify-center rounded-t-xl bg-white/10 pt-2 " + slot.height +
-                                (mine ? " ring-1 ring-white/35" : "")}>
-                                <span className={"font-display text-xl " + (RANK_STYLES[rank] || "text-gray-400")}>#{rank}</span>
-                            </div>
-                        </li>
-                    );
-                })}
-            </ol>
-        </article>
+        <span className={"w-8 shrink-0 text-center font-display text-lg t-stat " +
+            (RANK_STYLES[rank] || "text-muted") + (pop ? " rank-pop" : "")}>
+            {rank != null ? `#${rank}` : "–"}
+        </span>
+    );
+}
+
+function BoardRow({row, mine, maxScore, onPick, charts = null, bare = false}) {
+    const person = row.person;
+    const name = mine ? "You" : person.username;
+    return (
+        <div className={bare ? "px-1 py-1" : paneCardClass + (mine ? " bg-volt-400/10 ring-1 ring-volt-400/35" : "")}>
+            <button type="button" onClick={() => onPick(person)}
+                    aria-label={`${name}, rank ${row.rank ?? "unranked"}, ${Math.round(row.score)} points`}
+                    className="flex w-full min-h-[44px] items-center gap-3 text-left">
+                <RankMark rank={row.rank}/>
+                <ScoreRing value={row.score} max={maxScore} mine={mine} size={52}>
+                    <ProfileAvatar user={person} size={40}/>
+                </ScoreRing>
+                <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5 truncate font-semibold">
+                        {row.rank != null && row.rank <= 3 && (
+                            <Trophy className={"h-3.5 w-3.5 shrink-0 " + (RANK_STYLES[row.rank] || "text-muted")} aria-hidden="true"/>
+                        )}
+                        <span className="truncate">{name}</span>
+                    </span>
+                    {row.period === "all" && row.rank != null && person.days_on_rank > 0 && (
+                        <span className="block text-xs text-muted">
+                            on #{row.rank} for {person.days_on_rank} {person.days_on_rank === 1 ? "day" : "days"}
+                        </span>
+                    )}
+                </span>
+                <span className="t-stat shrink-0 text-lg font-bold text-volt-600 dark:text-volt-400">
+                    {Math.round(row.score).toLocaleString()}
+                </span>
+            </button>
+            {charts}
+        </div>
     );
 }
 
 function IndividualLeaderboardBox({stats, userId, feed}) {
     // getWeekDates() ignores `stats`; the dep just re-anchors the week
     // labels whenever fresh stats land (a day rollover shows up on poll).
-    const weekDays = React.useMemo(() => getWeekDates(), [stats]);
+    const weekDays = useMemo(() => getWeekDates(), [stats]);
     const weekLabels = weekDays.map((d) => d.dateObj.toLocaleDateString("en-US", {weekday: "narrow"}));
-    const range = React.useMemo(
+    const range = useMemo(
         () => getDateRange(stats?.competition?.start_date, stats?.competition?.end_date),
         [stats?.competition?.start_date, stats?.competition?.end_date],
     );
     const fieldN = Math.max(1, stats?.competition?.active_member_count || 1);
+    const [card, setCard] = useState(null);
+    const [period, setPeriod] = useState("all");
+    const meRowRef = useRef(null);
+    const [pinMe, setPinMe] = useState(false);
+
+    const fieldTrend = useMemo(() => {
+        let acc = 0;
+        return range.map((d) => {
+            acc += (Number(stats?.timeseries?.all?.[d.offset]?.total)
+                || Number(stats?.timeseries?.all?.[String(d.offset)]?.total) || 0) / fieldN;
+            return acc;
+        });
+    }, [range, stats?.timeseries?.all, fieldN]);
+
+    const people = stats?.leaderboard?.individual;
+    const rows = useMemo(() => {
+        if (!people) return [];
+        if (period === "all") {
+            return people.map((person) => ({
+                person,
+                score: Number(person.total_capped) || 0,
+                rank: person.rank,
+                period: "all",
+            }));
+        }
+        const days = period === "week" ? 7 : 30;
+        return rankPeople(people, (person) => windowTotal(
+            stats?.timeseries?.user,
+            personIdOf(person),
+            days,
+            dayTotal,
+        )).map((row) => ({...row, period}));
+    }, [people, period, stats?.timeseries?.user]);
+
+    const meKey = rows.find((row) => personIdOf(row.person) === userId)
+        ? String(userId)
+        : "";
+    useEffect(() => {
+        const node = meRowRef.current;
+        if (!node || typeof IntersectionObserver === "undefined") {
+            setPinMe(false);
+            return undefined;
+        }
+        const obs = new IntersectionObserver(([entry]) => {
+            setPinMe(entry ? !entry.isIntersecting : false);
+        }, {threshold: 0.4, rootMargin: "0px 0px -72px 0px"});
+        obs.observe(node);
+        return () => obs.disconnect();
+    }, [meKey, period, rows.length]);
 
     function weekValues(id) {
         return weekDays.map((d) => dayTotal(stats?.timeseries?.user, id, d.offset));
@@ -265,41 +339,28 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
             return acc;
         });
     }
-    const [card, setCard] = useState(null);
 
-    const fieldTrend = React.useMemo(() => {
-        let acc = 0;
-        return range.map((d) => {
-            acc += (Number(stats?.timeseries?.all?.[d.offset]?.total)
-                || Number(stats?.timeseries?.all?.[String(d.offset)]?.total) || 0) / fieldN;
-            return acc;
-        });
-    }, [range, stats?.timeseries?.all, fieldN]);
-
-    const people = stats?.leaderboard?.individual;
     if (!people) return <SkeletonRows n={4}/>;
 
-    const ranked = people.filter((p) => p.rank !== null);
-    const podium = ranked.length >= 3 ? ranked.slice(0, 3) : [];
-    const podiumIds = new Set(podium.map((p) => p.id ?? p.workout__user__id));
-    const rows = podium.length ? people.filter((p) => !podiumIds.has(p.id ?? p.workout__user__id)) : people;
-    const me = people.find((p) => (p.id ?? p.workout__user__id) === userId);
-    const meOnPodium = me && podiumIds.has(userId);
+    const maxScore = Math.max(1, ...rows.map((row) => row.score));
+    const chips = rows.filter((row) => row.score > 0 && row.rank != null && row.rank <= 3).slice(0, 3);
+    const countdown = challengeCountdownLabel(stats?.competition?.end_date);
+    const meRow = rows.find((row) => personIdOf(row.person) === userId);
 
     function myCharts(person) {
-        const personId = person.id ?? person.workout__user__id;
+        const personId = personIdOf(person);
         const week = weekValues(personId);
         const weekTotal = week.reduce((s, n) => s + n, 0);
         return (
             <div className="mt-3 grid grid-cols-2 gap-3">
                 <div className="min-w-0">
-                    <p className="t-caption text-gray-400 mb-1">
+                    <p className="t-caption text-muted mb-1">
                         This week · {Math.round(weekTotal)}P
                     </p>
                     <WeekBars values={week} labels={weekLabels} showLabels tall/>
                 </div>
                 <div className="min-w-0">
-                    <p className="t-caption text-gray-400 mb-1">
+                    <p className="t-caption text-muted mb-1">
                         Trend vs field
                     </p>
                     <TrendSpark series={cumulative(personId)} compare={fieldTrend}/>
@@ -310,7 +371,17 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
 
     return (
         <div>
-            <PaneHead title="Leaderboard"/>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1">
+                <h2 className="t-pane text-muted">Leaderboard</h2>
+                {countdown && (
+                    <span className="rounded-full bg-ink-950/10 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-muted dark:bg-ink-850">
+                        {countdown}
+                    </span>
+                )}
+            </div>
+            <div className="mb-3">
+                <Segmented value={period} onChange={setPeriod} options={PERIODS} label="Leaderboard period"/>
+            </div>
 
             {(people.length === 0) ? (
                 <article className={paneCardClass}>
@@ -318,62 +389,63 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
                 </article>
             ) : (
                 <>
-                    {podium.length > 0 && (
-                        <Podium people={podium} userId={userId} onPick={setCard}/>
-                    )}
-                    {meOnPodium && (
-                        <article className={paneCardClass + " mb-3 ring-1 ring-white/35"}>
-                            <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">You</p>
-                            {myCharts(me)}
-                        </article>
+                    {chips.length > 0 && (
+                        <ol className="mb-3 grid grid-cols-3 gap-2" aria-label="Top three">
+                            {chips.map((row) => (
+                                <li key={personIdOf(row.person)}>
+                                    <button type="button" onClick={() => setCard(row.person)}
+                                            className="flex min-h-[44px] w-full flex-col items-start rounded-2xl bg-ink-950/5 px-2.5 py-2 text-left dark:bg-ink-850">
+                                        <span className={"inline-flex items-center gap-1 text-xs font-bold " + (RANK_STYLES[row.rank] || "text-muted")}>
+                                            <Trophy className="h-3.5 w-3.5" aria-hidden="true"/>
+                                            #{row.rank}
+                                        </span>
+                                        <span className="mt-0.5 w-full truncate text-sm font-semibold">
+                                            {personIdOf(row.person) === userId ? "You" : row.person.username}
+                                        </span>
+                                    </button>
+                                </li>
+                            ))}
+                        </ol>
                     )}
                 <ul className="space-y-3">
-                    {rows.map((person, index) => {
-                        const personId = person.id ?? person.workout__user__id;
+                    {rows.map((row, index) => {
+                        const personId = personIdOf(row.person);
                         const mine = userId === personId;
-                        const week = weekValues(personId);
-                        const weekTotal = week.reduce((s, n) => s + n, 0);
                         return (
-                        <li key={personId ?? `lb-${index}`}
-                            className={paneCardClass + (mine ? " ring-1 ring-white/35" : "")}>
-                            <div className="flex items-center gap-3">
-                                <span className={"w-8 shrink-0 text-center font-display text-lg " + (RANK_STYLES[person.rank] || "text-gray-400")}>
-                                    {person.rank !== null ? `#${person.rank}` : "–"}
-                                </span>
-                                <div className="relative shrink-0 mr-1.5">
-                                    <ProfileAvatar user={person} size={46}
-                                                   onClick={() => setCard(person)}/>
-                                    <span className="absolute -bottom-1 -right-2 rounded-full bg-volt-400 text-ink-950 text-xs font-extrabold px-1.5 py-0.5 shadow-glow-volt whitespace-nowrap">
-                                        {Math.round(person.total_capped ?? 0).toLocaleString()}P
-                                    </span>
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <p className="font-semibold truncate">{mine ? "You" : person.username}</p>
-                                    {(person.rank !== null && person.days_on_rank > 0) && (
-                                        <p className="text-xs text-gray-400">
-                                            on #{person.rank} for {person.days_on_rank} {person.days_on_rank === 1 ? "day" : "days"}
-                                        </p>
-                                    )}
-                                </div>
-                                {!mine && (
-                                    <div className="w-[4.5rem] shrink-0" title={`${Math.round(weekTotal)} pts this week`}>
-                                        <WeekBars values={week}/>
-                                    </div>
-                                )}
-                            </div>
-                            {mine && myCharts(person)}
+                        <li key={personId ?? `lb-${index}`} ref={mine ? meRowRef : undefined}>
+                            <BoardRow
+                                row={row}
+                                mine={mine}
+                                maxScore={maxScore}
+                                onPick={setCard}
+                                charts={mine && period === "all" ? myCharts(row.person) : null}
+                            />
                         </li>
                         );
                     })}
                 </ul>
                 </>
             )}
+            {pinMe && meRow && (
+                <div className="pointer-events-none fixed inset-x-0 z-30 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] px-3 md:bottom-4 md:left-[7.5rem] md:right-4 md:px-0">
+                    <div className="glass-dock pointer-events-auto rounded-2xl px-2 py-1">
+                        <BoardRow bare row={meRow} mine maxScore={maxScore} onPick={(person) => {
+                            meRowRef.current?.scrollIntoView({
+                                behavior: prefersReducedMotion() ? "auto" : "smooth",
+                                block: "center",
+                            });
+                            setCard(person);
+                        }}/>
+                    </div>
+                </div>
+            )}
             {card && (
                 <AthleteCard
-                    person={card}
-                    weekTotal={weekValues(card.id ?? card.workout__user__id).reduce((s, n) => s + n, 0)}
-                    weekBars={<WeekBars values={weekValues(card.id ?? card.workout__user__id)} labels={weekLabels} showLabels tall/>}
-                    trendSpark={<TrendSpark series={cumulative(card.id ?? card.workout__user__id)} compare={fieldTrend}/>}
+                    person={{...card, rank: rows.find((row) => personIdOf(row.person) === personIdOf(card))?.rank ?? card.rank,
+                        total_capped: rows.find((row) => personIdOf(row.person) === personIdOf(card))?.score ?? card.total_capped}}
+                    weekTotal={weekValues(personIdOf(card)).reduce((s, n) => s + n, 0)}
+                    weekBars={<WeekBars values={weekValues(personIdOf(card))} labels={weekLabels} showLabels tall/>}
+                    trendSpark={<TrendSpark series={cumulative(personIdOf(card))} compare={fieldTrend}/>}
                     feed={feed}
                     onClose={() => setCard(null)}
                 />

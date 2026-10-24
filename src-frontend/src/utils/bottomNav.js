@@ -47,16 +47,25 @@ function coachAccentRgba(persona, alpha) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function NavLink({to, icon: Icon, label, isActive, onClick, ariaLabel, switchCue = false}) {
+function NavLink({to, icon: Icon, label, isActive, onClick, ariaLabel, switchCue = false, accent = false}) {
     const className =
         "relative flex flex-col items-center justify-center gap-1 py-2 px-2.5 min-w-[56px] min-h-[58px] transition-colors duration-200 " +
-        (isActive ? "text-ink-950 dark:text-volt-200" : "text-ink-800 dark:text-gray-400 hover:text-ink-950 dark:hover:text-volt-200");
+        (accent
+            ? "text-ink-950 dark:text-white"
+            : (isActive ? "text-ink-950 dark:text-volt-200" : "text-ink-800 dark:text-gray-400 hover:text-ink-950 dark:hover:text-volt-200"));
     const a11y = ariaLabel || label;
     const inner = (
         <>
-            <Icon className={"relative z-10 h-5 w-5 transition-transform duration-300 " + (isActive ? "scale-110" : "")}
-                  strokeWidth={isActive ? 2.4 : 1.8}
-                  fill={isActive ? "currentColor" : "none"}/>
+            {accent ? (
+                <span className={"relative z-10 flex h-11 w-11 items-center justify-center rounded-full bg-volt-400 text-ink-950 shadow-glow-volt " +
+                    (isActive ? "ring-2 ring-white" : "")}>
+                    <Icon className="h-5 w-5" strokeWidth={2.6}/>
+                </span>
+            ) : (
+                <Icon className={"relative z-10 h-5 w-5 transition-transform duration-300 " + (isActive ? "scale-110" : "")}
+                      strokeWidth={isActive ? 2.4 : 1.8}
+                      fill={isActive ? "currentColor" : "none"}/>
+            )}
             <span className="relative z-10 flex flex-col items-center">
                 <span className={"inline-flex items-center gap-0.5 whitespace-nowrap text-xs font-bold uppercase tracking-wide leading-none " +
                     (isActive ? "text-ink-950 dark:text-volt-200" : "")}>
@@ -314,7 +323,7 @@ export default function BottomNav() {
     // are never left without Home / Log out.
     if (!user) {
         return (
-            <nav className="wc-dock fixed inset-x-0 bottom-0 z-40 overflow-visible pointer-events-none pb-[max(0.5rem,env(safe-area-inset-bottom))] md:bottom-5 md:pb-0"
+            <nav className="wc-dock fixed inset-x-0 z-40 overflow-visible pointer-events-none bottom-[max(0.75rem,env(safe-area-inset-bottom))] pb-0 md:bottom-5"
                  aria-label="Primary navigation" aria-busy={userLoading || undefined}>
                 <div className="glass-dock pointer-events-auto mx-3 flex items-center justify-around rounded-[1.75rem] px-2 py-1 md:mx-auto md:w-max md:rounded-full">
                     {userError ? (
@@ -421,6 +430,7 @@ export default function BottomNav() {
                             to="#"
                             icon={Plus}
                             label="Log"
+                            accent
                             isActive={showLogWorkout}
                             onClick={() => { closeSheets(); setShowLogWorkout(true); }}
                         />
@@ -472,7 +482,7 @@ export default function BottomNav() {
                 <div className="fixed inset-0 z-40 bg-ink-950/30 dark:bg-black/45 backdrop-blur-[2px]"
                      onClick={closeSheets} aria-hidden="true"/>
             )}
-            <nav className="wc-dock fixed inset-x-0 bottom-0 z-40 overflow-visible animate-nav-rise pointer-events-none pb-[max(0.5rem,env(safe-area-inset-bottom))] md:bottom-5 md:pb-0"
+            <nav className="wc-dock fixed inset-x-0 z-40 overflow-visible animate-nav-rise pointer-events-none bottom-[max(0.75rem,env(safe-area-inset-bottom))] pb-0 md:bottom-5"
                  aria-label="Primary navigation">
                 {/* One glass capsule: the dock, and when open the panel
                     grows up from it as the same piece of frost. */}
@@ -540,6 +550,7 @@ export default function BottomNav() {
                         to="#"
                         icon={Plus}
                         label="Log"
+                        accent
                         isActive={showLogWorkout}
                         onClick={() => { closeSheets(); setShowLogWorkout(true); }}
                     />

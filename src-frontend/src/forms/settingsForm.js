@@ -4,7 +4,8 @@ import {FIELD_INPUT_CLASS, Modal, SaveButton, SingleForm, StravaButton, useFormD
 import {useNavigate} from "react-router-dom";
 import {useUnlinkStravaMutation, useResetStravaMutation, useLinkGarminMutation, useLinkGarminMfaMutation, useUnlinkGarminMutation, useLinkHealthMutation, useUnlinkHealthMutation} from "../utils/reducers/linkSlice";
 import {useDispatch} from "react-redux";
-import {Watch, Smartphone, Download, Volume2, KeyRound} from "lucide-react";
+import {Watch, Smartphone, Download, Volume2, KeyRound, Check} from "lucide-react";
+import {prefersReducedMotion} from "../utils/motion";
 import {BeatLoader} from "react-spinners";
 import {isNativeHealthAvailable, nativeHealthConnect, nativeHealthDisconnect, nativeHealthSetSource} from "../utils/nativeHealth";
 import {confirmAction} from "../utils/dialogs";
@@ -150,7 +151,7 @@ function HealthSection({user, onChanged}) {
     }
 
     return (
-        <div className="rounded-2xl glass-card p-4 space-y-3">
+        <div id="connect-health" className="rounded-2xl glass-card p-4 space-y-3">
                 <div className="flex items-center gap-2">
                     <Smartphone className="h-4 w-4 text-gray-500 dark:text-white/70"/>
                     <span className="font-display text-xs uppercase tracking-wider">
@@ -289,10 +290,10 @@ function GarminSection({user, onChanged}) {
     }
 
     return (
-        <div className="rounded-2xl glass-card p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                    <Watch className="h-4 w-4 text-gray-500 dark:text-white/70"/>
-                    <span className="font-display text-xs uppercase tracking-wider">Garmin Connect</span>
+        <div id="connect-garmin" className="rounded-2xl glass-card p-4 space-y-3">
+            <div className="flex items-center gap-2">
+                <Watch className="h-4 w-4 text-gray-500 dark:text-white/70"/>
+                <span className="font-display text-xs uppercase tracking-wider">Garmin Connect</span>
                     {linked && <LinkedPill/>}
                 </div>
 
@@ -645,7 +646,30 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
             </SettingsGroup>
 
             <SettingsGroup title="Connected services" hint="Only one source imports activities, so the same workout never lands twice.">
-                <div className="rounded-2xl glass-card p-4 space-y-3">
+                <div className={"grid gap-2 " + ((user?.health_configured || user?.health_user_id) ? "grid-cols-3" : "grid-cols-2")}>
+                    <button type="button" onClick={() => document.getElementById("connect-strava")?.scrollIntoView({behavior: prefersReducedMotion() ? "auto" : "smooth", block: "nearest"})}
+                            className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-full border px-2 text-sm font-bold"
+                            style={{borderColor: "rgba(252,76,2,0.9)", color: "#fc4c02"}}>
+                        Strava
+                        {stravaLinked && <Check className="h-4 w-4 text-volt-500 dark:text-volt-400" aria-hidden="true"/>}
+                        {stravaLinked && <span className="sr-only">connected</span>}
+                    </button>
+                    <button type="button" onClick={() => document.getElementById("connect-garmin")?.scrollIntoView({behavior: prefersReducedMotion() ? "auto" : "smooth", block: "nearest"})}
+                            className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-full border border-ink-600 bg-ink-950/5 px-2 text-sm font-bold text-ink-950 dark:bg-ink-850 dark:text-white">
+                        Garmin
+                        {user?.garmin_email && <Check className="h-4 w-4 text-volt-500 dark:text-volt-400" aria-hidden="true"/>}
+                        {user?.garmin_email && <span className="sr-only">connected</span>}
+                    </button>
+                    {(user?.health_configured || user?.health_user_id) && (
+                        <button type="button" onClick={() => document.getElementById("connect-health")?.scrollIntoView({behavior: prefersReducedMotion() ? "auto" : "smooth", block: "nearest"})}
+                                className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-full border border-ink-600 bg-ink-950/5 px-2 text-sm font-bold text-ink-950 dark:bg-ink-850 dark:text-white">
+                            Health
+                            {user?.health_user_id && <Check className="h-4 w-4 text-volt-500 dark:text-volt-400" aria-hidden="true"/>}
+                            {user?.health_user_id && <span className="sr-only">connected</span>}
+                        </button>
+                    )}
+                </div>
+                <div id="connect-strava" className="rounded-2xl glass-card p-4 space-y-3">
                     <div className="flex items-center gap-2">
                         <Watch className="h-4 w-4 text-gray-500 dark:text-white/70"/>
                         <span className="font-display text-xs uppercase tracking-wider">Strava</span>

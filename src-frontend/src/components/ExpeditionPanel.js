@@ -7,6 +7,7 @@ import {
 import {useGetExpeditionByCompetitionQuery, useVoteExpeditionShortcutMutation} from "../utils/reducers/competitionsSlice";
 import {useProtectedImage} from "../utils/protectedMedia";
 import ExpeditionPostcard from "./ExpeditionPostcard";
+import {StatTile} from "./polishBits";
 
 const LANDMARKS = {
     trailhead: {title: "Trailhead", assetKey: "trailhead-v1"},
@@ -633,12 +634,21 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
 
             <div aria-label="Shared Expedition progress" aria-valuemax={100} aria-valuemin={0}
                 aria-valuenow={Number(groupProgress)} aria-valuetext={`${groupProgress}% of the shared route`}
-                className="mt-3 flex items-end justify-between gap-3" role="progressbar">
-                <div className="min-w-0">
-                    <span className={`block text-sm font-semibold ${status.tone}`} role="status">{status.headline}</span>
-                    {status.detail && <span className="mt-0.5 block text-sm text-muted">{status.detail}</span>}
+                className="mt-3" role="progressbar">
+                <span className={`block text-sm font-semibold ${status.tone}`} role="status">{status.headline}</span>
+                {status.detail && <span className="mt-0.5 block text-sm text-muted">{status.detail}</span>}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                    <StatTile label="Route" value={`${groupProgress}%`} primary/>
+                    <StatTile
+                        label={expedition.this_week?.earned_points != null ? "This week" : (Number.isFinite(Number(expedition.personal_progress_percent)) ? "You" : "Crew")}
+                        value={expedition.this_week?.earned_points != null
+                            ? points(expedition.this_week.earned_points)
+                            : (Number.isFinite(Number(expedition.personal_progress_percent))
+                                ? `${percent(expedition.personal_progress_percent)}%`
+                                : String(expedition.participant_count || 0))}
+                        unit={expedition.this_week?.earned_points != null ? "pts" : undefined}
+                    />
                 </div>
-                <span className="font-display text-4xl leading-none tabular-nums text-volt-400">{groupProgress}%</span>
             </div>
 
             {Number(groupProgress) === 0 && (

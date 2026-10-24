@@ -1,6 +1,7 @@
 import {
     useAddWorkoutMutation,
     useDeleteWorkoutMutation, useGetWorkoutByIdQuery,
+    useGetWorkoutSummaryQuery,
     useUpdateWorkoutMutation
 } from "../utils/reducers/workoutsSlice";
 import React, {useEffect, useState} from "react";
@@ -14,6 +15,7 @@ import {toast} from "../utils/toasts";
 import {errText} from "../utils/errors";
 
 import {refreshChallengeSoon, workoutTypes, sportLabelShort} from "../utils/sports";
+import {DeltaChip, StatTile} from "../components/polishBits";
 export {refreshChallengeSoon, workoutTypes, sportLabelShort};
 import QuickLogSheet from "./quickLog";
 
@@ -122,6 +124,51 @@ const steps_fields = {
 
 
 
+function durationSeconds(value) {
+    const parts = String(value || "").split(":").map((part) => Number(part));
+    if (parts.length < 2 || parts.some((n) => !Number.isFinite(n))) return 0;
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+}
+
+function formatPace(secondsPerKm) {
+    if (!Number.isFinite(secondsPerKm) || secondsPerKm <= 0) return null;
+    const mins = Math.floor(secondsPerKm / 60);
+    const secs = Math.round(secondsPerKm % 60) % 60;
+    return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+function WorkoutStatStrip({values, summary}) {
+    if (!values?.sport_type) return null;
+    if (values.sport_type === "Steps") {
+        return (
+            <div className="mb-3 grid grid-cols-2 gap-2">
+                <StatTile label="Steps" value={Number(values.steps || 0).toLocaleString()} primary/>
+            </div>
+        );
+    }
+    const seconds = durationSeconds(values.duration);
+    const km = Number(values.distance) || 0;
+    const kcal = Number(values.kcal) || 0;
+    const workouts = Number(summary?.d30?.workouts) || 0;
+    const avgKm = workouts > 0 ? Number(summary.d30.distance) / workouts : null;
+    const avgKcal = workouts > 0 ? Number(summary.d30.kcal) / workouts : null;
+    const avgMin = workouts > 0 ? Number(summary.d30.seconds) / workouts / 60 : null;
+    const pace = km > 0 && seconds > 0 ? formatPace(seconds / km) : null;
+    const distanceFirst = km > 0;
+    return (
+        <div className="mb-3 grid grid-cols-2 gap-2">
+            <StatTile label="Time" value={values.duration ? String(values.duration).slice(0, 5) : "–"} primary={!distanceFirst}
+                      delta={!distanceFirst ? <DeltaChip current={seconds / 60} average={avgMin} unit="min"/> : null}/>
+            <StatTile label="Distance" value={km ? String(Math.round(km * 10) / 10) : "–"} unit={km ? "km" : undefined} primary={distanceFirst}
+                      delta={distanceFirst ? <DeltaChip current={km} average={avgKm} unit="km"/> : null}/>
+            <StatTile label="Calories" value={kcal ? Math.round(kcal).toLocaleString() : "–"}
+                      delta={<DeltaChip current={kcal} average={avgKcal} unit="kcal" digits={0}/>}/>
+            <StatTile label="Pace" value={pace || "–"} unit={pace ? "/km" : undefined}/>
+        </div>
+    );
+}
+
 export default function WorkoutForm({id = true, setModalState, scaling_distance}) {
     if (id === true) return <QuickLogSheet setModalState={setModalState}/>;
     return <WorkoutEditForm id={id} setModalState={setModalState} scaling_distance={scaling_distance}/>;
@@ -129,6 +176,7 @@ export default function WorkoutForm({id = true, setModalState, scaling_distance}
 
 function WorkoutEditForm({id, setModalState}) {
     const dispatch = useDispatch();
+    const {data: workoutSummary} = useGetWorkoutSummaryQuery();
 
     // Local date, not toISOString() (UTC): near midnight the UTC date is
     // already tomorrow and the form would prefill the day before yesterday.
@@ -294,6 +342,7 @@ function WorkoutEditForm({id, setModalState}) {
         <Modal title="Workout" landscape={true} setShowModal={setModalState}
                isLoading={iniLoading || updateIsLoading || createIsLoading || deleteIsLoading}
                confirmDiscard={dirty}>
+            <WorkoutStatStrip values={values} summary={workoutSummary}/>
             <SingleForm fields={activeFields} values={values} setValues={setValues} errors={fieldErrors}/>
             <div className="text-center text-danger-text text-xs italic">{formError}</div>
             {(id !== true && values.sport_type !== "Steps" && (values?.strava_id === null || values?.strava_id === '')) ? <div className="text-center text-orange-500 text-xs italic"><b>Note:</b> Empty the kcal field to re-calculate after changes to the workout type, duration, or intensity.</div> : null}

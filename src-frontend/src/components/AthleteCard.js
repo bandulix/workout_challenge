@@ -1,21 +1,12 @@
 import React from "react";
-import {CalendarDays, Crown, Flame, Footprints, Timer} from "lucide-react";
+import {Crown} from "lucide-react";
 import ProfileAvatar from "./ProfileAvatar";
 import {DogTagRow} from "./gameBits";
+import {StatTile} from "./polishBits";
 import {sportLabelShort} from "../forms/workoutForm";
 import {OverlaySheet} from "../forms/basicComponents";
 import {topSportCounts} from "../utils/sportCounts";
 import {pageResults} from "../utils/queryPage";
-
-function Kpi({icon: Icon, value, label}) {
-    return (
-        <div className="rounded-2xl glass-inset px-2.5 py-2 text-center min-w-0">
-            <Icon className="h-3.5 w-3.5 mx-auto text-gray-500 dark:text-white/70"/>
-            <p className="mt-1 font-display text-lg leading-none tabular-nums text-ink-950 dark:text-white">{value}</p>
-            <p className="mt-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
-        </div>
-    );
-}
 
 function sportsForUser(person, feed, userId) {
     if (person?.sports && typeof person.sports === "object" && !Array.isArray(person.sports)) {
@@ -55,11 +46,11 @@ export default function AthleteCard({person, weekTotal, weekBars, trendSpark, fe
                     </p>
                 </div>
 
-                <div className="mt-4 grid grid-cols-4 gap-1.5">
-                    <Kpi icon={Timer} value={Math.round(weekTotal || 0)} label="This week"/>
-                    <Kpi icon={Footprints} value={person.workouts ?? "–"} label="Workouts"/>
-                    <Kpi icon={Flame} value={person.streak ?? "–"} label="Streak"/>
-                    <Kpi icon={CalendarDays} value={person.active_days ?? "–"} label="Active days"/>
+                <div className="mt-4 grid grid-cols-2 gap-2 text-left">
+                    <StatTile label="This week" value={Math.round(weekTotal || 0)} unit="P" primary/>
+                    <StatTile label="Workouts" value={person.workouts ?? "–"}/>
+                    <StatTile label="Streak" value={person.streak ?? "–"}/>
+                    <StatTile label="Active days" value={person.active_days ?? "–"}/>
                 </div>
 
                 {(weekBars || trendSpark) && (

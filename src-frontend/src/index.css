@@ -187,6 +187,7 @@ html.wc-verify-banner .wc-page-wrap {
   .animate-float-slow,
   .animate-pop-in,
   .animate-slide-up,
+  .rank-pop,
   .animate-dock-expand,
   .animate-squad-orbit,
   .animate-squad-orbit-slow,
@@ -767,13 +768,26 @@ html.wc-verify-banner .wc-page-wrap {
 /* Active tab: slim volt dash, not a filled chip. */
 .nav-active-bar {
   display: block;
-  width: 14px;
-  height: 3px;
+  width: 5px;
+  height: 5px;
   margin-top: 4px;
   border-radius: 999px;
   background: #d7ff3e;
-  box-shadow: 0 0 10px rgba(215, 255, 62, 0.7);
+  box-shadow: 0 0 8px rgba(215, 255, 62, 0.8);
   transform-origin: center;
+}
+
+@keyframes rank-pop {
+  0% { transform: translateY(6px); opacity: 0.35; }
+  100% { transform: none; opacity: 1; }
+}
+.rank-pop {
+  animation: rank-pop var(--dur-2) var(--ease-out) both;
+}
+
+.composer-rim {
+  padding: 1px;
+  background: linear-gradient(90deg, rgba(215, 255, 62, 0.9), rgba(215, 255, 62, 0));
 }
 
 html {

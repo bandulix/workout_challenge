@@ -2,6 +2,7 @@ import React from "react";
 import {ChevronRight, Target} from "lucide-react";
 import {Link} from "react-router-dom";
 import {BoxSection} from "../utils/miscellaneous";
+import {StatTile} from "./polishBits";
 
 function goalAmount(value, goalKey) {
     const shown = Number.isInteger(value) ? String(value) : String(Number(value).toFixed(1)).replace(/\.0$/, "");
@@ -113,6 +114,24 @@ export default function RivalCard({model, onPin, onDismiss, isPinned = false, pl
                             </span>
                         </div>
                         <h2 className={"mt-0.5 font-extrabold " + (plate ? "text-lg text-white" : "text-base text-gray-900 dark:text-gray-100")}>{title}</h2>
+                        {model.myRank != null && model.rivalRank != null && (
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                                <StatTile label="You" value={`#${model.myRank}`} primary/>
+                                <StatTile label={`@${model.rivalUsername}`} value={`#${model.rivalRank}`}/>
+                            </div>
+                        )}
+                        {Number.isFinite(Number(model.pointsGap)) && (
+                            <p className={"mt-2 text-xs font-bold t-stat " + (Number(model.pointsGap) < 0
+                                ? "text-volt-700 dark:text-volt-400"
+                                : "text-muted")}>
+                                {Number(model.pointsGap) > 0
+                                    ? `▼ ${Math.round(Number(model.pointsGap))}P behind`
+                                    : Number(model.pointsGap) < 0
+                                        ? `▲ ${Math.abs(Math.round(Number(model.pointsGap)))}P ahead`
+                                        : "Level on points"}
+                                {model.gapChanged ? " · standings moved" : ""}
+                            </p>
+                        )}
                         <p className={"mt-1 text-sm " + (plate ? "text-white/70" : "text-gray-600 dark:text-gray-300")}>{detail}</p>
                     </div>
                     <ChevronRight

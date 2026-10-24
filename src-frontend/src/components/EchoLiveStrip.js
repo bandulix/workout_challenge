@@ -3,6 +3,7 @@ import {createPortal} from "react-dom";
 import {Crown, Info, Share2, Trash2} from "lucide-react";
 import {useDispatch} from "react-redux";
 import {PaneHead} from "./uiBits";
+import {Segmented, filterByAge} from "./polishBits";
 import {RoastGallery} from "./gameBits";
 import {Modal} from "../forms/basicComponents";
 import {useProtectedImage} from "../utils/protectedMedia";
@@ -74,6 +75,9 @@ function EchoTile({echo, onDelete, busy, onOpenArt, showStatus = false}) {
             <EchoArt url={echo.image} title={echo.title} onOpen={() => onOpenArt?.(echo)}/>
             <div className="px-2.5 py-2">
                 <p className="text-[12px] font-bold leading-tight truncate">{echo.title}</p>
+                {echo.power != null && (
+                    <p className="t-stat text-lg font-display leading-none text-volt-600 dark:text-volt-400">{echo.power}</p>
+                )}
                 <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 truncate">
                     {echo.holder_name || "Held"} · {echo.metric_label}
                 </p>
@@ -120,6 +124,7 @@ export default function EchoLiveStrip({competitionId, userId, archiveHost = null
     const [removeEcho, {isLoading: busy}] = useDeleteEchoMutation();
     const [showExplainer, setShowExplainer] = useState(false);
     const [showAll, setShowAll] = useState(false);
+    const [range, setRange] = useState("all");
     // Index into galleryCards (echoes that actually have artwork).
     const [galleryIndex, setGalleryIndex] = useState(null);
     const allEchoes = echoes || [];
@@ -184,10 +189,16 @@ export default function EchoLiveStrip({competitionId, userId, archiveHost = null
             )}
             {showAll && (
                 <Modal title="All Echoes" setShowModal={setShowAll}>
-                    <div className="grid grid-cols-2 gap-3 px-1 pb-1">
-                        {allEchoes.map((echo) => (
-                            <EchoTile key={echo.id} echo={echo} onDelete={onDelete} busy={busy}
+                    <div className="mb-3">
+                        <Segmented value={range} onChange={setRange} label="Echo highlights"
+                                   options={[{id: "1m", label: "1M"}, {id: "3m", label: "3M"}, {id: "all", label: "All"}]}/>
+                    </div>
+                    <div className="flex gap-3 overflow-x-auto no-scrollbar px-1 pb-1">
+                        {filterByAge(allEchoes, range, (echo) => echo.created_at).map((echo) => (
+                            <div key={echo.id} className="w-44 shrink-0">
+                            <EchoTile echo={echo} onDelete={onDelete} busy={busy}
                                       onOpenArt={openGallery} showStatus/>
+                            </div>
                         ))}
                     </div>
                 </Modal>
@@ -222,10 +233,12 @@ export default function EchoLiveStrip({competitionId, userId, archiveHost = null
                 {updates.length > 0 ? (
                     <>
                         {head}
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
                             {updates.slice(0, LIVE).map((echo) => (
-                                <EchoTile key={echo.id} echo={echo} onDelete={onDelete} busy={busy}
-                                          onOpenArt={openGallery}/>
+                                <div key={echo.id} className="w-[68%] max-w-[220px] shrink-0">
+                                    <EchoTile echo={echo} onDelete={onDelete} busy={busy}
+                                              onOpenArt={openGallery}/>
+                                </div>
                             ))}
                         </div>
                     </>
