@@ -588,6 +588,28 @@ class LeaderboardAthleteCardTests(TestCase):
         self.assertEqual(float(row["scaling_kcal"]), 1.0)
         self.assertEqual(float(row["scaling_distance"]), 1.0)
 
+    def test_leaderboard_survives_when_duel_records_table_is_missing(self):
+        """The board must still rank athletes if competition_duel is absent.
+
+        Screenshot failure: GET /api/stats/1/ 500'd with
+        sqlite3.OperationalError: no such table: competition_duel
+        while attaching W-L-T, and the page showed the error box.
+        """
+        from django.db.utils import OperationalError
+        from unittest import mock
+
+        from .stats import get_competition_stats
+
+        with mock.patch(
+            "competition.duels.records_for",
+            side_effect=OperationalError("no such table: competition_duel"),
+        ):
+            snap = get_competition_stats(self.cup.id)
+        row = snap["leaderboard"]["individual"][0]
+        self.assertEqual(row["duel_record"], {"wins": 0, "losses": 0, "ties": 0})
+        self.assertEqual(row["username"], self.alice.username)
+        self.assertIsNotNone(row["rank"])
+
     def test_rank_summary_identifies_the_closest_person_ahead(self):
         from .stats import get_competition_rank_summary
 

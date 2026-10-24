@@ -108,6 +108,7 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                 message={message}
                 persona={coachPersona(persona, message)}
                 canReply={Boolean(config?.enabled)}
+                defaultOpen={Boolean((message.replies || []).length)}
                 competitionId={config.competition}
                 visionCapable={Boolean(config.vision_capable)}
                 meId={meId}

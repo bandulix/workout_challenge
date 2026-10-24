@@ -12,6 +12,8 @@ import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
 import ActivityGoalsForm from "../forms/activityGoalsForm";
 import {sportLabelShort} from "../forms/workoutForm";
 import {EmptyState, PaneHead, paneCardClass} from "./uiBits";
+import {MissingCard} from "./designBits";
+import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {topSportCounts} from "../utils/sportCounts";
 import CoachThread from "./CoachThread";
 import PhotoPost from "./PhotoPost";
@@ -555,51 +557,36 @@ export function PointsChip({capped, raw, size = "md", message = null}) {
                             {challenge ? <> · {challenge}</> : null}
                             {breakdown.length > 1 ? ". Challenge goals add up; today's order adds +5P when active. New photos do not award points." : "."}
                         </p>
-                        {breakdown.length > 0 && (
-                            <div className="rounded-2xl glass-well px-3 py-3">
-                                {addends.length > 1 && (
-                                    <p className="mb-3 flex flex-wrap items-baseline justify-center gap-y-1 text-center font-display text-[22px] leading-snug tabular-nums">
-                                        {addends.map((row, i) => (
-                                            <span key={i}>
-                                                {i > 0 && (
-                                                    <span className="mx-1.5 text-gray-400 dark:text-gray-500">+</span>
-                                                )}
-                                                <span className="text-ink-950 dark:text-white">
-                                                    {Math.round(Number(row.points) || 0)}
-                                                </span>
-                                            </span>
-                                        ))}
-                                        <span className="mx-1.5 text-gray-400 dark:text-gray-500">=</span>
-                                        <span className="text-volt-700 dark:text-volt-400">
-                                            {Math.round(n).toLocaleString()}
-                                        </span>
-                                        <span className="ml-0.5 text-[13px] font-extrabold text-volt-700 dark:text-volt-400">P</span>
-                                    </p>
-                                )}
-                                {breakdown.map((row, i) => (
-                                    <div key={i}
-                                         className={i === 0 ? "" : "mt-3 border-t border-ink-950/10 dark:border-white/10 pt-3"}>
-                                        <div className="flex items-baseline gap-2">
-                                            <span className="w-5 shrink-0 text-center font-display text-lg text-volt-700 dark:text-volt-400">
-                                                {i === 0 ? "" : "+"}
-                                            </span>
-                                            <span className="min-w-0 flex-1 font-semibold">{row.label}</span>
-                                            <span className="font-extrabold tabular-nums text-volt-700 dark:text-volt-400">
-                                                {Math.round(Number(row.points) || 0)}P
-                                                {row.raw != null && Number(row.points) !== Number(row.raw) ? "*" : ""}
-                                            </span>
-                                        </div>
-                                        <div className="pl-7">{pointsRowExplain(row)}</div>
+                        <div className="rounded-[20px] px-4 py-4 text-white" style={{background: "#0b0b0c"}}>
+                            <div className="grid grid-cols-3 gap-3">
+                                {feedTrio(message).map((stat) => (
+                                    <div key={stat.label}>
+                                        <p className="t-stat text-2xl font-bold" style={{color: stat.label === "Points" ? "var(--volt)" : "#f4f4f5"}}>
+                                            {stat.value}
+                                        </p>
+                                        <p className="t-label text-white/60">{stat.label}</p>
                                     </div>
                                 ))}
-                                <div className="mt-3 flex items-baseline gap-2 border-t-2 border-ink-950/10 dark:border-white/15 pt-3">
-                                    <span className="w-5 shrink-0 text-center font-display text-lg text-volt-700 dark:text-volt-400">=</span>
-                                    <span className="min-w-0 flex-1 font-semibold">This workout</span>
-                                    <span className="font-display text-xl tabular-nums leading-none text-volt-700 dark:text-volt-400">
-                                        {Math.round(n).toLocaleString()}P
-                                        {starred ? "*" : ""}
-                                    </span>
-                                </div>
+                            </div>
+                        </div>
+                        {breakdown.length > 0 && (
+                            <div className="space-y-3">
+                                {breakdown.map((row, i) => {
+                                    const pts = Math.round(Number(row.points) || 0);
+                                    const width = Math.max(pts > 0 ? 8 : 0, Math.min(100, Math.round((Math.abs(pts) / Math.max(1, n)) * 100)));
+                                    return (
+                                        <div key={i}>
+                                            <div className="mb-1 flex items-baseline justify-between gap-2">
+                                                <span className="t-label text-muted">{row.label}</span>
+                                                <span className="t-stat text-sm font-bold">{pts}P{row.raw != null && Number(row.points) !== Number(row.raw) ? "*" : ""}</span>
+                                            </div>
+                                            <div className="h-2 overflow-hidden rounded-full" style={{background: "var(--surface-2)"}}>
+                                                <div className="h-full rounded-full" style={{width: width + "%", background: pts > 0 ? "var(--volt)" : "var(--hairline)"}}/>
+                                            </div>
+                                            <div className="mt-1">{pointsRowExplain(row)}</div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                         {starred && (
@@ -615,73 +602,85 @@ export function PointsChip({capped, raw, size = "md", message = null}) {
 }
 
 
-function FeedStats({summary, points}) {
-    const parts = String(summary || "").split(" · ").map((part) => part.trim()).filter(Boolean).slice(0, 2);
-    const stats = parts.map((part) => {
-        const match = part.match(/^([\d.]+)\s+(.+)$/);
-        return match ? {value: match[1], label: match[2]} : {value: part, label: "Session"};
-    });
-    if (points != null && points !== "") stats.push({value: String(Math.round(Number(points) || 0)), label: "pts"});
-    const shown = stats.slice(0, 3);
-    if (!shown.length) return null;
+const SPORT_TITLES = {
+    Run: "Run",
+    TrailRun: "Trail run",
+    Ride: "Ride",
+    VirtualRide: "Ride",
+    GravelRide: "Ride",
+    MountainBikeRide: "Ride",
+    WeightTraining: "Strength",
+    Workout: "Workout",
+    Tennis: "Tennis",
+    Walk: "Walk",
+    Swim: "Swim",
+};
+
+export function workoutTitle(message) {
+    const summary = String(message?.workout_summary || "");
+    const sport = summary.match(/\d+\s*min\s+([A-Za-z]+)/);
+    if (sport) return SPORT_TITLES[sport[1]] || sport[1];
+    const head = summary.split("·")[0].trim();
+    return head || "Workout";
+}
+
+export function feedTrio(message) {
+    const summary = String(message?.workout_summary || "");
+    const minutes = summary.match(/(\d+)\s*min/);
+    const km = summary.match(/([\d.]+)\s*km/);
+    const points = message?.points_capped;
+    const hasPoints = points != null && points !== "";
+    return [
+        {label: "Distance", value: km ? Number(km[1]).toFixed(1) : "—", unit: km ? "km" : ""},
+        {label: "Time", value: minutes ? minutes[1] : "—", unit: minutes ? "min" : ""},
+        {label: "Points", value: hasPoints ? String(Math.round(Number(points) || 0)) : "—", unit: hasPoints ? "pts" : ""},
+    ];
+}
+
+function FeedStats({message, mine}) {
+    const stats = feedTrio(message);
     return (
-        <div className={"mt-2 grid gap-2 " + (shown.length === 1 ? "grid-cols-1" : shown.length === 2 ? "grid-cols-2" : "grid-cols-3")}>
-            {shown.map((stat) => (
-                <div key={`${stat.label}-${stat.value}`}>
-                    <p className="t-stat text-base font-bold text-ink-950 dark:text-white">{stat.value}</p>
-                    <p className="t-micro text-muted">{stat.label}</p>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+            {stats.map((stat) => (
+                <div key={stat.label} className="min-w-0">
+                    <p className="t-stat text-lg font-bold text-ink-950 dark:text-white"
+                       style={stat.label === "Points" ? {color: mine ? "var(--volt)" : "var(--other)"} : undefined}>
+                        {stat.value}
+                        {stat.unit ? <span className="ml-1 text-xs font-semibold text-muted">{stat.unit}</span> : null}
+                    </p>
+                    <p className="t-label text-muted">{stat.label}</p>
                 </div>
             ))}
         </div>
     );
 }
 
-export function ActivityCoachPost({message, persona, canReply, defaultOpen, competitionId, visionCapable, hero = false}) {
-    const coachBody = stripCharacterCountSuffix(message.body);
+function cleanBody(text) {
+    return stripCharacterCountSuffix(text).replace(/\u200b/g, "");
+}
+
+function cardSurface(mine) {
+    return {
+        background: "var(--surface-1)",
+        border: mine ? "1px solid var(--volt)" : "1px solid var(--hairline)",
+        borderRadius: 20,
+    };
+}
+
+export function ActivityCoachPost({message, persona, canReply, defaultOpen, competitionId, visionCapable, hero = false, meId = null}) {
+    const {data: me} = useGetUserByIdQuery("me");
+    const mine = (meId ?? me?.id) != null && message.workout_user_id === (meId ?? me?.id);
+    const coachBody = cleanBody(message.body);
     const remixUrl = activityBackdropUrl(message);
     const {src: bgSrc} = useProtectedImage(remixUrl, "card");
     const [lightbox, setLightbox] = useState(null);
     const showThread = canReply || threadReplies(message).length > 0;
-    const points = (
-        <PointsChip capped={message.points_capped} raw={message.points_raw}
-                    size={hero ? "lg" : "md"} message={message}/>
-    );
+    const title = workoutTitle(message);
+    const name = message.athlete_name || "Athlete";
     return (
         <ActivityReactProvider message={message}>
-        <article
-            className={"relative min-w-0 rounded-3xl text-ink-950 dark:text-white " +
-                (bgSrc ? "border border-white/25 dark:border-white/10 cursor-pointer" : "glass-card")}
-            onClick={bgSrc ? (e) => {
-                if (e.target.closest("button, a, input, textarea, label")) return;
-                setLightbox("remix");
-            } : undefined}>
-            {bgSrc && (
-                <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl" aria-hidden="true">
-                    <img src={bgSrc} alt=""
-                         className="activity-photo-bg absolute inset-0 h-full w-full scale-105 object-cover"/>
-                    <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-white/18 to-white/10 dark:from-ink-950/60 dark:via-ink-950/40 dark:to-ink-950/28"/>
-                </div>
-            )}
-            {bgSrc && (
-                /* The card body opens the lightbox on click for mouse users;
-                   keyboard/AT users get this explicit control instead. It
-                   sits in normal flow (not absolutely positioned) so it
-                   never overlaps the athlete header beneath it. */
-                <div className="relative z-10 px-3.5 pt-3 sm:px-4 sm:pt-3.5">
-                    <button type="button" onClick={(e) => { e.stopPropagation(); setLightbox("remix"); }}
-                            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-ink-950/60 text-white px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide backdrop-blur-sm transition hover:bg-ink-950/80">
-                        View photo
-                    </button>
-                </div>
-            )}
-            {hero && (
-                <div className="absolute -top-3.5 right-4 z-20 flex items-center gap-3">
-                    <ActivityStampIcons/>
-                    {points}
-                </div>
-            )}
-            <div className="relative p-3.5 sm:p-4">
-                <div className="grid grid-cols-[40px_minmax(0,1fr)] gap-x-2.5 gap-y-3 items-start">
+        <article className="relative min-w-0 overflow-hidden text-ink-950 dark:text-white" style={cardSurface(mine)}>
+            <header className="flex items-center gap-3 px-4 pt-4">
                 <ProfileAvatar
                     user={{
                         profile_picture: message.athlete_profile_picture,
@@ -689,82 +688,65 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                         echoes_held: message.athlete_echoes_held,
                     }}
                     size={40}/>
-                <div className="min-w-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                        <div className={"flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 flex-1 " + (hero ? "pr-28" : "")}>
-                            <div className="min-w-0">
-                                <p className="font-semibold truncate leading-tight">{message.athlete_name || "Athlete"}</p>
-                                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                                    {message.workout_summary || "Workout"} · {timeAgo(message.posted_at)}
-                                </p>
-                            </div>
-                            {message.photo_action && (
-                                <PhotoPost
-                                    competitionId={competitionId}
-                                    parentId={message.id}
-                                    visionCapable={Boolean(visionCapable)}
-                                    purpose={message.photo_action}
-                                    variant="ghost"
-                                />
-                            )}
-                        </div>
-                        {!hero && (
-                            <div className="flex items-center gap-3 shrink-0">
-                                <ActivityStampIcons/>
-                                {points}
-                            </div>
-                        )}
+                <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                        <p className="truncate font-semibold leading-tight">{name}</p>
+                        <p className="shrink-0 text-xs text-muted">{timeAgo(message.posted_at)}</p>
                     </div>
-                    <FeedStats summary={message.workout_summary} points={message.points_capped}/>
-                    {!!message.order_ribbon && (
-                        <div className="mt-1.5">
-                            <OrderRibbon show/>
-                        </div>
-                    )}
-                    {(message.echoes || []).length > 0 && (
-                        <div className="mt-2 space-y-1.5">
-                            {message.echoes.map((echo) => (
-                                <div key={echo.id}
-                                     className="flex items-center gap-2 rounded-2xl bg-volt-400/20 px-2.5 py-1.5 text-ink-950 dark:text-white">
-                                    <Crown className="h-4 w-4 shrink-0 text-gray-500 dark:text-white/70"/>
-                                    <div className="min-w-0">
-                                        <p className="t-caption text-muted">
-                                            {echo.role === "claimed" ? "Claimed Echo" : "Legend Echo"}
-                                        </p>
-                                        <p className="text-xs font-bold truncate">{echo.title}</p>
-                                        {echo.metric_label && (
-                                            <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{echo.metric_label}</p>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    <p className="truncate text-sm text-ink-950 dark:text-white">{title}</p>
                 </div>
-
-                {/* Safety: never paint a blank coach quote if body is empty
-                    (Expedition placeholders / generation failure before fallback). */}
-                {Boolean((coachBody || "").trim()) && (
-                    <>
-                        <div className="flex justify-center">
-                            <PersonaAvatar persona={persona} size={28} glow/>
-                        </div>
-                        <blockquote className="coach-quote coach-quote--inline relative min-w-0 rounded-2xl px-3.5 py-2.5"
-                                    style={coachAccentStyle(persona?.theme_color)}>
-                            <p className="relative text-[15px] leading-relaxed break-words">{coachBody}</p>
-                        </blockquote>
-                    </>
+                {message.photo_action && (
+                    <PhotoPost
+                        competitionId={competitionId}
+                        parentId={message.id}
+                        visionCapable={Boolean(visionCapable)}
+                        purpose={message.photo_action}
+                        variant="ghost"
+                    />
                 )}
-
-                <>
-                    <div aria-hidden="true"/>
-                    {showThread ? (
-                        <CoachThread message={message} persona={persona} canReply={canReply}
-                                     defaultOpen={defaultOpen} className="mt-0"
-                                     trailing={<ActivityStampButton/>}/>
-                    ) : <ActivityStampButton/>}
-                </>
+            </header>
+            {bgSrc && (
+                <button type="button" onClick={() => setLightbox("remix")}
+                        className="mt-3 block w-full bg-ink-950 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-volt-400">
+                    <img src={bgSrc} alt={`${name}'s ${title}`} className="max-h-80 w-full object-cover"/>
+                </button>
+            )}
+            <div className="px-4 pb-4">
+                <FeedStats message={message} mine={mine}/>
+                {!!message.order_ribbon && (
+                    <div className="mt-2"><OrderRibbon show/></div>
+                )}
+                {(message.echoes || []).length > 0 && (
+                    <div className="mt-2 space-y-1.5">
+                        {message.echoes.map((echo) => (
+                            <div key={echo.id} className="flex items-center gap-2 rounded-[20px] px-2.5 py-1.5" style={{background: "var(--surface-2)"}}>
+                                <Crown className="h-4 w-4 shrink-0 text-muted"/>
+                                <div className="min-w-0">
+                                    <p className="t-caption text-muted">{echo.role === "claimed" ? "Claimed Echo" : "Legend Echo"}</p>
+                                    <p className="truncate text-xs font-bold">{echo.title}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {Boolean((coachBody || "").trim()) && (
+                    <div className="mt-3 flex items-start gap-2 rounded-[20px] px-3 py-2" style={{background: "var(--surface-2)"}}>
+                        <PersonaAvatar persona={persona} size={28}/>
+                        <p className="min-w-0 flex-1 text-sm leading-snug break-words">{coachBody}</p>
+                    </div>
+                )}
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                        <ActivityStampIcons/>
+                        <ActivityStampButton/>
+                    </div>
+                    <PointsChip capped={message.points_capped} raw={message.points_raw}
+                                size={hero ? "lg" : "md"} message={message}/>
                 </div>
+                {showThread && (
+                    <CoachThread message={message} persona={persona} canReply={canReply}
+                                 defaultOpen={defaultOpen} className="mt-2"/>
+                )}
             </div>
             {lightbox === "remix" && remixUrl && (
                 <RoastGallery
@@ -784,36 +766,35 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
 
 
 function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
+    const {data: me} = useGetUserByIdQuery("me");
+    const mine = me?.id != null && message.author_id === me.id;
     const {src} = useProtectedImage(message.image, "card");
-    const picturedReplies = (message.replies || []).some((r) => r.image);
     const [lightbox, setLightbox] = useState(false);
+    const name = message.author_name || "Participant";
     return (
-        <article className="min-w-0 overflow-hidden rounded-3xl glass-card text-ink-950 dark:text-white">
-            <div className="flex items-center gap-2.5 px-3.5 pt-3.5 pb-2.5">
+        <article className="min-w-0 overflow-hidden text-ink-950 dark:text-white" style={cardSurface(mine)}>
+            <header className="flex items-center gap-3 px-4 pt-4">
                 <ProfileAvatar
                     user={{profile_picture: message.author_profile_picture, first_name: message.author_name}}
-                    size={36}/>
+                    size={40}/>
                 <div className="min-w-0 flex-1">
-                    <p className="font-semibold truncate leading-tight">{message.author_name || "Participant"}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                        {timeAgo(message.posted_at)}
-                        {picturedReplies && message.workout_summary ? ` · ${message.workout_summary}` : ""}
-                    </p>
+                    <div className="flex items-baseline justify-between gap-2">
+                        <p className="truncate font-semibold leading-tight">{name}</p>
+                        <p className="shrink-0 text-xs text-muted">{timeAgo(message.posted_at)}</p>
+                    </div>
+                    <p className="truncate text-sm">Photo</p>
                 </div>
-            </div>
+            </header>
             {src && (
                 <button type="button" onClick={() => setLightbox(true)}
-                        className="relative block w-full bg-ink-950 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
-                    <img src={src} alt={message.body || `Shared by ${message.author_name || "a participant"}`}
-                         className="w-full max-h-80 object-cover"/>
-                    <span className="absolute bottom-2 right-2 rounded-full bg-ink-950/75 text-white text-xs font-bold uppercase tracking-wider px-2 py-0.5 tabular-nums">
-                        {elapsedSince(message.posted_at, now)}
-                    </span>
+                        className="mt-3 block w-full bg-ink-950 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-volt-400">
+                    <img src={src} alt={message.body || `Shared by ${name}`} className="max-h-96 w-full object-cover"/>
+                    <span className="sr-only">{elapsedSince(message.posted_at, now)}</span>
                 </button>
             )}
-            <div className="px-3.5 py-3">
-                {message.body && (
-                    <p className="text-[15px] leading-relaxed break-words">{message.body}</p>
+            <div className="px-4 py-3">
+                {cleanBody(message.body) && (
+                    <p className="text-[15px] leading-relaxed break-words">{cleanBody(message.body)}</p>
                 )}
                 <CoachThread message={message} persona={persona} canReply={canReply} defaultOpen={defaultOpen}/>
             </div>
@@ -821,8 +802,8 @@ function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
                 <RoastGallery
                     cards={[{
                         image: message.image,
-                        title: message.author_name || "Photo",
-                        caption: message.body || `Shared by ${message.author_name || "a participant"}`,
+                        title: name,
+                        caption: message.body || `Shared by ${name}`,
                         subline: timeAgo(message.posted_at),
                         thread_id: message.id,
                         thread_reacts: message.reacts,
@@ -836,7 +817,7 @@ function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
 
 function AnnouncementPost({message, persona, canReply, defaultOpen}) {
     const kind = KIND_LABEL[message.kind] || "Coach";
-    const coachBody = stripCharacterCountSuffix(message.body);
+    const coachBody = cleanBody(message.body);
     const {src} = useProtectedImage(message.image, "card");
     const [lightbox, setLightbox] = useState(false);
     return (
@@ -980,7 +961,7 @@ export function CoachCorner({competition, isOwner}) {
 
     const persona = config.persona_detail || {};
     const all = loaded;
-    const roots = all.filter((m) => m.kind !== "photo" && m.kind !== "echo" && m.kind !== "claim");
+    const roots = all.filter((m) => m.kind !== "echo" && m.kind !== "claim");
     const hidden = Math.max(0, (page?.count || all.length) - all.length);
     const groups = groupByDay(roots);
 
@@ -994,7 +975,12 @@ export function CoachCorner({competition, isOwner}) {
         const canReply = Boolean(config.enabled && m.kind === "activity");
         const open = m.id === replyTargetId;
         if (m.kind === "photo") {
-            return null;
+            return (
+                <li key={m.id} id={`post-${m.id}`} className="min-w-0">
+                    <PhotoMessage message={m} persona={threadPersona} canReply={false}
+                                  defaultOpen={open} now={Date.now()}/>
+                </li>
+            );
         }
         if (m.kind === "activity") {
             return (
@@ -1047,10 +1033,19 @@ export function CoachCorner({competition, isOwner}) {
                     )}
                 </>
             ) : (
-                <article className="rounded-3xl glass-card px-5 py-6 text-center">
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                        No orders yet. Log a workout and the coach will have words.
-                    </p>
+                <article style={cardSurface(false)}>
+                    <MissingCard
+                        title="No workouts in the feed"
+                        body="Scored sessions from the field show up here."
+                        action="Log a workout."
+                        when="The coach comments once scoring finishes, usually within a minute."
+                    />
+                    <div className="px-4 pb-4 text-center">
+                        <button type="button" onClick={() => window.dispatchEvent(new Event("wc:open-log"))}
+                                className="min-h-[44px] btn-plate px-5 text-sm font-bold">
+                            Log a workout
+                        </button>
+                    </div>
                 </article>
             )}
             {showConfigModal && <DrillInstructorConfigForm competition={competition} setModalState={setShowConfigModal}/>}

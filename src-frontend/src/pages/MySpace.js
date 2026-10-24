@@ -954,7 +954,10 @@ export default function MySpace() {
                         />
                         {showStamps && (
                             <section className="mb-4">
-                                <PaneHead title="Stamps" hint="Earned tags glow. The rest are still out there."/>
+                                <PaneHead title="Stamps" hint="Earned tags glow. Locked ones stay outlines. Rings show progress."/>
+                                <div className="mb-3 px-1">
+                                    <RecordPills record={user.duel_record}/>
+                                </div>
                                 <StampWall earned={user.dog_tags}/>
                             </section>
                         )}

@@ -558,6 +558,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
     photo_action = serializers.SerializerMethodField()
     replies = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
+    author_id = serializers.IntegerField(source="user_id", read_only=True, allow_null=True)
     author_name = serializers.SerializerMethodField()
     author_profile_picture = serializers.SerializerMethodField()
     reacts = serializers.SerializerMethodField()
@@ -593,6 +594,7 @@ class DrillInstructorMessageSerializer(serializers.ModelSerializer):
             "photo_action",
             "replies",
             "image",
+            "author_id",
             "author_name",
             "author_profile_picture",
             "reacts",

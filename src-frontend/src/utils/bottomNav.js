@@ -241,6 +241,11 @@ export default function BottomNav() {
     const [showRoaster, setShowRoaster] = useState(false);
     const [showComeback, setShowComeback] = useState(false);
     const [linkStrava, setLinkStrava] = useState(false);
+    useEffect(() => {
+        const open = () => setShowLogWorkout(true);
+        window.addEventListener("wc:open-log", open);
+        return () => window.removeEventListener("wc:open-log", open);
+    }, []);
 
     const location = useLocation();
     const navigate = useNavigate();

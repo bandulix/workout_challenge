@@ -145,10 +145,15 @@ export function PairedBars({rows, youLabel = "You", themLabel = "Them"}) {
                 <span className="inline-flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-full" style={{background: "var(--other)"}}/>{themLabel}</span>
             </div>
             <ul className="space-y-2">
-                {list.map((row) => (
+                {list.map((row) => {
+                    const you = Number(row.you) || 0;
+                    const them = Number(row.them) || 0;
+                    const level = you > 0 && Math.abs(you - them) < 0.05;
+                    return (
                     <li key={row.date || row.label}>
                         <div className="mb-0.5 flex justify-between t-micro text-muted">
                             <span>{row.label || row.date}</span>
+                            {level ? <span className="font-bold uppercase tracking-wide" style={{color: "var(--mid)"}}>Dead heat</span> : null}
                         </div>
                         <div className="space-y-1">
                             <div className="h-1.5 overflow-hidden rounded-full" style={{background: "var(--hairline)"}}>
@@ -159,7 +164,8 @@ export function PairedBars({rows, youLabel = "You", themLabel = "Them"}) {
                             </div>
                         </div>
                     </li>
-                ))}
+                    );
+                })}
             </ul>
         </div>
     );

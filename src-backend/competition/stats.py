@@ -1,4 +1,5 @@
 import datetime
+import logging
 
 from django.conf import settings
 from django.core.cache import cache
@@ -9,6 +10,8 @@ from rest_framework import status
 
 from django.db.models import Sum, Count, ExpressionWrapper, DurationField, F, Q, IntegerField
 from django.db.models.functions import TruncDay, Now, ExtractDay
+
+logger = logging.getLogger(__name__)
 
 
 def _add_rank(data, key, enhance_dict, id_field, rank_field='rank', reverse=True):
@@ -265,10 +268,17 @@ def get_competition_stats(competition, last_seven_days=False):
             d += 1
         return n
 
+    # W-L-T is a decoration on the board. A missing duel table (migration
+    # not applied yet) or any other OperationalError used to 500 the whole
+    # stats payload, and the leaderboard rendered the full-page error box.
     duel_records = {}
     if user_dict:
-        from competition.duels import records_for
-        duel_records = records_for(list(user_dict.keys()))
+        from django.db.utils import OperationalError
+        try:
+            from competition.duels import records_for
+            duel_records = records_for(list(user_dict.keys()))
+        except OperationalError:
+            logger.exception("Duel records unavailable; leaderboard continues without W-L-T")
 
     for uid, value in user_dict.items():
         days = timeseries_user.get(uid, {})

@@ -279,7 +279,7 @@ function BoardRow({row, mine, maxScore, onPick, onDuel, charts = null, bare = fa
     );
 }
 
-function IndividualLeaderboardBox({stats, userId, feed}) {
+export function IndividualLeaderboardBox({stats, userId, feed}) {
     // getWeekDates() ignores `stats`; the dep just re-anchors the week
     // labels whenever fresh stats land (a day rollover shows up on poll).
     const weekDays = useMemo(() => getWeekDates(), [stats]);
