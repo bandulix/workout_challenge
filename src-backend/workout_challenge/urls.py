@@ -23,6 +23,16 @@ from custom_user.jwt_views import (
 )
 from rest_framework.routers import DefaultRouter
 from competition.views import CompetitionViewSet, TeamViewSet, ActivityGoalViewSet, PointsViewSet, CompetitionStatsQueryView, CompetitionStatsSummaryView, FeedQueryView, JoinCompetitionView, JoinTeamView, CeleryQueryView, PointsFactorsView
+from competition.duel_api import (
+    DuelBlockView,
+    DuelCreateView,
+    DuelDetailView,
+    DuelForfeitView,
+    DuelMineView,
+    DuelPingView,
+    DuelRematchView,
+    DuelRespondView,
+)
 from competition.expedition_api import ExpeditionShortcutVoteView, ExpeditionView
 from workouts.views import WorkoutViewSet
 from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, ResetStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, EmailVerifyConfirmView, EmailVerifyResendView, LinkGarminView, LinkGarminMfaView, UnlinkGarminView, SyncGarminView, LinkHealthView, UnlinkHealthView, SyncHealthView
@@ -90,6 +100,14 @@ router.register(r'drill-instructor/echoes', LegendEchoViewSet, basename='drill-e
 urlpatterns = [
     path('api/', include([
         path('', include(router.urls)),
+        path('competition/<int:competition_id>/duels/', DuelCreateView.as_view(), name='competition-duels'),
+        path('duels/', DuelMineView.as_view(), name='duels-mine'),
+        path('duels/block/', DuelBlockView.as_view(), name='duels-block'),
+        path('duels/pings/', DuelPingView.as_view(), name='duels-pings'),
+        path('duels/<int:duel_id>/', DuelDetailView.as_view(), name='duels-detail'),
+        path('duels/<int:duel_id>/respond/', DuelRespondView.as_view(), name='duels-respond'),
+        path('duels/<int:duel_id>/forfeit/', DuelForfeitView.as_view(), name='duels-forfeit'),
+        path('duels/<int:duel_id>/rematch/', DuelRematchView.as_view(), name='duels-rematch'),
         path('competition/<int:competition_id>/expedition/', ExpeditionView.as_view(), name='competition-expedition'),
         path('competition/<int:competition_id>/expedition/shortcut-vote/', ExpeditionShortcutVoteView.as_view(), name='competition-expedition-shortcut-vote'),
         path('drill-instructor/comeback/', ComebackBenchView.as_view(), name='comeback-bench'),

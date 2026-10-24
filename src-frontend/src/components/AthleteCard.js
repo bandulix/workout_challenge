@@ -3,6 +3,7 @@ import {Crown} from "lucide-react";
 import ProfileAvatar from "./ProfileAvatar";
 import {DogTagRow} from "./gameBits";
 import {StatTile} from "./polishBits";
+import {recordLabel} from "../utils/duel";
 import {sportLabelShort} from "../forms/workoutForm";
 import {OverlaySheet} from "../forms/basicComponents";
 import {topSportCounts} from "../utils/sportCounts";
@@ -16,7 +17,7 @@ function sportsForUser(person, feed, userId) {
     return Object.entries(topSportCounts(mine, "workout__sport_type").groups);
 }
 
-export default function AthleteCard({person, weekTotal, weekBars, trendSpark, feed, onClose}) {
+export default function AthleteCard({person, weekTotal, weekBars, trendSpark, feed, onClose, onDuel, onBlock, blocked = false}) {
     if (!person) return null;
     const name = person.username || "Athlete";
     const rank = person.rank;
@@ -33,6 +34,9 @@ export default function AthleteCard({person, weekTotal, weekBars, trendSpark, fe
                     <h2 className="mt-3 font-display text-xl uppercase tracking-wide leading-tight">
                         {name}
                     </h2>
+                    {recordLabel(person.duel_record) && (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Duels {recordLabel(person.duel_record)}</p>
+                    )}
                     <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                         {rank != null ? `#${rank}` : "Unranked"}
                         {" · "}
@@ -97,6 +101,19 @@ export default function AthleteCard({person, weekTotal, weekBars, trendSpark, fe
                         <DogTagRow tags={tags}/>
                     </div>
                 )}
+
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                    {onDuel && (
+                        <button type="button" onClick={() => onDuel(person)} className="min-h-[44px] btn-plate px-4 text-xs font-bold">
+                            Duel
+                        </button>
+                    )}
+                    {onBlock && (
+                        <button type="button" onClick={() => onBlock(person)} className="min-h-[44px] btn-plate-ink px-4 text-xs font-semibold">
+                            {blocked ? "Unblock duel invites" : "Block duel invites"}
+                        </button>
+                    )}
+                </div>
 
                 {stravaId && (
                     <a href={`https://www.strava.com/athletes/${stravaId}`}

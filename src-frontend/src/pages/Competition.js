@@ -26,6 +26,9 @@ import {clearBodyScrollLock} from "../utils/overlay";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ExpeditionPanel, {ExpeditionTeaser} from "../components/ExpeditionPanel";
 import AthleteCard from "../components/AthleteCard";
+import DuelSheet from "../components/DuelSheet";
+import {useBlockDuelMutation, useGetMyDuelsQuery, useUnblockDuelMutation} from "../utils/reducers/duelsSlice";
+import {toast} from "../utils/toasts";
 import usePollingInterval from "../utils/usePollingInterval";
 import {CompetitionHead, CoachCorner} from "../components/competitionChrome";
 import EchoLiveStrip from "../components/EchoLiveStrip";
@@ -235,14 +238,15 @@ function RankMark({rank}) {
     );
 }
 
-function BoardRow({row, mine, maxScore, onPick, charts = null, bare = false}) {
+function BoardRow({row, mine, maxScore, onPick, onDuel, charts = null, bare = false}) {
     const person = row.person;
     const name = mine ? "You" : person.username;
     return (
         <div className={bare ? "px-1 py-1" : paneCardClass + (mine ? " bg-volt-400/10 ring-1 ring-volt-400/35" : "")}>
+            <div className="flex items-center gap-2">
             <button type="button" onClick={() => onPick(person)}
                     aria-label={`${name}, rank ${row.rank ?? "unranked"}, ${Math.round(row.score)} points`}
-                    className="flex w-full min-h-[44px] items-center gap-3 text-left">
+                    className="flex min-w-0 flex-1 min-h-[44px] items-center gap-3 text-left">
                 <RankMark rank={row.rank}/>
                 <ScoreRing value={row.score} max={maxScore} mine={mine} size={52}>
                     <ProfileAvatar user={person} size={40}/>
@@ -264,6 +268,12 @@ function BoardRow({row, mine, maxScore, onPick, charts = null, bare = false}) {
                     {Math.round(row.score).toLocaleString()}
                 </span>
             </button>
+            {!bare && !mine && onDuel && (
+                <button type="button" onClick={() => onDuel(person)} className="min-h-[44px] shrink-0 btn-plate px-3 text-xs font-bold">
+                    Duel
+                </button>
+            )}
+            </div>
             {charts}
         </div>
     );
@@ -339,6 +349,12 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
             return acc;
         });
     }
+    const [duelTarget, setDuelTarget] = useState(null);
+    const competitionId = stats?.competition?.id;
+    const {data: myDuels} = useGetMyDuelsQuery(competitionId, {skip: !competitionId});
+    const [blockDuel] = useBlockDuelMutation();
+    const [unblockDuel] = useUnblockDuelMutation();
+    const blockedIds = new Set(myDuels?.blocked_user_ids || []);
 
     if (!people) return <SkeletonRows n={4}/>;
 
@@ -418,6 +434,10 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
                                 mine={mine}
                                 maxScore={maxScore}
                                 onPick={setCard}
+                                onDuel={mine ? undefined : () => setDuelTarget({
+                                    opponentId: personId,
+                                    opponentName: row.person.username,
+                                })}
                                 charts={mine && period === "all" ? myCharts(row.person) : null}
                             />
                         </li>
@@ -448,6 +468,36 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
                     trendSpark={<TrendSpark series={cumulative(personIdOf(card))} compare={fieldTrend}/>}
                     feed={feed}
                     onClose={() => setCard(null)}
+                    onDuel={!((card.id ?? card.workout__user__id) === userId) ? (person) => {
+                        setCard(null);
+                        setDuelTarget({
+                            opponentId: person.id ?? person.workout__user__id,
+                            opponentName: person.username,
+                        });
+                    } : undefined}
+                    onBlock={!((card.id ?? card.workout__user__id) === userId) ? async (person) => {
+                        const personId = person.id ?? person.workout__user__id;
+                        try {
+                            if (blockedIds.has(personId)) {
+                                await unblockDuel(personId).unwrap();
+                                toast.success("Duel invites allowed again.");
+                            } else {
+                                await blockDuel(personId).unwrap();
+                                toast.success("Duel invites blocked.");
+                            }
+                        } catch (err) {
+                            toast.error(errText(err, "Could not update duel invites."));
+                        }
+                    } : undefined}
+                    blocked={blockedIds.has(card.id ?? card.workout__user__id)}
+                />
+            )}
+            {duelTarget && competitionId && (
+                <DuelSheet
+                    competitionId={competitionId}
+                    opponentId={duelTarget.opponentId}
+                    opponentName={duelTarget.opponentName}
+                    onClose={() => setDuelTarget(null)}
                 />
             )}
         </div>

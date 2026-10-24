@@ -220,6 +220,7 @@ class DrillInstructorMessage(models.Model):
     KIND_WAR = "war"
     KIND_BRIEFING = "briefing"
     KIND_GAP = "gap"
+    KIND_DUEL = "duel"
     KIND_CHOICES = [
         (KIND_ACTIVITY, "Workout comment"),
         (KIND_TEST, "Test message"),
@@ -237,6 +238,7 @@ class DrillInstructorMessage(models.Model):
         (KIND_WAR, "Legend Echo war"),
         (KIND_BRIEFING, "Daily owner briefing"),
         (KIND_GAP, "Material standings gap change"),
+        (KIND_DUEL, "Duel result, only when both athletes opted in"),
     ]
 
     config = models.ForeignKey(
@@ -502,6 +504,10 @@ class DogTag(models.Model):
     SLUG_SURVIVED = "survived_the_dunce"
     SLUG_ECHO_IMMORTAL = "echo_immortal"
     SLUG_ECHO_SLAYER = "echo_slayer"
+    SLUG_FIRST_DUEL = "first_duel"
+    SLUG_DUEL_THREE_WINS = "duel_three_wins"
+    SLUG_DUEL_REVENGE = "duel_revenge"
+    SLUG_DUEL_STREAK_FIVE = "duel_streak_five"
     SLUG_CHOICES = [
         (SLUG_FIRST_BLOOD, "First Blood"),
         (SLUG_GHOST_KILLER, "Ghost Killer"),
@@ -510,6 +516,10 @@ class DogTag(models.Model):
         (SLUG_SURVIVED, "Survived the Dunce"),
         (SLUG_ECHO_IMMORTAL, "Echo Immortal"),
         (SLUG_ECHO_SLAYER, "Echo Slayer"),
+        (SLUG_FIRST_DUEL, "First Duel"),
+        (SLUG_DUEL_THREE_WINS, "Three Wins"),
+        (SLUG_DUEL_REVENGE, "Revenge"),
+        (SLUG_DUEL_STREAK_FIVE, "Five-Duel Streak"),
     ]
 
     user = models.ForeignKey(

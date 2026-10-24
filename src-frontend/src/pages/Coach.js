@@ -44,6 +44,7 @@ const KIND_LABEL = {
     echo: "Echo",
     claim: "Claimed",
     war: "War",
+    duel: "Duel",
 };
 
 

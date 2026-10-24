@@ -46,6 +46,22 @@ TAG_CATALOG = {
         "title": "Echo Slayer",
         "blurb": "Claimed someone else's Legend Echo.",
     },
+    "first_duel": {
+        "title": "First Duel",
+        "blurb": "Stepped into a head-to-head.",
+    },
+    "duel_three_wins": {
+        "title": "Three Wins",
+        "blurb": "Won three duels.",
+    },
+    "duel_revenge": {
+        "title": "Revenge",
+        "blurb": "Won one back after a loss to the same athlete.",
+    },
+    "duel_streak_five": {
+        "title": "Five-Duel Streak",
+        "blurb": "Won five duels in a row.",
+    },
 }
 
 MOODS = {

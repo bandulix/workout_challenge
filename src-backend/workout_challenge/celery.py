@@ -98,6 +98,14 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="10", hour="0"),
         "args": (),
     },
+    # Expire unanswered duels, freeze results after the 6h grace, send
+    # private pings. DatabaseScheduler reads the PeriodicTask row seeded
+    # by competition migration 0011; this entry is documentation.
+    "duel_settle": {
+        "task": "competition.tasks.settle_duels",
+        "schedule": crontab(minute="*/15"),
+        "args": (),
+    },
 }
 
 

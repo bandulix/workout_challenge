@@ -442,3 +442,176 @@ class ExpeditionContribution(models.Model):
 
     def __str__(self):
         return f"{self.campaign}: {self.participant_id} at {self.week_start}"
+
+
+class Duel(models.Model):
+    """Opt-in head-to-head between two athletes in one challenge.
+
+    The app records an agreed forfeit as text. It never moves money.
+    Scores are a window over the same Points rows as the leaderboard.
+    """
+
+    STATUS_PENDING = "pending"
+    STATUS_COUNTERED = "countered"
+    STATUS_ACTIVE = "active"
+    STATUS_DECLINED = "declined"
+    STATUS_EXPIRED = "expired"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_COMPLETED = "completed"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_COUNTERED, "Countered"),
+        (STATUS_ACTIVE, "Active"),
+        (STATUS_DECLINED, "Declined"),
+        (STATUS_EXPIRED, "Expired"),
+        (STATUS_CANCELLED, "Cancelled"),
+        (STATUS_COMPLETED, "Completed"),
+    ]
+    OPEN_STATUSES = (STATUS_PENDING, STATUS_COUNTERED, STATUS_ACTIVE)
+
+    METRIC_POINTS = "points"
+    METRIC_MINUTES = "minutes"
+    METRIC_SPORT = "sport"
+    METRIC_CHOICES = [
+        (METRIC_POINTS, "Challenge points"),
+        (METRIC_MINUTES, "Minutes goals"),
+        (METRIC_SPORT, "One workout type"),
+    ]
+
+    RESULT_CHALLENGER = "challenger"
+    RESULT_OPPONENT = "opponent"
+    RESULT_TIE = "tie"
+    RESULT_CHOICES = [
+        ("", "Undecided"),
+        (RESULT_CHALLENGER, "Challenger"),
+        (RESULT_OPPONENT, "Opponent"),
+        (RESULT_TIE, "Tie"),
+    ]
+
+    competition = models.ForeignKey(Competition, on_delete=models.CASCADE, related_name="duels")
+    challenger = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="duels_started")
+    opponent = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="duels_received")
+    proposed_by = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="+")
+    awaiting = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="+")
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    duration_days = models.PositiveSmallIntegerField(default=7)
+    metric = models.CharField(max_length=12, choices=METRIC_CHOICES, default=METRIC_POINTS)
+    sport_type = models.CharField(max_length=40, blank=True, default="")
+    forfeit = models.CharField(max_length=200, blank=True, default="")
+    challenger_forfeit_public = models.BooleanField(default=False)
+    opponent_forfeit_public = models.BooleanField(default=False)
+    challenger_feed_opt_in = models.BooleanField(default=False)
+    opponent_feed_opt_in = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    respond_by = models.DateTimeField()
+    starts_at = models.DateTimeField(null=True, blank=True)
+    ends_at = models.DateTimeField(null=True, blank=True)
+    grace_until = models.DateTimeField(null=True, blank=True)
+    finalized_at = models.DateTimeField(null=True, blank=True)
+    challenger_score = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
+    opponent_score = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
+    result = models.CharField(max_length=12, blank=True, default="", choices=RESULT_CHOICES)
+    # Last leader we successfully told them about. Null means level or not yet pinged.
+    leader_id = models.IntegerField(null=True, blank=True)
+    pinged_accepted = models.BooleanField(default=False)
+    pinged_24h = models.BooleanField(default=False)
+    pinged_result = models.BooleanField(default=False)
+    forfeit_marked_at = models.DateTimeField(null=True, blank=True)
+    forfeit_confirmed_at = models.DateTimeField(null=True, blank=True)
+    feed_posted = models.BooleanField(default=False)
+    daily_snapshot = models.JSONField(default=dict, blank=True)
+    rematch_of = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="rematches",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(challenger=models.F("opponent")),
+                name="duel_two_athletes",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(duration_days__in=[3, 7, 14]),
+                name="duel_duration_allowed",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "respond_by"], name="duel_status_respond"),
+            models.Index(fields=["status", "grace_until"], name="duel_status_grace"),
+            models.Index(fields=["challenger", "status"], name="duel_challenger_status"),
+            models.Index(fields=["opponent", "status"], name="duel_opponent_status"),
+        ]
+
+    def __str__(self):
+        return f"Duel {self.pk} {self.challenger_id} vs {self.opponent_id} ({self.status})"
+
+
+class DuelBlock(models.Model):
+    """One athlete blocking further duel invites from another."""
+
+    blocker = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="duel_blocks_made")
+    blocked = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="duel_blocks_received")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["blocker", "blocked"], name="one_duel_block"),
+            models.CheckConstraint(
+                condition=~models.Q(blocker=models.F("blocked")),
+                name="duel_block_not_self",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.blocker_id} blocks {self.blocked_id}"
+
+
+class DuelNote(models.Model):
+    """Coach line visible only to the two duelists."""
+
+    KIND_ACCEPTED = "accepted"
+    KIND_LEAD = "lead"
+    KIND_DAY_LEFT = "day_left"
+    KIND_RESULT = "result"
+
+    duel = models.ForeignKey(Duel, on_delete=models.CASCADE, related_name="notes")
+    kind = models.CharField(max_length=12)
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"Duel {self.duel_id} {self.kind}"
+
+
+class DuelPing(models.Model):
+    """Private lock-screen ping for one duelist. Android polls these."""
+
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="duel_pings")
+    duel = models.ForeignKey(Duel, on_delete=models.CASCADE, related_name="pings")
+    kind = models.CharField(max_length=12, default="lead")
+    title = models.CharField(max_length=120)
+    body = models.CharField(max_length=240)
+    url = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+    seen_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "duel", "kind"],
+                condition=~models.Q(kind="lead"),
+                name="one_duel_ping_event",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "seen_at"], name="duel_ping_unseen"),
+        ]
+
+    def __str__(self):
+        return f"Ping {self.pk} for {self.user_id}"

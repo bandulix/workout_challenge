@@ -33,6 +33,19 @@ Flip *Expedition* on and the crew’s points move everyone along a themed trail 
 ### 🏠 Home that moves you (without shaming you)
 One named rival and what would close the gap. A private comeback note when your week goes quiet — never a public call-out. Opt-in nudges from challenge-mates. Season-first Home puts the trail under your name.
 
+### ⚔️ Duels — a private head-to-head
+Any participant can challenge one other athlete in the same challenge. The fastest way in is **Duel them** on the Close the Gap card; the same action sits on an athlete card and a leaderboard row. Pick 3, 7 (the default) or 14 days, and score challenge points, minutes, or one workout type. Scoring is the same 1 point per 1% of a goal the leaderboard already uses, summed only inside the duel window, so the two totals cannot drift apart.
+
+An optional **forfeit** is free text both athletes agree on (“Loser buys the beers”). The app records the words. It never moves money. The opponent can accept, decline, or counter the duration or the forfeit. An invite with no reply expires after 48 hours. Each athlete can have two open duels at a time, and can block further invites from someone.
+
+The live view is two tiles, the points gap, a countdown, a daily chart, and coach commentary in the active persona. The coach trash-talks both sides. Private pings (accepted, lead change, 24 hours left, result) go only to the two athletes, through web push and the Android local-notification poll. They respect the existing push opt-in and the 07:00–22:00 quiet window, and the same kind of ping waits 20 minutes before it can fire again.
+
+A workout counts when its start falls inside `[starts_at, ends_at)`. The result stays open for a **6-hour grace** after the clock hits zero so a late Strava, Garmin, or Health Connect sync of an in-window session still counts. The first settle after that grace freezes the scores.
+
+The result is a shareable postcard, the forfeit line (“Bjoern owes: the beers”), **Mark forfeit paid** for the person who owes it and a confirm for the other, and a one-tap rematch. Ties are a result. Losses are never broadcast to the challenge. A feed post happens only when both athletes opt in, and the forfeit text is on that post only when both mark it public. A profile shows the aggregate W-L-T. The stamp wall adds a Duels series: first duel, three wins, a revenge win after a loss to the same athlete, and five wins in a row.
+
+`python manage.py settle_duels` expires invites, freezes results, and sends those pings. Celery beat runs the same job every 15 minutes (`duel_settle`).
+
 ### ⌚ Any watch, no lock-in
 **Strava**, **Garmin Connect**, or **Apple Health / Google Health Connect**. One activity source per athlete so nothing is counted twice.
 
