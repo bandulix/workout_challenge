@@ -93,6 +93,69 @@ function mentionsName(body, firstName) {
     return new RegExp(`@${needle}\\b`, "i").test(body);
 }
 
+const DUEL_NOTIFY_ID = 71002;
+const DUEL_SEEN_KEY = "wc_duel_ping_seen";
+
+export function startDuelPings() {
+    if (!isNativeApp()) return () => {};
+
+    let stopped = false;
+    let timer = null;
+    let inflight = false;
+
+    async function tick() {
+        if (stopped || inflight) return;
+        inflight = true;
+        try {
+            if (await ensurePermission()) {
+                const {store} = await import("./store");
+                const {duelsApi} = await import("./reducers/duelsSlice");
+                const data = await store.dispatch(
+                    duelsApi.endpoints.getDuelPings.initiate(undefined, {forceRefetch: true}),
+                ).unwrap();
+                const rows = data?.results || [];
+                const seen = new Set(String(localStorage.getItem(DUEL_SEEN_KEY) || "").split(",").filter(Boolean));
+                const fresh = rows.filter((row) => row?.id != null && !seen.has(String(row.id)));
+                if (fresh.length) {
+                    const newest = fresh[fresh.length - 1];
+                    await LocalNotifications.schedule({
+                        notifications: [{
+                            id: DUEL_NOTIFY_ID,
+                            title: newest.title || "Duel",
+                            body: newest.body || "",
+                            extra: {url: newest.url || "/dashboard"},
+                        }],
+                    });
+                    const ids = fresh.map((row) => row.id);
+                    await store.dispatch(duelsApi.endpoints.markDuelPingsSeen.initiate(ids)).unwrap();
+                    const next = [...seen, ...ids.map(String)].slice(-40);
+                    localStorage.setItem(DUEL_SEEN_KEY, next.join(","));
+                }
+            }
+        } catch (e) {
+            // Offline or logged out. The next tick retries.
+        } finally {
+            inflight = false;
+            if (!stopped) {
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(tick, POLL_MS);
+            }
+        }
+    }
+
+    timer = setTimeout(tick, 12000);
+    const stopResume = onAppResume(() => {
+        if (stopped) return;
+        if (timer) clearTimeout(timer);
+        tick();
+    });
+    return () => {
+        stopped = true;
+        if (timer) clearTimeout(timer);
+        stopResume();
+    };
+}
+
 export function startNativeCoachPings(user) {
     if (!isNativeApp()) return () => {};
 

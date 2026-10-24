@@ -265,9 +265,15 @@ def get_competition_stats(competition, last_seven_days=False):
             d += 1
         return n
 
+    duel_records = {}
+    if user_dict:
+        from competition.duels import records_for
+        duel_records = records_for(list(user_dict.keys()))
+
     for uid, value in user_dict.items():
         days = timeseries_user.get(uid, {})
         value["dog_tags"] = tags_by_user.get(uid, [])
+        value["duel_record"] = duel_records.get(uid, {"wins": 0, "losses": 0, "ties": 0})
         value["workouts"] = int(workout_n.get(uid, 0))
         value["active_days"] = sum(1 for d in days if _day_total(days, d) > 0)
         value["streak"] = _streak(days)

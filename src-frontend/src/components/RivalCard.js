@@ -11,7 +11,7 @@ function goalAmount(value, goalKey) {
     return `${shown} km`;
 }
 
-export default function RivalCard({model, onPin, onDismiss, isPinned = false, plate = false}) {
+export default function RivalCard({model, onPin, onDismiss, onDuel, isPinned = false, plate = false}) {
     if (!model) return null;
 
     let title;
@@ -151,12 +151,20 @@ export default function RivalCard({model, onPin, onDismiss, isPinned = false, pl
                     </button>
                 )}
             </div>
-            {onDismiss && (
+            {(onDismiss || (onDuel && model.rivalId && ["chasing", "defending", "tied"].includes(model.kind))) && (
                 <div className="mt-3 flex flex-wrap gap-2">
-                    <button type="button" onClick={onDismiss}
-                            className="min-h-[44px] btn-plate-ink px-4 py-2 text-sm font-semibold">
-                        Dismiss until tomorrow
-                    </button>
+                    {onDuel && model.rivalId && ["chasing", "defending", "tied"].includes(model.kind) && (
+                        <button type="button" onClick={onDuel}
+                                className="min-h-[44px] btn-plate px-4 py-2 text-sm font-bold">
+                            Duel them
+                        </button>
+                    )}
+                    {onDismiss && (
+                        <button type="button" onClick={onDismiss}
+                                className="min-h-[44px] btn-plate-ink px-4 py-2 text-sm font-semibold">
+                            Dismiss until tomorrow
+                        </button>
+                    )}
                 </div>
             )}
         </>

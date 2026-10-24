@@ -5,6 +5,7 @@ import {isChallengeRunning, lastChallenge} from "../utils/challenge";
 import {ExpeditionRouteMap} from "./ExpeditionPanel";
 import ProfileAvatar from "./ProfileAvatar";
 import {DogTagRow} from "./gameBits";
+import {recordLabel} from "../utils/duel";
 import SeasonDrop from "./SeasonDrop";
 import useWideLayout from "../utils/useWideLayout";
 
@@ -64,6 +65,9 @@ export default function SeasonBoard({competitionId, user, onOpen}) {
                         <p className="shrink-0 font-display text-5xl leading-none tabular-nums text-volt-400 sm:text-6xl">{percentLabel}%</p>
                     </div>
                     <h1 className="t-hero col-start-2 break-words">{user?.first_name}</h1>
+                    {recordLabel(user?.duel_record) && (
+                        <p className="col-start-2 text-xs text-white/70">Duels {recordLabel(user.duel_record)}</p>
+                    )}
                 </div>
                 {Array.isArray(user?.dog_tags) && user.dog_tags.length > 0 && (
                     <div className="px-5 pt-3">

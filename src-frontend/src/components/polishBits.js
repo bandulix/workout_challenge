@@ -15,6 +15,10 @@ export const STAMP_CATALOG = [
     {slug: "survived_the_dunce", title: "Showed Up Again", blurb: "Returned to training after a quieter stretch.", icon: "💪"},
     {slug: "echo_immortal", title: "Echo Immortal", blurb: "Planted a Legend Echo that nobody could silence.", icon: "🜲"},
     {slug: "echo_slayer", title: "Echo Slayer", blurb: "Claimed someone else's Legend Echo.", icon: "⚔️"},
+    {slug: "first_duel", title: "First Duel", blurb: "Stepped into a head-to-head.", icon: "🤝"},
+    {slug: "duel_three_wins", title: "Three Wins", blurb: "Won three duels.", icon: "🏆"},
+    {slug: "duel_revenge", title: "Revenge", blurb: "Won one back after a loss to the same athlete.", icon: "🔁"},
+    {slug: "duel_streak_five", title: "Five-Duel Streak", blurb: "Won five duels in a row.", icon: "🔥"},
 ];
 
 function ringGeometry(size, stroke) {

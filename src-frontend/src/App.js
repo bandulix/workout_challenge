@@ -34,6 +34,7 @@ const MySpace = lazy(() => import("./pages/MySpace"));
 const Competition = lazy(() => import("./pages/Competition"));
 const Coach = lazy(() => import("./pages/Coach"));
 const AdminSettings = lazy(() => import("./pages/AdminSettings"));
+const Duel = lazy(() => import("./pages/Duel"));
 
 
 function RememberPath() {
@@ -166,6 +167,9 @@ function AppShell() {
                 } />
                 <Route path="competition/:id" element={
                     <RequireAuth><Suspense fallback={<RouteFallback/>}><Competition/></Suspense></RequireAuth>
+                } />
+                <Route path="duel/:id" element={
+                    <RequireAuth><Suspense fallback={<RouteFallback/>}><Duel/></Suspense></RequireAuth>
                 } />
                 <Route path="coach" element={
                     <RequireAuth><Suspense fallback={<RouteFallback/>}><Coach/></Suspense></RequireAuth>

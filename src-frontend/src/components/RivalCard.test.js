@@ -144,6 +144,17 @@ describe("RivalCard", () => {
         expect(screen.getByText("There’s no clear rival to chase right now. Your next activity still adds to the board.")).toBeTruthy();
     });
 
+    it("offers Duel them only when a rival can be challenged", () => {
+        const onDuel = vi.fn();
+        render(
+            <MemoryRouter>
+                <RivalCard model={model} onDuel={onDuel}/>
+            </MemoryRouter>,
+        );
+        fireEvent.click(screen.getByRole("button", {name: "Duel them"}));
+        expect(onDuel).toHaveBeenCalledOnce();
+    });
+
     it("signals when the challenge gap materially changes", () => {
         render(
             <MemoryRouter>

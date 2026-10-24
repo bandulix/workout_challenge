@@ -41,10 +41,13 @@ import {feedApi} from "../utils/reducers/feedSlice";
 import {clearBodyScrollLock} from "../utils/overlay";
 import ProfileAvatar from "../components/ProfileAvatar";
 import RivalCard from "../components/RivalCard";
+import DuelInbox from "../components/DuelInbox";
+import DuelSheet from "../components/DuelSheet";
 import ComebackBench from "../components/ComebackBench";
 import SeasonBoard, {pickSeasonChallenge} from "../components/SeasonBoard";
 import {accentHex} from "../components/gameBits";
 import {HomeOrderCard, HomePulse, StampWall, StatTile} from "../components/polishBits";
+import {recordLabel} from "../utils/duel";
 import {Chip, EmptyState, PaneHead, paneCardClass, SyncChip, rowClass} from "../components/uiBits";
 import usePollingInterval from "../utils/usePollingInterval";
 import TrainingHeatmap from "../components/TrainingHeatmap";
@@ -136,6 +139,9 @@ function WelcomeBox({user}) {
                 <div className="flex-1 min-w-0 basis-40">
                     <p className="text-xs text-muted">Welcome back,</p>
                     <h1 className="t-hero text-xl truncate">{user.first_name}</h1>
+                    {recordLabel(user.duel_record) && (
+                        <p className="text-xs text-muted">Duels {recordLabel(user.duel_record)}</p>
+                    )}
                     <div className="mt-1 empty:hidden"><ReleaseSpark/></div>
                 </div>
             </div>
@@ -792,6 +798,7 @@ export default function MySpace() {
         }
     }, [navType]);
     const [, setHomeRivalVersion] = useState(0);
+    const [duelTarget, setDuelTarget] = useState(null);
 
     const {
         data: user,
@@ -949,9 +956,18 @@ export default function MySpace() {
                     </div>
                 )}
                 <div className={seasonChallenge ? "relative z-10 mb-6" : ""}>
+                {user && <DuelInbox/>}
                 <RivalCard
                     model={rivalCardModel}
                     isPinned={Boolean(rivalCardModel?.rivalIsPinned)}
+                    onDuel={() => {
+                        if (!homeRivalSelection?.challenge?.id || !rivalCardModel?.rivalId) return;
+                        setDuelTarget({
+                            competitionId: homeRivalSelection.challenge.id,
+                            opponentId: rivalCardModel.rivalId,
+                            opponentName: rivalCardModel.rivalUsername,
+                        });
+                    }}
                     onPin={() => {
                         if (!user?.id || !homeRivalSelection || !rivalCardModel?.rivalId) return;
                         if (rivalCardModel.rivalIsPinned) unpinHomeRivalChallenge(user.id);
@@ -1037,6 +1053,14 @@ export default function MySpace() {
                 <Modal title="Stats" setShowModal={setStatsOpen}>
                     <StatsBox workouts={workouts} user={user} summary={workoutSummary}/>
                 </Modal>
+            )}
+            {duelTarget && (
+                <DuelSheet
+                    competitionId={duelTarget.competitionId}
+                    opponentId={duelTarget.opponentId}
+                    opponentName={duelTarget.opponentName}
+                    onClose={() => setDuelTarget(null)}
+                />
             )}
             {quickLog && user && (
                 <WorkoutForm setModalState={setQuickLog}
