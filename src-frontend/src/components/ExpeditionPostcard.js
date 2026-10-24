@@ -10,6 +10,10 @@ function dateLabel(value) {
     }).format(new Date(`${value}T00:00:00Z`));
 }
 
+function progressSafe(finale) {
+    return safePercent(finale?.group_progress_percent);
+}
+
 function safePercent(value) {
     const number = Number(value);
     if (!Number.isFinite(number)) return 0;
@@ -18,6 +22,7 @@ function safePercent(value) {
 
 export default function ExpeditionPostcard({title, finale, canRematch = false, onRematch}) {
     const [shareMessage, setShareMessage] = useState("");
+    const [styleId, setStyleId] = useState(progressSafe(finale) >= 80 ? "volt" : "ink");
     if (finale?.status !== "final") return null;
 
     const challengeTitle = title || "Shared challenge";
@@ -46,8 +51,19 @@ export default function ExpeditionPostcard({title, finale, canRematch = false, o
     return (
         <section
             aria-label="Expedition postcard preview"
-            className="mt-5 rounded-3xl glass-card p-4 text-ink-950 dark:text-white"
+            className={"mt-5 rounded-[20px] glass-card p-4 text-ink-950 dark:text-white " +
+                (styleId === "volt" ? "!border-volt-400 !bg-volt-400 !text-ink-950" : "")}
+            style={styleId === "quiet" ? {background: "var(--surface-2)"} : undefined}
         >
+            <div className="mb-3 flex gap-2" role="tablist" aria-label="Postcard style">
+                {[["ink", "Ink"], ["volt", "Volt"], ["quiet", "Quiet"]].map(([id, label]) => (
+                    <button key={id} type="button" role="tab" aria-selected={styleId === id} onClick={() => setStyleId(id)}
+                            className={"min-h-[44px] rounded-full px-3 text-sm font-bold " + (styleId === id ? "bg-ink-950 text-white" : "")}
+                            style={styleId === id ? undefined : {border: "1px solid var(--hairline)"}}>
+                        {label}
+                    </button>
+                ))}
+            </div>
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted">Expedition finale · preview</p>
             <h3 className="mt-1 font-display text-sm uppercase tracking-wider">{challengeTitle}</h3>
             <p className="text-sm text-muted">Finished {date}</p>

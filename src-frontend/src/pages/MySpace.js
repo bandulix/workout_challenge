@@ -46,8 +46,9 @@ import DuelSheet from "../components/DuelSheet";
 import ComebackBench from "../components/ComebackBench";
 import SeasonBoard, {pickSeasonChallenge} from "../components/SeasonBoard";
 import {accentHex} from "../components/gameBits";
-import {HomeOrderCard, HomePulse, StampWall, StatTile} from "../components/polishBits";
-import {recordLabel} from "../utils/duel";
+import {StampWall, StatTile} from "../components/polishBits";
+import {HomeReadiness} from "../components/ReadinessBits";
+import {RecordPills} from "../components/designBits";
 import {Chip, EmptyState, PaneHead, paneCardClass, SyncChip, rowClass} from "../components/uiBits";
 import usePollingInterval from "../utils/usePollingInterval";
 import TrainingHeatmap from "../components/TrainingHeatmap";
@@ -139,9 +140,9 @@ function WelcomeBox({user}) {
                 <div className="flex-1 min-w-0 basis-40">
                     <p className="text-xs text-muted">Welcome back,</p>
                     <h1 className="t-hero text-xl truncate">{user.first_name}</h1>
-                    {recordLabel(user.duel_record) && (
-                        <p className="text-xs text-muted">Duels {recordLabel(user.duel_record)}</p>
-                    )}
+                    {(user.duel_record?.wins || user.duel_record?.losses || user.duel_record?.ties) ? (
+                        <div className="mt-1"><RecordPills record={user.duel_record}/></div>
+                    ) : null}
                     <div className="mt-1 empty:hidden"><ReleaseSpark/></div>
                 </div>
             </div>
@@ -593,6 +594,11 @@ function SevenDayStats({sevenDayStats, user}) {
 // WHO recommendation: 150 minutes of moderate activity per week.
 const WHO_WEEKLY_MINUTES = 150;
 
+function todayMinutesFrom(workouts) {
+    const rows = (workouts || []).filter((item) => item.sport_type !== "Steps" && item.start_datetime_fmt?.days_ago === 0);
+    return Math.round(rows.reduce((sum, item) => sum + (Number(item.duration_seconds) || 0), 0) / 60);
+}
+
 function deriveWeekPulse(workouts, summary) {
     // Server-computed streak (truthful beyond the latest 40 loaded
     // workouts); the client computation below is only a fallback
@@ -604,6 +610,7 @@ function deriveWeekPulse(workouts, summary) {
             activeWeekdays: new Set(days),
             activeDays: days.length,
             weekMinutes: Math.round((summary.week?.seconds || 0) / 60),
+            todayMinutes: todayMinutesFrom(workouts),
         };
     }
     const filteredWorkouts = lodFilter(workouts || [], item => item.sport_type !== 'Steps');
@@ -628,6 +635,7 @@ function deriveWeekPulse(workouts, summary) {
         activeWeekdays,
         activeDays: activeWeekdays.size,
         weekMinutes: Math.round(lodSumby(thisWeek, item => +item.duration_seconds || 0) / 60),
+        todayMinutes: todayMinutesFrom(filteredWorkouts),
     };
 }
 
@@ -851,8 +859,8 @@ export default function MySpace() {
     const orderSource = useMemo(() => {
         const list = drillConfigs || [];
         const id = homeRivalSelection?.challenge?.id || seasonChallenge?.id;
-        const match = list.find((c) => c.enabled && c.daily_order && id && String(c.competition) === String(id));
-        return match || list.find((c) => c.enabled && c.daily_order) || null;
+        const match = list.find((c) => c.enabled && id && String(c.competition) === String(id));
+        return match || list.find((c) => c.enabled) || null;
     }, [drillConfigs, homeRivalSelection, seasonChallenge]);
     const showStamps = (user?.dog_tags?.length > 0) || (workouts || []).some((w) => w.sport_type !== "Steps");
 
@@ -935,21 +943,21 @@ export default function MySpace() {
                 </div>
                 {!userLoading && !workoutsIsLoading && user && (
                     <div className={seasonChallenge ? "relative z-10" : ""}>
-                        <HomePulse
-                            minutes={pulse.weekMinutes}
-                            streak={pulse.weekStreak}
-                            activeDays={pulse.activeDays}
+                        <HomeReadiness
+                            competitionId={orderSource?.competition}
+                            pulse={pulse}
                             rank={myRank}
-                        />
-                        <HomeOrderCard
-                            order={orderSource?.daily_order}
+                            groupOrder={orderSource?.daily_order}
                             accent={orderSource?.persona_detail?.theme_color
                                 ? accentHex(orderSource.persona_detail.theme_color)
                                 : undefined}
                         />
                         {showStamps && (
                             <section className="mb-4">
-                                <PaneHead title="Stamps" hint="Earned tags glow. The rest are still out there."/>
+                                <PaneHead title="Stamps" hint="Earned tags glow. Locked ones stay outlines. Rings show progress."/>
+                                <div className="mb-3 px-1">
+                                    <RecordPills record={user.duel_record}/>
+                                </div>
                                 <StampWall earned={user.dog_tags}/>
                             </section>
                         )}

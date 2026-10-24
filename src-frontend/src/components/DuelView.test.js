@@ -41,6 +41,19 @@ describe("DuelView", () => {
         expect(screen.getByText(/Only the two of you see this/)).toBeTruthy();
     });
 
+    it("marks a level day on the paired bars as a dead heat", () => {
+        render(<DuelView duel={{
+            ...live,
+            daily: [
+                {date: "2026-10-19", you: 40, them: 10},
+                {date: "2026-10-20", you: 25, them: 25},
+                {date: "2026-10-21", you: 0, them: 18},
+            ],
+        }}/>);
+        expect(screen.getByText("Dead heat")).toBeTruthy();
+        expect(screen.getByText("Day 2 · Tue 20")).toBeTruthy();
+    });
+
     it("lets the person who owes it mark the forfeit, and shares the postcard", async () => {
         const onMark = vi.fn();
         const share = vi.fn().mockResolvedValue(undefined);

@@ -11,6 +11,7 @@ import PushOptInCard from "../components/PushOptIn";
 import {ActivityCoachPost} from "../components/competitionChrome";
 import {messageResults, useGetPersonasQuery, useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
 import {HallOfRoasts, OrderCard, SquadOrbit, trainedSummary, coachAccentStyle, accentHex} from "../components/gameBits";
+import {usePersonalOrder} from "../components/ReadinessBits";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {timeAgo} from "../utils/time";
@@ -107,6 +108,7 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                 message={message}
                 persona={coachPersona(persona, message)}
                 canReply={Boolean(config?.enabled)}
+                defaultOpen={Boolean((message.replies || []).length)}
                 competitionId={config.competition}
                 visionCapable={Boolean(config.vision_capable)}
                 meId={meId}
@@ -120,7 +122,7 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
     const accent = accentHex(persona.theme_color);
     const accentVars = coachAccentStyle(accent);
     return (
-        <div className="season-bleed relative overflow-hidden pb-2 text-white" style={accentVars}>
+        <div className="season-bleed relative overflow-hidden pb-2 text-ink-950 dark:text-white" style={accentVars}>
             <div className="coach-hero-wash" aria-hidden="true"/>
             <div className="relative px-5 pt-7 sm:px-8">
                 <div className="flex items-center gap-4 sm:gap-6">
@@ -139,7 +141,7 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                             </span>
                             {trained && <span title={trained.hint}>· {trained.label}</span>}
                         </p>
-                        {persona.tagline && <p className="mt-2 break-words text-sm italic text-white/70">“{persona.tagline}”</p>}
+                        {persona.tagline && <p className="mt-2 break-words text-sm italic text-muted">“{persona.tagline}”</p>}
                     </div>
                 </div>
             </div>
@@ -256,6 +258,9 @@ function CoachPage() {
         };
     }, [configs, personas, messages, user?.id]);
 
+    const personalOrder = usePersonalOrder(heroConfig?.competition);
+    const shownOrder = personalOrder || heroConfig?.daily_order;
+
     const ownedCompetitions = useMemo(() => {
         if (!competitions || !user) return [];
         return Object.values(competitions).filter((c) => c.owner === user.id);
@@ -286,7 +291,7 @@ function CoachPage() {
                             <div className="grid grid-cols-2 items-start gap-4 stagger-in">
                                 <div className="flex flex-col gap-4 stagger-in">
                                     {heroConfig && <CoachHandover configId={heroConfig.id} enabled={heroConfig.enabled}/>}
-                                    {heroConfig?.daily_order && <OrderCard order={heroConfig.daily_order}/>}
+                                    {shownOrder && <OrderCard order={shownOrder}/>}
                                 </div>
                                 <div className="flex flex-col gap-4 stagger-in">
                                     <CoachVoteBox configs={configs} preferredConfigId={heroConfig?.id}/>
@@ -297,7 +302,7 @@ function CoachPage() {
                         ) : (
                             <div className="flex flex-col gap-4 stagger-in">
                                 {heroConfig && <CoachHandover configId={heroConfig.id} enabled={heroConfig.enabled}/>}
-                                {heroConfig?.daily_order && <OrderCard order={heroConfig.daily_order}/>}
+                                {shownOrder && <OrderCard order={shownOrder}/>}
                                 <CoachVoteBox configs={configs} preferredConfigId={heroConfig?.id}/>
                                 {mediaReady && <HallOfRoasts cards={hall} persona={heroPersona}/>}
                                 <PushOptInCard/>

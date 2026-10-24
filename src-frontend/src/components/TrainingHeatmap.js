@@ -50,8 +50,23 @@ export default function TrainingHeatmap({days}) {
     const volume = useMemo(() => weeklyMinutes(weeks).slice(-12), [weeks]);
     const maxVol = Math.max(1, ...volume);
 
+    const thisWeek = weeks[weeks.length - 1] || [];
+    let run = 0;
     return (
         <div className="mt-5">
+            <p className="t-label text-muted mb-2">This week</p>
+            <div className="mb-4 flex gap-1" role="img" aria-label="This week, one dot per day">
+                {thisWeek.map((cell) => {
+                    const on = !cell.future && cell.seconds > 0;
+                    run = on ? run + 1 : 0;
+                    return (
+                        <span key={cell.iso}
+                              className={"h-3 flex-1 rounded-full " + (on && run > 1 ? "rounded-none first:rounded-l-full last:rounded-r-full" : "")}
+                              style={{background: cell.future ? "var(--hairline)" : on ? "var(--volt)" : "var(--surface-2)", outline: on && run > 1 ? "1px solid var(--volt)" : undefined}}
+                              title={cell.iso}/>
+                    );
+                })}
+            </div>
             <p className="t-caption text-gray-400 mb-2">Last 12 weeks · minutes</p>
             <div className="flex items-end gap-[3px] h-10" role="img"
                  aria-label={"Weekly minutes, oldest to newest: " + volume.map((v) => Math.round(v)).join(", ")}>

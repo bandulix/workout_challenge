@@ -2,13 +2,19 @@ import React from "react";
 import {Link} from "react-router-dom";
 import {useGetMyDuelsQuery} from "../utils/reducers/duelsSlice";
 import {recordLabel} from "../utils/duel";
+import {RecordPills} from "./designBits";
 
 const OPEN = new Set(["pending", "countered", "active"]);
 
 export function DuelRecordLine({record, className = ""}) {
     const label = recordLabel(record);
     if (!label) return null;
-    return <p className={"text-xs text-muted " + className}>Duels {label}</p>;
+    return (
+        <p className={"flex flex-wrap items-center gap-2 text-xs text-muted " + className}>
+            <span>Duels</span>
+            <RecordPills record={record}/>
+        </p>
+    );
 }
 
 export default function DuelInbox() {
@@ -30,7 +36,10 @@ export default function DuelInbox() {
                         <li key={duel.id}>
                             <Link to={`/duel/${duel.id}`} className="flex min-h-[44px] items-center justify-between gap-3 text-sm font-semibold no-underline">
                                 <span>{state}</span>
-                                <span className="text-xs text-muted">{duel.duration_days}d · {duel.metric_label}</span>
+                                <span className="text-xs text-muted">
+                                    {duel.duration_days}d · {duel.metric_label}
+                                    {duel.status !== "active" && duel.respond_by ? ` · expires in ${Math.max(1, Math.round((new Date(duel.respond_by).getTime() - Date.now()) / 3600000))} h` : ""}
+                                </span>
                             </Link>
                         </li>
                     );

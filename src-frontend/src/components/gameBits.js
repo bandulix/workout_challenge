@@ -2,6 +2,7 @@ import React, {useEffect, useRef, useState} from "react";
 import {ChevronLeft, ChevronRight, ScrollText, Share2, Trophy, X, Zap} from "lucide-react";
 import {useProtectedImage} from "../utils/protectedMedia";
 import {EmptyState, PaneHead, paneCardClass} from "./uiBits";
+import {READINESS_DISCLAIMER, bandEdge} from "../utils/readinessTheme";
 import {Segmented, filterByAge} from "./polishBits";
 import {OverlaySheet} from "../forms/basicComponents";
 import {sharePostCard} from "../utils/shareCard";
@@ -226,14 +227,20 @@ export function SquadOrbit({mood, children, showCaption = true, accent}) {
 
 export function OrderCard({order}) {
     if (!order) return null;
+    const edge = bandEdge(order.band);
     return (
         <div>
             <PaneHead title="Order of the day" hint={order.competition_name}/>
-            <article className={paneCardClass}>
+            <article className={paneCardClass + (edge ? " border-l-4" : "")}
+                     style={edge ? {borderLeftColor: edge} : undefined}>
                 <p className="t-caption text-muted flex items-center gap-1.5">
                     <ScrollText className="h-3.5 w-3.5"/> Sealed order · {order.date}
                 </p>
                 <p className="mt-2 text-[15px] leading-relaxed">{order.brief}</p>
+                {order.why && <p className="mt-2 text-xs text-muted">{order.why}</p>}
+                {(order.band || order.disclaimer) && (
+                    <p className="mt-1 text-xs text-muted">{order.disclaimer || READINESS_DISCLAIMER}</p>
+                )}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                     {order.completed ? (
                         <span className="rounded-full bg-volt-400 text-ink-950 text-xs font-extrabold uppercase tracking-wide px-2.5 py-1">
@@ -245,7 +252,7 @@ export function OrderCard({order}) {
                         </span>
                     )}
                     {order.completers?.length > 0 && (
-                        <span className="text-[11px] text-gray-600 dark:text-gray-400">
+                        <span className="text-xs text-gray-600 dark:text-gray-400">
                             {order.completers.map((c) => c.first_name).join(", ")}
                         </span>
                     )}

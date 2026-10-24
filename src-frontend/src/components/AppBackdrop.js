@@ -24,7 +24,7 @@ export default function AppBackdrop({forceCinematic = false}) {
                 <source srcSet={webp} type="image/webp"/>
                 <img src={jpg} alt="" className={"app-backdrop-img animate-kenburns" + (onCoach ? " opacity-85" : "")}/>
             </picture>
-            <div className={"absolute inset-0 " + veil}/>
+            <div className={"app-backdrop-veil absolute inset-0 " + veil}/>
             {!cinematic && !onCoach && (
                 <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-80 w-80 rounded-full bg-white/10 blur-3xl"/>
             )}

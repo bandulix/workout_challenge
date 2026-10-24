@@ -5,7 +5,7 @@ import {isChallengeRunning, lastChallenge} from "../utils/challenge";
 import {ExpeditionRouteMap} from "./ExpeditionPanel";
 import ProfileAvatar from "./ProfileAvatar";
 import {DogTagRow} from "./gameBits";
-import {recordLabel} from "../utils/duel";
+import {RecordPills} from "./designBits";
 import SeasonDrop from "./SeasonDrop";
 import useWideLayout from "../utils/useWideLayout";
 
@@ -50,7 +50,7 @@ export default function SeasonBoard({competitionId, user, onOpen}) {
             <SeasonDrop/>
             <button
                 aria-label={`Open the trail: ${title}, ${percentLabel}%`}
-                className="season-bleed mb-0 block overflow-hidden pb-5 text-left text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-volt-400"
+                className="season-bleed mb-0 block overflow-hidden pb-5 text-left text-ink-950 dark:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-volt-400"
                 onClick={onOpen}
                 type="button"
             >
@@ -65,9 +65,9 @@ export default function SeasonBoard({competitionId, user, onOpen}) {
                         <p className="shrink-0 font-display text-5xl leading-none tabular-nums text-volt-400 sm:text-6xl">{percentLabel}%</p>
                     </div>
                     <h1 className="t-hero col-start-2 break-words">{user?.first_name}</h1>
-                    {recordLabel(user?.duel_record) && (
-                        <p className="col-start-2 text-xs text-white/70">Duels {recordLabel(user.duel_record)}</p>
-                    )}
+                    {(user?.duel_record?.wins || user?.duel_record?.losses || user?.duel_record?.ties) ? (
+                        <div className="col-start-2 pt-1"><RecordPills record={user.duel_record}/></div>
+                    ) : null}
                 </div>
                 {Array.isArray(user?.dog_tags) && user.dog_tags.length > 0 && (
                     <div className="px-5 pt-3">
@@ -81,8 +81,8 @@ export default function SeasonBoard({competitionId, user, onOpen}) {
                     <ExpeditionRouteMap expedition={expedition} fillWidth={wide} key={drawKey} progress={progress} stage/>
                 </div>
                 <div className="flex items-center justify-between px-5 pb-1 pt-2">
-                    <span className="text-sm text-white/80">{count} on the trail</span>
-                    <ChevronRight aria-hidden="true" className="h-5 w-5 text-white/60"/>
+                    <span className="text-sm text-muted">{count} on the trail</span>
+                    <ChevronRight aria-hidden="true" className="h-5 w-5 text-muted"/>
                 </div>
             </button>
         </>

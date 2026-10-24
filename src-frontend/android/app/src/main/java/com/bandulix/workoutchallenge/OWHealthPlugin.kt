@@ -33,6 +33,12 @@ class OWHealthPlugin : Plugin() {
         "distanceWalkingRunning", "distanceCycling",
     )
 
+    // Requested only after the athlete opts in to readiness. Sleep is
+    // already on the workout list; resting HR and HRV are not.
+    private val recoveryTypes = listOf(
+        "sleep", "restingHeartRate", "heartRateVariabilitySDNN",
+    )
+
     override fun load() {
         // One-time init against the application context.
         OpenWearablesHealthSDK.initialize(context.applicationContext)
@@ -151,6 +157,26 @@ class OWHealthPlugin : Plugin() {
                 call.resolve(ret)
             } catch (e: Exception) {
                 Log.w(TAG, "requestAuthorization failed", e)
+                call.reject("requestAuthorization failed")
+            }
+        }
+    }
+
+    @PluginMethod
+    fun requestRecoveryAuthorization(call: PluginCall) {
+        if (!sdk().setProvider("google")) {
+            call.reject("Health Connect is not available on this device")
+            return
+        }
+        sdk().setActivity(activity)
+        pluginScope.launch {
+            try {
+                val granted = sdk().requestAuthorization(recoveryTypes)
+                val ret = JSObject()
+                ret.put("granted", granted)
+                call.resolve(ret)
+            } catch (e: Exception) {
+                Log.w(TAG, "recovery authorization failed", e)
                 call.reject("requestAuthorization failed")
             }
         }

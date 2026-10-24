@@ -123,6 +123,7 @@ INSTALLED_APPS = [
     'drill_instructor',
     'site_settings',
     'push_notifications',
+    'readiness',
 ]
 
 MIDDLEWARE = [
@@ -155,6 +156,7 @@ MIGRATION_MODULES = {
     "drill_instructor": "drill_instructor.migrations",
     "site_settings": "site_settings.migrations",
     "push_notifications": "push_notifications.migrations",
+    "readiness": "db_migrations.readiness",
     # "django_celery_beat": "db_migrations.django_celery_beat",
     # "django_celery_beat_periodictask": "db_migrations.django_celery_beat_periodictask",
     # "sessions": "db_migrations.sessions",

@@ -264,7 +264,7 @@ function BoardRow({row, mine, maxScore, onPick, onDuel, charts = null, bare = fa
                         </span>
                     )}
                 </span>
-                <span className="t-stat shrink-0 text-lg font-bold text-volt-600 dark:text-volt-400">
+                <span className="t-stat shrink-0 text-lg font-bold" style={{color: mine ? "var(--volt)" : "var(--other)"}}>
                     {Math.round(row.score).toLocaleString()}
                 </span>
             </button>
@@ -279,7 +279,7 @@ function BoardRow({row, mine, maxScore, onPick, onDuel, charts = null, bare = fa
     );
 }
 
-function IndividualLeaderboardBox({stats, userId, feed}) {
+export function IndividualLeaderboardBox({stats, userId, feed}) {
     // getWeekDates() ignores `stats`; the dep just re-anchors the week
     // labels whenever fresh stats land (a day rollover shows up on poll).
     const weekDays = useMemo(() => getWeekDates(), [stats]);
@@ -405,17 +405,43 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
                 </article>
             ) : (
                 <>
+                    {period === "week" && meRow?.rank != null && (
+                        <article className="mb-3 glass-card p-4">
+                            <p className="t-label text-muted">This week</p>
+                            <p className="t-h2 mt-1 text-ink-950 dark:text-white">
+                                {countdown ? `You are #${meRow.rank}` : `You finished #${meRow.rank}`}
+                            </p>
+                        </article>
+                    )}
+                    {meRow && meRow.rank != null && meRow.rank > 1 && (
+                        <p className="mb-3 rounded-[20px] px-4 py-3 text-sm" style={{background: "var(--surface-2)", border: "1px solid var(--hairline)"}}>
+                            {(() => {
+                                const ahead = rows
+                                    .filter((row) => row.rank != null && row.rank < meRow.rank)
+                                    .sort((a, b) => b.rank - a.rank)[0];
+                                const gap = ahead ? Math.max(0, Math.round(ahead.score - meRow.score)) : 0;
+                                const name = ahead ? (personIdOf(ahead.person) === userId ? "you" : ahead.person.username) : "the next place";
+                                return gap > 0
+                                    ? `${gap} points to ${name}. Your next session can narrow it. Nothing here is a promise.`
+                                    : "You're with the group. Keep the week you planned.";
+                            })()}
+                        </p>
+                    )}
                     {chips.length > 0 && (
-                        <ol className="mb-3 grid grid-cols-3 gap-2" aria-label="Top three">
-                            {chips.map((row) => (
-                                <li key={personIdOf(row.person)}>
+                        <ol className="mb-3 grid grid-cols-3 items-end gap-2" aria-label="Top three">
+                            {[2, 1, 3].map((place) => chips.find((row) => row.rank === place)).filter(Boolean).map((row) => (
+                                <li key={personIdOf(row.person)} className={row.rank === 1 ? "" : "pb-0"}>
                                     <button type="button" onClick={() => setCard(row.person)}
-                                            className="flex min-h-[44px] w-full flex-col items-start rounded-2xl bg-ink-950/5 px-2.5 py-2 text-left dark:bg-ink-850">
-                                        <span className={"inline-flex items-center gap-1 text-xs font-bold " + (RANK_STYLES[row.rank] || "text-muted")}>
-                                            <Trophy className="h-3.5 w-3.5" aria-hidden="true"/>
+                                            className="flex min-h-[44px] w-full flex-col items-center rounded-[20px] px-2 py-3 text-center"
+                                            style={{
+                                                background: "var(--surface-1)",
+                                                border: personIdOf(row.person) === userId ? "1px solid var(--volt)" : "1px solid var(--hairline)",
+                                                minHeight: row.rank === 1 ? 96 : 72,
+                                            }}>
+                                        <span className={"t-stat text-sm font-bold " + (RANK_STYLES[row.rank] || "text-muted")}>
                                             #{row.rank}
                                         </span>
-                                        <span className="mt-0.5 w-full truncate text-sm font-semibold">
+                                        <span className="mt-1 w-full truncate text-sm font-semibold">
                                             {personIdOf(row.person) === userId ? "You" : row.person.username}
                                         </span>
                                     </button>
@@ -427,8 +453,9 @@ function IndividualLeaderboardBox({stats, userId, feed}) {
                     {rows.map((row, index) => {
                         const personId = personIdOf(row.person);
                         const mine = userId === personId;
+                        const below = !mine && meRow?.rank != null && row.rank != null && row.rank > meRow.rank;
                         return (
-                        <li key={personId ?? `lb-${index}`} ref={mine ? meRowRef : undefined}>
+                        <li key={personId ?? `lb-${index}`} ref={mine ? meRowRef : undefined} className={below ? "opacity-45" : undefined}>
                             <BoardRow
                                 row={row}
                                 mine={mine}

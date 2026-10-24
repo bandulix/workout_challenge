@@ -2,6 +2,7 @@ import {LocalNotifications} from "@capacitor/local-notifications";
 import {isNativeApp} from "./platform";
 import {ensureFreshAccessToken} from "./authTokens";
 import {onAppResume} from "./appLifecycle";
+import {categoryForCoachKind, pushCategoryOn} from "./pushCategories";
 
 // Coach pings in the Android app. Web Push (VAPID) does not work inside
 // an Android WebView, so the native app drives pings itself: it polls
@@ -25,6 +26,36 @@ export function isEligibleCoachKind(kind) {
 // One Android notification slot so a overlapping poll replaces instead
 // of stacking two banners. Capacitor ids are int32.
 const NOTIFY_ID = 71001;
+// Separate slot so a morning order does not replace a coach ping.
+const READINESS_NOTIFY_ID = 71002;
+
+async function maybeMorningOrder() {
+    try {
+        const {store} = await import("./store");
+        const {readinessApi} = await import("./reducers/readinessSlice");
+        const data = await store.dispatch(
+            readinessApi.endpoints.getReadinessToday.initiate(undefined, {forceRefetch: true}),
+        ).unwrap();
+        const notice = data?.morning_notice;
+        if (!notice?.id) return;
+        const key = `wc_readiness_notice:${notice.id}`;
+        if (localStorage.getItem(key)) return;
+        if (pushCategoryOn("coach")) {
+            await LocalNotifications.schedule({
+                notifications: [{
+                    id: READINESS_NOTIFY_ID,
+                    title: notice.title || "Order of the Day",
+                    body: notice.body || "",
+                    extra: {url: notice.url || "/"},
+                }],
+            });
+        }
+        localStorage.setItem(key, "1");
+        await store.dispatch(readinessApi.endpoints.ackReadinessNotice.initiate()).unwrap();
+    } catch {
+        // Readiness must not take down the coach ping loop.
+    }
+}
 
 async function fetchLatestCoachMessage() {
     const status = await ensureFreshAccessToken();
@@ -117,15 +148,17 @@ export function startDuelPings() {
                 const seen = new Set(String(localStorage.getItem(DUEL_SEEN_KEY) || "").split(",").filter(Boolean));
                 const fresh = rows.filter((row) => row?.id != null && !seen.has(String(row.id)));
                 if (fresh.length) {
-                    const newest = fresh[fresh.length - 1];
-                    await LocalNotifications.schedule({
-                        notifications: [{
-                            id: DUEL_NOTIFY_ID,
-                            title: newest.title || "Duel",
-                            body: newest.body || "",
-                            extra: {url: newest.url || "/dashboard"},
-                        }],
-                    });
+                    if (pushCategoryOn("duels")) {
+                        const newest = fresh[fresh.length - 1];
+                        await LocalNotifications.schedule({
+                            notifications: [{
+                                id: DUEL_NOTIFY_ID,
+                                title: newest.title || "Duel",
+                                body: newest.body || "",
+                                extra: {url: newest.url || "/dashboard"},
+                            }],
+                        });
+                    }
                     const ids = fresh.map((row) => row.id);
                     await store.dispatch(duelsApi.endpoints.markDuelPingsSeen.initiate(ids)).unwrap();
                     const next = [...seen, ...ids.map(String)].slice(-40);
@@ -175,6 +208,7 @@ export function startNativeCoachPings(user) {
         inflight = true;
         try {
             if (await ensurePermission()) {
+                await maybeMorningOrder();
                 const latest = await fetchLatestCoachMessage();
                 if (latest) {
                     const lastSeen = parseInt(localStorage.getItem(LAST_KEY) || "0", 10) || 0;
@@ -190,7 +224,7 @@ export function startNativeCoachPings(user) {
                         const tagged = mentionsName(latest.body, user?.first_name);
                         if (social && (ownReply || (!mine && !tagged))) {
                             // Someone else's reply that is not an @mention of you.
-                        } else {
+                        } else if (pushCategoryOn(social ? "coach" : categoryForCoachKind(latest.kind))) {
                             const title = social
                                 ? (tagged ? "You were mentioned" : "New comment on your post")
                                 : (latest.persona_name

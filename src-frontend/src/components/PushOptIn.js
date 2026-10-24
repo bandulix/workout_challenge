@@ -5,6 +5,7 @@ import {subscribeToPush, unsubscribeFromPush, promptInstall} from "../index";
 import usePollingInterval from "../utils/usePollingInterval";
 import {notice} from "../utils/dialogs";
 import {errText} from "../utils/errors";
+import {readPushCategories, writePushCategory} from "../utils/pushCategories";
 
 // Platform-aware push opt-in card. Handles the iOS "install to home
 // screen first" dance, the Android/desktop native install prompt, and
@@ -25,6 +26,7 @@ function PushOptInCard({compact = false}) {
     const [platform, setPlatform] = useState(detectPlatform);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
+    const [categories, setCategories] = useState(readPushCategories);
 
     const pollFast = usePollingInterval(60000);
     const {data: status, refetch} = useGetPushStatusQuery(undefined, {pollingInterval: pollFast});
@@ -163,6 +165,22 @@ function PushOptInCard({compact = false}) {
                     <Download className="h-4 w-4"/> Install the app first for the full experience
                 </button>
             )}
+
+            <div className="mt-3 rounded-[20px] p-3" style={{background: "var(--surface-2)", border: "1px solid var(--hairline)"}} aria-hidden="true">
+                <p className="t-micro text-muted">Preview</p>
+                <p className="mt-1 text-sm font-semibold">Duel · 2 points up</p>
+                <p className="text-xs text-muted">Quiet hours still hold this until morning.</p>
+            </div>
+            <div className="mt-3 space-y-2">
+                {[["duels", "Duels"], ["coach", "Coach"], ["season", "Season"]].map(([id, label]) => (
+                    <label key={id} className="flex min-h-[44px] items-center justify-between gap-3 text-sm">
+                        <span>{label}</span>
+                        <input type="checkbox" checked={categories[id] !== false}
+                               onChange={(event) => setCategories(writePushCategory(id, event.target.checked))}/>
+                    </label>
+                ))}
+                <p className="text-xs text-muted">These stay on this device. 10pm–7am quiet hours still apply.</p>
+            </div>
 
             {permission === "denied" ? (
                 <p className="mt-3 text-sm text-warning-text">
