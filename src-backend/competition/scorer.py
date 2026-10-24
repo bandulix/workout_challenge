@@ -622,3 +622,39 @@ def grant_order_bonus(workout, competition):
     )
     bump_stats_generation([competition.pk])
     return row
+
+
+LISTEN_AWARD_NAME = "Listened"
+
+
+def grant_listen_bonus(workout, competition, points):
+    """Optional flat bonus when an owner turns on "listened to the coach".
+
+    Off unless that challenge's readiness setting says otherwise. Separate
+    award from the existing order +5, so leaving the setting off does not
+    change anyone's points. One row per workout.
+    """
+    if workout is None or competition is None:
+        return None
+    try:
+        points = int(points)
+    except (TypeError, ValueError):
+        return None
+    if points <= 0:
+        return None
+    award = _get_or_create_bonus_award(competition, LISTEN_AWARD_NAME, points)
+    if award.reward_points != points:
+        award.reward_points = points
+        award.save(update_fields=["reward_points"])
+    Points = apps.get_model("competition", "Points")
+    row, _created = Points.objects.get_or_create(
+        award=award,
+        workout=workout,
+        defaults={
+            "goal": None,
+            "points_raw": points,
+            "points_capped": points,
+        },
+    )
+    bump_stats_generation([competition.pk])
+    return row

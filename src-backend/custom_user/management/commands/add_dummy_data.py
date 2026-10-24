@@ -73,6 +73,7 @@ class Command(BaseCommand):
         # Competition normalises join_code to uppercase on save.
         if Competition.objects.filter(join_code__iexact="WHOComp").exists():
             self.stdout.write("Demo competitions already seeded — skipping.")
+            _seed_readiness(self.stdout)
             self.stdout.write(
                 "Sign in with user1@admin.local / password (or user2 / user3)."
             )
@@ -241,5 +242,104 @@ class Command(BaseCommand):
             f"{Competition.objects.count()} competitions, "
             f"{Workout.objects.count()} workouts."
         ))
+        _seed_readiness(self.stdout)
         self.stdout.write("Sign in with user1@admin.local / password (or user2 / user3).")
+
+
+def _seed_readiness(stdout):
+    """Green / Amber / Red demo mornings. Daily aggregates only.
+
+    Runs on a fresh seed and again when the competitions already exist,
+    so a second `add_dummy_data` still fills readiness.
+    """
+    from zoneinfo import ZoneInfo
+
+    from django.utils import timezone
+
+    from drill_instructor.models import DrillInstructorConfig, DrillInstructorPersona
+    from readiness.models import AthleteOrder, RecoveryDay, RecoveryPreference
+    from readiness.service import refresh_athlete
+
+    persona = DrillInstructorPersona.objects.filter(name="Drill Sergeant").first()
+    who = Competition.objects.filter(join_code__iexact="WHOComp").first()
+    distance = Competition.objects.filter(join_code__iexact="100k1k").first()
+    for competition in (who, distance):
+        if competition is None or persona is None:
+            continue
+        config = DrillInstructorConfig.objects.filter(competition=competition).first()
+        if config is None:
+            DrillInstructorConfig.objects.create(
+                competition=competition, persona=persona, enabled=True,
+            )
+        elif not config.enabled:
+            config.enabled = True
+            config.save(update_fields=["enabled"])
+
+    zone = ZoneInfo("Europe/London")
+    today = timezone.now().astimezone(zone).date()
+    scopes = ["sleep", "hrv", "resting_hr", "body_battery", "training_readiness", "stress"]
+    profiles = {
+        "user1@admin.local": {
+            "hrv": 60, "hrv_today": 72, "sleep": 450, "sleep_today": 480,
+            "rhr": 52, "rhr_today": 48,
+            "voice": "Push day. You are fresh. Stretch it, or beat the mark if one is live.",
+        },
+        "user2@admin.local": {
+            "hrv": 55, "hrv_today": 46, "sleep": 450, "sleep_today": 340,
+            "rhr": 50, "rhr_today": 54,
+            "voice": "Moderate day. Thirty steady minutes. Technique over power.",
+        },
+        "user3@admin.local": {
+            "hrv": 50, "hrv_today": 28, "sleep": 450, "sleep_today": 280,
+            "rhr": 50, "rhr_today": 62,
+            "voice": "Recovery day. A walk, some mobility, or an easy spin. Protect the streak.",
+        },
+    }
+    for email, profile in profiles.items():
+        user = CustomUser.objects.filter(email=email).first()
+        if user is None:
+            continue
+        RecoveryPreference.objects.update_or_create(
+            user=user,
+            defaults={
+                "opted_in": True,
+                "consent_version": "1",
+                "consented_at": timezone.now(),
+                "scopes": scopes,
+                "timezone": "Europe/London",
+                "morning_push_enabled": False,
+                "quiet_start_minute": 22 * 60,
+                "quiet_end_minute": 7 * 60,
+            },
+        )
+        for offset in range(1, 15):
+            day = today - timedelta(days=offset)
+            RecoveryDay.objects.update_or_create(
+                user=user,
+                date=day,
+                defaults={
+                    "source": RecoveryDay.SOURCE_GARMIN,
+                    "sleep_minutes": profile["sleep"],
+                    "hrv_ms": profile["hrv"],
+                    "hrv_metric": "rmssd",
+                    "resting_hr": profile["rhr"],
+                },
+            )
+        RecoveryDay.objects.update_or_create(
+            user=user,
+            date=today,
+            defaults={
+                "source": RecoveryDay.SOURCE_GARMIN,
+                "sleep_minutes": profile["sleep_today"],
+                "hrv_ms": profile["hrv_today"],
+                "hrv_metric": "rmssd",
+                "resting_hr": profile["rhr_today"],
+            },
+        )
+        _snapshot, orders = refresh_athlete(user, with_voice=False, today=today)
+        AthleteOrder.objects.filter(user=user, date=today).update(voice=profile["voice"])
+        stdout.write(
+            f"Readiness {email}: {(_snapshot.band or 'warming')} {_snapshot.score} — {_snapshot.why} "
+            f"({len(orders)} orders)"
+        )
 

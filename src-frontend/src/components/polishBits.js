@@ -2,6 +2,7 @@ import React, {useState} from "react";
 import {Link} from "react-router-dom";
 import {Lock, ScrollText} from "lucide-react";
 import {OverlaySheet} from "../forms/basicComponents";
+import {BAND_LABEL, READINESS_DISCLAIMER, bandEdge} from "../utils/readinessTheme";
 
 const VOLT = "#d7ff3e";
 const INK_600 = "#3c3c46";
@@ -122,7 +123,44 @@ export function MeterRing({value, max, label, display, emphasize = false, size =
     );
 }
 
-export function HomePulse({minutes = 0, minuteGoal = 150, streak = 0, activeDays = 0, rank = null}) {
+export function ReadinessRing({score, band, size = 40}) {
+    const stroke = 4;
+    const r = (size - stroke) / 2;
+    const c = 2 * Math.PI * r;
+    const mid = size / 2;
+    const pct = score == null ? 0 : Math.max(0, Math.min(1, Number(score) / 100));
+    const color = bandEdge(band) || "#8a8478";
+    const label = score == null ? "Readiness warming up" : `Readiness ${score}, ${BAND_LABEL[band] || band}`;
+    return (
+        <span className="relative shrink-0" style={{width: size, height: size}} role="img" aria-label={label}>
+            <svg className="absolute inset-0" viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+                <circle cx={mid} cy={mid} r={r} fill="none" stroke="currentColor" className="text-ink-950/15 dark:text-white/15" strokeWidth={stroke}/>
+                <circle cx={mid} cy={mid} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+                        strokeDasharray={`${pct * c} ${c}`}
+                        transform={`rotate(-90 ${mid} ${mid})`}/>
+            </svg>
+            <span className="absolute inset-0 flex items-center justify-center font-display text-xs leading-none text-ink-950 dark:text-white">
+                {score == null ? "–" : score}
+            </span>
+        </span>
+    );
+}
+
+export function ReadinessChip({score, band, why, onOpen}) {
+    const name = BAND_LABEL[band] || "Readiness";
+    return (
+        <button type="button" onClick={onOpen}
+                className="mt-4 flex min-h-[44px] w-full items-center gap-3 rounded-2xl bg-ink-950/5 px-3 py-2 text-left dark:bg-white/5">
+            <ReadinessRing score={score} band={band}/>
+            <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold text-ink-950 dark:text-white">{name}</span>
+                <span className="block truncate text-xs text-muted">{why || "Tap for the morning check-in"}</span>
+            </span>
+        </button>
+    );
+}
+
+export function HomePulse({minutes = 0, minuteGoal = 150, streak = 0, activeDays = 0, rank = null, readiness = null, onOpenReadiness}) {
     const weekPct = Math.round(Math.min(100, (Number(minutes) || 0) / minuteGoal * 100));
     const rankFill = rank == null ? 0 : rank <= 1 ? 1 : Math.max(0.15, 1 / rank);
     return (
@@ -132,21 +170,34 @@ export function HomePulse({minutes = 0, minuteGoal = 150, streak = 0, activeDays
                 <MeterRing value={activeDays} max={7} label="Streak" display={String(streak)}/>
                 <MeterRing value={rankFill} max={1} label="Rank" display={rank == null ? "–" : `#${rank}`}/>
             </div>
+            {readiness && (
+                <ReadinessChip
+                    score={readiness.score}
+                    band={readiness.band}
+                    why={readiness.why}
+                    onOpen={onOpenReadiness}
+                />
+            )}
         </section>
     );
 }
 
 export function HomeOrderCard({order, accent}) {
     if (!order?.brief) return null;
+    const edge = bandEdge(order.band);
     return (
-        <article className="mb-4 rounded-3xl glass-card border-l-2 p-4"
-                 style={accent ? {borderLeftColor: accent} : undefined}>
+        <article className={"mb-4 rounded-3xl glass-card p-4 " + (edge ? "border-l-4" : "border-l-2")}
+                 style={edge ? {borderLeftColor: edge} : (accent ? {borderLeftColor: accent} : undefined)}>
             <p className="t-caption text-muted flex items-center gap-1.5">
                 <ScrollText className="h-3.5 w-3.5" aria-hidden="true"/>
                 Order of the day
                 {order.competition_name ? <span className="font-semibold normal-case tracking-normal">· {order.competition_name}</span> : null}
             </p>
             <p className="mt-2 line-clamp-3 text-[15px] leading-relaxed text-ink-950 dark:text-white">{order.brief}</p>
+            {order.why && <p className="mt-2 text-xs text-muted">{order.why}</p>}
+            {(order.band || order.disclaimer) && (
+                <p className="mt-1 text-xs text-muted">{order.disclaimer || READINESS_DISCLAIMER}</p>
+            )}
             <Link to="/coach"
                   className="mt-1 inline-flex min-h-[44px] items-center text-sm font-bold text-ink-950 underline decoration-volt-400 decoration-2 underline-offset-4 dark:text-white">
                 Say more

@@ -317,6 +317,12 @@ def evaluate_workout_game(workout, config):
     if order:
         mark_order_complete(order, user, workout=workout)
 
+    try:
+        from readiness.orders import on_workout_logged
+        on_workout_logged(workout)
+    except Exception as exc:  # noqa: BLE001 - the workout is already saved
+        logger.warning("Readiness order check failed for workout %s: %s", workout.pk, exc)
+
     # First Blood: first points-producing workout in this challenge.
     Points = apps.get_model("competition", "Points")
     others = (

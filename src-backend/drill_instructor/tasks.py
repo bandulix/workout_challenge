@@ -1286,23 +1286,41 @@ def issue_daily_orders(self):
     failed = 0
     for competition in competitions:
         config = competition.drill_instructor
+        participants = list(competition.user.all())
+        personal = 0
+        if participants:
+            try:
+                from readiness.service import issue_personal_orders
+                personal = issue_personal_orders(config, participants)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Personal readiness orders failed for %s: %s", competition.id, exc)
         if DailyOrder.objects.filter(config=config, date=today).exists():
             skipped += 1
             continue
-        participants = list(competition.user.all())
         if not participants:
             skipped += 1
             continue
         kind, spec, brief = draw_order_spec(config, today, participants)
         DailyOrder.objects.create(config=config, date=today, kind=kind, spec=spec, brief=brief)
         persona = config.persona
-        prompt = (
-            f"Competition: {competition.name}. Situation: you are issuing today's "
-            f"SEALED ORDER to the whole group. The order is: \"{brief}\" "
-            "Write one bark in your persona's voice, staying within the "
-            "shared length already given. Deliver that order, name nobody who "
-            "isn't in the brief, and make it feel like a mission. Write it now."
-        )
+        if personal:
+            # The public bark must not name a band or a person. Readiness
+            # stays on each athlete's own Home.
+            prompt = (
+                f"Competition: {competition.name}. Situation: today's order is "
+                "individual. Some athletes push, some stay moderate, some recover. "
+                "Do not say who is on which, and do not order the whole group to go "
+                "all-out. Tell them to open Home and follow their own order. "
+                "One bark in your persona's voice. Write it now."
+            )
+        else:
+            prompt = (
+                f"Competition: {competition.name}. Situation: you are issuing today's "
+                f"SEALED ORDER to the whole group. The order is: \"{brief}\" "
+                "Write one bark in your persona's voice, staying within the "
+                "shared length already given. Deliver that order, name nobody who "
+                "isn't in the brief, and make it feel like a mission. Write it now."
+            )
         body, llm_error = generate_message(
             system_prompt=persona.system_prompt, language=persona.language,
             user_prompt=prompt,

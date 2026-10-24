@@ -25,6 +25,34 @@ export function isEligibleCoachKind(kind) {
 // One Android notification slot so a overlapping poll replaces instead
 // of stacking two banners. Capacitor ids are int32.
 const NOTIFY_ID = 71001;
+// Separate slot so a morning order does not replace a coach ping.
+const READINESS_NOTIFY_ID = 71002;
+
+async function maybeMorningOrder() {
+    try {
+        const {store} = await import("./store");
+        const {readinessApi} = await import("./reducers/readinessSlice");
+        const data = await store.dispatch(
+            readinessApi.endpoints.getReadinessToday.initiate(undefined, {forceRefetch: true}),
+        ).unwrap();
+        const notice = data?.morning_notice;
+        if (!notice?.id) return;
+        const key = `wc_readiness_notice:${notice.id}`;
+        if (localStorage.getItem(key)) return;
+        await LocalNotifications.schedule({
+            notifications: [{
+                id: READINESS_NOTIFY_ID,
+                title: notice.title || "Order of the Day",
+                body: notice.body || "",
+                extra: {url: notice.url || "/"},
+            }],
+        });
+        localStorage.setItem(key, "1");
+        await store.dispatch(readinessApi.endpoints.ackReadinessNotice.initiate()).unwrap();
+    } catch {
+        // Readiness must not take down the coach ping loop.
+    }
+}
 
 async function fetchLatestCoachMessage() {
     const status = await ensureFreshAccessToken();
@@ -112,6 +140,7 @@ export function startNativeCoachPings(user) {
         inflight = true;
         try {
             if (await ensurePermission()) {
+                await maybeMorningOrder();
                 const latest = await fetchLatestCoachMessage();
                 if (latest) {
                     const lastSeen = parseInt(localStorage.getItem(LAST_KEY) || "0", 10) || 0;

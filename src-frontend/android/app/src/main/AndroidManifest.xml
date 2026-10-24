@@ -74,6 +74,10 @@
     <!-- SDK WorkManager sync is a health foreground service; Android 13+
          hides the notification (and often the worker) without this. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Readiness opt-in. Not requested until the athlete consents. -->
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <!-- Coach photo posts: native camera vs gallery (Capacitor Camera).

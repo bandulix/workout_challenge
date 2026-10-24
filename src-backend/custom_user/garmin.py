@@ -438,6 +438,11 @@ def _sync_user_activities(user, days_back=RECENT_SYNC_DAYS) -> dict:
 
     user.garmin_last_synced_at = timezone.now()
     user.save(update_fields=["garmin_last_synced_at"])
+    try:
+        from readiness.sync import sync_garmin_recovery
+        sync_garmin_recovery(user, client=client)
+    except Exception as exc:  # noqa: BLE001 - activities already imported
+        logger.warning("Garmin recovery sync failed for user %s: %s", user.pk, exc)
     return {"fetched": len(activities or []), "created": created, "updated": updated, "skipped": skipped, "duplicates_skipped": duplicates, "removed": removed}
 
 
@@ -452,6 +457,13 @@ def sync_garmin(self, user__id, days_back=RECENT_SYNC_DAYS):
         logger.info("Garmin sync user %s skipped: Garmin is not the selected activity source", user__id)
         user.garmin_last_synced_at = timezone.now()
         user.save(update_fields=["garmin_last_synced_at"])
+        # Wellness is not a second copy of the workout. Still pull it when
+        # the athlete opted in, even if Strava is the activity source.
+        try:
+            from readiness.sync import sync_garmin_recovery
+            sync_garmin_recovery(user)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Garmin recovery sync failed for user %s: %s", user__id, exc)
         return {"user": user__id, "skipped": "garmin is not the selected activity source"}
 
     result = _sync_user_activities(user, days_back=days_back)

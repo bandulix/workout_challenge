@@ -25,7 +25,7 @@ An **AI Drill Instructor** comments on every workout, remixes your photos, and p
 ## Killer features
 
 ### 🗣️ A coach, not a spreadsheet
-Personas roast, cheer, and nudge — Drill Sergeant, Roast Master, Zen, Butler, Cheerleader, or your own custom coach with portrait + full-body shots so remixes look like *them*. Stamp a workout (WTF!, GOAT, Oof…). **Order of the Day**, **Hall of Roasts**, **Legend Echoes** (beat the mark, take the relic — 3 takeovers make it immortal; the photo *is* the relic). Weekly coach vote in the last 72 hours before Monday. Owners can brief the coach with a daily topic.
+Personas roast, cheer, and nudge — Drill Sergeant, Roast Master, Zen, Butler, Cheerleader, or your own custom coach with portrait + full-body shots so remixes look like *them*. Stamp a workout (WTF!, GOAT, Oof…). **Order of the Day** follows a private readiness score (Green push, Amber technique, Red recovery — the sergeant can be sharp on a red day and still cannot order an all-out). **Hall of Roasts**, **Legend Echoes** (beat the mark, take the relic — 3 takeovers make it immortal; the photo *is* the relic). Weekly coach vote in the last 72 hours before Monday. Owners can brief the coach with a daily topic. Formula, sources, and privacy: [docs/readiness.md](docs/readiness.md).
 
 ### 🗺️ Expedition — the season is a route
 Flip *Expedition* on and the crew’s points move everyone along a themed trail (summit, ocean, desert, space, relay). Landmarks land on the calendar; the finale waits for the last day. Rescue runs, base camps, treasure hunts, storm/rope weeks, and shortcut votes keep seasons different. Close with a postcard and one-tap rematch.
@@ -147,7 +147,7 @@ cd src-backend && python manage.py migrate && python manage.py add_dummy_data
 
 This fork extends [vanalmsick/workout_challenge](https://github.com/vanalmsick/workout_challenge) (base `main` @ `256e5b1`) under the same SSPL v1. Original copyright is untouched. Full list: [CHANGELOG.md](CHANGELOG.md).
 
-- **AI Drill Instructor** — persona comments, stamps, Order of the Day, Hall of Roasts, Legend Echoes on the workout (sport-family relics, takeovers announced, 3 defenses to immortal), weekly coach vote (72h window), photo remixes, owner-defined daily briefings, native share sheet, web push / Android pings.
+- **AI Drill Instructor** — persona comments, stamps, Order of the Day (readiness-banded and private to the athlete; see [docs/readiness.md](docs/readiness.md)), Hall of Roasts, Legend Echoes on the workout (sport-family relics, takeovers announced, 3 defenses to immortal), weekly coach vote (72h window), photo remixes, owner-defined daily briefings, native share sheet, web push / Android pings.
 - **Expedition & seasons** — shared themed routes with objectives and weekly twists, crew view, finale postcard, archive and rematch.
 - **Retention without shaming** — Close-the-Gap rival card, private comeback bench with opt-in peer nudges; public dunce/last-place mechanics removed.
 - **Coach-centred PWA** — glass dock, Coach as home, daily action plates, dark theme, private uploaded photos.

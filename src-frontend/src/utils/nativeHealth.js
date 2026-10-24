@@ -161,6 +161,14 @@ export async function nativeHealthKickSync({daysBack, publicUrl} = {}) {
     }
 }
 
+// Opt-in recovery types. They stay off the default workout permission
+// list and are requested only after the athlete consents in the sheet.
+export async function requestRecoveryAuthorization() {
+    if (!isNativeHealthAvailable()) return {granted: false, reason: "not-native"};
+    const {granted} = await OWHealth.requestRecoveryAuthorization();
+    return {granted: !!granted};
+}
+
 export async function nativeHealthDisconnect() {
     // Best-effort: a stale native session must not block an unlink.
     try { localStorage.removeItem(HEALTH_HOST_KEY); } catch { /* ignore */ }

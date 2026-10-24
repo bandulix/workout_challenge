@@ -16,6 +16,7 @@ import {linkApi} from "./reducers/linkSlice";
 import {drillInstructorApi} from "./reducers/drillInstructorSlice";
 import {siteSettingsApi} from "./reducers/siteSettingsSlice";
 import {pushApi} from "./reducers/pushSlice";
+import {readinessApi} from "./reducers/readinessSlice";
 
 const appReducer = combineReducers({
     [workoutsApi.reducerPath]: workoutsApi.reducer,
@@ -30,6 +31,7 @@ const appReducer = combineReducers({
     [drillInstructorApi.reducerPath]: drillInstructorApi.reducer,
     [siteSettingsApi.reducerPath]: siteSettingsApi.reducer,
     [pushApi.reducerPath]: pushApi.reducer,
+    [readinessApi.reducerPath]: readinessApi.reducer,
 });
 
 const rootReducer = (state, action) => {
@@ -123,7 +125,8 @@ const store = configureStore({
             .concat(linkApi.middleware)
             .concat(drillInstructorApi.middleware)
             .concat(siteSettingsApi.middleware)
-            .concat(pushApi.middleware),
+            .concat(pushApi.middleware)
+            .concat(readinessApi.middleware),
     preloadedState,
 });
 

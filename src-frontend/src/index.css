@@ -211,8 +211,10 @@ html.wc-verify-banner .wc-page-wrap {
   .react-sparks,
   .react-sparks i,
   .react-pick,
-  .season-draw {
+  .season-draw,
+  .readiness-bar {
     animation: none !important;
+    transition: none !important;
   }
 }
 

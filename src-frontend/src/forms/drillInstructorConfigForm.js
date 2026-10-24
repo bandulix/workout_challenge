@@ -15,6 +15,10 @@ import {toast} from "../utils/toasts";
 import {errText} from "../utils/errors";
 import {clearBodyScrollLock} from "../utils/overlay";
 import {PersonaEditModal} from "./drillInstructorPersonaModal";
+import {
+    useGetChallengeReadinessQuery,
+    useUpdateChallengeReadinessMutation,
+} from "../utils/reducers/readinessSlice";
 
 const PLACEHOLDER_BODY = "Your coach standing by. Drop a workout to see me in action.";
 
@@ -47,6 +51,26 @@ function ToggleRow({on, onChange, label, hint, error}) {
                     (on ? "translate-x-5" : "translate-x-0")}/>
             </span>
         </button>
+    );
+}
+
+
+function ListenBonusToggle({competitionId}) {
+    const {data, isError} = useGetChallengeReadinessQuery(competitionId, {skip: !competitionId});
+    const [updateSetting] = useUpdateChallengeReadinessMutation();
+    if (isError || !data) return null;
+    return (
+        <SettingsGroup title="Listened to the coach"
+                       hint="Off by default. Recovery sessions already earn points under the normal rules. This adds a small extra only when someone does their personal order.">
+            <ToggleRow
+                on={!!data.listen_bonus_enabled}
+                onChange={(on) => updateSetting({competitionId, body: {listen_bonus_enabled: on}})}
+                label="Small bonus for doing the order"
+                hint={data.listen_bonus_enabled
+                    ? `${data.listen_bonus_points} points, once, on top of the usual score.`
+                    : "Leave this off and the board stays exactly as it is."}
+            />
+        </SettingsGroup>
     );
 }
 
@@ -243,6 +267,8 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                     error={fieldErrors.send_push_on_activity}
                 />
             </SettingsGroup>
+
+            <ListenBonusToggle competitionId={competition?.id}/>
 
             {existing && (
                 <SettingsGroup title="Preview a test message"

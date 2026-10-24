@@ -4,6 +4,11 @@ import {render, screen} from "@testing-library/react";
 import {describe, expect, it, vi} from "vitest";
 import DrillInstructorConfigForm from "./drillInstructorConfigForm";
 
+vi.mock("../utils/reducers/readinessSlice", () => ({
+    useGetChallengeReadinessQuery: () => ({data: undefined, isError: true}),
+    useUpdateChallengeReadinessMutation: () => [vi.fn(), {isLoading: false}],
+}));
+
 vi.mock("../utils/reducers/drillInstructorSlice", () => ({
     useAddDrillConfigMutation: () => [vi.fn(), {isLoading: false}],
     useDeleteDrillConfigMutation: () => [vi.fn(), {isLoading: false}],

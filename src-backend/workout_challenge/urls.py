@@ -73,6 +73,14 @@ from push_notifications.views import (
     PushStatusView,
     PushTestView,
 )
+from readiness.views import (
+    ChallengeReadinessSettingView,
+    ReadinessCheckInView,
+    ReadinessDataView,
+    ReadinessNoticeAckView,
+    ReadinessPreferenceView,
+    ReadinessTodayView,
+)
 from .views import ApkVersionView, ReleaseVersionView
 
 router = DefaultRouter()
@@ -115,6 +123,12 @@ urlpatterns = [
         path('health/link/', SecureLinkHealthView.as_view(), name='health-link'),
         path('health/unlink/', UnlinkHealthView.as_view(), name='health-unlink'),
         path('health/sync/', SyncHealthView.as_view(), name='health-sync'),
+        path('readiness/today/', ReadinessTodayView.as_view(), name='readiness-today'),
+        path('readiness/preferences/', ReadinessPreferenceView.as_view(), name='readiness-preferences'),
+        path('readiness/check-in/', ReadinessCheckInView.as_view(), name='readiness-check-in'),
+        path('readiness/data/', ReadinessDataView.as_view(), name='readiness-data'),
+        path('readiness/notice/ack/', ReadinessNoticeAckView.as_view(), name='readiness-notice-ack'),
+        path('readiness/challenge/<int:competition_id>/', ChallengeReadinessSettingView.as_view(), name='readiness-challenge-setting'),
         path('celery/tasks/', CeleryQueryView.as_view(), name='celery-task-list'),
         path('celery/tasks/<str:task_id>/', CeleryQueryView.as_view(), name='celery-task-status'),
         path('celery/', CeleryQueryView.as_view(), name='celery-task-run'),

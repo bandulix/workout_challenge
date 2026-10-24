@@ -11,6 +11,7 @@ import PushOptInCard from "../components/PushOptIn";
 import {ActivityCoachPost} from "../components/competitionChrome";
 import {messageResults, useGetPersonasQuery, useGetDrillConfigsQuery, useGetDrillMessagesQuery, useGetHallOfRoastsQuery} from "../utils/reducers/drillInstructorSlice";
 import {HallOfRoasts, OrderCard, SquadOrbit, trainedSummary, coachAccentStyle, accentHex} from "../components/gameBits";
+import {usePersonalOrder} from "../components/ReadinessBits";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {timeAgo} from "../utils/time";
@@ -255,6 +256,9 @@ function CoachPage() {
         };
     }, [configs, personas, messages, user?.id]);
 
+    const personalOrder = usePersonalOrder(heroConfig?.competition);
+    const shownOrder = personalOrder || heroConfig?.daily_order;
+
     const ownedCompetitions = useMemo(() => {
         if (!competitions || !user) return [];
         return Object.values(competitions).filter((c) => c.owner === user.id);
@@ -285,7 +289,7 @@ function CoachPage() {
                             <div className="grid grid-cols-2 items-start gap-4 stagger-in">
                                 <div className="flex flex-col gap-4 stagger-in">
                                     {heroConfig && <CoachHandover configId={heroConfig.id} enabled={heroConfig.enabled}/>}
-                                    {heroConfig?.daily_order && <OrderCard order={heroConfig.daily_order}/>}
+                                    {shownOrder && <OrderCard order={shownOrder}/>}
                                 </div>
                                 <div className="flex flex-col gap-4 stagger-in">
                                     <CoachVoteBox configs={configs} preferredConfigId={heroConfig?.id}/>
@@ -296,7 +300,7 @@ function CoachPage() {
                         ) : (
                             <div className="flex flex-col gap-4 stagger-in">
                                 {heroConfig && <CoachHandover configId={heroConfig.id} enabled={heroConfig.enabled}/>}
-                                {heroConfig?.daily_order && <OrderCard order={heroConfig.daily_order}/>}
+                                {shownOrder && <OrderCard order={shownOrder}/>}
                                 <CoachVoteBox configs={configs} preferredConfigId={heroConfig?.id}/>
                                 {mediaReady && <HallOfRoasts cards={hall} persona={heroPersona}/>}
                                 <PushOptInCard/>

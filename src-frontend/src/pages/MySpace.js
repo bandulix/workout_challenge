@@ -44,7 +44,8 @@ import RivalCard from "../components/RivalCard";
 import ComebackBench from "../components/ComebackBench";
 import SeasonBoard, {pickSeasonChallenge} from "../components/SeasonBoard";
 import {accentHex} from "../components/gameBits";
-import {HomeOrderCard, HomePulse, StampWall, StatTile} from "../components/polishBits";
+import {StampWall, StatTile} from "../components/polishBits";
+import {HomeReadiness} from "../components/ReadinessBits";
 import {Chip, EmptyState, PaneHead, paneCardClass, SyncChip, rowClass} from "../components/uiBits";
 import usePollingInterval from "../utils/usePollingInterval";
 import TrainingHeatmap from "../components/TrainingHeatmap";
@@ -928,14 +929,11 @@ export default function MySpace() {
                 </div>
                 {!userLoading && !workoutsIsLoading && user && (
                     <div className={seasonChallenge ? "relative z-10" : ""}>
-                        <HomePulse
-                            minutes={pulse.weekMinutes}
-                            streak={pulse.weekStreak}
-                            activeDays={pulse.activeDays}
+                        <HomeReadiness
+                            competitionId={orderSource?.competition}
+                            pulse={pulse}
                             rank={myRank}
-                        />
-                        <HomeOrderCard
-                            order={orderSource?.daily_order}
+                            groupOrder={orderSource?.daily_order}
                             accent={orderSource?.persona_detail?.theme_color
                                 ? accentHex(orderSource.persona_detail.theme_color)
                                 : undefined}

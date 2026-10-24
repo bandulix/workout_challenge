@@ -549,6 +549,11 @@ def _sync_user_workouts(user, start_datetime=None, wait_for_ingest=False) -> dic
 
     user.health_last_synced_at = timezone.now()
     user.save(update_fields=["health_last_synced_at"])
+    try:
+        from readiness.sync import sync_health_recovery
+        sync_health_recovery(user)
+    except Exception as exc:  # noqa: BLE001 - workouts already imported
+        logger.warning("Health recovery sync failed for user %s: %s", user.pk, exc)
     return {"fetched": len(ow_workouts), "created": created, "updated": updated, "skipped": skipped, "duplicates_skipped": duplicates}
 
 
@@ -563,6 +568,11 @@ def sync_health(self, user__id, start_datetime=None, wait_for_ingest=False):
         logger.info("Health sync user %s skipped: Health is not the selected activity source", user__id)
         user.health_last_synced_at = timezone.now()
         user.save(update_fields=["health_last_synced_at"])
+        try:
+            from readiness.sync import sync_health_recovery
+            sync_health_recovery(user)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Health recovery sync failed for user %s: %s", user__id, exc)
         return {"user": user__id, "skipped": "health is not the selected activity source"}
 
     result = _sync_user_workouts(
