@@ -845,8 +845,8 @@ export default function MySpace() {
     const orderSource = useMemo(() => {
         const list = drillConfigs || [];
         const id = homeRivalSelection?.challenge?.id || seasonChallenge?.id;
-        const match = list.find((c) => c.enabled && c.daily_order && id && String(c.competition) === String(id));
-        return match || list.find((c) => c.enabled && c.daily_order) || null;
+        const match = list.find((c) => c.enabled && id && String(c.competition) === String(id));
+        return match || list.find((c) => c.enabled) || null;
     }, [drillConfigs, homeRivalSelection, seasonChallenge]);
     const showStamps = (user?.dog_tags?.length > 0) || (workouts || []).some((w) => w.sport_type !== "Steps");
 

@@ -53,6 +53,7 @@ describe("readiness home", () => {
         const group = {brief: "All out.", competition_id: 4};
         expect(orderForHome(group, {orders: [personal], order: personal}, 4).band).toBe("red");
         expect(orderForHome(group, {orders: []}, 4).brief).toBe("All out.");
+        expect(orderForHome(null, {orders: [personal], order: personal}).brief).toMatch(/Protect the streak/);
     });
 
     it("shows the check-in and says the number is private", () => {

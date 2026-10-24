@@ -64,8 +64,14 @@ export function timezoneChoices(current) {
 /** Personal order wins for this challenge. The group order stays the fallback. */
 export function orderForHome(groupOrder, readiness, competitionId) {
     const orders = readiness?.orders || [];
-    const personal = orders.find((item) => String(item.competition_id) === String(competitionId))
-        || (readiness?.order && String(readiness.order.competition_id) === String(competitionId) ? readiness.order : null);
+    const hasChallenge = competitionId != null && competitionId !== "";
+    if (hasChallenge) {
+        const personal = orders.find((item) => String(item.competition_id) === String(competitionId))
+            || (readiness?.order && String(readiness.order.competition_id) === String(competitionId) ? readiness.order : null);
+        if (personal?.brief) return personal;
+        return groupOrder || null;
+    }
+    const personal = (readiness?.order?.brief && readiness.order) || orders.find((item) => item?.brief);
     if (personal?.brief) return personal;
     return groupOrder || null;
 }
