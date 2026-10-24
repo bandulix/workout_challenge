@@ -79,46 +79,10 @@ export function accentRgba(color, alpha) {
 }
 
 /** CSS custom properties for persona chrome (--coach-accent*). */
-function channel(hex, index) {
-    return parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16);
-}
-
-function linear(value) {
-    const s = value / 255;
-    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-}
-
-function luminance(hex) {
-    return 0.2126 * linear(channel(hex, 0)) + 0.7152 * linear(channel(hex, 1)) + 0.0722 * linear(channel(hex, 2));
-}
-
-function contrast(a, b) {
-    const left = luminance(a);
-    const right = luminance(b);
-    return (Math.max(left, right) + 0.05) / (Math.min(left, right) + 0.05);
-}
-
-/** Accent dark enough to read on the light plate. Bright accents stay put. */
-export function accentInk(color) {
-    const hex = accentHex(color);
-    const plates = ["#f3f3f4", "#ffffff"];
-    if (plates.every((plate) => contrast(hex, plate) >= 4.5)) return hex;
-    let [r, g, b] = [0, 1, 2].map((index) => channel(hex, index));
-    for (let step = 0; step < 14; step += 1) {
-        r = Math.round(r * 0.82);
-        g = Math.round(g * 0.82);
-        b = Math.round(b * 0.82);
-        const next = `#${[r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("")}`;
-        if (plates.every((plate) => contrast(next, plate) >= 4.5)) return next;
-    }
-    return "#0b0b0c";
-}
-
 export function coachAccentStyle(color) {
     const hex = accentHex(color);
     return {
         "--coach-accent": hex,
-        "--coach-accent-ink": accentInk(hex),
         "--coach-accent-glow": accentRgba(hex, 0.5),
         "--coach-accent-glow-strong": accentRgba(hex, 0.95),
     };

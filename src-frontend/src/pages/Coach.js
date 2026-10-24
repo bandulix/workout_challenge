@@ -136,7 +136,7 @@ function CoachHero({persona, config, message: latest, briefing, ownedCompetition
                     <div className="min-w-0 flex-1">
                         <h1 className="t-hero break-words xl:text-3xl">{persona.name}</h1>
                         <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs font-bold uppercase tracking-[0.18em] text-muted">
-                            <span className="accent-ink inline-flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1.5" style={{color: accent}}>
                                 <Radio className="h-3.5 w-3.5"/>{config ? "On duty" : "Coach"}
                             </span>
                             {trained && <span title={trained.hint}>· {trained.label}</span>}

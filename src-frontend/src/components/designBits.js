@@ -214,9 +214,9 @@ export function RecordPills({record}) {
     const ties = record?.ties || 0;
     if (!wins && !losses && !ties) return null;
     const pills = [
-        ["W", wins, "var(--good-ink)"],
-        ["L", losses, "var(--low-ink)"],
-        ["T", ties, "var(--mid-ink)"],
+        ["W", wins, "var(--good)"],
+        ["L", losses, "var(--low)"],
+        ["T", ties, "var(--mid)"],
     ];
     return (
         <span className="inline-flex gap-1" aria-label={`Duels ${wins}-${losses}-${ties}`}>

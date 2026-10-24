@@ -1,6 +1,6 @@
 # Design brief
 
-App-wide visual redesign. Behaviour and scoring stay as they are. No-shaming copy stays. Dark is the default; light mode uses the same roles.
+App-wide visual redesign. Behaviour and scoring stay as they are. No-shaming copy stays. Dark is the only theme.
 
 The Mobbin references (WHOOP, Tempo, Runbuds, Eight Sleep, Visible, Bevel, QUITTR, Ladder, Strava, Gentler Streak, Finch, Hevy, DAZN, Runna, NRC, Duolingo, Tonal, Fi, Garmin, Peloton, Noom, Google Health, komoot, Tolan) are pattern notes. Implement from this document.
 

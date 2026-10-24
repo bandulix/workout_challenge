@@ -12,7 +12,6 @@ import {confirmAction} from "../utils/dialogs";
 import {toast} from "../utils/toasts";
 import {errText} from "../utils/errors";
 import {assetUrl} from "../utils/platform";
-import {applyTheme, readTheme} from "../utils/theme";
 import {clearBodyScrollLock} from "../utils/overlay";
 import {GENDER_OPTIONS_WITH_UNKNOWN} from "../utils/enums";
 
@@ -84,29 +83,6 @@ function SyncSourceSection({user, onChanged}) {
         </div>
     );
 }
-
-function AppearanceSection() {
-    const [mode, setMode] = useState(readTheme);
-    function choose(next) {
-        applyTheme(next);
-        setMode(next);
-    }
-    return (
-        <div className="rounded-[20px] p-4" style={{background: "var(--surface-1)", border: "1px solid var(--hairline)"}}>
-            <p className="t-label text-muted">Appearance</p>
-            <div className="mt-2 flex gap-2" role="radiogroup" aria-label="Colour mode">
-                {[["dark", "Dark"], ["light", "Light"]].map(([id, label]) => (
-                    <button key={id} type="button" role="radio" aria-checked={mode === id} onClick={() => choose(id)}
-                            className={"min-h-[44px] flex-1 rounded-full text-sm font-bold " + (mode === id ? "bg-volt-400 text-ink-950" : "text-muted")}
-                            style={mode === id ? undefined : {border: "1px solid var(--hairline)"}}>
-                        {label}
-                    </button>
-                ))}
-            </div>
-        </div>
-    );
-}
-
 
 // Apple Health / Google Health Connect via the server's Open Wearables
 // instance: linking hands the athlete a single-use connection code for
@@ -671,7 +647,6 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
                 </div>
             </SettingsGroup>
 
-            <AppearanceSection/>
             <SettingsGroup title="Connected services" hint="Only one source imports activities, so the same workout never lands twice.">
                 <div className={"grid gap-2 " + ((user?.health_configured || user?.health_user_id) ? "grid-cols-3" : "grid-cols-2")}>
                     <button type="button" onClick={() => document.getElementById("connect-strava")?.scrollIntoView({behavior: prefersReducedMotion() ? "auto" : "smooth", block: "nearest"})}

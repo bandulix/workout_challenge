@@ -12,10 +12,8 @@ export default function AppBackdrop({forceCinematic = false}) {
     const onCoach = pathname === "/coach" || pathname.startsWith("/coach/");
     const {webp, jpg} = useMemo(() => backdropUrls(), []);
 
-    // Public splash keeps the dark plate: its copy is white in both themes.
-    // Everywhere else, light mode replaces this gradient with the canvas veil.
     const veil = cinematic
-        ? "app-backdrop-veil--photo bg-gradient-to-b from-ink-950/25 via-ink-950/40 to-ink-950/88"
+        ? "bg-gradient-to-b from-ink-950/25 via-ink-950/40 to-ink-950/88"
         : onCoach
             ? "bg-gradient-to-b from-ink-950/45 via-ink-950/58 to-ink-950/82"
             : "bg-gradient-to-b from-ink-950/35 via-ink-950/50 to-ink-950/78";

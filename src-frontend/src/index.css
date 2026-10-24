@@ -48,11 +48,6 @@ html.wc-verify-banner .wc-page-wrap {
   --other: #8ea0b5;
   --text: #f4f4f5;
   --text-muted: #b4bac4;
-  /* Text painted in an accent. Fills keep --volt / --good / --mid / --low. */
-  --volt-ink: #d7ff3e;
-  --good-ink: #3ee08f;
-  --mid-ink: #ffc53d;
-  --low-ink: #ff6b5b;
   --dur-ring: 700ms;
   --dur-count: 400ms;
   color-scheme: dark;
@@ -89,21 +84,6 @@ html.wc-verify-banner .wc-page-wrap {
 }
 .t-stat,
 .tabular-nums { font-variant-numeric: tabular-nums; }
-
-html.light {
-  --canvas: #f3f3f4;
-  --surface-1: #ffffff;
-  --surface-2: #ececee;
-  --hairline: rgba(11, 11, 12, 0.08);
-  --text: #0b0b0c;
-  --text-muted: #4b5563;
-  --other: #465568;
-  --volt-ink: #4a6200;
-  --good-ink: #0e7a45;
-  --mid-ink: #8a5a00;
-  --low-ink: #b42318;
-  color-scheme: light;
-}
 
 .t-display {
   font-family: "Archivo Black", Inter, system-ui, sans-serif;
@@ -913,33 +893,6 @@ body, #root {
   object-fit: cover;
   object-position: center;
 }
-/* Light mode keeps a hint of the daily plate, then covers it with the
-   canvas. On-photo text uses the theme ink tokens, which only clear
-   WCAG AA once this veil is in front of the photograph. 92% canvas over
-   pure black is the worst case (a dark patch of the plate). */
-html.light .app-backdrop-veil:not(.app-backdrop-veil--photo) {
-  background: rgba(243, 243, 244, 0.92) !important;
-}
-
-/* Volt fills stay #d7ff3e. Volt *text* on the light plate does not:
-   #d7ff3e on #f3f3f4 is about 1.2:1. Ink chips keep the bright whistle. */
-html.light .wc-page-wrap .text-volt-400,
-html.light .wc-page-wrap .text-volt-500,
-html.light .wc-page-wrap .text-volt-600,
-html.light .wc-page-wrap .text-volt-700,
-html.light .wc-page-wrap .text-volt-800 {
-  color: var(--volt-ink);
-}
-html.light .wc-page-wrap .bg-ink-950.text-volt-400,
-html.light .wc-page-wrap .bg-ink-900.text-volt-400,
-html.light .wc-page-wrap .bg-ink-950 .text-volt-400,
-html.light .wc-page-wrap .bg-ink-900 .text-volt-400 {
-  color: #d7ff3e;
-}
-
-.accent-ink { color: var(--coach-accent, var(--volt)); }
-html.light .accent-ink { color: var(--coach-accent-ink, var(--volt-ink)); }
-
 body {
   margin: 0;
   background: var(--canvas);
@@ -957,9 +910,8 @@ body {
   color: #0b0b0c;
 }
 
-/* Semantic text tokens - theme-aware and contrast-checked over glass.
-   Use these instead of hard-coded gray/amber/red shades, which tend to
-   be picked for dark mode and then go invisible on the light theme. */
+/* Semantic text tokens, contrast-checked on the dark plate.
+   Use these instead of hard-coded gray/amber/red shades. */
 /* Muted body/caption text — keep ≥4.5:1 on ink and glass surfaces.
    Prefer this over ad-hoc text-white/55 or gray-500 on dark washes. */
 .text-muted { color: var(--text-muted, #4b5563); }

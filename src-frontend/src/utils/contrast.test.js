@@ -3,7 +3,6 @@ import {dirname, join} from "node:path";
 import {fileURLToPath} from "node:url";
 import {describe, expect, test} from "vitest";
 import {duelDayLabel} from "../components/designBits";
-import {accentInk} from "../components/gameBits";
 
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../index.css"), "utf8");
 
@@ -35,15 +34,7 @@ function ratio(fg, bg) {
     return (Math.max(left, right) + 0.05) / (Math.min(left, right) + 0.05);
 }
 
-function mix(fg, bg, alpha) {
-    const fn = parseInt(fg.slice(1), 16);
-    const bn = parseInt(bg.slice(1), 16);
-    const channel = (shift) => Math.round(((fn >> shift) & 255) * alpha + ((bn >> shift) & 255) * (1 - alpha));
-    return `#${[16, 8, 0].map((shift) => channel(shift).toString(16).padStart(2, "0")).join("")}`;
-}
-
 const dark = varsIn(":root");
-const light = {...dark, ...varsIn("html\\.light")};
 
 describe("on-background text tokens", () => {
     const pairs = [
@@ -51,32 +42,20 @@ describe("on-background text tokens", () => {
         ["text", "surface-1"],
         ["text-muted", "canvas"],
         ["text-muted", "surface-1"],
-        ["volt-ink", "canvas"],
-        ["volt-ink", "surface-1"],
-        ["good-ink", "canvas"],
-        ["good-ink", "surface-1"],
-        ["mid-ink", "canvas"],
-        ["mid-ink", "surface-1"],
-        ["low-ink", "canvas"],
-        ["low-ink", "surface-1"],
         ["other", "canvas"],
         ["other", "surface-1"],
     ];
 
-    test.each(["dark", "light"])("%s theme clears WCAG AA", (theme) => {
-        const tokens = theme === "dark" ? dark : light;
+    test("dark theme clears WCAG AA", () => {
         for (const [fg, bg] of pairs) {
-            expect(tokens[fg], `--${fg}`).toMatch(/^#[0-9a-f]{6}$/);
-            expect(tokens[bg], `--${bg}`).toMatch(/^#[0-9a-f]{6}$/);
-            expect(ratio(tokens[fg], tokens[bg]), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+            expect(dark[fg], `--${fg}`).toMatch(/^#[0-9a-f]{6}$/);
+            expect(dark[bg], `--${bg}`).toMatch(/^#[0-9a-f]{6}$/);
+            expect(ratio(dark[fg], dark[bg]), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
         }
     });
 
-    test("muted ink still clears AA on the 92% light veil over black", () => {
-        const veil = mix(light.canvas, "#000000", 0.92);
-        expect(ratio(light.text, veil)).toBeGreaterThanOrEqual(4.5);
-        expect(ratio(light["text-muted"], veil)).toBeGreaterThanOrEqual(4.5);
-        expect(ratio(light["volt-ink"], veil)).toBeGreaterThanOrEqual(4.5);
+    test("the stylesheet has no light theme", () => {
+        expect(css).not.toMatch(/html\.light/);
     });
 });
 
@@ -88,14 +67,5 @@ describe("duel day labels", () => {
         expect(duelDayLabel("2026-10-20", 1, today)).toBe("Day 2 · Tue 20");
         expect(duelDayLabel("2026-10-24", 6, today)).toBe("Today · Sat 24");
         expect(duelDayLabel("later", 0, today)).toBe("later");
-    });
-});
-
-describe("accent ink", () => {
-    test("keeps a dark accent and darkens volt", () => {
-        expect(accentInk("#0b0b0c")).toBe("#0b0b0c");
-        const ink = accentInk("#d7ff3e");
-        expect(ratio(ink, "#f3f3f4")).toBeGreaterThanOrEqual(4.5);
-        expect(ratio(ink, "#ffffff")).toBeGreaterThanOrEqual(4.5);
     });
 });
