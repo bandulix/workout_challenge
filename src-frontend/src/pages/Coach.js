@@ -62,8 +62,8 @@ function CoachQuote({message, empty, accentStyle}) {
         : null;
 
     return (
-        <blockquote className="coach-quote relative overflow-hidden rounded-2xl px-5 py-4 sm:px-6 sm:py-5 animate-pop-in"
-                    style={accentStyle}>
+        <blockquote className="coach-quote relative overflow-hidden rounded-2xl border-l-2 px-5 py-4 sm:px-6 sm:py-5 animate-pop-in"
+                    style={{...accentStyle, borderLeftColor: "var(--coach-accent)"}}>
             <span className="coach-quote-mark" aria-hidden="true">“</span>
             {body ? (
                 <>

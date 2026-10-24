@@ -28,6 +28,23 @@ export function challengeDaysLeftLabel(endDate, now = new Date()) {
     return "Ended";
 }
 
+/** Compact countdown for a board header: "Ends in 2d 4h". The end date is inclusive. */
+export function challengeCountdownLabel(endDate, now = new Date()) {
+    const end = parseDateOnly(endDate);
+    if (!end) return null;
+    const endMs = end.getTime() + 86400000;
+    const diff = endMs - now.getTime();
+    if (diff <= 0) return "Ended";
+    const totalMin = Math.floor(diff / 60000);
+    const days = Math.floor(totalMin / 1440);
+    const hours = Math.floor((totalMin % 1440) / 60);
+    const mins = totalMin % 60;
+    if (days > 0) return `Ends in ${days}d ${hours}h`;
+    if (hours > 0) return `Ends in ${hours}h ${mins}m`;
+    if (mins > 0) return `Ends in ${mins}m`;
+    return "Last day";
+}
+
 /** Chip for the challenge header: a date, Last day, or Ended — not a day-count argument. */
 export function challengeEndChip(endDate, endDateFmt, now = new Date()) {
     const days = daysUntilChallengeEnd(endDate, now);
@@ -215,6 +232,10 @@ export function challengeRivalCard(competition, {user, workoutSummary} = {}) {
                 rivalUsername,
                 rivalIsPinned: summary.rival_is_pinned === true,
                 ...goalFields,
+                ...(Number.isInteger(Number(summary.my_rank)) ? {myRank: Number(summary.my_rank)} : {}),
+                ...(Number.isInteger(Number(summary.rival_rank)) ? {rivalRank: Number(summary.rival_rank)} : {}),
+                ...(Number.isFinite(pointsGap) ? {pointsGap} : {}),
+                ...(Number.isFinite(Number(summary.my_points)) ? {myPoints: Number(summary.my_points)} : {}),
                 ...(challengeSuggestion ? {suggestedWorkout: challengeSuggestion} : {}),
             };
             if (placesToRival > 0) {

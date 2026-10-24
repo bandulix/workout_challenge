@@ -2,6 +2,7 @@ import React, {useEffect, useRef, useState} from "react";
 import {ChevronLeft, ChevronRight, ScrollText, Share2, Trophy, X, Zap} from "lucide-react";
 import {useProtectedImage} from "../utils/protectedMedia";
 import {EmptyState, PaneHead, paneCardClass} from "./uiBits";
+import {Segmented, filterByAge} from "./polishBits";
 import {OverlaySheet} from "../forms/basicComponents";
 import {sharePostCard} from "../utils/shareCard";
 import {playSfx} from "../utils/sfx";
@@ -515,13 +516,21 @@ export function hallShowcase(cards) {
     return {list, newest, topReacted};
 }
 
+const HALL_RANGES = [
+    {id: "1m", label: "1M"},
+    {id: "3m", label: "3M"},
+    {id: "all", label: "All"},
+];
+
 export function HallOfRoasts({cards, persona}) {
     const [openIndex, setOpenIndex] = useState(null);
     const [expanded, setExpanded] = useState(false);
-    const {list, newest, topReacted} = hallShowcase(cards);
+    const [range, setRange] = useState("all");
+    const filtered = filterByAge(cards, range, (card) => card.posted_at);
+    const {list, newest, topReacted} = hallShowcase(filtered);
     const many = list.length > newest.length + topReacted.length;
 
-    if (list.length === 0) {
+    if (!cards || cards.length === 0) {
         return (
             <div>
                 <PaneHead title="Hall of roasts" hint="Newest remixed photos"/>
@@ -537,28 +546,30 @@ export function HallOfRoasts({cards, persona}) {
         <HallFrame key={c.id} card={c} onOpen={() => setOpenIndex(list.indexOf(c))}/>
     );
 
+    const spotlight = [...newest, ...topReacted];
     return (
         <div>
             <PaneHead title="Hall of roasts" hint="Newest + most reacted remixes"/>
-            {expanded ? (
+            <div className="mb-3">
+                <Segmented value={range} onChange={setRange} options={HALL_RANGES} label="Hall of roasts period"/>
+            </div>
+            {list.length === 0 ? (
+                <article className={paneCardClass}>
+                    <EmptyState persona={persona} title="Nothing in this window"
+                                body="Try a wider range — remixes outside it are still in the hall."/>
+                </article>
+            ) : expanded ? (
                 <div className="grid grid-cols-3 gap-3">{list.map(frame)}</div>
             ) : (
-                <div className="space-y-3">
-                    <div>
-                        <p className="px-1 mb-1.5 t-caption text-gray-500 dark:text-gray-400">Fresh off the roast</p>
-                        <div className="grid grid-cols-3 gap-3">{newest.map(frame)}</div>
-                    </div>
-                    {topReacted.length > 0 && (
-                        <div>
-                            <p className="px-1 mb-1.5 t-caption text-gray-500 dark:text-gray-400">Crowd favourites</p>
-                            <div className="grid grid-cols-3 gap-3">{topReacted.map(frame)}</div>
-                        </div>
-                    )}
+                <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
+                    {spotlight.map((c) => (
+                        <div key={c.id} className="w-40 shrink-0">{frame(c)}</div>
+                    ))}
                 </div>
             )}
             {many ? (
                 <button type="button" onClick={() => setExpanded((v) => !v)}
-                        className="mt-2 w-full min-h-[40px] rounded-2xl text-sm font-semibold text-ink-950 dark:text-white hover:bg-ink-950/5 dark:hover:bg-white/10 transition">
+                        className="mt-2 w-full min-h-[44px] rounded-2xl text-sm font-semibold text-ink-950 dark:text-white hover:bg-ink-950/5 dark:hover:bg-white/10 transition">
                     {expanded ? "Show less" : `Show all ${list.length}`}
                 </button>
             ) : null}

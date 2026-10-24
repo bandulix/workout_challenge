@@ -4,8 +4,6 @@ import {
     CheckCheck,
     Dumbbell,
     Flame,
-    Timer,
-    Ruler,
 } from 'lucide-react';
 import {useGetWorkoutsQuery, useGetWorkoutSummaryQuery, workoutsApi} from "../utils/reducers/workoutsSlice";
 import WorkoutForm, {sportLabelShort} from "../forms/workoutForm";
@@ -15,7 +13,6 @@ import lodGroupby from 'lodash/groupBy';
 import lodMapvalues from 'lodash/mapValues';
 import lodSumby from 'lodash/sumBy';
 import lodUniqby from 'lodash/uniqBy';
-import {topSportCounts} from "../utils/sportCounts";
 import {useGetUserByIdQuery, usersApi} from "../utils/reducers/usersSlice";
 import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {getArchivedChallengeIds, archiveChallenge, restoreChallenge, isChallengeEnded} from "../utils/challengeArchive";
@@ -46,7 +43,8 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import RivalCard from "../components/RivalCard";
 import ComebackBench from "../components/ComebackBench";
 import SeasonBoard, {pickSeasonChallenge} from "../components/SeasonBoard";
-import {DogTagRow} from "../components/gameBits";
+import {accentHex} from "../components/gameBits";
+import {HomeOrderCard, HomePulse, StampWall, StatTile} from "../components/polishBits";
 import {Chip, EmptyState, PaneHead, paneCardClass, SyncChip, rowClass} from "../components/uiBits";
 import usePollingInterval from "../utils/usePollingInterval";
 import TrainingHeatmap from "../components/TrainingHeatmap";
@@ -129,13 +127,7 @@ function GettingStarted({user, competitions, workouts, configs, onJoin, onCreate
 }
 
 
-function WelcomeBox({user, workouts, summary}) {
-    // Lifetime counts come from the server-side summary endpoint - the
-    // loaded workouts page (latest 40) is only the fallback while it
-    // loads, so the total is never silently under-counted.
-    const fallback = useMemo(() => topSportCounts(workouts, "sport_type"), [workouts]);
-    const countTotal = summary?.total_count ?? fallback.total;
-    const countGroups = summary?.by_sport ? Object.fromEntries(summary.by_sport) : fallback.groups;
+function WelcomeBox({user}) {
     return (
         // Passive greeting — no glass card. Cards stay for interactive lists.
         <header className="mb-5 px-1 sm:px-2">
@@ -144,19 +136,8 @@ function WelcomeBox({user, workouts, summary}) {
                 <div className="flex-1 min-w-0 basis-40">
                     <p className="text-xs text-muted">Welcome back,</p>
                     <h1 className="t-hero text-xl truncate">{user.first_name}</h1>
-                    <DogTagRow tags={user.dog_tags}/>
                     <div className="mt-1 empty:hidden"><ReleaseSpark/></div>
                 </div>
-                <div className="flex items-baseline gap-1.5 shrink-0 ml-auto sm:ml-0">
-                    <span className="t-stat text-2xl font-display text-volt-500 dark:text-volt-400">{countTotal}</span>
-                    <span className="t-caption text-muted">workouts</span>
-                </div>
-                {Object.entries(countGroups).map(([label, count], index) => (
-                    <div key={"stat" + index} className="hidden lg:flex lg:flex-col lg:items-center shrink-0 px-1">
-                        <span className="t-stat text-lg font-semibold leading-tight">{count}</span>
-                        <span className="t-caption text-muted">{sportLabelShort(label)}</span>
-                    </div>
-                ))}
             </div>
         </header>
     )
@@ -532,42 +513,12 @@ function ThirtyDayStats({thirtyDayStats}) {
                     30 Day Activity <span className="font-sans normal-case font-normal">• {thirtyDayStats.startDate} - {thirtyDayStats.endDate}</span>
                 </span>
             </div>
-            <div className="flex items-end px-2 pt-1 pb-3">
-                <span className="font-display text-7xl leading-none t-stat text-volt-400">{thirtyDayStats.activeDays}</span>
-                <span className="uppercase text-xs tracking-[0.2em] text-gray-400 pb-1.5 pl-3">active<br/>days</span>
-            </div>
-            {/* 4-up only at lg: at md (foldable inner) this box sits in
-                a two-pane column ~500px wide, where four pills squeeze
-                the labels out - 2x2 keeps them readable. */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
-                    <Dumbbell className="w-5 h-5 text-gray-500 dark:text-white/70 shrink-0"/>
-                    <div className="text-left">
-                        <div className="text-xs tracking-wide text-gray-500">Workouts</div>
-                        <div className="text-xl font-bold leading-tight t-stat">{thirtyDayStats.workouts}</div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
-                    <Timer className="w-5 h-5 text-gray-500 dark:text-white/70 shrink-0"/>
-                    <div className="text-left">
-                        <div className="text-xs tracking-wide text-gray-500">Time</div>
-                        <div className="text-xl font-bold leading-tight t-stat">{Math.floor(thirtyDayStats.time / 3600).toLocaleString()}<span className="text-sm font-semibold">hr </span>{Math.floor((thirtyDayStats.time % 3600) / 60)}<span className="text-sm font-semibold">min</span></div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
-                    <Flame className="w-5 h-5 text-gray-500 dark:text-white/70 shrink-0"/>
-                    <div className="text-left">
-                        <div className="text-xs tracking-wide text-gray-500">Calories</div>
-                        <div className="text-xl font-bold leading-tight t-stat">{thirtyDayStats.kcal.toLocaleString()}<span className="text-sm font-semibold">kcal</span></div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-3 rounded-2xl glass-well p-3">
-                    <Ruler className="w-5 h-5 text-gray-500 dark:text-white/70 shrink-0"/>
-                    <div className="text-left">
-                        <div className="text-xs tracking-wide text-gray-500">Distance</div>
-                        <div className="text-xl font-bold leading-tight t-stat">{Math.round(thirtyDayStats.distance).toLocaleString()}<span className="text-sm font-semibold">km</span></div>
-                    </div>
-                </div>
+            <div className="grid grid-cols-2 gap-2">
+                <StatTile label="Active days" value={thirtyDayStats.activeDays} primary/>
+                <StatTile label="Workouts" value={thirtyDayStats.workouts}/>
+                <StatTile label="Time" value={`${Math.floor(thirtyDayStats.time / 3600).toLocaleString()}h ${Math.floor((thirtyDayStats.time % 3600) / 60)}m`}/>
+                <StatTile label="Calories" value={thirtyDayStats.kcal.toLocaleString()} unit="kcal"/>
+                <StatTile label="Distance" value={Math.round(thirtyDayStats.distance).toLocaleString()} unit="km"/>
             </div>
         </div>
     )
@@ -636,45 +587,52 @@ function SevenDayStats({sevenDayStats, user}) {
 // WHO recommendation: 150 minutes of moderate activity per week.
 const WHO_WEEKLY_MINUTES = 150;
 
+function deriveWeekPulse(workouts, summary) {
+    // Server-computed streak (truthful beyond the latest 40 loaded
+    // workouts); the client computation below is only a fallback
+    // while the summary is unavailable.
+    if (summary) {
+        const days = summary.week?.days || [];
+        return {
+            weekStreak: summary.streak_weeks ?? 0,
+            activeWeekdays: new Set(days),
+            activeDays: days.length,
+            weekMinutes: Math.round((summary.week?.seconds || 0) / 60),
+        };
+    }
+    const filteredWorkouts = lodFilter(workouts || [], item => item.sport_type !== 'Steps');
+    const workoutsPerWeek = lodMapvalues(lodGroupby(filteredWorkouts || [], 'start_datetime_fmt.weeksAgo'), items => lodSumby(items, 'duration_seconds'));
+
+    let streak = -1;
+    let i = -1;
+    let stillStreak = true;
+    while (stillStreak) {
+        if (workoutsPerWeek[i + 1] > 0) {
+            streak++;
+        } else if (i !== -1) {
+            stillStreak = false;
+        }
+        i++;
+    }
+
+    const thisWeek = lodFilter(filteredWorkouts, item => item.start_datetime_fmt?.weeksAgo === 0);
+    const activeWeekdays = new Set(thisWeek.map(w => (new Date(w.start_datetime).getDay() + 6) % 7));
+    return {
+        weekStreak: streak + 1,
+        activeWeekdays,
+        activeDays: activeWeekdays.size,
+        weekMinutes: Math.round(lodSumby(thisWeek, item => +item.duration_seconds || 0) / 60),
+    };
+}
+
 function StreakCard({workouts, summary, onStats}) {
 
     // Derived state via useMemo (not effect+setState): one render, no
     // stale-window between prop change and effect run.
-    const {weekStreak, activeWeekdays, weekMinutes} = useMemo(() => {
-        // Server-computed streak (truthful beyond the latest 40 loaded
-        // workouts); the client computation below is only a fallback
-        // while the summary is unavailable.
-        if (summary) {
-            return {
-                weekStreak: summary.streak_weeks ?? 0,
-                activeWeekdays: new Set(summary.week?.days || []),
-                weekMinutes: Math.round((summary.week?.seconds || 0) / 60),
-            };
-        }
-        const filteredWorkouts = lodFilter(workouts || [], item => item.sport_type !== 'Steps');
-        const workoutsPerWeek = lodMapvalues(lodGroupby(filteredWorkouts || [], 'start_datetime_fmt.weeksAgo'), items => lodSumby(items, 'duration_seconds'));
-
-        // streak number (consecutive weeks with at least one workout)
-        let streak = -1;
-        let i = -1;
-        let stillStreak = true;
-        while (stillStreak) {
-            if (workoutsPerWeek[i + 1] > 0) {
-                streak++;
-            } else if (i !== -1) {
-                stillStreak = false;
-            }
-            i++;
-        }
-
-        // this week's active weekdays + minutes
-        const thisWeek = lodFilter(filteredWorkouts, item => item.start_datetime_fmt.weeksAgo === 0);
-        return {
-            weekStreak: streak + 1,
-            activeWeekdays: new Set(thisWeek.map(w => (new Date(w.start_datetime).getDay() + 6) % 7)), // Mon=0 .. Sun=6
-            weekMinutes: Math.round(lodSumby(thisWeek, item => +item.duration_seconds || 0) / 60),
-        };
-    }, [workouts, summary]);
+    const {weekStreak, activeWeekdays, weekMinutes} = useMemo(
+        () => deriveWeekPulse(workouts, summary),
+        [workouts, summary],
+    );
 
     const whoGoalHit = weekMinutes >= WHO_WEEKLY_MINUTES;
 
@@ -880,6 +838,40 @@ export default function MySpace() {
     const [showGettingStartedSettings, setShowGettingStartedSettings] = useState(false);
     const navigate = useNavigate();
     const {data: drillConfigs} = useGetDrillConfigsQuery(undefined, {skip: !user});
+    const pulse = useMemo(() => deriveWeekPulse(workouts, workoutSummary), [workouts, workoutSummary]);
+    const boardSummary = (homeRivalSelection?.challenge || seasonChallenge)?.my_rank_summary;
+    const myRank = Number.isInteger(Number(boardSummary?.my_rank)) ? Number(boardSummary.my_rank) : null;
+    const orderSource = useMemo(() => {
+        const list = drillConfigs || [];
+        const id = homeRivalSelection?.challenge?.id || seasonChallenge?.id;
+        const match = list.find((c) => c.enabled && c.daily_order && id && String(c.competition) === String(id));
+        return match || list.find((c) => c.enabled && c.daily_order) || null;
+    }, [drillConfigs, homeRivalSelection, seasonChallenge]);
+    const showStamps = (user?.dog_tags?.length > 0) || (workouts || []).some((w) => w.sport_type !== "Steps");
+
+    useEffect(() => {
+        if (!user?.id) return undefined;
+        const key = `wc-stamp-slugs:${user.id}`;
+        const slugs = (user.dog_tags || []).map((tag) => tag.slug);
+        let prev = null;
+        try {
+            prev = JSON.parse(localStorage.getItem(key) || "null");
+        } catch {
+            prev = null;
+        }
+        if (Array.isArray(prev)) {
+            const known = new Set(prev);
+            const fresh = slugs.filter((slug) => !known.has(slug));
+            if (fresh.length === 1) toast.success("+1 stamp");
+            else if (fresh.length > 1) toast.success(`+${fresh.length} stamps`);
+        }
+        try {
+            localStorage.setItem(key, JSON.stringify(slugs));
+        } catch {
+            /* private mode */
+        }
+        return undefined;
+    }, [user?.id, user?.dog_tags]);
 
     // ?action=log opens the workout form directly (PWA home-screen shortcut).
     const [quickLog, setQuickLog] = useState(query.get('action') === 'log');
@@ -934,6 +926,28 @@ export default function MySpace() {
                         )
                     }
                 </div>
+                {!userLoading && !workoutsIsLoading && user && (
+                    <div className={seasonChallenge ? "relative z-10" : ""}>
+                        <HomePulse
+                            minutes={pulse.weekMinutes}
+                            streak={pulse.weekStreak}
+                            activeDays={pulse.activeDays}
+                            rank={myRank}
+                        />
+                        <HomeOrderCard
+                            order={orderSource?.daily_order}
+                            accent={orderSource?.persona_detail?.theme_color
+                                ? accentHex(orderSource.persona_detail.theme_color)
+                                : undefined}
+                        />
+                        {showStamps && (
+                            <section className="mb-4">
+                                <PaneHead title="Stamps" hint="Earned tags glow. The rest are still out there."/>
+                                <StampWall earned={user.dog_tags}/>
+                            </section>
+                        )}
+                    </div>
+                )}
                 <div className={seasonChallenge ? "relative z-10 mb-6" : ""}>
                 <RivalCard
                     model={rivalCardModel}

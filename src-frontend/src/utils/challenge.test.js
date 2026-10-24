@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {beforeEach, describe, expect, it} from "vitest";
-import {challengeDaysLeftLabel, challengeEndChip, challengeRivalCard, daysUntilChallengeEnd, dismissHomeRivalCard, homeRivalChallengeSelection, homeRivalQueryParams, lastChallenge, pinHomeRivalChallenge, rememberLastCompetition, unpinHomeRivalChallenge} from "./challenge";
+import {challengeCountdownLabel, challengeDaysLeftLabel, challengeEndChip, challengeRivalCard, daysUntilChallengeEnd, dismissHomeRivalCard, homeRivalChallengeSelection, homeRivalQueryParams, lastChallenge, pinHomeRivalChallenge, rememberLastCompetition, unpinHomeRivalChallenge} from "./challenge";
 
 const noon = (iso) => {
     const [y, m, d] = iso.split("-").map(Number);
@@ -31,6 +31,15 @@ describe("challengeDaysLeftLabel", () => {
         expect(challengeDaysLeftLabel("2026-09-12", noon("2026-09-11"))).toBe("1 day left");
         expect(challengeDaysLeftLabel("2026-09-11", noon("2026-09-11"))).toBe("Last day");
         expect(challengeDaysLeftLabel("2026-09-01", noon("2026-09-11"))).toBe("Ended");
+    });
+});
+
+describe("challengeCountdownLabel", () => {
+    it("counts down in days and hours through the inclusive end date", () => {
+        expect(challengeCountdownLabel("2026-09-13", noon("2026-09-11"))).toBe("Ends in 2d 12h");
+        expect(challengeCountdownLabel("2026-09-11", new Date(2026, 8, 11, 20, 15, 0))).toBe("Ends in 3h 45m");
+        expect(challengeCountdownLabel("2026-09-10", noon("2026-09-11"))).toBe("Ended");
+        expect(challengeCountdownLabel("")).toBeNull();
     });
 });
 
@@ -67,6 +76,9 @@ describe("challengeRivalCard", () => {
             rivalUsername: "lena",
             rivalIsPinned: false,
             rivalPlacesAhead: 1,
+            myRank: 3,
+            rivalRank: 2,
+            pointsGap: 18.2,
         });
     });
 

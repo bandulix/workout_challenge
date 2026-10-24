@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from "react";
-import {ChevronDown, ChevronUp, MessageCircle, Send} from "lucide-react";
+import {ChevronDown, ChevronUp, MessageCircle, Send, ThumbsDown, ThumbsUp} from "lucide-react";
 import {useDispatch} from "react-redux";
 import {BeatLoader} from "react-spinners";
 import PersonaAvatar from "./PersonaAvatar";
@@ -9,6 +9,35 @@ import {useProtectedImage} from "../utils/protectedMedia";
 import {elapsedSince, timeAgo} from "../utils/time";
 import {RoastGallery} from "./gameBits";
 import {stripCharacterCountSuffix} from "../utils/coachText";
+import {accentHex} from "./gameBits";
+
+function CoachFeedback({id}) {
+    const storageKey = `wc-coach-fb:${id}`;
+    const [vote, setVote] = useState(() => {
+        try { return localStorage.getItem(storageKey) || ""; } catch { return ""; }
+    });
+    function choose(next) {
+        const value = vote === next ? "" : next;
+        setVote(value);
+        try {
+            if (value) localStorage.setItem(storageKey, value);
+            else localStorage.removeItem(storageKey);
+        } catch { /* private mode */ }
+    }
+    const button = "inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full ";
+    return (
+        <div className="mt-1 flex">
+            <button type="button" aria-label="Helpful" aria-pressed={vote === "up"} onClick={() => choose("up")}
+                    className={button + (vote === "up" ? "bg-volt-400 text-ink-950" : "text-muted")}>
+                <ThumbsUp className="h-4 w-4" aria-hidden="true"/>
+            </button>
+            <button type="button" aria-label="Not helpful" aria-pressed={vote === "down"} onClick={() => choose("down")}
+                    className={button + (vote === "down" ? "bg-ink-700 text-white" : "text-muted")}>
+                <ThumbsDown className="h-4 w-4" aria-hidden="true"/>
+            </button>
+        </div>
+    );
+}
 
 function ReplyImage({url, alt, elapsed}) {
     // Card JPEG in the thread; the gallery fetches the original.
@@ -57,6 +86,7 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
     // Coach remix is the activity-card backdrop (and hot-or-not) — not
     // a chat bubble. Original photo uploads stay in the thread so they
     // open only when the user taps replies.
+    const accent = accentHex(persona?.theme_color);
     const replies = (message.replies || []).filter(
         (r) => !(r.is_coach && r.image)
     );
@@ -113,7 +143,8 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
                                 <ProfileAvatar user={{profile_picture: r.author_profile_picture, first_name: r.author_name}} size={24}/>
                             )}
                             <div className={"min-w-0 flex-1 rounded-2xl px-3 py-2 " +
-                                (r.is_coach ? "glass-inset" : "bg-ink-950/[0.04] dark:bg-white/[0.05]")}>
+                                (r.is_coach ? "glass-card border-l-2" : "bg-ink-950/[0.04] dark:bg-white/[0.05]")}
+                                 style={r.is_coach ? {borderLeftColor: accent} : undefined}>
                                 {/* break-words: pasted URLs / unbreakable strings wrap
                                     instead of overflowing the viewport (page scrolled
                                     sideways on smartphones). */}
@@ -125,9 +156,10 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
                                                 alt={r.body ? `Coach remix: ${r.is_coach ? stripCharacterCountSuffix(r.body) : r.body}` : "Coach remix"}
                                                 elapsed={elapsedSince(r.posted_at, now)}/>
                                 )}
-                                <p className="text-xs text-gray-400 mt-1">
+                                <p className="text-xs text-muted mt-1">
                                     {r.is_coach ? (persona?.name || "Coach") : (r.author_name || "Participant")} · {timeAgo(r.posted_at)}
                                 </p>
+                                {r.is_coach && <CoachFeedback id={r.id}/>}
                             </div>
                         </div>
                     ))}
@@ -135,6 +167,7 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
                     {canReply && (
                         <div className="min-w-0 w-full space-y-1">
                             <div className="flex items-center gap-2 min-w-0 w-full">
+                                <div className="composer-rim min-w-0 flex-1 rounded-full">
                                 <input
                                     type="text"
                                     value={text}
@@ -143,8 +176,9 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
                                     onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
                                     placeholder={`Reply to ${persona?.name || "the coach"}…`}
                                     aria-label={`Reply to ${persona?.name || "the coach"}`}
-                                    className="min-w-0 w-0 flex-1 min-h-[44px] h-11 border border-ink-950/10 dark:border-ink-700/60 rounded-full py-2 px-3 sm:px-4 text-sm text-gray-800 bg-white/55 dark:bg-ink-900 dark:text-gray-300 dark:placeholder-gray-600 leading-tight shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:shadow-none focus:outline-none focus:border-volt-500"
+                                    className="min-w-0 w-full min-h-[44px] h-11 rounded-full border-0 bg-white/80 py-2 px-3 text-sm leading-tight text-gray-800 focus:outline-none dark:bg-ink-850 dark:text-gray-200 dark:placeholder-gray-500 sm:px-4"
                                 />
+                                </div>
                                 <button onClick={handleSend} disabled={isLoading || !text.trim()}
                                         aria-label="Send reply"
                                         className="shrink-0 h-11 w-11 min-h-[44px] min-w-[44px] btn-plate transition disabled:opacity-50 disabled:shadow-none flex items-center justify-center">
