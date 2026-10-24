@@ -2,6 +2,7 @@ import {LocalNotifications} from "@capacitor/local-notifications";
 import {isNativeApp} from "./platform";
 import {ensureFreshAccessToken} from "./authTokens";
 import {onAppResume} from "./appLifecycle";
+import {categoryForCoachKind, pushCategoryOn} from "./pushCategories";
 
 // Coach pings in the Android app. Web Push (VAPID) does not work inside
 // an Android WebView, so the native app drives pings itself: it polls
@@ -39,14 +40,16 @@ async function maybeMorningOrder() {
         if (!notice?.id) return;
         const key = `wc_readiness_notice:${notice.id}`;
         if (localStorage.getItem(key)) return;
-        await LocalNotifications.schedule({
-            notifications: [{
-                id: READINESS_NOTIFY_ID,
-                title: notice.title || "Order of the Day",
-                body: notice.body || "",
-                extra: {url: notice.url || "/"},
-            }],
-        });
+        if (pushCategoryOn("coach")) {
+            await LocalNotifications.schedule({
+                notifications: [{
+                    id: READINESS_NOTIFY_ID,
+                    title: notice.title || "Order of the Day",
+                    body: notice.body || "",
+                    extra: {url: notice.url || "/"},
+                }],
+            });
+        }
         localStorage.setItem(key, "1");
         await store.dispatch(readinessApi.endpoints.ackReadinessNotice.initiate()).unwrap();
     } catch {
@@ -145,15 +148,17 @@ export function startDuelPings() {
                 const seen = new Set(String(localStorage.getItem(DUEL_SEEN_KEY) || "").split(",").filter(Boolean));
                 const fresh = rows.filter((row) => row?.id != null && !seen.has(String(row.id)));
                 if (fresh.length) {
-                    const newest = fresh[fresh.length - 1];
-                    await LocalNotifications.schedule({
-                        notifications: [{
-                            id: DUEL_NOTIFY_ID,
-                            title: newest.title || "Duel",
-                            body: newest.body || "",
-                            extra: {url: newest.url || "/dashboard"},
-                        }],
-                    });
+                    if (pushCategoryOn("duels")) {
+                        const newest = fresh[fresh.length - 1];
+                        await LocalNotifications.schedule({
+                            notifications: [{
+                                id: DUEL_NOTIFY_ID,
+                                title: newest.title || "Duel",
+                                body: newest.body || "",
+                                extra: {url: newest.url || "/dashboard"},
+                            }],
+                        });
+                    }
                     const ids = fresh.map((row) => row.id);
                     await store.dispatch(duelsApi.endpoints.markDuelPingsSeen.initiate(ids)).unwrap();
                     const next = [...seen, ...ids.map(String)].slice(-40);
@@ -219,7 +224,7 @@ export function startNativeCoachPings(user) {
                         const tagged = mentionsName(latest.body, user?.first_name);
                         if (social && (ownReply || (!mine && !tagged))) {
                             // Someone else's reply that is not an @mention of you.
-                        } else {
+                        } else if (pushCategoryOn(social ? "coach" : categoryForCoachKind(latest.kind))) {
                             const title = social
                                 ? (tagged ? "You were mentioned" : "New comment on your post")
                                 : (latest.persona_name

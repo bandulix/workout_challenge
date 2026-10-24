@@ -659,7 +659,7 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
 
             <CrewRow expedition={expedition}/>
 
-            <ol aria-label="Expedition milestones" className="mt-4 grid grid-cols-4 gap-1 text-center">
+            <ol aria-label="Expedition milestones" className="relative mt-4 space-y-1 border-l border-white/10 pl-4">
                 {expedition.milestones.map((milestone) => {
                     const hidden = Boolean(milestone.hidden);
                     const title = hidden ? "?" : landmarkTitle(expedition, milestone.milestone_id);
@@ -673,7 +673,7 @@ export function ExpeditionTimeline({expedition, canRematch = false, onRematch}) 
                         ? `${title}: reached late — the storm took the stamp`
                         : `${title}: ${STATUS_LABELS[milestone.status] || "Ahead"}` + (completed && coach?.name ? ` with ${coach.name}` : "");
                     return (
-                        <li className="flex min-w-0 flex-col items-center gap-0.5" key={milestone.milestone_id}>
+                        <li className={"relative flex min-w-0 items-center gap-3 " + (unstamped ? "rounded-2xl bg-sky-500/10" : "")} key={milestone.milestone_id}>
                             <button type="button"
                                     className="flex w-full min-h-[44px] flex-col items-center gap-0.5 rounded-xl px-0.5 py-1 text-center transition hover:bg-ink-950/5 dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400"
                                     title={label}

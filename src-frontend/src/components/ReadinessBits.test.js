@@ -84,7 +84,7 @@ describe("readiness home", () => {
             }}/>,
         );
         const article = container.querySelector("article");
-        expect(article.style.borderLeftColor.replace(/\s/g, "")).toMatch(/e24b4b|226,75,75/i);
+        expect(article.style.borderLeftColor.replace(/\s/g, "")).toMatch(/ff6b5b|255,107,91/i);
         expect(screen.getByText(/Protect the streak/)).toBeInTheDocument();
     });
 });

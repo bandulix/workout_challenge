@@ -48,7 +48,7 @@ import SeasonBoard, {pickSeasonChallenge} from "../components/SeasonBoard";
 import {accentHex} from "../components/gameBits";
 import {StampWall, StatTile} from "../components/polishBits";
 import {HomeReadiness} from "../components/ReadinessBits";
-import {recordLabel} from "../utils/duel";
+import {RecordPills} from "../components/designBits";
 import {Chip, EmptyState, PaneHead, paneCardClass, SyncChip, rowClass} from "../components/uiBits";
 import usePollingInterval from "../utils/usePollingInterval";
 import TrainingHeatmap from "../components/TrainingHeatmap";
@@ -140,9 +140,9 @@ function WelcomeBox({user}) {
                 <div className="flex-1 min-w-0 basis-40">
                     <p className="text-xs text-muted">Welcome back,</p>
                     <h1 className="t-hero text-xl truncate">{user.first_name}</h1>
-                    {recordLabel(user.duel_record) && (
-                        <p className="text-xs text-muted">Duels {recordLabel(user.duel_record)}</p>
-                    )}
+                    {(user.duel_record?.wins || user.duel_record?.losses || user.duel_record?.ties) ? (
+                        <div className="mt-1"><RecordPills record={user.duel_record}/></div>
+                    ) : null}
                     <div className="mt-1 empty:hidden"><ReleaseSpark/></div>
                 </div>
             </div>
@@ -594,6 +594,11 @@ function SevenDayStats({sevenDayStats, user}) {
 // WHO recommendation: 150 minutes of moderate activity per week.
 const WHO_WEEKLY_MINUTES = 150;
 
+function todayMinutesFrom(workouts) {
+    const rows = (workouts || []).filter((item) => item.sport_type !== "Steps" && item.start_datetime_fmt?.days_ago === 0);
+    return Math.round(rows.reduce((sum, item) => sum + (Number(item.duration_seconds) || 0), 0) / 60);
+}
+
 function deriveWeekPulse(workouts, summary) {
     // Server-computed streak (truthful beyond the latest 40 loaded
     // workouts); the client computation below is only a fallback
@@ -605,6 +610,7 @@ function deriveWeekPulse(workouts, summary) {
             activeWeekdays: new Set(days),
             activeDays: days.length,
             weekMinutes: Math.round((summary.week?.seconds || 0) / 60),
+            todayMinutes: todayMinutesFrom(workouts),
         };
     }
     const filteredWorkouts = lodFilter(workouts || [], item => item.sport_type !== 'Steps');
@@ -629,6 +635,7 @@ function deriveWeekPulse(workouts, summary) {
         activeWeekdays,
         activeDays: activeWeekdays.size,
         weekMinutes: Math.round(lodSumby(thisWeek, item => +item.duration_seconds || 0) / 60),
+        todayMinutes: todayMinutesFrom(filteredWorkouts),
     };
 }
 

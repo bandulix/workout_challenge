@@ -1,6 +1,7 @@
 import React, {useMemo, useState} from "react";
 import {OverlaySheet} from "../forms/basicComponents";
-import {HomeOrderCard, HomePulse, ReadinessRing} from "./polishBits";
+import {HomeOrderCard, HomePulse} from "./polishBits";
+import {ArcGauge, ContributorList, MissingCard} from "./designBits";
 import {confirmAction} from "../utils/dialogs";
 import {toast} from "../utils/toasts";
 import {errText} from "../utils/errors";
@@ -58,7 +59,9 @@ export function TrendChart({trend = []}) {
     );
 }
 
-function ChoiceRow({label, hint, value, max, onPick}) {
+const FEEL = ["😫", "😕", "😐", "🙂", "💪"];
+
+function ChoiceRow({label, hint, value, max, onPick, emoji = false}) {
     return (
         <div>
             <p className="text-sm font-bold text-ink-950 dark:text-white">{label}</p>
@@ -67,11 +70,13 @@ function ChoiceRow({label, hint, value, max, onPick}) {
                 {Array.from({length: max}, (_, index) => index + 1).map((n) => (
                     <button key={n} type="button" onClick={() => onPick(n)}
                             aria-pressed={value === n}
-                            className={"inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-sm font-bold " +
+                            aria-label={String(n)}
+                            className={"inline-flex min-h-[44px] min-w-[44px] flex-1 items-center justify-center rounded-full text-sm font-bold " +
                                 (value === n
-                                    ? "bg-ink-950 text-white dark:bg-white dark:text-ink-950"
-                                    : "bg-ink-950/5 text-ink-950 dark:bg-white/10 dark:text-white")}>
-                        {n}
+                                    ? "bg-volt-400 text-ink-950"
+                                    : "text-ink-950 dark:text-white")}
+                            style={value === n ? undefined : {border: "1px solid var(--hairline)", background: "var(--surface-2)"}}>
+                        {emoji ? FEEL[n - 1] : n}
                     </button>
                 ))}
             </div>
@@ -106,11 +111,6 @@ export function ReadinessSheet({
         setScopes((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
     }
 
-    async function saveCheck() {
-        if (!feel) return;
-        await onCheckIn({feel, soreness});
-    }
-
     async function savePrefs() {
         const body = {
             timezone: zone,
@@ -134,26 +134,49 @@ export function ReadinessSheet({
     return (
         <OverlaySheet title="Readiness" onClose={onClose} zClass="z-[80]" labelledBy="readiness-sheet-title">
             <div className="space-y-5">
-                <div className="flex items-center gap-3">
-                    <ReadinessRing score={payload?.score} band={payload?.band} size={56}/>
-                    <div className="min-w-0">
-                        <p className="font-display text-lg text-ink-950 dark:text-white">
-                            {BAND_LABEL[payload?.band] || "Warming up"}
-                        </p>
-                        <p className="text-xs text-muted">{payload?.why || "A few mornings of history and this fills in."}</p>
-                    </div>
-                </div>
+                <ArcGauge
+                    value={payload?.score}
+                    color={bandEdge(payload?.band) || "var(--hairline)"}
+                    display={payload?.score == null ? "--" : String(payload.score)}
+                    caption={payload?.why || "A few mornings of history and this fills in."}
+                />
+                <p className="text-center text-sm font-semibold" style={{color: bandEdge(payload?.band) || "var(--text-muted)"}}>
+                    {BAND_LABEL[payload?.band] || "Warming up"}
+                </p>
                 <p className="text-xs text-muted">{payload?.disclaimer || READINESS_DISCLAIMER}</p>
                 <p className="text-xs text-muted">Only you see this. It never goes on the board.</p>
 
+                {(payload?.score == null || payload?.warming_up) && (
+                    <MissingCard
+                        title="This morning is still open"
+                        body="A check-in, or a night of sleep and HRV, is what fills the score."
+                        action="Tap how you feel."
+                        when="It updates the next morning a source syncs."
+                    />
+                )}
+                {payload?.consent?.scopes?.includes("sleep") && payload?.components && !payload.components.sleep && (
+                    <MissingCard
+                        title="Sleep didn't sync"
+                        body="The rest of the morning can still score. Sleep is the piece that is missing."
+                        action="Open the health app and let last night through."
+                        when="The score picks it up the next morning it arrives."
+                    />
+                )}
+
+                <ContributorList components={payload?.components}/>
+
+                {payload?.order?.brief && (
+                    <article className="rounded-[20px] p-4" style={{background: "var(--surface-2)", border: "1px solid var(--hairline)"}}>
+                        <p className="t-label text-muted">Coach</p>
+                        <p className="t-body mt-1 text-ink-950 dark:text-white">{payload.order.brief}</p>
+                    </article>
+                )}
+
                 <TrendChart trend={payload?.trend || []}/>
 
-                <ChoiceRow label="How do you feel?" hint="1 is flat, 5 is ready." value={feel} max={5} onPick={setFeel}/>
-                <ChoiceRow label="Soreness" hint="1 is fresh, 5 is sore. Optional." value={soreness} max={5} onPick={setSoreness}/>
-                <button type="button" onClick={saveCheck} disabled={!feel || busy}
-                        className="inline-flex min-h-[44px] items-center btn-plate px-4 text-sm font-bold disabled:opacity-50">
-                    Save check-in
-                </button>
+                <ChoiceRow label="How do you feel?" hint="One tap saves and closes. 1 is flat, 5 is ready." value={feel} max={5} emoji
+                           onPick={async (n) => { setFeel(n); await onCheckIn({feel: n, soreness}); }}/>
+                <ChoiceRow label="Soreness" hint="1 is fresh, 5 is sore. Optional, saved with the feel tap." value={soreness} max={5} onPick={setSoreness}/>
 
                 <section className="space-y-3">
                     <h3 className="font-display text-xs uppercase tracking-[0.16em]">Recovery data</h3>
@@ -236,6 +259,7 @@ export function HomeReadiness({competitionId, pulse, rank, groupOrder, accent}) 
     async function onCheckIn(body) {
         try {
             await saveCheckIn(body).unwrap();
+            setOpen(false);
             toast.success("Check-in saved.");
         } catch (err) {
             toast.error(errText(err, "Could not save the check-in."));
@@ -272,6 +296,7 @@ export function HomeReadiness({competitionId, pulse, rank, groupOrder, accent}) 
         <>
             <HomePulse
                 minutes={pulse?.weekMinutes}
+                todayMinutes={pulse?.todayMinutes}
                 streak={pulse?.weekStreak}
                 activeDays={pulse?.activeDays}
                 rank={rank}

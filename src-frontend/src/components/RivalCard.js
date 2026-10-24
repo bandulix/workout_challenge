@@ -120,6 +120,15 @@ export default function RivalCard({model, onPin, onDismiss, onDuel, isPinned = f
                                 <StatTile label={`@${model.rivalUsername}`} value={`#${model.rivalRank}`}/>
                             </div>
                         )}
+                        {["chasing", "defending", "tied"].includes(model.kind) && (
+                            <div className="relative mt-4 h-10" aria-hidden="true">
+                                <div className="absolute left-8 right-8 top-1/2 h-px" style={{background: "var(--hairline)"}}/>
+                                <span className="absolute left-0 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[11px] font-bold" style={{background: "var(--volt)", color: "#0b0b0c"}}>You</span>
+                                <span className="absolute right-0 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[11px] font-bold text-white" style={{background: "var(--other)"}}>
+                                    {(model.rivalUsername || "?").slice(0, 1).toUpperCase()}
+                                </span>
+                            </div>
+                        )}
                         {Number.isFinite(Number(model.pointsGap)) && (
                             <p className={"mt-2 text-xs font-bold t-stat " + (Number(model.pointsGap) < 0
                                 ? "text-volt-700 dark:text-volt-400"

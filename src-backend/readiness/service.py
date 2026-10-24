@@ -334,6 +334,7 @@ def today_payload(user, competition_id=None):
         "score": snapshot.score,
         "band": snapshot.band,
         "why": snapshot.why,
+        "components": snapshot.components or {},
         "warming_up": snapshot.warming_up,
         "checkin": None if checkin is None else {"feel": checkin.feel, "soreness": checkin.soreness},
         "trend": _trend(user, snapshot.date, tz),

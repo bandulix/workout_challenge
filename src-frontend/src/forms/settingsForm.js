@@ -12,6 +12,7 @@ import {confirmAction} from "../utils/dialogs";
 import {toast} from "../utils/toasts";
 import {errText} from "../utils/errors";
 import {assetUrl} from "../utils/platform";
+import {applyTheme, readTheme} from "../utils/theme";
 import {clearBodyScrollLock} from "../utils/overlay";
 import {GENDER_OPTIONS_WITH_UNKNOWN} from "../utils/enums";
 
@@ -53,30 +54,55 @@ function SyncSourceSection({user, onChanged}) {
         }
     }
 
-    const optionClass = (source) =>
-        "flex-1 px-4 py-2.5 rounded-full text-sm font-bold uppercase tracking-wide transition disabled:opacity-50 " +
-        (source === active
-            ? "bg-volt-400 text-ink-950 shadow-glow-volt"
-            : "btn-glass text-gray-600 dark:text-gray-300");
-
     return (
-        <div className="rounded-2xl glass-card p-4 space-y-3">
+        <div className="space-y-3" role="radiogroup" aria-label="Activity import source">
                 <div className="flex items-center gap-2">
                     <Watch className="h-4 w-4 text-gray-500 dark:text-white/70"/>
-                    <span className="font-display text-xs uppercase tracking-wider">Activity import source</span>
+                    <span className="t-label text-muted">One source imports</span>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Several providers are linked. Only the selected source imports your activities,
-                    so nothing gets doubled.
+                    Picking a source marks the others as not importing, so the same workout never lands twice.
                 </p>
-                <div className="flex gap-2">
-                    {linked.map((source) => (
-                        <button key={source} onClick={() => choose(source)} disabled={isLoading} className={optionClass(source)}>
-                            {PROVIDER_LABELS[source]}
-                        </button>
-                    ))}
+                <div className="grid gap-2">
+                    {linked.map((source) => {
+                        const on = source === active;
+                        return (
+                            <button key={source} type="button" role="radio" aria-checked={on} onClick={() => choose(source)} disabled={isLoading}
+                                    className="flex min-h-[44px] items-center justify-between rounded-[20px] px-4 py-3 text-left text-sm font-bold disabled:opacity-50"
+                                    style={{
+                                        background: "var(--surface-1)",
+                                        border: on ? "1px solid var(--volt)" : "1px solid var(--hairline)",
+                                        opacity: on ? 1 : 0.55,
+                                    }}>
+                                <span>{PROVIDER_LABELS[source]}</span>
+                                <span className="t-label" style={{color: on ? "var(--volt)" : "var(--text-muted)"}}>{on ? "Connected" : "Not importing"}</span>
+                            </button>
+                        );
+                    })}
                 </div>
                 {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+    );
+}
+
+function AppearanceSection() {
+    const [mode, setMode] = useState(readTheme);
+    function choose(next) {
+        applyTheme(next);
+        setMode(next);
+    }
+    return (
+        <div className="rounded-[20px] p-4" style={{background: "var(--surface-1)", border: "1px solid var(--hairline)"}}>
+            <p className="t-label text-muted">Appearance</p>
+            <div className="mt-2 flex gap-2" role="radiogroup" aria-label="Colour mode">
+                {[["dark", "Dark"], ["light", "Light"]].map(([id, label]) => (
+                    <button key={id} type="button" role="radio" aria-checked={mode === id} onClick={() => choose(id)}
+                            className={"min-h-[44px] flex-1 rounded-full text-sm font-bold " + (mode === id ? "bg-volt-400 text-ink-950" : "text-muted")}
+                            style={mode === id ? undefined : {border: "1px solid var(--hairline)"}}>
+                        {label}
+                    </button>
+                ))}
+            </div>
         </div>
     );
 }
@@ -645,6 +671,7 @@ export default function SettingsForm({user, setModalState, setLinkStrava}) {
                 </div>
             </SettingsGroup>
 
+            <AppearanceSection/>
             <SettingsGroup title="Connected services" hint="Only one source imports activities, so the same workout never lands twice.">
                 <div className={"grid gap-2 " + ((user?.health_configured || user?.health_user_id) ? "grid-cols-3" : "grid-cols-2")}>
                     <button type="button" onClick={() => document.getElementById("connect-strava")?.scrollIntoView({behavior: prefersReducedMotion() ? "auto" : "smooth", block: "nearest"})}

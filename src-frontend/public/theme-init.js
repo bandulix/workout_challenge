@@ -31,12 +31,20 @@
             }
         }
 
-        try { localStorage.removeItem("wc-theme"); } catch (e) { /* ignore */ }
+        var theme = "dark";
+        try { theme = localStorage.getItem("wc-theme") === "light" ? "light" : "dark"; } catch (e) { theme = "dark"; }
         var root = document.documentElement;
-        root.classList.add("dark");
-        root.classList.remove("light");
-        root.style.colorScheme = "dark";
-        root.style.background = "#0b0b0c";
+        if (theme === "light") {
+            root.classList.remove("dark");
+            root.classList.add("light");
+            root.style.colorScheme = "light";
+            root.style.background = "#f3f3f4";
+        } else {
+            root.classList.add("dark");
+            root.classList.remove("light");
+            root.style.colorScheme = "dark";
+            root.style.background = "#0b0b0c";
+        }
 
         // Must match src/utils/dailyBackdrop.js (BACKDROP_IDS + FNV-1a).
         var ids = ["snowboard", "swim", "gravel", "studio", "lift"];

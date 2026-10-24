@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from "react";
 import ProfileAvatar from "./ProfileAvatar";
 import {countdownLabel, gapLabel, pointsLabel} from "../utils/duel";
+import {DayDots, PairedBars} from "./designBits";
 import {isNativeApp} from "../utils/platform";
 import {sharePostCard} from "../utils/shareCard";
 
@@ -41,7 +42,7 @@ function ScoreRing({score, max, accent}) {
 
 function Tile({person, score, max, accent, label}) {
     return (
-        <article className="glass-card flex flex-col items-center rounded-3xl p-3 text-center">
+        <article className="flex flex-col items-center p-1 text-center">
             <div className="relative">
                 <ScoreRing score={score} max={max} accent={accent}/>
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -50,29 +51,14 @@ function Tile({person, score, max, accent, label}) {
             </div>
             <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-muted">{label}</p>
             <p className="truncate font-display text-sm uppercase tracking-wide">{person?.username || "Athlete"}</p>
-            <p className="font-display text-2xl tabular-nums text-volt-700 dark:text-volt-300">{pointsLabel(score)}</p>
+            <p className="t-stat font-display text-2xl" style={{color: label === "You" ? "var(--volt)" : "var(--other)"}}>{pointsLabel(score)}</p>
         </article>
     );
 }
 
-function DailyChart({days}) {
-    const rows = Array.isArray(days) ? days : [];
-    const peak = Math.max(1, ...rows.flatMap((day) => [Number(day.you) || 0, Number(day.them) || 0]));
-    if (!rows.length) return null;
-    return (
-        <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted">Each day</p>
-            <div className="mt-2 flex items-end gap-1" role="img" aria-label="Daily duel points">
-                {rows.map((day) => (
-                    <div key={day.date} className="flex min-w-0 flex-1 items-end justify-center gap-0.5" title={day.date}>
-                        <span className="block w-1.5 rounded-t bg-volt-400 motion-safe:transition-[height]" style={{height: `${Math.max(4, ((Number(day.you) || 0) / peak) * 56)}px`}}/>
-                        <span className="block w-1.5 rounded-t bg-ink-950/70 dark:bg-white/70 motion-safe:transition-[height]" style={{height: `${Math.max(4, ((Number(day.them) || 0) / peak) * 56)}px`}}/>
-                    </div>
-                ))}
-            </div>
-            <p className="mt-1 text-xs text-muted">Volt is you. Ink is them.</p>
-        </div>
-    );
+function expiresLine(seconds) {
+    const hours = Math.max(1, Math.round((Number(seconds) || 0) / 3600));
+    return `expires in ${hours} h`;
 }
 
 function shareText(duel) {
@@ -147,21 +133,26 @@ export default function DuelView({duel, busy = false, error = "", onAccept, onDe
                 <p className="text-sm text-muted">
                     {duel.duration_days} days · {duel.metric_label}
                     {waiting ? ` · reply in ${countdownLabel(replySeconds)}` : ""}
+                    {waiting ? ` · ${expiresLine(replySeconds)}` : ""}
                     {live && !duel.in_grace ? ` · ${countdownLabel(liveSeconds)} left` : ""}
                     {live && duel.in_grace ? ` · ${countdownLabel(liveSeconds)} to sync` : ""}
                 </p>
+                <div className="mt-3">
+                    <DayDots total={duel.duration_days} days={duel.daily}/>
+                </div>
             </header>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="glass-card grid grid-cols-[1fr_auto_1fr] items-center gap-2 p-4">
                 <Tile person={duel.you} score={duel.you?.score} max={maxScore} accent="#d7ff3e" label="You"/>
-                <Tile person={duel.them} score={duel.them?.score} max={maxScore} accent="#a1a1aa" label="Them"/>
+                <p className="t-label text-muted">vs</p>
+                <Tile person={duel.them} score={duel.them?.score} max={maxScore} accent="var(--other)" label="Them"/>
             </div>
 
             <p className="text-center font-display text-lg uppercase tracking-wide" aria-live="polite">
-                {duel.leader === "you" ? `You · ${gapLabel(Math.abs(duel.gap), "you")}` : duel.leader === "them" ? `@${duel.them?.username} · ${gapLabel(Math.abs(duel.gap), "them")}` : "Level"}
+                {duel.leader === "you" ? `You · ${gapLabel(Math.abs(duel.gap), "you")}` : duel.leader === "them" ? `@${duel.them?.username} · ${gapLabel(Math.abs(duel.gap), "them")}` : "Dead heat"}
             </p>
 
-            {(live || done) && <DailyChart days={duel.daily}/>}
+            {(live || done) && <PairedBars rows={duel.daily}/>}
 
             {latest?.body && (
                 <blockquote className="glass-card rounded-3xl p-4">
@@ -189,8 +180,8 @@ export default function DuelView({duel, busy = false, error = "", onAccept, onDe
                     </label>
                     <div className="flex flex-wrap gap-2">
                         <button type="button" disabled={busy} onClick={() => onAccept?.({forfeit_public: forfeitPublic, feed_opt_in: feedOptIn})} className="min-h-[44px] btn-plate px-4 text-sm font-bold">Accept</button>
-                        <button type="button" disabled={busy} onClick={() => setCountering((open) => !open)} className="min-h-[44px] btn-plate-ink px-4 text-sm font-semibold">Counter</button>
                         <button type="button" disabled={busy} onClick={() => onDecline?.()} className="min-h-[44px] btn-plate-ink px-4 text-sm font-semibold">Decline</button>
+                        <button type="button" disabled={busy} onClick={() => setCountering((open) => !open)} className="min-h-[44px] bg-transparent px-3 text-sm font-semibold text-muted underline">Counter</button>
                     </div>
                     {countering && (
                         <form className="space-y-3" onSubmit={(event) => {

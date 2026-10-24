@@ -3,6 +3,18 @@ import {Link} from "react-router-dom";
 import {Lock, ScrollText} from "lucide-react";
 import {OverlaySheet} from "../forms/basicComponents";
 import {BAND_LABEL, READINESS_DISCLAIMER, bandEdge} from "../utils/readinessTheme";
+import {MetricRing} from "./designBits";
+
+const RELICS = [
+    {title: "First marks", slugs: ["first_blood", "ghost_killer", "photogenic"]},
+    {title: "Showing up", slugs: ["never_missed_monday", "survived_the_dunce", "first_duel"]},
+    {title: "Head to head", slugs: ["duel_three_wins", "duel_revenge", "duel_streak_five"]},
+];
+
+function stampIsNew(iso) {
+    const at = Date.parse(iso || "");
+    return Number.isFinite(at) && (Date.now() - at) < 14 * 86400000;
+}
 
 const VOLT = "#d7ff3e";
 const INK_600 = "#3c3c46";
@@ -50,7 +62,7 @@ export function ScoreRing({value = 0, max = 1, mine = false, size = 52, children
 export function Segmented({value, onChange, options, label}) {
     return (
         <div role="tablist" aria-label={label}
-             className="inline-flex rounded-full bg-ink-950/10 p-1 dark:bg-ink-850">
+             className="inline-flex rounded-full p-1" style={{background: "var(--surface-2)", border: "1px solid var(--hairline)"}}>
             {options.map((opt) => {
                 const on = value === opt.id;
                 return (
@@ -164,40 +176,101 @@ export function ReadinessChip({score, band, why, onOpen}) {
     );
 }
 
-export function HomePulse({minutes = 0, minuteGoal = 150, streak = 0, activeDays = 0, rank = null, readiness = null, onOpenReadiness}) {
+const PILL = {green: "Primed", amber: "Steady", red: "Recover"};
+
+export function HomePulse({minutes = 0, minuteGoal = 150, todayMinutes = null, streak = 0, activeDays = 0, rank = null, readiness = null, onOpenReadiness}) {
+    const dailyGoal = Math.max(1, Math.round(minuteGoal / 7));
+    const todayPct = todayMinutes == null
+        ? null
+        : Math.min(100, Math.round((Number(todayMinutes) || 0) / dailyGoal * 100));
     const weekPct = Math.round(Math.min(100, (Number(minutes) || 0) / minuteGoal * 100));
-    const rankFill = rank == null ? 0 : rank <= 1 ? 1 : Math.max(0.15, 1 / rank);
+    const band = readiness?.band;
+    const pill = PILL[band] || "Warming";
+    const readyName = BAND_LABEL[band] || "Readiness";
     return (
-        <section className="mb-4 rounded-3xl glass-card p-4" aria-label="This week at a glance">
-            <div className="flex items-start justify-around gap-2">
-                <MeterRing value={minutes} max={minuteGoal} label="Week" display={`${weekPct}%`} emphasize/>
-                <MeterRing value={activeDays} max={7} label="Streak" display={String(streak)}/>
-                <MeterRing value={rankFill} max={1} label="Rank" display={rank == null ? "–" : `#${rank}`}/>
-            </div>
-            {readiness && (
-                <ReadinessChip
-                    score={readiness.score}
-                    band={readiness.band}
-                    why={readiness.why}
-                    onOpen={onOpenReadiness}
+        <section className="mb-3 glass-card p-4" aria-label="This week at a glance">
+            <div className="flex items-start justify-between gap-2">
+                <MetricRing
+                    size="lg"
+                    value={todayPct}
+                    max={100}
+                    display={todayPct == null ? "--%" : `${todayPct}%`}
+                    label="Today"
                 />
-            )}
+                <button type="button" onClick={onOpenReadiness} className="flex flex-col items-center"
+                        aria-label={`${readyName}. ${readiness?.why || "Open the morning check-in"}`}>
+                    <MetricRing
+                        size="lg"
+                        value={readiness?.score == null ? null : readiness.score}
+                        max={100}
+                        color={bandEdge(band) || "var(--hairline)"}
+                        display={readiness?.score == null ? "--" : String(readiness.score)}
+                        label="Readiness"
+                    />
+                </button>
+                <MetricRing
+                    size="lg"
+                    value={weekPct}
+                    max={100}
+                    display={String(Math.round(Number(minutes) || 0))}
+                    label="Week"
+                    unit="min"
+                />
+            </div>
+            <p className="mt-3 flex justify-center">
+                <span className="t-label rounded-full px-3 py-1" style={{
+                    color: bandEdge(band) || "var(--text-muted)",
+                    border: `1px solid ${bandEdge(band) || "var(--hairline)"}`,
+                }}>{pill}</span>
+            </p>
+            <p className="sr-only">{streak} week streak, {activeDays} active days{rank == null ? "" : `, rank ${rank}`}</p>
         </section>
     );
 }
 
+const INTENSITY = [
+    {id: "red", label: "Easier"},
+    {id: "amber", label: "Steady"},
+    {id: "green", label: "Harder"},
+];
+
 export function HomeOrderCard({order, accent}) {
     if (!order?.brief) return null;
     const edge = bandEdge(order.band);
+    const resting = order.band === "red";
     return (
-        <article className={"mb-4 rounded-3xl glass-card p-4 " + (edge ? "border-l-4" : "border-l-2")}
-                 style={edge ? {borderLeftColor: edge} : (accent ? {borderLeftColor: accent} : undefined)}>
-            <p className="t-caption text-muted flex items-center gap-1.5">
+        <article className="ds-volt-hero mb-3 glass-card border p-4"
+                 style={{borderColor: "var(--volt)", borderLeftColor: edge || accent || "var(--volt)", borderLeftWidth: 4}}>
+            <p className="t-label text-muted flex items-center gap-1.5">
                 <ScrollText className="h-3.5 w-3.5" aria-hidden="true"/>
                 Order of the day
                 {order.competition_name ? <span className="font-semibold normal-case tracking-normal">· {order.competition_name}</span> : null}
             </p>
-            <p className="mt-2 line-clamp-3 text-[15px] leading-relaxed text-ink-950 dark:text-white">{order.brief}</p>
+            {resting && <p className="t-h2 mt-2 text-ink-950 dark:text-white">Day to rest and recover</p>}
+            <p className="t-body mt-2 line-clamp-3 text-ink-950 dark:text-white">{order.brief}</p>
+            {resting && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                    {["Walk", "Mobility", "Easy spin"].map((chip) => (
+                        <span key={chip} className="t-label rounded-full px-2.5 py-1 text-muted" style={{border: "1px solid var(--hairline)"}}>{chip}</span>
+                    ))}
+                </div>
+            )}
+            <div className="mt-3" role="group" aria-label="Intensity, set by this morning's readiness">
+                <div className="flex gap-2">
+                    {INTENSITY.map((item) => {
+                        const on = order.band === item.id;
+                        return (
+                            <span key={item.id} aria-current={on ? "true" : undefined}
+                                  className={"min-h-[44px] flex-1 rounded-full px-2 py-2 text-center text-sm font-bold " +
+                                      (on ? "bg-volt-400 text-ink-950" : "text-muted")}
+                                  style={on ? undefined : {border: "1px solid var(--hairline)"}}>
+                                {item.label}
+                            </span>
+                        );
+                    })}
+                </div>
+                <p className="t-micro mt-1 text-muted">Set by this morning's readiness.</p>
+            </div>
             {order.why && <p className="mt-2 text-xs text-muted">{order.why}</p>}
             {(order.band || order.disclaimer) && (
                 <p className="mt-1 text-xs text-muted">{order.disclaimer || READINESS_DISCLAIMER}</p>
@@ -215,20 +288,36 @@ export function StampWall({earned = []}) {
     const bySlug = new Map((earned || []).map((tag) => [tag.slug, tag]));
     return (
         <>
+            <ul className="mb-3 grid grid-cols-3 gap-2">
+                {RELICS.map((relic) => {
+                    const have = relic.slugs.filter((slug) => bySlug.has(slug)).length;
+                    return (
+                        <li key={relic.title} className="flex flex-col items-center rounded-[20px] px-2 py-3" style={{border: "1px solid var(--hairline)"}}>
+                            <MetricRing size="sm" value={have} max={relic.slugs.length} display={`${have}/${relic.slugs.length}`} label={relic.title}/>
+                        </li>
+                    );
+                })}
+            </ul>
             <ul className="grid grid-cols-3 gap-3">
                 {STAMP_CATALOG.map((stamp) => {
                     const got = bySlug.get(stamp.slug);
+                    const fresh = got && stampIsNew(got.earned_at);
                     return (
                         <li key={stamp.slug}>
                             <button type="button"
                                     onClick={() => setOpen(got || stamp)}
                                     aria-label={got ? stamp.title : `${stamp.title}, locked`}
-                                    className={"flex min-h-[96px] w-full flex-col items-center justify-center gap-1 rounded-2xl px-2 py-3 text-center " +
+                                    className={"relative flex min-h-[96px] w-full flex-col items-center justify-center gap-1 rounded-[20px] px-2 py-3 text-center " +
                                         (got
-                                            ? "bg-ink-950/5 shadow-glow-volt ring-1 ring-volt-400/80 dark:bg-ink-850"
-                                            : "border border-ink-600 text-muted")}>
-                                <span className="text-2xl leading-none" aria-hidden="true">
-                                    {got ? stamp.icon : <Lock className="mx-auto h-5 w-5"/>}
+                                            ? "bg-ink-950/5 ring-1 ring-volt-400/80 dark:bg-ink-850" + (fresh ? " volt-flash" : "")
+                                            : "text-muted opacity-40")}
+                                    style={got ? undefined : {border: "1px solid var(--hairline)"}}>
+                                {fresh && <span className="t-label absolute right-2 top-2 text-volt-400">New</span>}
+                                {got?.count > 1 && (
+                                    <span className="t-stat absolute left-2 top-2 rounded-full bg-volt-400 px-1.5 text-[11px] font-bold text-ink-950">{got.count}</span>
+                                )}
+                                <span className={"text-2xl leading-none " + (got ? "" : "grayscale")} aria-hidden="true">
+                                    {got ? stamp.icon : <Lock className="mx-auto h-5 w-5" strokeWidth={1.75}/>}
                                 </span>
                                 <span className="text-xs font-bold leading-tight">{stamp.title}</span>
                             </button>

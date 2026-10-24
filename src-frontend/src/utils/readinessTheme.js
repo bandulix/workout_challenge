@@ -3,9 +3,9 @@
 export const READINESS_DISCLAIMER = "A training hint from your recent numbers, not medical advice.";
 
 export const BAND_EDGE = {
-    green: "#d7ff3e",
-    amber: "#e6a317",
-    red: "#e24b4b",
+    green: "#3ee08f",
+    amber: "#ffc53d",
+    red: "#ff6b5b",
 };
 
 export const BAND_LABEL = {

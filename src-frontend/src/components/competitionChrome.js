@@ -615,6 +615,27 @@ export function PointsChip({capped, raw, size = "md", message = null}) {
 }
 
 
+function FeedStats({summary, points}) {
+    const parts = String(summary || "").split(" · ").map((part) => part.trim()).filter(Boolean).slice(0, 2);
+    const stats = parts.map((part) => {
+        const match = part.match(/^([\d.]+)\s+(.+)$/);
+        return match ? {value: match[1], label: match[2]} : {value: part, label: "Session"};
+    });
+    if (points != null && points !== "") stats.push({value: String(Math.round(Number(points) || 0)), label: "pts"});
+    const shown = stats.slice(0, 3);
+    if (!shown.length) return null;
+    return (
+        <div className={"mt-2 grid gap-2 " + (shown.length === 1 ? "grid-cols-1" : shown.length === 2 ? "grid-cols-2" : "grid-cols-3")}>
+            {shown.map((stat) => (
+                <div key={`${stat.label}-${stat.value}`}>
+                    <p className="t-stat text-base font-bold text-ink-950 dark:text-white">{stat.value}</p>
+                    <p className="t-micro text-muted">{stat.label}</p>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 export function ActivityCoachPost({message, persona, canReply, defaultOpen, competitionId, visionCapable, hero = false}) {
     const coachBody = stripCharacterCountSuffix(message.body);
     const remixUrl = activityBackdropUrl(message);
@@ -694,6 +715,7 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                             </div>
                         )}
                     </div>
+                    <FeedStats summary={message.workout_summary} points={message.points_capped}/>
                     {!!message.order_ribbon && (
                         <div className="mt-1.5">
                             <OrderRibbon show/>

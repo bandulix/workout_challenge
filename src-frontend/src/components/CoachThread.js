@@ -72,6 +72,24 @@ function ReplyImage({url, alt, elapsed}) {
 // Coach bubbles use the persona's avatar/accent, participant bubbles the
 // user's profile picture + first name, so it is always clear who spoke.
 
+function CoachBody({text}) {
+    const lines = String(text || "").split("\n").map((line) => line.trimEnd()).filter((line) => line.trim());
+    if (lines.length < 2) {
+        return <p className="text-sm leading-snug break-words dark:text-gray-100">{text}</p>;
+    }
+    return (
+        <div className="space-y-1 text-sm leading-snug break-words dark:text-gray-100">
+            {lines.map((line, index) => (
+                line.startsWith("- ") || line.startsWith("• ")
+                    ? <p key={index} className="pl-3">• {line.replace(/^[-•]\s+/, "")}</p>
+                    : <p key={index} className={index === 0 ? "font-semibold" : ""}>{line}</p>
+            ))}
+        </div>
+    );
+}
+
+const SUGGESTIONS = ["Roast me", "Plan tomorrow"];
+
 function CoachThread({message, persona, canReply = true, defaultOpen = false, className = "mt-2.5", trailing = null}) {
     const [open, setOpen] = useState(defaultOpen);
     // Deep links pass defaultOpen; the messages query usually resolves
@@ -149,7 +167,9 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
                                     instead of overflowing the viewport (page scrolled
                                     sideways on smartphones). */}
                                 {(r.is_coach ? stripCharacterCountSuffix(r.body) : (r.body || "")).trim() ? (
-                                <p className="text-sm leading-snug break-words dark:text-gray-100">{r.is_coach ? stripCharacterCountSuffix(r.body) : r.body}</p>
+                                r.is_coach
+                                    ? <CoachBody text={stripCharacterCountSuffix(r.body)}/>
+                                    : <p className="text-sm leading-snug break-words dark:text-gray-100">{r.body}</p>
                                 ) : null}
                                 {r.image && (
                                     <ReplyImage url={r.image}
@@ -166,6 +186,15 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
 
                     {canReply && (
                         <div className="min-w-0 w-full space-y-1">
+                            <div className="mb-1 flex flex-wrap gap-2">
+                                {SUGGESTIONS.map((hint) => (
+                                    <button key={hint} type="button" onClick={() => setText(hint)}
+                                            className="min-h-[44px] rounded-full px-3 text-sm font-semibold text-muted"
+                                            style={{border: "1px solid var(--hairline)", background: "var(--surface-2)"}}>
+                                        {hint}
+                                    </button>
+                                ))}
+                            </div>
                             <div className="flex items-center gap-2 min-w-0 w-full">
                                 <div className="composer-rim min-w-0 flex-1 rounded-full">
                                 <input
