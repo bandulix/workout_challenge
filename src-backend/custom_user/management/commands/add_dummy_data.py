@@ -74,6 +74,7 @@ class Command(BaseCommand):
         if Competition.objects.filter(join_code__iexact="WHOComp").exists():
             self.stdout.write("Demo competitions already seeded — skipping.")
             _seed_readiness(self.stdout)
+            self._seed_sample_duels()
             self.stdout.write(
                 "Sign in with user1@admin.local / password (or user2 / user3)."
             )
@@ -237,6 +238,7 @@ class Command(BaseCommand):
             workout_obj = Workout(user=user, **workout_i)
             workout_obj.save()
 
+        self._seed_sample_duels()
         self.stdout.write(self.style.SUCCESS(
             f"Seeded {len(user_obj_dict)} users, "
             f"{Competition.objects.count()} competitions, "
@@ -244,6 +246,77 @@ class Command(BaseCommand):
         ))
         _seed_readiness(self.stdout)
         self.stdout.write("Sign in with user1@admin.local / password (or user2 / user3).")
+
+    def _seed_sample_duels(self):
+        """One live duel and one finished duel between the demo athletes."""
+        from django.utils import timezone
+
+        from competition.models import Duel, DuelNote
+        from drill_instructor.game import award_tag
+
+        if Duel.objects.exists():
+            self.stdout.write("Sample duels already present.")
+            return
+        competition = Competition.objects.filter(join_code__iexact="WHOCOMP").first()
+        charlotte = CustomUser.objects.filter(email="user1@admin.local").first()
+        tom = CustomUser.objects.filter(email="user2@admin.local").first()
+        if competition is None or charlotte is None or tom is None:
+            return
+        competition.user.add(charlotte, tom)
+        now = timezone.now()
+        finished = Duel.objects.create(
+            competition=competition,
+            challenger=tom,
+            opponent=charlotte,
+            proposed_by=tom,
+            awaiting=charlotte,
+            status=Duel.STATUS_COMPLETED,
+            duration_days=7,
+            metric=Duel.METRIC_POINTS,
+            forfeit="Loser buys the beers",
+            respond_by=now - timedelta(days=20),
+            starts_at=now - timedelta(days=18),
+            ends_at=now - timedelta(days=11),
+            grace_until=now - timedelta(days=10),
+            finalized_at=now - timedelta(days=10),
+            challenger_score=90,
+            opponent_score=140,
+            result=Duel.RESULT_OPPONENT,
+            pinged_accepted=True,
+            pinged_24h=True,
+            pinged_result=True,
+        )
+        DuelNote.objects.create(
+            duel=finished,
+            kind=DuelNote.KIND_RESULT,
+            body=f"@{charlotte.first_name} takes it. @{tom.first_name} made them earn it. Clean fight.",
+        )
+        active = Duel.objects.create(
+            competition=competition,
+            challenger=charlotte,
+            opponent=tom,
+            proposed_by=charlotte,
+            awaiting=tom,
+            status=Duel.STATUS_ACTIVE,
+            duration_days=7,
+            metric=Duel.METRIC_POINTS,
+            forfeit="Loser buys the beers",
+            respond_by=now - timedelta(days=2),
+            starts_at=now - timedelta(days=2),
+            ends_at=now + timedelta(days=5),
+            grace_until=now + timedelta(days=5, hours=6),
+            pinged_accepted=True,
+        )
+        DuelNote.objects.create(
+            duel=active,
+            kind=DuelNote.KIND_ACCEPTED,
+            body=f"@{charlotte.first_name} versus @{tom.first_name}. 7 days, one board, no crowd. Move.",
+        )
+        award_tag(charlotte, "first_duel")
+        award_tag(tom, "first_duel")
+        self.stdout.write(self.style.SUCCESS(
+            f"Seeded an active duel ({active.pk}) and a finished duel ({finished.pk})."
+        ))
 
 
 def _seed_readiness(stdout):

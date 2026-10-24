@@ -18,6 +18,10 @@ export const TAG_ICON = {
     survived_the_dunce: "💪",
     echo_immortal: "🜲",
     echo_slayer: "⚔️",
+    first_duel: "🤝",
+    duel_three_wins: "🏆",
+    duel_revenge: "🔁",
+    duel_streak_five: "🔥",
 };
 
 export const MOOD_CHIP = {

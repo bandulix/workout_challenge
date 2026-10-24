@@ -17,7 +17,7 @@ import PersonaAvatar from "../components/PersonaAvatar";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {DogTagRow} from "../components/gameBits";
 import {isNativeHealthAvailable, nativeHealthSetSource} from "./nativeHealth";
-import {startNativeCoachPings} from "./nativeCoachPings";
+import {startDuelPings, startNativeCoachPings} from "./nativeCoachPings";
 import {useGetUserByIdQuery} from "./reducers/usersSlice";
 import {useGetCompetitionsQuery} from "./reducers/competitionsSlice";
 import {useGetDrillConfigsQuery} from "./reducers/drillInstructorSlice";
@@ -268,7 +268,12 @@ export default function BottomNav() {
     // (Web Push does not work inside the WebView) - runs while logged in.
     useEffect(() => {
         if (!user) return undefined;
-        return startNativeCoachPings(user);
+        const stopCoach = startNativeCoachPings(user);
+        const stopDuels = startDuelPings();
+        return () => {
+            stopCoach();
+            stopDuels();
+        };
     }, [user?.id, user?.first_name]);
 
     // Keep the access token fresh in the background so polling never

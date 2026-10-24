@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Competition, ActivityGoal, Team, Award, ExpeditionCampaign
+from .models import Competition, ActivityGoal, Team, Award, ExpeditionCampaign, Duel, DuelBlock
 from .expedition import synchronize_expedition
 
 # Register your models here.
@@ -80,4 +80,16 @@ class ExpeditionCampaignAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         # Disable or hide a pilot through the flag; never delete its durable IDs.
         return False
+
+
+@admin.register(Duel)
+class DuelAdmin(admin.ModelAdmin):
+    list_display = ("id", "competition", "challenger", "opponent", "status", "metric", "duration_days")
+    list_filter = ("status", "metric")
+    search_fields = ("forfeit", "challenger__username", "opponent__username")
+
+
+@admin.register(DuelBlock)
+class DuelBlockAdmin(admin.ModelAdmin):
+    list_display = ("blocker", "blocked", "created_at")
 

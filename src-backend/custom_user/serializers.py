@@ -68,6 +68,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
     )
 
     dog_tags = serializers.SerializerMethodField()
+    duel_record = serializers.SerializerMethodField()
     # Living + immortal Echoes this athlete currently holds (profile crown).
     echoes_held = serializers.SerializerMethodField()
 
@@ -80,6 +81,13 @@ class CustomUserSerializer(serializers.ModelSerializer):
             return tag_payload(obj)
         except Exception:
             return []
+
+    def get_duel_record(self, obj):
+        try:
+            from competition.duels import record_for
+            return record_for(obj.pk)
+        except Exception:
+            return {"wins": 0, "losses": 0, "ties": 0}
 
     def get_echoes_held(self, obj):
         n = getattr(obj, "echo_hold_count", None)
@@ -124,7 +132,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'current_password', 'invite_token', 'join_code', 'profile_picture', 'profile_picture_upload', 'dog_tags', 'echoes_held', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'health_user_id', 'health_last_synced_at', 'health_configured', 'health_public_url', 'activity_source', 'activity_source_effective', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
+        fields = ['id', 'my', 'email', 'first_name', 'last_name', 'gender', 'username', 'password', 'current_password', 'invite_token', 'join_code', 'profile_picture', 'profile_picture_upload', 'dog_tags', 'duel_record', 'echoes_held', 'is_verified', 'email_mid_week', 'strava_athlete_id', 'strava_allow_follow', 'strava_last_synced_at', 'garmin_email', 'garmin_last_synced_at', 'health_user_id', 'health_last_synced_at', 'health_configured', 'health_public_url', 'activity_source', 'activity_source_effective', 'my_competitions', 'my_teams', 'goal_active_days', 'goal_workout_minutes', 'goal_distance', 'scaling_kcal', 'scaling_distance', 'is_staff', 'is_superuser']
         # my_competitions / my_teams are read-only: joining happens
         # exclusively through the dedicated join views (join code +
         # participant checks). Writable M2M fields would be a
