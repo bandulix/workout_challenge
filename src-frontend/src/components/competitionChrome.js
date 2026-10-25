@@ -4,13 +4,13 @@ import {useDispatch} from "react-redux";
 import {Crown, Megaphone, Settings, Timer, UserRoundPlus} from "lucide-react";
 import {competitionsApi} from "../utils/reducers/competitionsSlice";
 import {useLeaveCompetitionMutation} from "../utils/reducers/joinSlice";
-import {messageResults, useGetDrillConfigsQuery, useGetDrillMessageByIdQuery, useGetDrillMessagesQuery, useLazyGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
+import {messageResults, useGetDrillConfigsQuery, useGetDrillMessageByIdQuery, useGetDrillMessagesQuery, useGetWorkoutCoachMessageQuery, useLazyGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
 import CompetitionForm from "../forms/competitionForm";
 import CompetitionInviteModal from "../forms/shareModal";
 import TransferOwnershipForm from "../forms/transferOwnershipForm";
 import DrillInstructorConfigForm from "../forms/drillInstructorConfigForm";
 import ActivityGoalsForm from "../forms/activityGoalsForm";
-import {sportLabelShort} from "../forms/workoutForm";
+import {sportLabelShort} from "../utils/sports";
 import {EmptyState, PaneHead, paneCardClass} from "./uiBits";
 import {MissingCard} from "./designBits";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
@@ -273,11 +273,26 @@ function groupByDay(list) {
     return groups;
 }
 
+export function activityPictures(message) {
+    // The athlete's upload and the coach's edited picture are both part
+    // of the activity. A photo thread root carries the upload on itself;
+    // a workout thread carries it as a photo reply. The edit is the
+    // coach reply that has an image.
+    const replies = message?.replies || [];
+    const uploadReply = replies.find((r) => r.kind === "photo" && r.image && !r.is_coach) || null;
+    const editReply = replies.find((r) => r.is_coach && r.image) || null;
+    const upload = uploadReply?.image
+        || ((message?.kind === "photo" && message.image) ? message.image : null);
+    return {
+        upload,
+        edit: editReply?.image || null,
+        uploadReply,
+        editReply,
+    };
+}
+
 export function activityBackdropUrl(message) {
-    // Only the coach's remixed poster is the card backdrop (and the
-    // hot-or-not card). The original upload is the feed answer.
-    const remix = (message.replies || []).find((r) => r.is_coach && r.image);
-    return remix ? remix.image : null;
+    return activityPictures(message).edit;
 }
 
 function threadReplies(message) {
@@ -667,13 +682,99 @@ function cardSurface(mine) {
     };
 }
 
+function PictureFrame({src, alt, label, onClick, tall = false}) {
+    return (
+        <button type="button" onClick={onClick}
+                className="block min-w-0 overflow-hidden rounded-[16px] bg-ink-950 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-volt-400">
+            <img src={src} alt={alt} className={(tall ? "max-h-[28rem] " : "aspect-[4/5] ") + "w-full object-cover"}/>
+            <span className="block px-2.5 py-2 text-xs font-semibold text-white/80">{label}</span>
+        </button>
+    );
+}
+
+function ActivityPictures({message, name, title, onOpen, tall = false}) {
+    const pics = activityPictures(message);
+    const upload = useProtectedImage(pics.upload, "card");
+    const edit = useProtectedImage(pics.edit, "card");
+    const frames = [];
+    if (upload.src) {
+        frames.push({
+            key: "upload",
+            src: upload.src,
+            label: "Upload",
+            alt: `Upload from ${name}`,
+        });
+    }
+    if (edit.src) {
+        frames.push({
+            key: "edit",
+            src: edit.src,
+            label: "Coach edit",
+            alt: `Coach edit of ${name}'s ${title}`,
+        });
+    }
+    if (!frames.length) return null;
+    const editCaption = cleanBody(pics.editReply?.body);
+    const pair = frames.length > 1;
+    return (
+        <div className={tall ? "" : "mt-3 px-4"}>
+            <div className={pair ? "grid grid-cols-2 gap-2" : ""}>
+                {frames.map((frame, index) => (
+                    <PictureFrame key={frame.key} src={frame.src} alt={frame.alt} label={frame.label}
+                                  tall={tall && !pair} onClick={() => onOpen(index)}/>
+                ))}
+            </div>
+            {editCaption ? (
+                <p className="mt-2 text-sm leading-snug text-muted">{editCaption}</p>
+            ) : null}
+        </div>
+    );
+}
+
+function galleryCardsFor(message, name, persona) {
+    const pics = activityPictures(message);
+    const cards = [];
+    if (pics.upload) {
+        cards.push({
+            image: pics.upload,
+            title: "Upload",
+            caption: cleanBody(pics.uploadReply?.body) || `${name}'s photo`,
+            athlete_name: name,
+            thread_id: message.id,
+            thread_reacts: message.reacts,
+        });
+    }
+    if (pics.edit) {
+        cards.push({
+            image: pics.edit,
+            title: "Coach edit",
+            caption: cleanBody(pics.editReply?.body) || `${persona?.name || "Coach"} edited this photo`,
+            athlete_name: name,
+            persona_name: persona?.name || message.persona_name,
+            thread_id: message.id,
+            thread_reacts: message.reacts,
+        });
+    }
+    return cards;
+}
+
+function CoachLine({persona, body}) {
+    if (!String(body || "").trim()) return null;
+    return (
+        <div className="mt-3 flex items-start gap-2 rounded-[20px] px-3 py-2" style={{background: "var(--surface-2)"}}>
+            <PersonaAvatar persona={persona} size={28}/>
+            <p className="min-w-0 flex-1 text-sm leading-snug break-words">{body}</p>
+        </div>
+    );
+}
+
 export function ActivityCoachPost({message, persona, canReply, defaultOpen, competitionId, visionCapable, hero = false, meId = null}) {
     const {data: me} = useGetUserByIdQuery("me");
     const mine = (meId ?? me?.id) != null && message.workout_user_id === (meId ?? me?.id);
     const coachBody = cleanBody(message.body);
-    const remixUrl = activityBackdropUrl(message);
-    const {src: bgSrc} = useProtectedImage(remixUrl, "card");
+    const gallery = galleryCardsFor(message, message.athlete_name || "Athlete", persona);
     const [lightbox, setLightbox] = useState(null);
+    const [detailOpen, setDetailOpen] = useState(false);
     const showThread = canReply || threadReplies(message).length > 0;
     const title = workoutTitle(message);
     const name = message.athlete_name || "Athlete";
@@ -695,6 +796,12 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                     </div>
                     <p className="truncate text-sm text-ink-950 dark:text-white">{title}</p>
                 </div>
+                <button type="button" onClick={() => setDetailOpen(true)}
+                        className="shrink-0 min-h-[44px] rounded-full px-3 text-xs font-bold text-muted"
+                        style={{border: "1px solid var(--hairline)"}}
+                        aria-label={`Activity detail for ${name}'s ${title}`}>
+                    Details
+                </button>
                 {message.photo_action && (
                     <PhotoPost
                         competitionId={competitionId}
@@ -705,12 +812,8 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                     />
                 )}
             </header>
-            {bgSrc && (
-                <button type="button" onClick={() => setLightbox("remix")}
-                        className="mt-3 block w-full bg-ink-950 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-volt-400">
-                    <img src={bgSrc} alt={`${name}'s ${title}`} className="max-h-80 w-full object-cover"/>
-                </button>
-            )}
+            <ActivityPictures message={message} name={name} title={title}
+                              onOpen={(index) => setLightbox(index)}/>
             <div className="px-4 pb-4">
                 <FeedStats message={message} mine={mine}/>
                 {!!message.order_ribbon && (
@@ -729,12 +832,7 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                         ))}
                     </div>
                 )}
-                {Boolean((coachBody || "").trim()) && (
-                    <div className="mt-3 flex items-start gap-2 rounded-[20px] px-3 py-2" style={{background: "var(--surface-2)"}}>
-                        <PersonaAvatar persona={persona} size={28}/>
-                        <p className="min-w-0 flex-1 text-sm leading-snug break-words">{coachBody}</p>
-                    </div>
-                )}
+                <CoachLine persona={persona} body={coachBody}/>
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                         <ActivityStampIcons/>
@@ -748,19 +846,51 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
                                  defaultOpen={defaultOpen} className="mt-2"/>
                 )}
             </div>
-            {lightbox === "remix" && remixUrl && (
+            {lightbox != null && gallery.length > 0 && (
                 <RoastGallery
-                    cards={[{
-                        image: remixUrl,
-                        athlete_name: message.athlete_name,
-                        persona_name: message.persona_name,
-                        thread_id: message.id,
-                        thread_reacts: message.reacts,
-                    }]}
-                    index={0} onIndex={() => {}} onClose={() => setLightbox(null)}/>
+                    cards={gallery}
+                    index={Math.min(lightbox, gallery.length - 1)}
+                    onIndex={setLightbox}
+                    onClose={() => setLightbox(null)}/>
+            )}
+            {detailOpen && (
+                <OverlaySheet title={`${name} · ${title}`} onClose={() => setDetailOpen(false)}>
+                    <p className="text-xs text-muted">{timeAgo(message.posted_at)}</p>
+                    <ActivityPictures message={message} name={name} title={title} tall
+                                      onOpen={(index) => setLightbox(index)}/>
+                    <FeedStats message={message} mine={mine}/>
+                    <CoachLine persona={persona} body={coachBody}/>
+                    {showThread && (
+                        <CoachThread message={message} persona={persona} canReply={canReply}
+                                     defaultOpen className="mt-2"/>
+                    )}
+                </OverlaySheet>
             )}
         </article>
         </ActivityReactProvider>
+    );
+}
+
+export function WorkoutCoachNote({workoutId}) {
+    const {data} = useGetWorkoutCoachMessageQuery(workoutId, {skip: typeof workoutId !== "number"});
+    const message = messageResults(data).find((row) => row.kind === "activity" && row.workout === workoutId);
+    if (!message) return null;
+    const persona = {
+        avatar: message.persona_avatar,
+        profile_picture: message.persona_profile_picture,
+        theme_color: message.persona_theme_color,
+        name: message.persona_name,
+    };
+    return (
+        <div className="mb-4">
+            <ActivityCoachPost
+                message={message}
+                persona={persona}
+                canReply={false}
+                competitionId={message.competition_id}
+                meId={message.workout_user_id}
+            />
+        </div>
     );
 }
 
@@ -768,9 +898,9 @@ export function ActivityCoachPost({message, persona, canReply, defaultOpen, comp
 function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
     const {data: me} = useGetUserByIdQuery("me");
     const mine = me?.id != null && message.author_id === me.id;
-    const {src} = useProtectedImage(message.image, "card");
-    const [lightbox, setLightbox] = useState(false);
     const name = message.author_name || "Participant";
+    const gallery = galleryCardsFor(message, name, persona);
+    const [lightbox, setLightbox] = useState(null);
     return (
         <article className="min-w-0 overflow-hidden text-ink-950 dark:text-white" style={cardSurface(mine)}>
             <header className="flex items-center gap-3 px-4 pt-4">
@@ -785,30 +915,21 @@ function PhotoMessage({message, persona, canReply, defaultOpen, now}) {
                     <p className="truncate text-sm">Photo</p>
                 </div>
             </header>
-            {src && (
-                <button type="button" onClick={() => setLightbox(true)}
-                        className="mt-3 block w-full bg-ink-950 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-volt-400">
-                    <img src={src} alt={message.body || `Shared by ${name}`} className="max-h-96 w-full object-cover"/>
-                    <span className="sr-only">{elapsedSince(message.posted_at, now)}</span>
-                </button>
-            )}
+            <ActivityPictures message={message} name={name} title="photo"
+                              onOpen={(index) => setLightbox(index)}/>
+            <span className="sr-only">{elapsedSince(message.posted_at, now)}</span>
             <div className="px-4 py-3">
                 {cleanBody(message.body) && (
                     <p className="text-[15px] leading-relaxed break-words">{cleanBody(message.body)}</p>
                 )}
                 <CoachThread message={message} persona={persona} canReply={canReply} defaultOpen={defaultOpen}/>
             </div>
-            {lightbox && (
+            {lightbox != null && gallery.length > 0 && (
                 <RoastGallery
-                    cards={[{
-                        image: message.image,
-                        title: name,
-                        caption: message.body || `Shared by ${name}`,
-                        subline: timeAgo(message.posted_at),
-                        thread_id: message.id,
-                        thread_reacts: message.reacts,
-                    }]}
-                    index={0} onIndex={() => {}} onClose={() => setLightbox(false)}/>
+                    cards={gallery}
+                    index={Math.min(lightbox, gallery.length - 1)}
+                    onIndex={setLightbox}
+                    onClose={() => setLightbox(null)}/>
             )}
         </article>
     );

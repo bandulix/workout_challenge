@@ -123,13 +123,13 @@ class Command(BaseCommand):
             (c, "Run", 1, 7, 52, "run"),
             (t, "Ride", 1, 18, 70, "ride"),
             (u, "WeightTraining", 2, 12, 40, "lift"),
-            (m, "Run", 3, 8, 35, "run"),
+            (m, "Run", 3, 8, 35, "minarun"),
             (c, "Ride", 4, 7, 45, "heat"),
-            (t, "Ride", 4, 17, 45, "heat"),
+            (t, "Ride", 4, 17, 45, "heattom"),
             (c, "Ride", 5, 7, 80, "long"),
             (t, "Ride", 6, 18, 30, "short"),
             (u, "Workout", 8, 9, 25, "mob"),
-            (m, "WeightTraining", 10, 19, 50, "lift"),
+            (m, "WeightTraining", 10, 19, 50, "press"),
             (c, "Ride", 2, 7, 55, "gap"),
             (t, "Run", 9, 8, 28, "easy"),
         ]
@@ -149,9 +149,10 @@ class Command(BaseCommand):
             config = DrillInstructorConfig.objects.create(
                 competition=competition, persona=persona, enabled=True,
             )
-        elif not config.enabled or config.persona_id != persona.id:
+        elif not config.enabled or config.persona_id != persona.id or not config.comment_on_activity:
             config.enabled = True
             config.persona = persona
+            config.comment_on_activity = True
             config.save()
         return config
 
@@ -202,12 +203,23 @@ class Command(BaseCommand):
         remix_parent = activity(
             by_key["run"],
             "That run looked honest. The hill did not clap.",
-            by_key["run"].start_datetime + timedelta(minutes=8),
+            timezone.now() - timedelta(minutes=12),
         )
+        upload = DrillInstructorMessage(
+            config=config,
+            persona=config.persona,
+            kind=DrillInstructorMessage.KIND_PHOTO,
+            parent=remix_parent,
+            user=c,
+            body=MARK + "The hill, before the coach got to it.",
+            posted_at=remix_parent.posted_at + timedelta(minutes=2),
+            success=True,
+        )
+        upload.image.save("demo-photo.jpg", ContentFile(_scene("trail")), save=True)
         remix = DrillInstructorMessage(
             config=config,
             persona=config.persona,
-            kind=DrillInstructorMessage.KIND_REPLY,
+            kind=DrillInstructorMessage.KIND_REACTION,
             parent=remix_parent,
             body=MARK + "Posted it. The coach redrew the hill steeper.",
             posted_at=remix_parent.posted_at + timedelta(minutes=4),
@@ -215,23 +227,16 @@ class Command(BaseCommand):
         )
         remix.image.save("demo-remix.jpg", ContentFile(_scene("dusk")), save=True)
 
-        photo = DrillInstructorMessage(
-            config=config,
-            persona=config.persona,
-            kind=DrillInstructorMessage.KIND_PHOTO,
-            user=m,
-            body=MARK + "Trail before breakfast. Mud included.",
-            posted_at=self._at(3, 9),
-            success=True,
-        )
-        photo.image.save("demo-photo.jpg", ContentFile(_scene("trail")), save=True)
-        posts.append(photo)
-
         activity(by_key["lift"], "Forty minutes under the bar. Leave the ego on the rack.", by_key["lift"].start_datetime)
+        activity(by_key["press"], "Fifty minutes. The bar moved. You moved with it.", by_key["press"].start_datetime)
         activity(by_key["ride"], "Seventy minutes and the city was still there when you got back.", by_key["ride"].start_datetime)
         activity(by_key["heat"], "Same ride as Tom, same clock. Dead heat. Do not get comfortable.", by_key["heat"].start_datetime)
+        activity(by_key["heattom"], "Charlotte matched your clock. That is not a gift. Answer it.", by_key["heattom"].start_datetime)
+        activity(by_key["minarun"], "Thirty-five minutes, held together. Do it again before it gets comfortable.", by_key["minarun"].start_datetime)
         activity(by_key["gap"], "You opened a gap. It only counts if you are there tomorrow.", by_key["gap"].start_datetime)
         activity(by_key["mob"], "Mobility counts. So does showing up.", by_key["mob"].start_datetime)
+        activity(by_key["short"], "Thirty minutes, easy gear. That is how tomorrow stays possible.", by_key["short"].start_datetime)
+        activity(by_key["easy"], "Twenty-eight easy minutes. Leave the heroics for the day that asks.", by_key["easy"].start_datetime)
 
         for text, days in (
             ("Order of the day: 40 steady minutes. Technique over heroics.", 1),

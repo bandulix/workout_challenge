@@ -1463,6 +1463,37 @@ class PhotoPostTests(TestCase):
         self.assertEqual(echo.holder_id, self.athlete.id)
         self.assertTrue(echo.image)
 
+    def test_activity_photo_upload_persists_a_coach_image_edit(self):
+        # Logging a picture on a workout must queue the coach, and that
+        # job must store an edited image next to the original. The image
+        # provider is mocked; a missing edit or a dropped trigger fails.
+        root = self._activity_root()
+        response = self._post(self.athlete, caption="The hill, before the edit.", parent=root)
+        self.assertEqual(response.status_code, 201, response.content)
+        photo_id = response.json()["id"]
+        self.reply_delay.assert_called_once_with(photo_id)
+
+        from .tasks import post_reply_reaction
+        with mock.patch("drill_instructor.tasks.check_image_edit_capability", return_value="grok-imagine-image"), \
+                mock.patch("drill_instructor.tasks.generate_message", return_value=("Redrawn steeper.", None)), \
+                mock.patch("drill_instructor.tasks.generate_roast_image", return_value=(PNG_1PX, None)) as edit:
+            result = post_reply_reaction(photo_id)
+        edit.assert_called()
+        self.assertIsNotNone(result["roast_id"])
+
+        feed = self.client.get(
+            f"/api/drill-instructor/message/?competition={self.competition.pk}&limit=15&offset=0"
+        )
+        self.assertEqual(feed.status_code, 200, feed.content)
+        card = next(item for item in feed.json()["results"] if item["id"] == root.pk)
+        uploads = [row for row in card["replies"] if row["kind"] == "photo" and row["image"] and not row["is_coach"]]
+        edits = [row for row in card["replies"] if row["is_coach"] and row["image"]]
+        self.assertEqual(len(uploads), 1)
+        self.assertEqual(uploads[0]["body"], "The hill, before the edit.")
+        self.assertEqual(len(edits), 1)
+        self.assertNotEqual(uploads[0]["image"], edits[0]["image"])
+        self.assertIn("Redrawn", edits[0]["body"])
+
     def test_photo_action_offers_a_share_on_an_ordinary_logged_workout(self):
         from types import SimpleNamespace
         from .serializers import DrillInstructorMessageSerializer
@@ -3901,6 +3932,42 @@ class WorkoutCommentIdempotencyTests(TestCase):
             kind=DrillInstructorMessage.KIND_ACTIVITY,
         )
         self.assertEqual(root.body, "Sarge says: solid run!")
+
+    def test_cleared_activity_flag_still_gets_a_coach_reaction(self):
+        # The coach form used to save comment_on_activity=false and the
+        # task treated that as "stay quiet". An enabled coach still answers.
+        from .tasks import post_workout_comment
+
+        self.config.comment_on_activity = False
+        self.config.save(update_fields=["comment_on_activity"])
+        result = post_workout_comment(self.workout.id)
+        self.assertEqual(result["posted"], 1)
+        root = DrillInstructorMessage.objects.get(
+            config=self.config, workout=self.workout,
+            kind=DrillInstructorMessage.KIND_ACTIVITY,
+        )
+        self.assertEqual(root.body, "Sarge says: solid run!")
+
+        client = APIClient()
+        client.force_authenticate(self.athlete)
+        listed = client.get(
+            f"/api/drill-instructor/message/?workout={self.workout.id}&limit=5&offset=0"
+        )
+        self.assertEqual(listed.status_code, 200, listed.content)
+        match = next(row for row in listed.json()["results"] if row["workout"] == self.workout.id)
+        self.assertEqual(match["body"], "Sarge says: solid run!")
+
+    def test_creating_a_workout_enqueues_the_coach_comment(self):
+        with mock.patch("drill_instructor.tasks.post_workout_comment.delay") as delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                workout = Workout.objects.create(
+                    user=self.athlete,
+                    sport_type="Ride",
+                    start_datetime=timezone.now(),
+                    duration=datetime.timedelta(minutes=20),
+                    intensity_category=2,
+                )
+        delay.assert_called_once_with(workout.pk)
 
     def test_double_enqueue_posts_only_once(self):
         from .tasks import post_workout_comment

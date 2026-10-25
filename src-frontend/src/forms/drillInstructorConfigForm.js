@@ -124,7 +124,9 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             competition: competition.id,
             enabled,
             persona,
-            comment_on_activity: false,
+            // Per-workout reactions are the coach, not optional chatter.
+            // Nudges and random pep talks stay retired.
+            comment_on_activity: true,
             nudge_on_inactivity: false,
             random_push: false,
             send_push_on_activity: sendPushOnChanges,
@@ -191,12 +193,12 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
                    initialSnapshot,
                )}>
             <SettingsGroup title="On duty"
-                           hint="Pick the starting coach. Everyone in the challenge can vote for next week's instructor — the winner takes over each Monday. The coach posts when the standings gap or an Echo meaningfully changes.">
+                           hint="Pick the starting coach. Everyone in the challenge can vote for next week's instructor — the winner takes over each Monday. An on-duty coach comments on every logged workout.">
                 <ToggleRow
                     on={enabled}
                     onChange={setEnabled}
                     label="Activate the coach for this challenge"
-                    hint={enabled ? "On duty — the coach responds to meaningful gap and Echo changes." : "Benched — automatic coach posts are paused."}
+                    hint={enabled ? "On duty — every logged workout gets a coach reaction, and a photo gets an edited picture." : "Benched — automatic coach posts are paused."}
                     error={fieldErrors.enabled}
                 />
                 {existing && (
@@ -258,7 +260,7 @@ export default function DrillInstructorConfigForm({competition, setModalState}) 
             </SettingsGroup>
 
             <SettingsGroup title="Event notifications"
-                           hint="Generic workout comments, random pep talks, and inactivity nudges are retired.">
+                           hint="Comments on every workout stay on while the coach is on duty. Random pep talks and inactivity nudges stay off.">
                 <ToggleRow
                     on={sendPushOnChanges}
                     onChange={setSendPushOnChanges}

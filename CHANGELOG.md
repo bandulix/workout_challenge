@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Coach reads the whole thread.** Replies to a feed post now hand the coach the full conversation so far (newest 12 turns), so it answers the thread, not a single line.
 
 ### Changed
+- **Reply chips removed.** The "Roast me" and "Plan tomorrow" buttons above the coach reply box are gone. A reply is still a free-text message, and the coach still comments on every workout and still edits a photo.
 - **Season-first Home.** The trail is the first screen: your name, picture and the crew's route percentage above the route graphic, drawn straight on the gym-plate backdrop. Compete and Coach tops sit on the same backdrop with no painted box behind them. A one-time season poster introduces it.
 - **Log in two taps.** The Log sheet replaces the seven-field form: a grid of your recent sports, duration chips, intensity pills, one Save button — date, kcal and distance behind *More*. A saved workout visibly leaves the dock and the trail redraws. Editing an existing workout keeps the full form.
 - **Home in four beats.** Trail → your goal → this week and streak → latest workouts. The 30-day block and the 12/26-week bars moved behind *Stats* on the week card.
@@ -36,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Points are stored as exact two-decimal values** (no more float/Decimal mismatch rewriting every row on each recap) and shortening a challenge's end date now re-caps the affected weeks like extending it does.
 
 ### Fixed
+- **Coach reactions and photo edits are back.** Saving the coach had been forcing `comment_on_activity` off since the Expedition cleanup, so a logged workout no longer got a coach line. An on-duty coach comments on every workout again (static line if the LLM key is missing). A photo on that workout still gets an AI image edit when an image model is configured, and the feed shows the upload and the edit together.
 - **Coach config could be pointed at someone else's challenge.** A challenge owner could re-bind their coach configuration (own persona, system prompt, push toggles) onto any other challenge that had none. `competition` is immutable after creation and ownership is checked on the target.
 - **Expedition crew faces were broken.** Avatars requested the protected picture endpoint without credentials (401 bursts); they now load through the authenticated image path.
 - **Login lock-outs behind a reverse proxy.** nginx forwarded the proxy's own address, so all users shared one login/reset throttle bucket; the real client IP is now taken from `X-Forwarded-For` (trusted from loopback/private peers only).

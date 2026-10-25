@@ -31,7 +31,7 @@ Tokens live in one place and are used everywhere.
 5. **Results and sharing.** A celebration screen, then a share-card carousel with three styles. A full-bleed volt moment for a big achievement.
 6. **Leaderboard.** A top-3 podium, a highlighted "you" row with neighbours, a supportive catch-up banner, ranks below you faded, and last place never labelled. Dark filter chips. A week-result card ("you finished #9").
 7. **Feed and workout detail.** Cards with an avatar and title, a three-stat row, and reaction avatars. Photo remixes are photo-first. The detail view has a dark stat strip and split bars. Stamps sit where like and comment would.
-8. **Coach chat.** A dark thread with persona bubbles, suggested-reply chips above the composer ("Roast me", "Plan tomorrow"), and structured replies (headings and bullets inside bubbles).
+8. **Coach chat.** A dark thread with persona bubbles and a plain reply composer. Structured replies keep headings and bullets inside bubbles. There are no canned "Roast me" or "Plan tomorrow" chips.
 9. **Stamps, relics, Hall of Roasts, Legend Echoes.** A collection grid with locked outlines, a "You earned N" toast, earned-count chips, "New" tags, and ring progress toward relics (1/3, 2/3).
 10. **Streaks and the training heatmap.** A week-dot row, a streak calendar with joined perfect runs, and a weekly streak tracker.
 11. **Expedition.** A vertical path with milestone nodes and your current position. Storm weeks tint a segment. A group goal progress bar.

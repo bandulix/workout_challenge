@@ -88,8 +88,6 @@ function CoachBody({text}) {
     );
 }
 
-const SUGGESTIONS = ["Roast me", "Plan tomorrow"];
-
 function CoachThread({message, persona, canReply = true, defaultOpen = false, className = "mt-2.5", trailing = null}) {
     const [open, setOpen] = useState(defaultOpen);
     // Deep links pass defaultOpen; the messages query usually resolves
@@ -186,15 +184,6 @@ function CoachThread({message, persona, canReply = true, defaultOpen = false, cl
 
                     {canReply && (
                         <div className="min-w-0 w-full space-y-1">
-                            <div className="mb-1 flex flex-wrap gap-2">
-                                {SUGGESTIONS.map((hint) => (
-                                    <button key={hint} type="button" onClick={() => setText(hint)}
-                                            className="min-h-[44px] rounded-full px-3 text-sm font-semibold text-muted"
-                                            style={{border: "1px solid var(--hairline)", background: "var(--surface-2)"}}>
-                                        {hint}
-                                    </button>
-                                ))}
-                            </div>
                             <div className="flex items-center gap-2 min-w-0 w-full">
                                 <div className="composer-rim min-w-0 flex-1 rounded-full">
                                 <input

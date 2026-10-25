@@ -169,12 +169,12 @@ function WorkoutStatStrip({values, summary}) {
     );
 }
 
-export default function WorkoutForm({id = true, setModalState, scaling_distance}) {
+export default function WorkoutForm({id = true, setModalState, scaling_distance, preface = null}) {
     if (id === true) return <QuickLogSheet setModalState={setModalState}/>;
-    return <WorkoutEditForm id={id} setModalState={setModalState} scaling_distance={scaling_distance}/>;
+    return <WorkoutEditForm id={id} setModalState={setModalState} scaling_distance={scaling_distance} preface={preface}/>;
 }
 
-function WorkoutEditForm({id, setModalState}) {
+function WorkoutEditForm({id, setModalState, preface = null}) {
     const dispatch = useDispatch();
     const {data: workoutSummary} = useGetWorkoutSummaryQuery();
 
@@ -342,6 +342,7 @@ function WorkoutEditForm({id, setModalState}) {
         <Modal title="Workout" landscape={true} setShowModal={setModalState}
                isLoading={iniLoading || updateIsLoading || createIsLoading || deleteIsLoading}
                confirmDiscard={dirty}>
+            {preface}
             <WorkoutStatStrip values={values} summary={workoutSummary}/>
             <SingleForm fields={activeFields} values={values} setValues={setValues} errors={fieldErrors}/>
             <div className="text-center text-danger-text text-xs italic">{formError}</div>

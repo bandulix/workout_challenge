@@ -18,6 +18,7 @@ import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {getArchivedChallengeIds, archiveChallenge, restoreChallenge, isChallengeEnded} from "../utils/challengeArchive";
 import CompetitionArchiveRow from "../components/CompetitionArchiveRow";
 import {useGetDrillConfigsQuery} from "../utils/reducers/drillInstructorSlice";
+import {WorkoutCoachNote} from "../components/competitionChrome";
 import CompetitionForm from "../forms/competitionForm";
 import PersonalGoalsForm from "../forms/personalGoalsForm";
 import {useLocation, useNavigate, useNavigationType, useSearchParams} from "react-router-dom";
@@ -375,7 +376,11 @@ function WorkoutsBox({workouts, user, setLinkStrava, summary}) {
             )}
 
             {(showEditWorkoutModal) && (
-                <WorkoutForm setModalState={setShowEditWorkoutModal} id={showEditWorkoutModal} scaling_distance={parseFloat(user?.scaling_distance || "1.0")}/>
+                <WorkoutForm setModalState={setShowEditWorkoutModal} id={showEditWorkoutModal}
+                             scaling_distance={parseFloat(user?.scaling_distance || "1.0")}
+                             preface={typeof showEditWorkoutModal === "number"
+                                 ? <WorkoutCoachNote workoutId={showEditWorkoutModal}/>
+                                 : null}/>
             )}
 
             {/* "Link a Service" opens the personal settings - all import
