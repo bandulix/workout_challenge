@@ -58,14 +58,14 @@ function activityMessage() {
     };
 }
 
-function renderPost(message = activityMessage()) {
+function renderPost(message = activityMessage(), canReply = false) {
     return render(
         <Provider store={store}>
             <ActivityCoachPost
                 message={message}
                 persona={{name: "Drill Sergeant", avatar: "sergeant", theme_color: "#d7ff3e"}}
                 meId={4}
-                canReply={false}
+                canReply={canReply}
                 competitionId={3}
             />
         </Provider>,
@@ -98,6 +98,16 @@ describe("activity coach post", () => {
         fireEvent.click(screen.getByRole("button", {name: "Activity detail for Charlotte's Run"}));
         expect(screen.getByRole("dialog", {name: "Charlotte · Run"})).toBeTruthy();
         expect(screen.getAllByText("That run looked honest. The hill did not clap.").length).toBeGreaterThan(1);
+    });
+
+    it("does not offer Roast me or Plan tomorrow above the reply box", () => {
+        renderPost(activityMessage(), true);
+        fireEvent.click(screen.getByRole("button", {name: /repl/i}));
+        expect(screen.queryByRole("button", {name: "Roast me"})).toBeNull();
+        expect(screen.queryByRole("button", {name: "Plan tomorrow"})).toBeNull();
+        expect(screen.getByRole("textbox", {name: "Reply to Drill Sergeant"})).toBeTruthy();
+        expect(screen.getByText("That run looked honest. The hill did not clap.")).toBeTruthy();
+        expect(screen.getByRole("img", {name: "Coach edit of Charlotte's Run"})).toBeTruthy();
     });
 
     it("still shows a coach reaction when the activity has no photo", () => {

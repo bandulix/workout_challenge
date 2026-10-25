@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Coach reads the whole thread.** Replies to a feed post now hand the coach the full conversation so far (newest 12 turns), so it answers the thread, not a single line.
 
 ### Changed
+- **Reply chips removed.** The "Roast me" and "Plan tomorrow" buttons above the coach reply box are gone. A reply is still a free-text message, and the coach still comments on every workout and still edits a photo.
 - **Season-first Home.** The trail is the first screen: your name, picture and the crew's route percentage above the route graphic, drawn straight on the gym-plate backdrop. Compete and Coach tops sit on the same backdrop with no painted box behind them. A one-time season poster introduces it.
 - **Log in two taps.** The Log sheet replaces the seven-field form: a grid of your recent sports, duration chips, intensity pills, one Save button — date, kcal and distance behind *More*. A saved workout visibly leaves the dock and the trail redraws. Editing an existing workout keeps the full form.
 - **Home in four beats.** Trail → your goal → this week and streak → latest workouts. The 30-day block and the 12/26-week bars moved behind *Stats* on the week card.

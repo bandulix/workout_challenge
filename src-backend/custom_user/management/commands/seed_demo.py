@@ -123,9 +123,9 @@ class Command(BaseCommand):
             (c, "Run", 1, 7, 52, "run"),
             (t, "Ride", 1, 18, 70, "ride"),
             (u, "WeightTraining", 2, 12, 40, "lift"),
-            (m, "Run", 3, 8, 35, "mina-run"),
+            (m, "Run", 3, 8, 35, "minarun"),
             (c, "Ride", 4, 7, 45, "heat"),
-            (t, "Ride", 4, 17, 45, "heat-tom"),
+            (t, "Ride", 4, 17, 45, "heattom"),
             (c, "Ride", 5, 7, 80, "long"),
             (t, "Ride", 6, 18, 30, "short"),
             (u, "Workout", 8, 9, 25, "mob"),
@@ -231,8 +231,8 @@ class Command(BaseCommand):
         activity(by_key["press"], "Fifty minutes. The bar moved. You moved with it.", by_key["press"].start_datetime)
         activity(by_key["ride"], "Seventy minutes and the city was still there when you got back.", by_key["ride"].start_datetime)
         activity(by_key["heat"], "Same ride as Tom, same clock. Dead heat. Do not get comfortable.", by_key["heat"].start_datetime)
-        activity(by_key["heat-tom"], "Charlotte matched your clock. That is not a gift. Answer it.", by_key["heat-tom"].start_datetime)
-        activity(by_key["mina-run"], "Thirty-five minutes, held together. Do it again before it gets comfortable.", by_key["mina-run"].start_datetime)
+        activity(by_key["heattom"], "Charlotte matched your clock. That is not a gift. Answer it.", by_key["heattom"].start_datetime)
+        activity(by_key["minarun"], "Thirty-five minutes, held together. Do it again before it gets comfortable.", by_key["minarun"].start_datetime)
         activity(by_key["gap"], "You opened a gap. It only counts if you are there tomorrow.", by_key["gap"].start_datetime)
         activity(by_key["mob"], "Mobility counts. So does showing up.", by_key["mob"].start_datetime)
         activity(by_key["short"], "Thirty minutes, easy gear. That is how tomorrow stays possible.", by_key["short"].start_datetime)
