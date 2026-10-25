@@ -430,6 +430,9 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         competition = self.request.query_params.get("competition")
         if competition and competition.isdigit():
             qs = qs.filter(config__competition_id=int(competition))
+        workout = self.request.query_params.get("workout")
+        if workout and str(workout).isdigit():
+            qs = qs.filter(workout_id=int(workout))
         return qs
 
     LIST_CACHE_TTL = 20
@@ -463,8 +466,10 @@ class DrillInstructorMessageViewSet(viewsets.ReadOnlyModelViewSet):
         offset = max(0, offset)
 
         competition = request.query_params.get("competition")
+        workout = request.query_params.get("workout")
         cache_key = None
-        if competition and str(competition).isdigit():
+        # A workout lookup must not reuse the competition page cache.
+        if competition and str(competition).isdigit() and not (workout and str(workout).isdigit()):
             generation = cache.get(f"feed-generation:{competition}", 0)
             cache_key = (
                 f"drill-msg:{request.user.id}:{int(competition)}"

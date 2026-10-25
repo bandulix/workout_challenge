@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Points are stored as exact two-decimal values** (no more float/Decimal mismatch rewriting every row on each recap) and shortening a challenge's end date now re-caps the affected weeks like extending it does.
 
 ### Fixed
+- **Coach reactions and photo edits are back.** Saving the coach had been forcing `comment_on_activity` off since the Expedition cleanup, so a logged workout no longer got a coach line. An on-duty coach comments on every workout again (static line if the LLM key is missing). A photo on that workout still gets an AI image edit when an image model is configured, and the feed shows the upload and the edit together.
 - **Coach config could be pointed at someone else's challenge.** A challenge owner could re-bind their coach configuration (own persona, system prompt, push toggles) onto any other challenge that had none. `competition` is immutable after creation and ownership is checked on the target.
 - **Expedition crew faces were broken.** Avatars requested the protected picture endpoint without credentials (401 bursts); they now load through the authenticated image path.
 - **Login lock-outs behind a reverse proxy.** nginx forwarded the proxy's own address, so all users shared one login/reset throttle bucket; the real client IP is now taken from `X-Forwarded-For` (trusted from loopback/private peers only).

@@ -235,11 +235,15 @@ def post_workout_comment(self, workout_id):
     """Generate a coach comment for a workout, then run arcade / Echo events.
 
     For every competition this workout belongs to that has an enabled
-    Drill Instructor with ``comment_on_activity``, generate one AI-voiced
-    line (static fallback if the LLM is down), persist it as
-    ``KIND_ACTIVITY``, and optionally push the athlete. Empty Expedition-era
-    placeholders are filled on re-run. Arcade still ensures an activity
-    thread exists when comments are off so photos and Echoes have an anchor.
+    Drill Instructor, generate one AI-voiced line (static fallback if the
+    LLM is down), persist it as ``KIND_ACTIVITY``, and optionally push the
+    athlete. Empty placeholders are filled on re-run.
+
+    ``comment_on_activity`` is not a gate. Commit 1b4463c retired nudges
+    and random pep talks and, in the same save payload, forced this flag
+    off, which silenced the per-workout reaction. An enabled coach always
+    answers a logged workout. Inactivity nudges and random pushes stay
+    retired.
     """
     Workout = apps.get_model("workouts", "Workout")
     DrillInstructorConfig = apps.get_model("drill_instructor", "DrillInstructorConfig")
@@ -262,7 +266,6 @@ def post_workout_comment(self, workout_id):
         end_date__gte=start_day,
         user=workout.user,
         drill_instructor__enabled=True,
-        drill_instructor__comment_on_activity=True,
     ).select_related("drill_instructor", "drill_instructor__persona")
 
     summary, duration_min = format_workout_summary(workout)

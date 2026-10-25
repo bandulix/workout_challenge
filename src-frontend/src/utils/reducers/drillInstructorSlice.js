@@ -185,6 +185,21 @@ export const drillInstructorApi = createApi({
             query: (id) => ({url: `drill-instructor/message/${id}/`, method: 'GET'}),
             providesTags: (result, error, id) => [{type: 'DrillMessage', id}],
         }),
+        getWorkoutCoachMessage: builder.query({
+            // Activity detail: the coach thread for one workout, not the
+            // competition page (that cache must stay untouched).
+            query: (workoutId) => ({
+                url: 'drill-instructor/message/',
+                method: 'GET',
+                params: {workout: workoutId, limit: 5, offset: 0},
+            }),
+            providesTags: (result) => {
+                const list = Array.isArray(result?.results) ? result.results : [];
+                return list.length
+                    ? [...list.map(({id}) => ({type: 'DrillMessage', id})), {type: 'DrillMessage'}]
+                    : [{type: 'DrillMessage'}];
+            },
+        }),
         replyToDrillMessage: builder.mutation({
             // Participant's reply under a coach message; the coach's
             // reaction is generated server-side in the background.
@@ -344,6 +359,7 @@ export const {
     useGetDrillMessagesQuery,
     useLazyGetDrillMessagesQuery,
     useGetDrillMessageByIdQuery,
+    useGetWorkoutCoachMessageQuery,
     useReplyToDrillMessageMutation,
     useReactToActivityMutation,
     usePostDrillPhotoMutation,
