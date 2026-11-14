@@ -77,3 +77,22 @@ describe("CompetitionForm Expedition settings", () => {
         expect(fields.expedition_objective.label).toMatch(/locked/);
     });
 });
+
+describe("CompetitionForm Skiwoche settings", () => {
+    const fieldNames = () => JSON.parse(screen.getByTestId("form-fields").textContent);
+
+    it("hides the resort until Skiwoche is on", () => {
+        render(<CompetitionForm competition={{id: 4, name: "Plain", skiweek_enabled: false}} setModalState={vi.fn()}/>);
+        const names = fieldNames();
+        expect(names).toContain("skiweek_enabled");
+        expect(names).not.toContain("skiweek_resort_slug");
+    });
+
+    it("offers an Alpine resort, cutoff, and Sambuca points once Skiwoche is on", () => {
+        render(<CompetitionForm competition={{id: 4, name: "Snow", skiweek_enabled: true, skiweek_resort_slug: "zermatt", skiweek_timezone: "Europe/Zurich", skiweek_cutoff_hour: 5, skiweek_points_per_sambuca: 5}} setModalState={vi.fn()}/>);
+        const fields = JSON.parse(screen.getByTestId("form-field-defs").textContent);
+        expect(fields.skiweek_resort_slug.selectList.map((row) => row.value)).toContain("zermatt");
+        expect(fields.skiweek_cutoff_hour.type).toBe("number");
+        expect(fields.skiweek_water_enabled.type).toBe("checkbox");
+    });
+});

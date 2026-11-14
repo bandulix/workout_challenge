@@ -11,5 +11,6 @@ describe("native coach notification eligibility", () => {
     it("keeps positive coach and Echo updates eligible", () => {
         expect(isEligibleCoachKind("echo")).toBe(true);
         expect(isEligibleCoachKind("claim")).toBe(true);
+        expect(isEligibleCoachKind("skiweek")).toBe(true);
     });
 });

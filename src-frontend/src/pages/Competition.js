@@ -1,6 +1,7 @@
 import {useNavigationType, useParams, useSearchParams} from 'react-router-dom';
 import React, {useEffect, useMemo, useRef, useState} from "react";
-import {useGetCompetitionByIdQuery, useGetExpeditionByCompetitionQuery} from "../utils/reducers/competitionsSlice";
+import {useGetCompetitionByIdQuery, useGetExpeditionByCompetitionQuery, useGetSkiWeekByCompetitionQuery} from "../utils/reducers/competitionsSlice";
+import SkiWeekHome from "../components/SkiWeekHome";
 import {
     Trophy,
     UsersRound,
@@ -595,6 +596,7 @@ export default function Competition() {
     // The Trail page exists only while the challenge runs an Expedition;
     // a stale ?tab=trail link falls back to the feed.
     const {data: expedition} = useGetExpeditionByCompetitionQuery(id, {skip: !id});
+    const {data: skiweek} = useGetSkiWeekByCompetitionQuery(id, {skip: !id, pollingInterval: pollSlow});
     const hasTrail = !!expedition?.enabled;
     const tabs = useMemo(() => challengeTabs(hasTrail), [hasTrail]);
     const tab = (tabParam === "feed" || tabParam === "board" || (tabParam === "trail" && hasTrail))
@@ -706,6 +708,15 @@ export default function Competition() {
                 </div>
             )}
 
+            {skiweek?.enabled && (
+                <div className="container mx-auto px-4">
+                    <SkiWeekHome
+                        skiweek={skiweek}
+                        participants={competition?.user_info}
+                        variant={skiweek.phase === "live" ? "live" : "hero"}
+                    />
+                </div>
+            )}
             <div className="container mx-auto p-4">
 
                 {(() => {
@@ -718,6 +729,9 @@ export default function Competition() {
                     );
                     const feedPane = (
                         <div>
+                        {skiweek?.enabled && skiweek.phase === "prestart" && (
+                            <SkiWeekHome skiweek={skiweek} participants={competition?.user_info} variant="teaser"/>
+                        )}
                         {!wide && hasTrail && (
                             <ExpeditionTeaser expedition={expedition} onOpen={() => setTab("trail")}/>
                         )}

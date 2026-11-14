@@ -160,6 +160,14 @@ async function trimCache(cacheName, maxItems) {
   }
 }
 
+let pushCategories = {skiweek: true};
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "wc-push-categories" && event.data.categories) {
+    pushCategories = event.data.categories;
+  }
+});
+
 self.addEventListener("push", (event) => {
   event.waitUntil((async () => {
     let payload = {title: "Workout Challenge", body: "You have a new update.", url: "/", icon: null, badge: null, tag: null};
@@ -169,6 +177,9 @@ self.addEventListener("push", (event) => {
       } catch (e) {
         payload.body = event.data.text();
       }
+    }
+    if (payload.category && pushCategories && pushCategories[payload.category] === false) {
+      return;
     }
     const tag = payload.tag || "workout-challenge";
     let alreadyShowing = false;

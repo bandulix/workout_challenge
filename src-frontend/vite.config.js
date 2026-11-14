@@ -26,6 +26,11 @@ export default defineConfig(({mode}) => ({
     },
     server: {
         port: 3000,
+        // Dev only: the page CSP allows connect-src 'self', so the API
+        // has to be same-origin. Production nginx already does this.
+        proxy: {
+            "/api": {target: "http://127.0.0.1:8000", changeOrigin: true},
+        },
     },
     define: {
         "process.env.NODE_ENV": JSON.stringify(mode === "production" ? "production" : "development"),

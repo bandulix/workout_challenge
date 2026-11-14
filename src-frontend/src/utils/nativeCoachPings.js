@@ -18,7 +18,7 @@ import {categoryForCoachKind, pushCategoryOn} from "./pushCategories";
 //   - silent without notification permission or when logged out.
 const LAST_KEY = "wc_last_coach_msg_id";
 const POLL_MS = 90000;
-const NOTIFY_KINDS = new Set(["activity", "push", "nudge", "reaction", "order", "handover", "echo", "claim", "war"]);
+const NOTIFY_KINDS = new Set(["activity", "push", "nudge", "reaction", "order", "handover", "echo", "claim", "war", "skiweek"]);
 
 export function isEligibleCoachKind(kind) {
     return NOTIFY_KINDS.has(kind);
