@@ -19,6 +19,7 @@ from .models import Competition, Points, SambucaCrown, SambucaEntry, SambucaSett
 from .resorts import ResortError, geocode_alpine, resolve_resort
 from .skiweek import (
     KIND_WATER,
+    compute_week_awards,
     compose_teaser,
     fetch_weather,
     log_sip,
@@ -156,6 +157,25 @@ class SkiWeekDomainTests(TestCase):
         self.assertEqual(SambucaEntry.objects.filter(user=self.owner).count(), 2)
         log_sip(self.campaign, self.owner, amount=3, when=when, confirm=True)
         self.assertEqual(sum(SambucaEntry.objects.filter(user=self.owner).values_list("amount", flat=True)), 9)
+
+    def test_week_awards_share_a_sambuca_tie_and_name_the_vertical(self):
+        from competition.models import SkiWeekAward
+        when = _at(datetime.date(2026, 2, 9), 10)
+        Workout.objects.create(
+            user=self.owner, sport_type="AlpineSki", start_datetime=when,
+            duration=datetime.timedelta(hours=3), elevation_m=Decimal("2000"), runs=10,
+        )
+        Workout.objects.create(
+            user=self.mats, sport_type="Snowboard", start_datetime=when + datetime.timedelta(hours=1),
+            duration=datetime.timedelta(hours=5), elevation_m=Decimal("900"), runs=6,
+        )
+        log_sip(self.campaign, self.owner, amount=2, when=_at(datetime.date(2026, 2, 9), 20))
+        log_sip(self.campaign, self.mats, amount=2, when=_at(datetime.date(2026, 2, 9), 21))
+        compute_week_awards(self.campaign)
+        royalty = set(SkiWeekAward.objects.filter(campaign=self.campaign, kind="sambuca_royalty").values_list("user_id", flat=True))
+        self.assertEqual(royalty, {self.owner.id, self.mats.id})
+        vertical = SkiWeekAward.objects.get(campaign=self.campaign, kind="meiste_hoehenmeter")
+        self.assertEqual(vertical.user_id, self.owner.id)
 
     def test_settled_day_rejects_undo(self):
         when = _at(datetime.date(2026, 2, 9), 20)

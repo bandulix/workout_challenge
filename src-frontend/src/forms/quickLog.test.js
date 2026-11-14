@@ -11,7 +11,10 @@ vi.mock("../utils/reducers/workoutsSlice", () => ({
 }));
 vi.mock("../utils/reducers/statsSlice", () => ({statsApi: {util: {invalidateTags: vi.fn(() => ({type: "stats"}))}}}));
 vi.mock("../utils/reducers/feedSlice", () => ({feedApi: {util: {invalidateTags: vi.fn(() => ({type: "feed"}))}}}));
-vi.mock("../utils/reducers/competitionsSlice", () => ({competitionsApi: {util: {invalidateTags: vi.fn(() => ({type: "comp"}))}}}));
+vi.mock("../utils/reducers/competitionsSlice", () => ({
+    competitionsApi: {util: {invalidateTags: vi.fn(() => ({type: "comp"}))}},
+    useGetCompetitionsQuery: () => ({data: []}),
+}));
 vi.mock("react-redux", () => ({useDispatch: () => dispatchMock}));
 vi.mock("./basicComponents", () => ({
     Modal: ({title, children}) => <div><h2>{title}</h2>{children}</div>,

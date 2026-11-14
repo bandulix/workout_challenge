@@ -126,3 +126,34 @@ export function ChampReveal({skiweek, onClose, lang = "en"}) {
 export function crownShareLine(skiweek) {
     return shareText(skiweek);
 }
+
+export function SkiFinale({skiweek, lang = "en"}) {
+    const awards = skiweek?.awards || [];
+    const royalty = awards.filter((row) => row.kind === "sambuca_royalty");
+    const rest = awards.filter((row) => row.kind !== "sambuca_royalty");
+    return (
+        <section className="skiweek skiweek-hero" aria-label={skiT(lang, "finale")}>
+            <p className="ski-kicker">{skiweek?.resort?.name}</p>
+            <h2 className="ski-open">{skiT(lang, "finale")}</h2>
+            <ol className="ski-board">
+                {royalty.map((row, index) => (
+                    <li key={`royalty-${row.user_id}`}>
+                        <span>{index + 1}</span>
+                        <span>{row.username}</span>
+                        <strong>{skiT(lang, "sambuca_royalty")} · {Math.round(row.value)}</strong>
+                    </li>
+                ))}
+            </ol>
+            <p className="ski-kicker">{skiT(lang, "awards")}</p>
+            <ul className="ski-board">
+                {rest.map((row) => (
+                    <li key={`${row.kind}-${row.user_id}`}>
+                        <span>{skiT(lang, row.kind)}</span>
+                        <span>{row.username}</span>
+                        <strong>{row.detail}</strong>
+                    </li>
+                ))}
+            </ul>
+        </section>
+    );
+}

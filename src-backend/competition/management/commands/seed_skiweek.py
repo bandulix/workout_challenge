@@ -110,11 +110,16 @@ class Command(BaseCommand):
             users, persona, "Skiwoche Zermatt", today + datetime.timedelta(days=2), today + datetime.timedelta(days=8),
             live=False,
         )
+        finale_id = self._week(
+            users, persona, "Skiwoche Finale", today - datetime.timedelta(days=10), today - datetime.timedelta(days=1),
+            live=True,
+        )
         live_id = self._week(
             users, persona, "Skiwoche Live", today - datetime.timedelta(days=3), today + datetime.timedelta(days=3),
             live=True,
         )
         self.stdout.write(f"countdown={countdown_id}")
+        self.stdout.write(f"finale={finale_id}")
         self.stdout.write(f"live={live_id}")
         self.stdout.write("login lena@skiweek.demo / skiweek-demo")
 
@@ -163,7 +168,11 @@ class Command(BaseCommand):
 
     def _live_activity(self, campaign, users):
         lena, mats, noor, jules = users
-        Workout.objects.filter(user__in=users, sport_type__in=("AlpineSki", "Snowboard")).delete()
+        window_start, window_end = datetime.datetime.combine(campaign.competition.start_date, datetime.time.min, tzinfo=datetime.timezone.utc), datetime.datetime.combine(campaign.competition.end_date + datetime.timedelta(days=1), datetime.time.min, tzinfo=datetime.timezone.utc)
+        Workout.objects.filter(
+            user__in=users, sport_type__in=("AlpineSki", "Snowboard", "BackcountrySki"),
+            start_datetime__gte=window_start, start_datetime__lt=window_end,
+        ).delete()
         SambucaEntry.objects.filter(campaign=campaign).delete()
         from competition.models import SambucaCrown, SambucaSettlement
         SambucaCrown.objects.filter(settlement__campaign=campaign).delete()
@@ -177,6 +186,12 @@ class Command(BaseCommand):
             (lena, "AlpineSki", 2, 8, 1240, "18.6"),
             (mats, "AlpineSki", 2, 12, 1760, "26.2"),
         )
+        today_offset = (timezone.localdate() - start).days
+        if 0 <= today_offset <= (campaign.competition.end_date - start).days:
+            plan = plan + (
+                (lena, "AlpineSki", today_offset, 7, 1540, "19.5"),
+                (noor, "Snowboard", today_offset, 5, 880, "14.2"),
+            )
         for user, sport, offset, runs, elevation, distance in plan:
             when = datetime.datetime.combine(start + datetime.timedelta(days=offset), datetime.time(10, 0), tzinfo=datetime.timezone.utc)
             Workout.objects.create(
@@ -189,6 +204,11 @@ class Command(BaseCommand):
         log_sip(campaign, lena, amount=3, when=tie_evening)
         log_sip(campaign, mats, amount=3, when=tie_evening)
         log_sip(campaign, noor, amount=1, when=tie_evening)
+        yesterday = timezone.localdate() - datetime.timedelta(days=1)
+        if campaign.competition.start_date <= yesterday <= campaign.competition.end_date:
+            tie_yesterday = datetime.datetime.combine(yesterday, datetime.time(20, 0), tzinfo=datetime.timezone.utc)
+            log_sip(campaign, lena, amount=3, when=tie_yesterday)
+            log_sip(campaign, mats, amount=3, when=tie_yesterday)
         later = datetime.datetime.combine(start + datetime.timedelta(days=1), datetime.time(21, 0), tzinfo=datetime.timezone.utc)
         log_sip(campaign, jules, amount=2, when=later)
         log_sip(campaign, noor, amount=2, when=later)

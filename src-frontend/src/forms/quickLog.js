@@ -9,6 +9,9 @@ import {clearBodyScrollLock} from "../utils/overlay";
 import {toast} from "../utils/toasts";
 import {errText} from "../utils/errors";
 import {refreshChallengeSoon, sportIcon, workoutTypes} from "../utils/sports";
+import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
+
+const SKI_SPORTS = ["AlpineSki", "Snowboard", "BackcountrySki", "NordicSki", "Snowshoe"];
 
 // Two taps to a saved workout: a sport, a duration. Everything else has a
 // sensible default and lives behind "More". Edits still use the full form.
@@ -73,13 +76,23 @@ function Chip({active, children, onClick, className = "", ariaLabel}) {
     );
 }
 
-function SportPicker({value, onPick}) {
+function SportPicker({value, onPick, pinSki = false}) {
     const [query, setQuery] = useState("");
     const matches = useMemo(() => {
         const q = query.trim().toLowerCase();
-        return Object.entries(workoutTypes)
-            .filter(([key, meta]) => !q || meta.label.toLowerCase().includes(q) || key.toLowerCase().includes(q))
-            .slice(0, 40);
+        const rows = Object.entries(workoutTypes)
+            .filter(([key, meta]) => !q || meta.label.toLowerCase().includes(q) || key.toLowerCase().includes(q));
+        if (pinSki && !q) {
+            rows.sort((a, b) => {
+                const ai = SKI_SPORTS.indexOf(a[0]);
+                const bi = SKI_SPORTS.indexOf(b[0]);
+                if (ai === -1 && bi === -1) return 0;
+                if (ai === -1) return 1;
+                if (bi === -1) return -1;
+                return ai - bi;
+            });
+        }
+        return rows.slice(0, 40);
     }, [query]);
     return (
         <div className="mt-3 rounded-2xl bg-ink-950/40 p-3">
@@ -121,7 +134,9 @@ export default function QuickLogSheet({setModalState}) {
     const dispatch = useDispatch();
     const [createEntry, {isLoading}] = useAddWorkoutMutation();
     const [recent] = useState(() => readRecentSports());
-    const [sport, setSport] = useState(recent[0] || "Run");
+    const {data: competitions} = useGetCompetitionsQuery();
+    const skiWeekOn = (competitions || []).some((item) => item.skiweek_enabled);
+    const [sport, setSport] = useState(skiWeekOn ? SKI_SPORTS[0] : (recent[0] || "Run"));
     const [minutes, setMinutes] = useState(30);
     const [intensity, setIntensity] = useState(2);
     const [moreOpen, setMoreOpen] = useState(false);
@@ -133,7 +148,10 @@ export default function QuickLogSheet({setModalState}) {
     const [error, setError] = useState("");
 
     const isSteps = sport === "Steps";
-    const gridSports = recent.includes(sport) ? recent : [sport, ...recent].slice(0, 8);
+    const baseGrid = recent.includes(sport) ? recent : [sport, ...recent].slice(0, 8);
+    const gridSports = skiWeekOn
+        ? [...SKI_SPORTS, ...baseGrid.filter((key) => !SKI_SPORTS.includes(key))].slice(0, 8)
+        : baseGrid;
     const SelectedIcon = sportIcon(sport);
     const sportLabel = workoutTypes[sport]?.label_short || sport;
 
@@ -199,7 +217,7 @@ export default function QuickLogSheet({setModalState}) {
                 >
                     <Search aria-hidden="true" className="h-3.5 w-3.5"/> All sports
                 </button>
-                {pickerOpen && <SportPicker value={sport} onPick={(key) => { setSport(key); setPickerOpen(false); }}/>}
+                {pickerOpen && <SportPicker pinSki={skiWeekOn} value={sport} onPick={(key) => { setSport(key); setPickerOpen(false); }}/>}
 
                 {isSteps ? (
                     <>
