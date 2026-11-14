@@ -36,7 +36,7 @@ const COPY = {
         close: "Close",
         finale: "Finale",
         awards: "Awards",
-        sambuca_royalty: "Sambuca crown",
+        sambuca_royalty: "Sambuca King/Queen",
         erste_liftfahrt: "First lift",
         meiste_hoehenmeter: "Most vertical",
         laengster_skitag: "Longest ski day",
@@ -52,6 +52,8 @@ const COPY = {
         selfie: "Fresh selfie",
         coronation: "Coronation",
         photoReady: "The coach kept your photo.",
+        attribution: "Weather and snow: Open-Meteo.com",
+        ended: "Ended",
         champTitle: "Sambuca Champ",
         dayN: "Day {n}",
         yesterdayCrown: "Yesterday's crown",
@@ -98,7 +100,7 @@ const COPY = {
         close: "Schliessen",
         finale: "Finale",
         awards: "Auszeichnungen",
-        sambuca_royalty: "Sambuca-Krone",
+        sambuca_royalty: "Sambuca-König/Königin",
         erste_liftfahrt: "Erste Liftfahrt",
         meiste_hoehenmeter: "Meiste Höhenmeter",
         laengster_skitag: "Längster Skitag",
@@ -114,6 +116,8 @@ const COPY = {
         selfie: "Neues Selfie",
         coronation: "Krönung",
         photoReady: "Der Coach behält dein Foto.",
+        attribution: "Wetter und Schnee: Open-Meteo.com",
+        ended: "Beendet",
         champTitle: "Sambuca-Champ",
         dayN: "Tag {n}",
         yesterdayCrown: "Krone von gestern",
@@ -160,6 +164,17 @@ function weatherKey(code) {
     if ([71, 73, 75, 77, 85, 86].includes(n)) return "snow";
     if (n === 95 || n === 96 || n === 99) return "storm";
     return "mixed";
+}
+
+export function forecastDay(language, iso) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+    if (!match) return "";
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    const de = skiLocale(language) === "de";
+    const weekday = date.toLocaleDateString(de ? "de-DE" : "en-GB", {weekday: "short"}).replace(".", "");
+    if (de) return `${weekday} ${date.getDate()}.${date.getMonth() + 1}.`;
+    const month = date.toLocaleDateString("en-GB", {month: "short"});
+    return `${weekday} ${date.getDate()} ${month}`;
 }
 
 export function weatherName(language, code) {

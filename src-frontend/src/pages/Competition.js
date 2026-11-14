@@ -40,7 +40,7 @@ import {ScoreRing, Segmented} from "../components/polishBits";
 import {rankPeople, windowTotal} from "../utils/boardPeriod";
 import {challengeCountdownLabel} from "../utils/challenge";
 import {prefersReducedMotion} from "../utils/motion";
-import useWideLayout from "../utils/useWideLayout";
+import {usePaneLayout} from "../utils/useWideLayout";
 
 
 function TeamLeaderboardBox({stats, competition, user, teamId, isOwner}) {
@@ -668,7 +668,7 @@ export default function Competition() {
 
     // Wide screens (foldable landscape / desktop) show feed and board
     // side by side - no tabs, so stats must load and poll immediately.
-    const wide = useWideLayout();
+    const wide = usePaneLayout();
     const {
         data: stats,
         error: statsError,
@@ -733,6 +733,7 @@ export default function Competition() {
                     goals={competition?.goals || stats?.competition?.goals}
                     user={user}
                     archiveSlotRef={setEchoArchiveHost}
+                    language={skiLang}
                 />
             )}
             {!competitionLoading && statsError && (
@@ -741,7 +742,7 @@ export default function Competition() {
                 </div>
             )}
 
-            {skiweek?.enabled && (
+            {skiweek?.enabled && !wide && (
                 <div className="container mx-auto px-4">
                     {skiweek.phase === "ended" ? (
                         <SkiFinale skiweek={skiweek} lang={skiLang}/>
@@ -824,7 +825,29 @@ export default function Competition() {
                     if (wide) {
                         return (
                             <div className="grid grid-cols-2 gap-4 items-start stagger-in">
-                                {feedPane}
+                                <div>
+                                    {skiweek?.enabled && (
+                                        <div className="mb-4">
+                                            {skiweek.phase === "ended" ? (
+                                                <SkiFinale skiweek={skiweek} lang={skiLang}/>
+                                            ) : (
+                                                <SkiWeekHome
+                                                    skiweek={skiweek}
+                                                    participants={competition?.user_info}
+                                                    variant={skiweek.phase === "live" ? "live" : "hero"}
+                                                    onAddOne={skiweek.phase === "live" ? () => setSambucaOpen(true) : undefined}
+                                                />
+                                            )}
+                                            {skiweek.yesterday && (
+                                                <button type="button" className="ski-share" onClick={() => setCrownOpen(true)}>
+                                                    {skiT(skiLang, "yesterdayCrown")}
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                    {feedPane}
+                                    {hasSki && <div className="mt-4">{apresPane}</div>}
+                                </div>
                                 {boardPane}
                             </div>
                         );

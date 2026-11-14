@@ -863,6 +863,43 @@ body, #root {
     right: calc(100% - env(viewport-segment-right 0 0, 100%));
   }
 }
+/* Book posture: a vertical hinge. The rail stays in the left segment
+   and the page starts on the right, so a card is never cut in half. */
+@media (horizontal-viewport-segments: 2) {
+  .wc-rail {
+    left: max(12px, env(viewport-segment-left 0 0, 12px));
+  }
+  .wc-page-wrap:not(.is-public) {
+    padding-left: calc(env(viewport-segment-width 0 0, 7.5rem) + 16px);
+  }
+}
+@media (max-width: 599px) {
+  .wc-page-wrap:not(.is-public) {
+    padding-bottom: calc(9.5rem + env(safe-area-inset-bottom));
+  }
+}
+@media (min-width: 600px) {
+  .wc-page-wrap:not(.is-public) {
+    padding-left: 7.5rem;
+    padding-bottom: 2rem;
+  }
+}
+@media (min-width: 880px) {
+  .wc-page-wrap .container {
+    max-width: 1080px;
+  }
+}
+@media (min-width: 600px) {
+  .ski-sheet-back {
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+  .ski-sheet, .ski-champ {
+    border-radius: 28px;
+    max-height: min(40rem, calc(100dvh - 3rem));
+  }
+}
 /* Tabletop posture (hinge horizontal): the dock already lives on the
    bottom pane's edge - nothing to do. */
 

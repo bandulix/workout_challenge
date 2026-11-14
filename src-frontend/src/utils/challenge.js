@@ -46,10 +46,11 @@ export function challengeCountdownLabel(endDate, now = new Date()) {
 }
 
 /** Chip for the challenge header: a date, Last day, or Ended — not a day-count argument. */
-export function challengeEndChip(endDate, endDateFmt, now = new Date()) {
+export function challengeEndChip(endDate, endDateFmt, now = new Date(), language) {
     const days = daysUntilChallengeEnd(endDate, now);
     if (days == null) return null;
-    if (days < 0) return {kind: "ended", text: "Ended"};
+    const ended = language && String(language).toLowerCase().startsWith("de") ? "Beendet" : "Ended";
+    if (days < 0) return {kind: "ended", text: ended};
     if (days === 0) return {kind: "last", text: "Last day"};
     const when = String(endDateFmt || "").trim();
     return {kind: "live", text: when ? `Ends ${when}` : `${days} day${days === 1 ? "" : "s"} left`};

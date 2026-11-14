@@ -11,7 +11,7 @@ import {
     snowingNow,
     visiblePhase,
 } from "../utils/skiweek";
-import {skiT, unitLabel, weatherName} from "../utils/skiI18n";
+import {forecastDay, skiT, unitLabel, weatherName} from "../utils/skiI18n";
 
 function useNow(pinned) {
     const [now, setNow] = useState(() => pinned || new Date());
@@ -76,7 +76,7 @@ function SnowReport({weather, lang}) {
                 <ul className="ski-forecast">
                     {opening.slice(0, 3).map((day) => (
                         <li key={day.date}>
-                            <span>{day.date?.slice(5)}</span>
+                            <span>{forecastDay(lang, day.date)}</span>
                             <span>{weatherName(lang, day.weather_code) || "—"}</span>
                             <span>{day.snowfall_cm != null ? `${day.snowfall_cm} cm` : ""}</span>
                         </li>
@@ -85,7 +85,7 @@ function SnowReport({weather, lang}) {
             ) : (
                 <p className="ski-meta">{skiT(lang, "forecastLater")}</p>
             )}
-            <p className="ski-source">{weather?.attribution || "Weather and snow: Open-Meteo.com"}</p>
+            <p className="ski-source">{skiT(lang, "attribution")}</p>
         </section>
     );
 }

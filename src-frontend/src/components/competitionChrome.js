@@ -44,7 +44,7 @@ export function HeaderIconButton({onClick, title, icon: Icon, danger = false, is
     );
 }
 
-export function CompetitionHead({competition, feed, isOwner, goals, user, archiveSlotRef}) {
+export function CompetitionHead({competition, feed, isOwner, goals, user, archiveSlotRef, language}) {
 
     const [showEditCompetitionModal, setShowEditCompetitionModal] = useState(false);
     const [showInviteCompetitionModal, setShowInviteCompetitionModal] = useState(false);
@@ -88,7 +88,7 @@ export function CompetitionHead({competition, feed, isOwner, goals, user, archiv
 
 
 
-    const endChip = challengeEndChip(competition.end_date, competition.end_date_fmt);
+    const endChip = challengeEndChip(competition.end_date, competition.end_date_fmt, new Date(), language);
 
     const showGoals = scoredGoals.length > 0 || isOwner;
 

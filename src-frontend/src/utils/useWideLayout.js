@@ -1,24 +1,29 @@
 import {useEffect, useState} from "react";
 
-// True at Tailwind's md (768px) and up: the opened foldable's inner
-// display (~768 CSS px portrait), dual-screen/landscape postures,
-// tablets and desktops. Below that (phones incl. the foldable cover
-// screen) the app keeps the one-column mobile layout with the bottom
-// dock. Reactive: folding or rotating the device flips the layout live.
-function wideMedia() {
+// The opened foldable inner screen starts around 673 CSS px. The cover
+// screen stays under 430. 600px is the rail; 880px is two panes.
+function media(query) {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return null;
-    return window.matchMedia("(min-width: 768px)");
+    return window.matchMedia(query);
 }
 
-export default function useWideLayout() {
-    const [wide, setWide] = useState(() => Boolean(wideMedia()?.matches));
+function useMedia(query) {
+    const [matches, setMatches] = useState(() => Boolean(media(query)?.matches));
     useEffect(() => {
-        const mq = wideMedia();
+        const mq = media(query);
         if (!mq) return undefined;
-        const apply = () => setWide(mq.matches);
+        const apply = () => setMatches(mq.matches);
         apply();
         mq.addEventListener("change", apply);
         return () => mq.removeEventListener("change", apply);
-    }, []);
-    return wide;
+    }, [query]);
+    return matches;
+}
+
+export default function useWideLayout() {
+    return useMedia("(min-width: 600px)");
+}
+
+export function usePaneLayout() {
+    return useMedia("(min-width: 880px)");
 }

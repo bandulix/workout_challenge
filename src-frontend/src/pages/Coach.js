@@ -16,7 +16,7 @@ import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {timeAgo} from "../utils/time";
 import usePollingInterval from "../utils/usePollingInterval";
-import useWideLayout from "../utils/useWideLayout";
+import {usePaneLayout} from "../utils/useWideLayout";
 import {feedSfxItems, hallSfxItems, useSfxObserver} from "../utils/sfx";
 import {PaneHead} from "../components/uiBits";
 import {stripCharacterCountSuffix} from "../utils/coachText";
@@ -266,7 +266,7 @@ function CoachPage() {
         return Object.values(competitions).filter((c) => c.owner === user.id);
     }, [competitions, user]);
 
-    const wide = useWideLayout();
+    const wide = usePaneLayout();
 
     return (
         <PageWrapper>
