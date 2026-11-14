@@ -980,9 +980,13 @@ def snow_sentence(weather):
 
 
 def _days_until(campaign, now):
+    """Whole days left, the same number the countdown clock shows."""
     now_local = as_aware(now).astimezone(zone(campaign.timezone))
     start, _end = challenge_bounds(campaign)
-    return max(0, (start.date() - now_local.date()).days)
+    remaining = (start - now_local).total_seconds()
+    if remaining <= 0:
+        return 0
+    return int(remaining // 86400)
 
 
 def fallback_teaser(milestone, resort, weather, *, days=None, language="en"):
@@ -1117,10 +1121,17 @@ def coach_teaser_payload(campaign, *, now=None, weather=None):
         return None
     if weather is None:
         weather = weather_for_campaign(campaign)
+    days = _days_until(campaign, now)
     current = milestone_for(campaign, now)
     if current is None:
-        current = "kickoff" if phase == "live" else "preview"
-    days = _days_until(campaign, now)
+        if phase == "live":
+            current = "kickoff"
+        elif days <= 0:
+            current = "final"
+        elif days == 1:
+            current = "d1"
+        else:
+            current = "preview"
     latest = (
         SkiWeekTeaser.objects.filter(campaign=campaign, milestone=current)
         .order_by("-posted_at", "-id")

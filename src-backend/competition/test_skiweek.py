@@ -534,11 +534,11 @@ class SkiWeekCountdownTests(TestCase):
             "snowfall_72h_cm": 31,
             "current": {"snow_summit_cm": 168, "freezing_level_m": 1480},
         }
-        # 8 Feb start, 6 Feb noon is two calendar days, not three.
+        # 8 Feb midnight is 1 day and 12 hours after 6 Feb noon, so the clock says 1.
         payload = coach_teaser_payload(self.campaign, now=_at(datetime.date(2026, 2, 6), 12), weather=weather)
-        self.assertEqual(payload["days_left"], 2)
+        self.assertEqual(payload["days_left"], 1)
         self.assertNotIn("Three", payload["body"])
-        self.assertIn("2 days", payload["body"])
+        self.assertIn("One day", payload["body"])
         self.assertLess(payload["body"].lower().count(" cm"), 3)
 
     def test_recent_snowfall_and_opening_days_come_from_the_hourly_feed(self):
