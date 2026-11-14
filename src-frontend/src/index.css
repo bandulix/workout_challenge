@@ -1276,5 +1276,19 @@ body.wc-hide-dock .wc-rail { display: none; }
 }
 .ski-frame img { display: block; width: 100%; max-height: 22rem; object-fit: cover; }
 .ski-frame figcaption { padding: 0.7rem 0.9rem 0.9rem; color: #f4f1ea; font-size: 0.95rem; }
-.ski-upload { display: flex; flex-direction: column; gap: 0.45rem; margin-top: 0.8rem; }
-.ski-upload input { color: var(--ski-ice); }
+.ski-photos { margin-top: 1.2rem; }
+.ski-pick {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.35rem;
+  min-height: 5.5rem; margin-top: 0.7rem; padding: 0.8rem;
+  border-radius: 1.25rem; border: 1px solid rgba(155, 231, 255, 0.4);
+  background: rgba(10, 18, 32, 0.72); color: var(--ski-ice);
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  cursor: pointer;
+}
+.ski-pick.is-ready { border-color: var(--ski-gold); color: var(--ski-gold); }
+.ski-pick input {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;
+}
+.ski-picks { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+.ski-picks .ski-pick { margin-top: 0.4rem; }

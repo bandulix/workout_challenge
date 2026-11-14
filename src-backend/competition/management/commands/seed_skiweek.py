@@ -7,6 +7,7 @@ coach line and the card cannot drift apart.
 import datetime
 from decimal import Decimal
 from io import BytesIO
+from pathlib import Path
 
 from django.conf import settings
 from django.core.files.base import ContentFile
@@ -49,6 +50,13 @@ SNOW = {
 }
 
 
+def _demo_file(name):
+    path = Path(__file__).resolve().parents[2] / "demo_photos" / name
+    if not path.is_file():
+        return None
+    return path.read_bytes()
+
+
 def _portrait(initial, color):
     image = Image.new("RGB", (128, 128), color)
     draw = ImageDraw.Draw(image)
@@ -89,7 +97,10 @@ class Command(BaseCommand):
             user.first_name = first
             user.is_verified = True
             user.save()
-            if not user.profile_picture:
+            portrait = _demo_file(f"ski-{first.lower()}.jpg")
+            if portrait is not None:
+                user.profile_picture.save(f"{first.lower()}.jpg", ContentFile(portrait), save=True)
+            elif not user.profile_picture:
                 user.profile_picture.save(f"{first.lower()}.png", _portrait(first[0], color), save=True)
             users.append(user)
 
@@ -102,7 +113,7 @@ class Command(BaseCommand):
                 "language": "en",
             },
         )
-        persona.language = "en"
+        persona.language = "de"
         persona.save(update_fields=["language"])
 
         today = timezone.localdate()
@@ -161,8 +172,12 @@ class Command(BaseCommand):
             self._live_activity(campaign, users)
         else:
             SkiWeekTeaser.objects.filter(campaign=campaign).delete()
+            from drill_instructor.models import DrillInstructorMessage
+            DrillInstructorMessage.objects.filter(
+                config__competition=competition, kind=DrillInstructorMessage.KIND_SKIWEEK,
+            ).delete()
             days = (start - timezone.localdate()).days
-            body = fallback_teaser("preview", "Zermatt", {**campaign.weather_snapshot, "opening_days": campaign.weather_snapshot["daily"]}, days=days, language="en")
+            body = fallback_teaser("preview", "Zermatt", {**campaign.weather_snapshot, "opening_days": campaign.weather_snapshot["daily"]}, days=days, language="de")
             SkiWeekTeaser.objects.create(campaign=campaign, milestone="preview", body=body, source="fallback")
         return competition.pk
 
@@ -177,31 +192,35 @@ class Command(BaseCommand):
         from competition.models import SambucaCrown, SambucaSettlement
         SambucaCrown.objects.filter(settlement__campaign=campaign).delete()
         SambucaSettlement.objects.filter(campaign=campaign).delete()
-        from competition.models import SkiPhotoCard
+        from competition.models import SkiPhotoCard, SkiWeekAward
+        SkiWeekAward.objects.filter(campaign=campaign).delete()
         from drill_instructor.models import DrillInstructorMessage
         posted = list(SkiPhotoCard.objects.filter(campaign=campaign).exclude(message_id=None).values_list("message_id", flat=True))
         DrillInstructorMessage.objects.filter(pk__in=posted).delete()
         SkiPhotoCard.objects.filter(campaign=campaign).delete()
         start = campaign.competition.start_date
         plan = (
-            (lena, "AlpineSki", 0, 11, 1860, "28.4"),
-            (mats, "Snowboard", 0, 9, 1420, "22.1"),
-            (noor, "AlpineSki", 1, 14, 2100, "31.0"),
-            (jules, "BackcountrySki", 1, 6, 980, "12.4"),
-            (lena, "AlpineSki", 2, 8, 1240, "18.6"),
-            (mats, "AlpineSki", 2, 12, 1760, "26.2"),
+            (lena, "AlpineSki", 0, 11, 1860, "28.4", 6, 10, 3.5),
+            (mats, "Snowboard", 0, 9, 2200, "22.1", 9, 40, 6.5),
+            (noor, "AlpineSki", 1, 14, 2100, "31.0", 8, 5, 4),
+            (jules, "BackcountrySki", 1, 6, 980, "12.4", 11, 20, 2.5),
+            (lena, "AlpineSki", 2, 8, 1240, "18.6", 7, 15, 3),
+            (mats, "AlpineSki", 2, 12, 2400, "26.2", 10, 5, 5),
+            (noor, "AlpineSki", 4, 9, 1680, "20.0", 8, 50, 3.5),
         )
         today_offset = (timezone.localdate() - start).days
         if 0 <= today_offset <= (campaign.competition.end_date - start).days:
             plan = plan + (
-                (lena, "AlpineSki", today_offset, 7, 1540, "19.5"),
-                (noor, "Snowboard", today_offset, 5, 880, "14.2"),
+                (lena, "AlpineSki", today_offset, 7, 1540, "19.5", 7, 5, 3),
+                (noor, "Snowboard", today_offset, 5, 880, "14.2", 9, 30, 2.5),
             )
-        for user, sport, offset, runs, elevation, distance in plan:
-            when = datetime.datetime.combine(start + datetime.timedelta(days=offset), datetime.time(10, 0), tzinfo=datetime.timezone.utc)
+        for user, sport, offset, runs, elevation, distance, hour, minute, hours in plan:
+            when = datetime.datetime.combine(
+                start + datetime.timedelta(days=offset), datetime.time(hour, minute), tzinfo=datetime.timezone.utc,
+            )
             Workout.objects.create(
                 user=user, sport_type=sport, start_datetime=when,
-                duration=datetime.timedelta(hours=4), intensity_category=3,
+                duration=datetime.timedelta(hours=hours), intensity_category=3,
                 distance=Decimal(distance), elevation_m=Decimal(elevation), runs=runs,
             )
         # Resort day of the first ski day: a shared crown.
@@ -225,61 +244,39 @@ class Command(BaseCommand):
         self._demo_cards(campaign, users)
 
     def _demo_cards(self, campaign, users):
-        from io import BytesIO
-
         from django.core.files.uploadedfile import SimpleUploadedFile
-        from PIL import Image, ImageDraw
 
         from competition.ski_photos import create_card
 
         lena, mats = users[0], users[1]
+        samples = {
+            "coronation": "ski-coronation.jpg",
+            "hut": "ski-hut.jpg",
+            "split": "ski-split.jpg",
+        }
 
         def paint(kind, paths, prompt):
-            img = Image.new("RGB", (720, 900), (10, 18, 32))
-            draw = ImageDraw.Draw(img)
-            draw.rectangle([18, 18, 702, 882], outline=(232, 184, 74), width=4)
-            draw.rectangle([36, 520, 684, 860], fill=(28, 22, 16))
-            if kind == "split":
-                draw.line([(360, 36), (360, 860)], fill=(155, 231, 255), width=3)
-            try:
-                with Image.open(paths[0]) as src:
-                    src = src.convert("RGB").resize((280, 280))
-                    img.paste(src, (80, 140))
-                if len(paths) > 1:
-                    with Image.open(paths[1]) as src:
-                        src = src.convert("RGB").resize((280, 280))
-                        img.paste(src, (380, 140))
-            except Exception:
-                pass
-            draw.text((48, 48), kind, fill=(155, 231, 255))
-            buf = BytesIO()
-            img.save(buf, format="PNG")
-            return buf.getvalue()
+            return _demo_file(samples[kind])
 
-        def shot(user, name):
-            try:
-                user.profile_picture.open("rb")
-                data = user.profile_picture.read()
-                user.profile_picture.close()
-            except Exception:
-                color = next(item[2] for item in CREW if item[1] == user.first_name)
-                data = _portrait(user.first_name[:1], color).read()
-            return SimpleUploadedFile(name, data, content_type="image/png")
+        def shot(name):
+            return SimpleUploadedFile(name, _demo_file(name), content_type="image/jpeg")
 
         yesterday = timezone.localdate() - datetime.timedelta(days=1)
         create_card(
-            campaign, "coronation", [lena, mats], [shot(lena, "lena.png"), shot(mats, "mats.png")],
-            day=yesterday, editor=paint, writer=lambda *args: None, post=False,
+            campaign, "coronation", [lena, mats], [shot("ski-lena.jpg"), shot("ski-mats.jpg")],
+            day=yesterday, editor=paint,
+            writer=lambda *args: "Lena und Mats tragen die Nachtkrone in Zermatt.",
+            post=False,
         )
         today = timezone.localdate()
         create_card(
-            campaign, "hut", [lena], [shot(lena, "hut.png")],
+            campaign, "hut", [lena], [shot("ski-evening.jpg")],
             day=today, editor=paint,
-            writer=lambda *args: "The fire is going at Zermatt. Snow on the glass.",
+            writer=lambda *args: "Das Feuer brennt in Zermatt. Schnee am Fenster.",
         )
         create_card(
-            campaign, "split", [lena], [shot(lena, "slope.png"), shot(mats, "evening.png")],
+            campaign, "split", [lena], [shot("ski-slope.jpg"), shot("ski-evening.jpg")],
             day=today, editor=paint,
-            writer=lambda *args: "Slope, then evening. Zermatt in two moods.",
+            writer=lambda *args: "Piste, dann Abend. Zermatt in zwei Stimmungen.",
             post=False,
         )

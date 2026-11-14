@@ -219,7 +219,8 @@ def create_card(campaign, kind, users, uploads, *, day=None, editor=None, writer
     names = _names(users)
     card.body = _speak(kind, names=names, resort=resort, language=language, persona=persona, writer=writer)
     if rendered:
-        card.result.save(f"{kind}-{card.id}.png", ContentFile(rendered), save=False)
+        ext = "jpg" if rendered[:3] == b"\xff\xd8\xff" else "png"
+        card.result.save(f"{kind}-{card.id}.{ext}", ContentFile(rendered), save=False)
         card.fallback = False
     else:
         card.fallback = True

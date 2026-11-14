@@ -2,6 +2,7 @@ import {useNavigationType, useParams, useSearchParams} from 'react-router-dom';
 import React, {useEffect, useMemo, useRef, useState} from "react";
 import {useGetCompetitionByIdQuery, useGetExpeditionByCompetitionQuery, useGetSkiWeekByCompetitionQuery, useLogSkiSipMutation, usePostSkiCardMutation, useUndoSkiSipMutation} from "../utils/reducers/competitionsSlice";
 import SkiWeekHome from "../components/SkiWeekHome";
+import {skiT} from "../utils/skiI18n";
 import {ApresBoard, ChampReveal, SambucaSheet, SkiFinale} from "../components/SambucaDesk";
 import {
     Trophy,
@@ -743,7 +744,7 @@ export default function Competition() {
             {skiweek?.enabled && (
                 <div className="container mx-auto px-4">
                     {skiweek.phase === "ended" ? (
-                        <SkiFinale skiweek={skiweek} lang={skiweek.language || skiweek.coach_teaser?.language || "en"}/>
+                        <SkiFinale skiweek={skiweek} lang={skiLang}/>
                     ) : (
                     <SkiWeekHome
                         skiweek={skiweek}
@@ -754,7 +755,7 @@ export default function Competition() {
                     )}
                     {skiweek.yesterday && (
                         <button type="button" className="ski-share" onClick={() => setCrownOpen(true)}>
-                            Yesterday's crown
+                            {skiT(skiLang, "yesterdayCrown")}
                         </button>
                     )}
                 </div>
@@ -841,6 +842,7 @@ export default function Competition() {
             {sambucaOpen && skiweek?.enabled && (
                 <SambucaSheet
                     skiweek={skiweek}
+                    lang={skiLang}
                     onClose={() => setSambucaOpen(false)}
                     onAdd={(amount) => addSambuca(amount)}
                     onUndo={() => undoSip({id, kind: "sambuca"})}
