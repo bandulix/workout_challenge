@@ -253,6 +253,13 @@ class SkiWeekWeatherTests(TestCase):
         self.assertTrue(payload["snapshot"])
         self.assertEqual(payload["current"]["label"], "Snow")
 
+    def test_out_of_range_coordinates_do_not_call_the_weather_host(self):
+        from .skiweek import fetch_weather
+        def getter(*args, **kwargs):
+            raise AssertionError("should not fetch")
+        payload = fetch_weather(120, 10, "Europe/Zurich", 3000, 1500, getter=getter)
+        self.assertFalse(payload["available"])
+
 
 class SkiWeekApiTests(TestCase):
     def setUp(self):

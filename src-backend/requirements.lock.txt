@@ -6,7 +6,7 @@
 #
 aiohappyeyeballs==2.7.1
     # via aiohttp
-aiohttp==3.14.3
+aiohttp==3.14.4
     # via pywebpush
 aiosignal==1.4.0
     # via aiohttp
@@ -233,7 +233,7 @@ vine==5.1.0
     #   kombu
 wcwidth==0.8.2
     # via prompt-toolkit
-yarl==1.24.5
+yarl==1.25.1
     # via aiohttp
 zope-event==6.2
     # via gevent

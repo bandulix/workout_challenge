@@ -36,6 +36,18 @@ def _campaign_or_disabled(competition):
     return campaign
 
 
+def _limited(user_id, bucket, limit, window):
+    """True when this user is over the bucket. Fail open if the cache is down."""
+    from django.core.cache import cache
+    key = f"skiweek-rate:{bucket}:{user_id}"
+    try:
+        if cache.add(key, 1, window):
+            return False
+        return cache.incr(key) > limit
+    except Exception:
+        return False
+
+
 def _error(exc: SkiWeekError):
     body = {"detail": str(exc), "code": exc.code, **exc.extra}
     return Response(body, status=exc.status)
@@ -81,6 +93,8 @@ class SkiWeekSipView(APIView):
         campaign = _campaign_or_disabled(competition)
         if campaign is None:
             return Response({"detail": "This challenge has no ski week."}, status=404)
+        if _limited(request.user.id, "sip", 30, 600):
+            return Response({"detail": "Too many logs. Try again in a few minutes.", "code": "rate"}, status=429)
         photo = None
         if request.FILES.get("photo") is not None:
             try:
@@ -153,13 +167,19 @@ class SkiWeekCardView(APIView):
         campaign = _campaign_or_disabled(competition)
         if campaign is None:
             return Response({"detail": "This challenge has no ski week."}, status=404)
+        if _limited(request.user.id, "card", 12, 3600):
+            return Response({"detail": "Too many photos today.", "code": "rate"}, status=429)
         kind = request.data.get("kind") or ""
         uploads = []
         for key in ("image", "image_b"):
             raw = request.FILES.get(key)
             if raw is None:
                 continue
-            uploads.append(validate_and_reencode_image(raw))
+            try:
+                uploads.append(validate_and_reencode_image(raw))
+            except Exception as exc:
+                detail = getattr(exc, "detail", None) or "That photo could not be saved."
+                return Response({"image": detail, "code": "bad_image"}, status=400)
         users = [request.user]
         if kind == "coronation":
             worn = SambucaCrown.objects.filter(
@@ -186,8 +206,16 @@ class SkiWeekCardImageView(APIView):
         from .models import SkiPhotoCard
 
         competition = _member_competition(request, competition_id)
-        card = get_object_or_404(SkiPhotoCard.objects.filter(campaign__competition=competition), pk=card_id)
+        card = get_object_or_404(
+            SkiPhotoCard.objects.filter(campaign__competition=competition).prefetch_related("subjects"),
+            pk=card_id,
+        )
         which = request.query_params.get("which")
+        if card.kind == "split" and card.user_id != request.user.id:
+            raise Http404
+        if which in ("source", "source_b") and card.user_id != request.user.id:
+            if not card.subjects.filter(pk=request.user.id).exists():
+                raise Http404
         picture = card.source if which == "source" or not card.result else card.result
         if which == "source_b":
             picture = card.source_b
