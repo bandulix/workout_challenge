@@ -605,6 +605,10 @@ export default function Competition() {
     const tab = tabs.some((item) => item.id === tabParam) ? tabParam : "feed";
     const [sambucaOpen, setSambucaOpen] = useState(false);
     const [crownOpen, setCrownOpen] = useState(false);
+    useEffect(() => {
+        document.body.classList.toggle("wc-hide-dock", sambucaOpen || crownOpen);
+        return () => document.body.classList.remove("wc-hide-dock");
+    }, [sambucaOpen, crownOpen]);
     const [logSip] = useLogSkiSipMutation();
     const [undoSip] = useUndoSkiSipMutation();
     async function addSambuca(amount, confirm = false) {
@@ -729,11 +733,8 @@ export default function Competition() {
                         skiweek={skiweek}
                         participants={competition?.user_info}
                         variant={skiweek.phase === "live" ? "live" : "hero"}
-                        onAddOne={skiweek.phase === "live" ? () => addSambuca(1) : undefined}
+                        onAddOne={skiweek.phase === "live" ? () => setSambucaOpen(true) : undefined}
                     />
-                    {skiweek.phase === "live" && (
-                        <button type="button" className="ski-share" onClick={() => setSambucaOpen(true)}>Sambuca</button>
-                    )}
                     {skiweek.yesterday && (
                         <button type="button" className="ski-share" onClick={() => setCrownOpen(true)}>
                             Yesterday's crown
