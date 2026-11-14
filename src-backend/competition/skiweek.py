@@ -923,7 +923,132 @@ def build_payload(campaign, user, *, now=None, getter=None):
             ],
         },
         "weather": weather,
+        "awards": award_payload(campaign, now=now),
     }
+
+
+AWARD_ORDER = (
+    "sambuca_royalty",
+    "erste_liftfahrt",
+    "meiste_hoehenmeter",
+    "laengster_skitag",
+    "fruehstarter",
+    "most_improved",
+    "water_streak",
+)
+
+
+def _tied(scores):
+    """Users who share the highest positive score."""
+    positive = {uid: value for uid, value in scores.items() if value and value > 0}
+    if not positive:
+        return []
+    top = max(positive.values())
+    return [(uid, top) for uid, value in positive.items() if value == top]
+
+
+def compute_week_awards(campaign):
+    """Freeze end-of-week awards. Safe to call again; rows are replaced."""
+    from .models import SambucaEntry, SkiWeekAward
+    Workout = apps.get_model("workouts", "Workout")
+    start, end = challenge_bounds(campaign)
+    members = list(campaign.competition.user.all())
+    names = {user.id: user.username for user in members}
+    member_ids = list(names)
+    SkiWeekAward.objects.filter(campaign=campaign).delete()
+    created = []
+
+    def grant(kind, scores, detail_for):
+        for uid, value in _tied(scores):
+            row = SkiWeekAward.objects.create(
+                campaign=campaign, kind=kind, user_id=uid,
+                value=Decimal(str(value)), detail=detail_for(uid, value)[:80],
+            )
+            created.append(row)
+
+    sambuca = {
+        row["user_id"]: int(row["total"] or 0)
+        for row in SambucaEntry.objects.filter(campaign=campaign, kind=KIND_SAMBUCA)
+        .values("user_id").annotate(total=Sum("amount"))
+    }
+    grant("sambuca_royalty", sambuca, lambda _uid, value: f"{int(value)}")
+
+    workouts = list(Workout.objects.filter(
+        user_id__in=member_ids,
+        sport_type__in=SKI_SPORTS,
+        start_datetime__gte=start,
+        start_datetime__lt=end,
+    ))
+    if workouts:
+        earliest_start = min(workout.start_datetime for workout in workouts)
+        grant(
+            "erste_liftfahrt",
+            {workout.user_id: 1 for workout in workouts if workout.start_datetime == earliest_start},
+            lambda _uid, _value: earliest_start.isoformat()[:16],
+        )
+        elevation = {}
+        for workout in workouts:
+            elevation[workout.user_id] = elevation.get(workout.user_id, 0) + float(workout.elevation_m or 0)
+        grant("meiste_hoehenmeter", elevation, lambda _uid, value: f"{int(value)} m")
+        by_day = {}
+        earliest = {}
+        for workout in workouts:
+            local = as_aware(workout.start_datetime).astimezone(zone(campaign.timezone))
+            key = (workout.user_id, local.date())
+            by_day[key] = by_day.get(key, 0) + workout.duration.total_seconds()
+            clock = local.hour * 60 + local.minute
+            if workout.user_id not in earliest or clock < earliest[workout.user_id]:
+                earliest[workout.user_id] = clock
+        longest = {}
+        for (uid, _day), seconds in by_day.items():
+            longest[uid] = max(longest.get(uid, 0), seconds / 60)
+        grant("laengster_skitag", longest, lambda _uid, value: f"{int(value)} min")
+        grant("fruehstarter", {uid: 24 * 60 - minutes for uid, minutes in earliest.items()}, lambda uid, _value: f"{earliest[uid] // 60:02d}:{earliest[uid] % 60:02d}")
+        midpoint = start + (end - start) / 2
+        first_half, second_half = {}, {}
+        for workout in workouts:
+            bucket = first_half if as_aware(workout.start_datetime) < midpoint else second_half
+            bucket[workout.user_id] = bucket.get(workout.user_id, 0) + float(workout.elevation_m or 0)
+        improved = {
+            uid: second_half.get(uid, 0) - first_half.get(uid, 0)
+            for uid in set(first_half) | set(second_half)
+        }
+        grant("most_improved", improved, lambda _uid, value: f"+{int(value)} m")
+
+    if campaign.water_enabled:
+        water_days = {}
+        for row in SambucaEntry.objects.filter(campaign=campaign, kind=KIND_WATER).values("user_id", "resort_day"):
+            water_days.setdefault(row["user_id"], set()).add(row["resort_day"])
+        streaks = {}
+        for uid, days in water_days.items():
+            ordered = sorted(days)
+            best = run = 1
+            for previous, current in zip(ordered, ordered[1:]):
+                run = run + 1 if current == previous + datetime.timedelta(days=1) else 1
+                best = max(best, run)
+            streaks[uid] = best
+        grant("water_streak", streaks, lambda _uid, value: f"{int(value)} days")
+    return created
+
+
+def award_payload(campaign, now=None):
+    from .models import SkiWeekAward
+    if phase_of(campaign, now) != "ended":
+        return []
+    if not SkiWeekAward.objects.filter(campaign=campaign).exists():
+        compute_week_awards(campaign)
+    names = {user.id: user.username for user in campaign.competition.user.all()}
+    rows = []
+    for award in SkiWeekAward.objects.filter(campaign=campaign).select_related("user"):
+        rows.append({
+            "kind": award.kind,
+            "user_id": award.user_id,
+            "username": names.get(award.user_id) or award.user.username,
+            "value": float(award.value),
+            "detail": award.detail,
+        })
+    rows.sort(key=lambda row: (AWARD_ORDER.index(row["kind"]) if row["kind"] in AWARD_ORDER else 99, row["username"] or ""))
+    return rows
 
 
 _DRINK_NUDGE = (

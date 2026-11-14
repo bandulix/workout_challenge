@@ -749,3 +749,22 @@ class SkiWeekTeaser(models.Model):
 
     def __str__(self):
         return f"{self.milestone} for {self.campaign_id}"
+
+
+class SkiWeekAward(models.Model):
+    """One end-of-week award. Ties are several rows with the same kind."""
+
+    campaign = models.ForeignKey(SkiWeekCampaign, on_delete=models.CASCADE, related_name="awards")
+    kind = models.CharField(max_length=32)
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="skiweek_awards")
+    value = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    detail = models.CharField(max_length=80, blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["campaign", "kind", "user"], name="one_skiweek_award_per_user"),
+        ]
+        ordering = ["kind", "-value"]
+
+    def __str__(self):
+        return f"{self.kind} {self.user_id}"
