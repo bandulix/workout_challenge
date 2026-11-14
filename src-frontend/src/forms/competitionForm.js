@@ -10,6 +10,7 @@ import {confirmAction} from "../utils/dialogs";
 import {toast} from "../utils/toasts";
 import {errText} from "../utils/errors";
 import {clearBodyScrollLock} from "../utils/overlay";
+import {SKI_RESORTS, SKI_TIMEZONES} from "../utils/skiResorts";
 
 
 const fields = {
@@ -92,6 +93,60 @@ const fields = {
         ],
     },
 
+    "skiweek_enabled": {
+        "type": "checkbox",
+        "required": false,
+        "read_only": false,
+        "label": "Skiwoche: a resort week with weather, snow, and a Sambuca crown",
+    },
+
+    "skiweek_resort_slug": {
+        "type": "select",
+        "required": false,
+        "read_only": false,
+        "label": "Ski resort",
+        "width": "max-sm:w-full w-1/2",
+        "placeholder": false,
+        "selectList": SKI_RESORTS,
+    },
+
+    "skiweek_timezone": {
+        "type": "select",
+        "required": false,
+        "read_only": false,
+        "label": "Resort timezone",
+        "width": "max-sm:w-full w-1/2",
+        "placeholder": false,
+        "selectList": SKI_TIMEZONES,
+    },
+
+    "skiweek_cutoff_hour": {
+        "type": "number",
+        "required": false,
+        "read_only": false,
+        "label": "Day cutoff hour (late après counts for the previous evening)",
+        "width": "max-sm:w-full w-1/4",
+        "min": 0,
+        "max": 23,
+    },
+
+    "skiweek_points_per_sambuca": {
+        "type": "number",
+        "required": false,
+        "read_only": false,
+        "label": "Points per Sambuca",
+        "width": "max-sm:w-full w-1/4",
+        "min": 0,
+        "max": 100,
+    },
+
+    "skiweek_water_enabled": {
+        "type": "checkbox",
+        "required": false,
+        "read_only": false,
+        "label": "Optional water counter",
+    },
+
 }
 
 
@@ -148,6 +203,13 @@ export default function CompetitionForm({competition, initialValues: prefillValu
     // Objective and route only matter with the Expedition on; once the
     // route is locked (challenge started) they are frozen server-side, so
     // show them read-only instead of pretending they can change.
+    if (!values.skiweek_enabled) {
+        delete finalFields.skiweek_resort_slug;
+        delete finalFields.skiweek_timezone;
+        delete finalFields.skiweek_cutoff_hour;
+        delete finalFields.skiweek_points_per_sambuca;
+        delete finalFields.skiweek_water_enabled;
+    }
     if (!values.expedition_enabled) {
         delete finalFields.expedition_objective;
         delete finalFields.expedition_theme;

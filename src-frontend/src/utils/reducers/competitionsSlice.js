@@ -30,6 +30,13 @@ export const competitionsApi = createApi({
             }),
             providesTags: (result, error, id) => [{type: 'Competition', id}],
         }),
+        getSkiWeekByCompetition: builder.query({
+            query: (id) => ({
+                url: `competition/${id}/skiweek/`,
+                method: 'GET',
+            }),
+            providesTags: (result, error, id) => [{type: 'Competition', id}],
+        }),
         voteExpeditionShortcut: builder.mutation({
             query: ({id, choice}) => ({
                 url: `competition/${id}/expedition/shortcut-vote/`,
@@ -68,6 +75,7 @@ export const {
     useGetCompetitionsQuery,
     useGetCompetitionByIdQuery,
     useGetExpeditionByCompetitionQuery,
+    useGetSkiWeekByCompetitionQuery,
     useVoteExpeditionShortcutMutation,
     useAddCompetitionMutation,
     useUpdateCompetitionMutation,

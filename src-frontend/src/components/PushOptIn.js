@@ -172,7 +172,7 @@ function PushOptInCard({compact = false}) {
                 <p className="text-xs text-muted">Quiet hours still hold this until morning.</p>
             </div>
             <div className="mt-3 space-y-2">
-                {[["duels", "Duels"], ["coach", "Coach"], ["season", "Season"]].map(([id, label]) => (
+                {[["duels", "Duels"], ["coach", "Coach"], ["season", "Season"], ["skiweek", "Skiwoche"]].map(([id, label]) => (
                     <label key={id} className="flex min-h-[44px] items-center justify-between gap-3 text-sm">
                         <span>{label}</span>
                         <input type="checkbox" checked={categories[id] !== false}
