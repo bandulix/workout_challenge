@@ -32,7 +32,7 @@ celery==5.6.3
     #   django-celery-beat
     #   flower
     #   sentry-sdk
-certifi==2026.7.22
+certifi==2026.10.18
     # via
     #   curl-cffi
     #   requests
@@ -86,7 +86,7 @@ django-redis==5.4.0
     # via -r requirements.txt
 django-timezone-field==7.2.2
     # via django-celery-beat
-djangorestframework==3.17.2
+djangorestframework==3.18.2
     # via
     #   -r requirements.txt
     #   djangorestframework-simplejwt
@@ -136,7 +136,7 @@ packaging==26.3
     # via
     #   gunicorn
     #   kombu
-pillow==12.3.0
+pillow==13.0.0
     # via
     #   -r requirements.txt
     #   pillow-heif
@@ -196,7 +196,7 @@ sniffio==1.3.1
     # via openai
 sqlparse==0.6.0
     # via django
-tornado==6.5.9
+tornado==6.6.1
     # via flower
 truststore==0.10.4
     # via
