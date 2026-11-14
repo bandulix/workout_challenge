@@ -16,7 +16,7 @@ import {useGetCompetitionsQuery} from "../utils/reducers/competitionsSlice";
 import {useGetUserByIdQuery} from "../utils/reducers/usersSlice";
 import {timeAgo} from "../utils/time";
 import usePollingInterval from "../utils/usePollingInterval";
-import useWideLayout from "../utils/useWideLayout";
+import {usePaneLayout} from "../utils/useWideLayout";
 import {feedSfxItems, hallSfxItems, useSfxObserver} from "../utils/sfx";
 import {PaneHead} from "../components/uiBits";
 import {stripCharacterCountSuffix} from "../utils/coachText";
@@ -266,7 +266,7 @@ function CoachPage() {
         return Object.values(competitions).filter((c) => c.owner === user.id);
     }, [competitions, user]);
 
-    const wide = useWideLayout();
+    const wide = usePaneLayout();
 
     return (
         <PageWrapper>
@@ -280,16 +280,24 @@ function CoachPage() {
                 </div>
             ) : (
                 <>
+                    {!wide && (
                     <CoachHero persona={heroPersona} config={heroConfig} message={latestMessage}
                                briefing={todayBriefing}
                                ownedCompetitions={ownedCompetitions}
                                mood={heroConfig?.mood}
                                lastOwnActivityId={lastOwnActivityId}
                                meId={user?.id}/>
-                    <div className="container mx-auto max-w-3xl p-4 md:max-w-6xl">
+                    )}
+                    <div className={"container mx-auto p-4 " + (wide ? "max-w-5xl" : "max-w-3xl")}>
                         {wide ? (
                             <div className="grid grid-cols-2 items-start gap-4 stagger-in">
                                 <div className="flex flex-col gap-4 stagger-in">
+                                    <CoachHero persona={heroPersona} config={heroConfig} message={latestMessage}
+                                               briefing={todayBriefing}
+                                               ownedCompetitions={ownedCompetitions}
+                                               mood={heroConfig?.mood}
+                                               lastOwnActivityId={lastOwnActivityId}
+                                               meId={user?.id}/>
                                     {heroConfig && <CoachHandover configId={heroConfig.id} enabled={heroConfig.enabled}/>}
                                     {shownOrder && <OrderCard order={shownOrder}/>}
                                 </div>

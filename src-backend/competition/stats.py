@@ -81,7 +81,7 @@ def _compute_days_on_rank(competition_obj, timeseries_user, leaderboard_user, us
         for day_offset in range(total_days):
             days_ago = (today - (first_day + datetime.timedelta(days=day_offset))).days
             entry = per_day.get(days_ago)
-            running += (entry['total'] or 0) if entry else 0
+            running += float((entry['total'] or 0) if entry else 0)
             totals.append(running)
         cumulative[uid] = totals
 

@@ -149,11 +149,13 @@ function PageWrapper({additionClasses = '', children}) {
     // rail, so bottom padding collapses and content shifts right of
     // the rail (md:pl-[112px]) - but only off public pages.
     const isPublic = isPublicPath(useLocation().pathname);
-    const chrome = isPublic ? "" : "md:pl-[112px] md:pb-6 ";
+    const chrome = isPublic ? " is-public" : "";
     // When the verify-email banner is visible, html.wc-verify-banner +
     // .wc-page-wrap (see index.css) clears the fixed overlay.
+    // Bottom and left insets live in index.css so the foldable rail and
+    // the phone dock share one breakpoint.
     return (
-        <div className={"wc-page-wrap relative z-10 min-h-screen text-ink-950 dark:text-white p-2 sm:p-6 max-md:pb-[calc(11.5rem+env(safe-area-inset-bottom))] " + chrome + additionClasses}>
+        <div className={"wc-page-wrap relative z-10 min-h-screen text-ink-950 dark:text-white p-2 sm:p-6 " + chrome + additionClasses}>
             <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-[#efece4]/30 to-transparent dark:from-volt-400/5" aria-hidden="true"/>
             {children}
         </div>

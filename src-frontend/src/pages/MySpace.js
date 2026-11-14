@@ -933,7 +933,7 @@ export default function MySpace() {
                 />
             )}
 
-            <div className={"container mx-auto p-4" + (seasonChallenge ? " relative z-10" : "")}>
+            <div className={"wc-dash container mx-auto p-4" + (seasonChallenge ? " relative z-10" : "")}>
                 <div className="w-full">
                     {
                         (userLoading || workoutsIsLoading || (competitionLoading && !competitions)) ? (
@@ -957,16 +957,16 @@ export default function MySpace() {
                                 ? accentHex(orderSource.persona_detail.theme_color)
                                 : undefined}
                         />
-                        {showStamps && (
-                            <section className="mb-4">
-                                <PaneHead title="Stamps" hint="Earned tags glow. Locked ones stay outlines. Rings show progress."/>
-                                <div className="mb-3 px-1">
-                                    <RecordPills record={user.duel_record}/>
-                                </div>
-                                <StampWall earned={user.dog_tags}/>
-                            </section>
-                        )}
                     </div>
+                )}
+                {showStamps && user && (
+                    <section className="wc-dash-stamps mb-4">
+                        <PaneHead title="Stamps" hint="Earned tags glow. Locked ones stay outlines. Rings show progress."/>
+                        <div className="mb-3 px-1">
+                            <RecordPills record={user.duel_record}/>
+                        </div>
+                        <StampWall earned={user.dog_tags}/>
+                    </section>
                 )}
                 <div className={seasonChallenge ? "relative z-10 mb-6" : ""}>
                 {user && <DuelInbox/>}
@@ -1012,8 +1012,8 @@ export default function MySpace() {
                     md+ (fold and up): streak and challenges share one
                     even row at the same height; latest workouts sits
                     full width under them. */}
-                <div className="w-full md:grid md:grid-cols-2 md:items-stretch md:gap-4 stagger-in">
-                    <div className="mb-4 md:mb-0 md:h-full">
+                <div className="w-full fold:grid fold:grid-cols-2 fold:items-stretch fold:gap-4 stagger-in">
+                    <div className="mb-4 fold:mb-0 fold:h-full">
                         {
                             (userLoading || workoutsIsLoading) ? (
                                 <SkeletonCard height="h-48 mb-4"/>
@@ -1029,7 +1029,7 @@ export default function MySpace() {
                     {/* My Workouts - the 5 most recent trainings.
                         order-last keeps this under the pair on md
                         without changing the phone stack. */}
-                    <div className="mb-4 md:col-span-2 md:order-last">
+                    <div className="mb-4 fold:col-span-2 fold:order-last">
                         {
                             (userLoading || workoutsIsLoading) ? (
                                 <SkeletonRows n={5}/>
@@ -1041,7 +1041,7 @@ export default function MySpace() {
                             )
                         }
                     </div>
-                    <div className="mb-4 md:mb-0 md:h-full">
+                    <div className="mb-4 fold:mb-0 fold:h-full">
                         {
                             (userLoading || competitionLoading) ? (
                                 <SkeletonRows n={3}/>

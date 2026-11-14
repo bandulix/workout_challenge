@@ -15,6 +15,10 @@ module.exports = {
   ],
   theme: {
     extend: {
+      screens: {
+        fold: "600px",
+        pane: "880px",
+      },
       colors: {
         // Signature "volt" accent - the Drill Instructor's whistle.
         volt: {

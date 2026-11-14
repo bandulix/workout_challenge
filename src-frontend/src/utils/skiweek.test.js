@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
 import {countdownParts, freshSnowCm, shareText, visiblePhase} from "./skiweek";
-import {unitLabel, weatherName} from "./skiI18n";
+import {forecastDay, unitLabel, weatherName} from "./skiI18n";
 
 const START = "2026-02-08T00:00:00+01:00";
 
@@ -48,6 +48,8 @@ describe("ski week countdown", () => {
         expect(unitLabel("de", 1, "day", "days")).toBe("Tag");
         expect(weatherName("en", 71)).toBe("Snow");
         expect(weatherName("de", 71)).toBe("Schnee");
+        expect(forecastDay("de", "2026-11-16")).toMatch(/16\.11\./);
+        expect(forecastDay("en", "2026-11-16")).toMatch(/16/);
         const text = shareText(week("prestart"), new Date("2026-02-07T12:00:00+01:00"));
         expect(text).toContain("days");
         expect(text).toContain("12 cm fresh snow");
