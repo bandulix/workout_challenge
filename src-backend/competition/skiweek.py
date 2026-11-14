@@ -924,6 +924,7 @@ def build_payload(campaign, user, *, now=None, getter=None):
         },
         "weather": weather,
         "awards": award_payload(campaign, now=now),
+        "cards": _cards(campaign, user),
     }
 
 
@@ -1029,6 +1030,11 @@ def compute_week_awards(campaign):
             streaks[uid] = best
         grant("water_streak", streaks, lambda _uid, value: f"{int(value)} days")
     return created
+
+
+def _cards(campaign, user):
+    from .ski_photos import cards_payload
+    return cards_payload(campaign, user)
 
 
 def award_payload(campaign, now=None):

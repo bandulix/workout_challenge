@@ -137,3 +137,64 @@ class SkiWeekSipPhotoView(APIView):
         elif name.endswith(".webp"):
             content_type = "image/webp"
         return FileResponse(entry.photo.open("rb"), content_type=content_type)
+
+
+class SkiWeekCardView(APIView):
+    """Create a hut postcard or a slope/evening split, or a coronation selfie."""
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def post(self, request, competition_id):
+        from .models import SambucaCrown
+        from .ski_photos import SkiPhotoError, create_card
+
+        competition = _member_competition(request, competition_id)
+        campaign = _campaign_or_disabled(competition)
+        if campaign is None:
+            return Response({"detail": "This challenge has no ski week."}, status=404)
+        kind = request.data.get("kind") or ""
+        uploads = []
+        for key in ("image", "image_b"):
+            raw = request.FILES.get(key)
+            if raw is None:
+                continue
+            uploads.append(validate_and_reencode_image(raw))
+        users = [request.user]
+        if kind == "coronation":
+            worn = SambucaCrown.objects.filter(
+                settlement__campaign=campaign, user=request.user,
+            ).select_related("settlement").order_by("-settlement__resort_day").first()
+            if worn is None:
+                return Response({"detail": "Only a champ can add a coronation selfie.", "code": "not_champ"}, status=403)
+            users = [crown.user for crown in worn.settlement.crowns.select_related("user")]
+            day = worn.settlement.resort_day
+        else:
+            day = None
+        try:
+            create_card(campaign, kind, users, uploads, day=day)
+        except SkiPhotoError as exc:
+            status = 409 if exc.code == "already" else 400
+            return Response({"detail": exc.code, "code": exc.code}, status=status)
+        return Response(build_payload(campaign, request.user), status=201)
+
+
+class SkiWeekCardImageView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, competition_id, card_id):
+        from .models import SkiPhotoCard
+
+        competition = _member_competition(request, competition_id)
+        card = get_object_or_404(SkiPhotoCard.objects.filter(campaign__competition=competition), pk=card_id)
+        which = request.query_params.get("which")
+        picture = card.source if which == "source" or not card.result else card.result
+        if which == "source_b":
+            picture = card.source_b
+        if not picture:
+            raise Http404
+        content_type = "image/jpeg"
+        name = picture.name.lower()
+        if name.endswith(".png"):
+            content_type = "image/png"
+        return FileResponse(picture.open("rb"), content_type=content_type)

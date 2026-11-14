@@ -2,6 +2,7 @@ import React, {useState} from "react";
 import {Minus, Plus, Share2, X} from "lucide-react";
 import {shareText} from "../utils/skiweek";
 import {skiLocale, skiT} from "../utils/skiI18n";
+import {useProtectedImage} from "../utils/protectedMedia";
 
 const PILLS = [
     {id: "punkte", key: "points"},
@@ -15,7 +16,7 @@ function pillValue(row, pill) {
     return Math.round(row.punkte || 0);
 }
 
-export function ApresBoard({skiweek, lang = "en"}) {
+export function ApresBoard({skiweek, lang = "en", onUpload}) {
     const [scope, setScope] = useState("day");
     const [pill, setPill] = useState("sambuca");
     const rows = (scope === "week" ? skiweek?.board?.week : skiweek?.board?.day) || [];
@@ -45,7 +46,70 @@ export function ApresBoard({skiweek, lang = "en"}) {
                     </li>
                 ))}
             </ol>
+            <SkiPhotoStudio skiweek={skiweek} lang={lang} onUpload={onUpload}/>
         </section>
+    );
+}
+
+function SkiFrame({card, lang, label}) {
+    const {src} = useProtectedImage(card?.image || null, "card");
+    if (!card) return null;
+    async function share() {
+        const text = card.body || "";
+        if (navigator.share) {
+            try { await navigator.share({title: label, text}); return; } catch (err) { if (err?.name === "AbortError") return; }
+        }
+        try { await navigator.clipboard.writeText(text); } catch { /* the caption stays on the card */ }
+    }
+    return (
+        <figure className="ski-frame">
+            {src && <img src={src} alt={label}/>}
+            <figcaption>
+                <p>{card.body}</p>
+                {card.fallback && <p className="ski-meta">{skiT(lang, "photoReady")}</p>}
+                <button type="button" className="ski-share" onClick={share}>{skiT(lang, "share")}</button>
+            </figcaption>
+        </figure>
+    );
+}
+
+export function SkiPhotoStudio({skiweek, lang = "en", onUpload}) {
+    const [slope, setSlope] = useState(null);
+    const [evening, setEvening] = useState(null);
+    const cards = skiweek?.cards || {};
+    return (
+        <div>
+            <p className="ski-kicker">{skiT(lang, "hutTitle")}</p>
+            <p className="ski-meta">{skiT(lang, "hutHint")}</p>
+            {(cards.huts || []).map((card) => (
+                <SkiFrame key={card.id} card={card} lang={lang} label={skiT(lang, "hutTitle")}/>
+            ))}
+            {onUpload && (
+                <label className="ski-upload">
+                    {skiT(lang, "hutTitle")}
+                    <input type="file" accept="image/*" onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) onUpload("hut", [file]);
+                    }}/>
+                </label>
+            )}
+            <p className="ski-kicker">{skiT(lang, "splitTitle")}</p>
+            <p className="ski-meta">{skiT(lang, "splitHint")}</p>
+            <SkiFrame card={cards.split} lang={lang} label={skiT(lang, "splitTitle")}/>
+            {onUpload && (
+                <div className="ski-upload">
+                    <label>{skiT(lang, "slopePhoto")}
+                        <input type="file" accept="image/*" onChange={(event) => setSlope(event.target.files?.[0] || null)}/>
+                    </label>
+                    <label>{skiT(lang, "eveningPhoto")}
+                        <input type="file" accept="image/*" onChange={(event) => setEvening(event.target.files?.[0] || null)}/>
+                    </label>
+                    <button type="button" className="ski-share" disabled={!slope || !evening} onClick={() => onUpload("split", [slope, evening])}>
+                        {skiT(lang, "splitTitle")}
+                    </button>
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -85,7 +149,7 @@ export function SambucaSheet({skiweek, busy, onClose, onAdd, onUndo, lang = "en"
     );
 }
 
-export function ChampReveal({skiweek, onClose, lang = "en"}) {
+export function ChampReveal({skiweek, onClose, onSelfie, lang = "en"}) {
     const crown = skiweek?.yesterday || (skiweek?.wearing?.length ? {
         users: skiweek.wearing,
         count: skiweek.wearing[0]?.count,
@@ -115,6 +179,16 @@ export function ChampReveal({skiweek, onClose, lang = "en"}) {
                 <h2 className="ski-open">Crown</h2>
                 <p className="ski-num">{crown.count || 0}</p>
                 <p>{line}</p>
+                <SkiFrame card={skiweek?.cards?.coronation} lang={lang} label={skiT(lang, "coronation")}/>
+                {onSelfie && (
+                    <label className="ski-upload">
+                        {skiT(lang, "selfie")}
+                        <input type="file" accept="image/*" onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) onSelfie(file);
+                        }}/>
+                    </label>
+                )}
                 <p className="ski-meta">{crown.resort_day}</p>
                 <button type="button" className="ski-share" onClick={share}><Share2 className="h-4 w-4"/> Share</button>
                 <button type="button" className="ski-share" onClick={onClose}>Close</button>

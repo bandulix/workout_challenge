@@ -768,3 +768,50 @@ class SkiWeekAward(models.Model):
 
     def __str__(self):
         return f"{self.kind} {self.user_id}"
+
+
+class SkiPhotoCard(models.Model):
+    """A coach-edited ski-week picture: coronation, hut postcard, or split.
+
+    Hut and split cards are one per person per resort day. The coronation
+    is one card for the day, shared when the crown is shared.
+    """
+
+    KIND_CORONATION = "coronation"
+    KIND_HUT = "hut"
+    KIND_SPLIT = "split"
+    KINDS = (KIND_CORONATION, KIND_HUT, KIND_SPLIT)
+
+    campaign = models.ForeignKey(SkiWeekCampaign, on_delete=models.CASCADE, related_name="photo_cards")
+    user = models.ForeignKey(
+        CustomUser, null=True, blank=True, on_delete=models.CASCADE, related_name="ski_photo_cards",
+    )
+    kind = models.CharField(max_length=16)
+    resort_day = models.DateField()
+    source = models.ImageField(upload_to="skiweek/cards/", blank=True)
+    source_b = models.ImageField(upload_to="skiweek/cards/", blank=True)
+    result = models.ImageField(upload_to="skiweek/cards/", blank=True)
+    body = models.TextField(blank=True, default="")
+    fallback = models.BooleanField(default=False)
+    refreshed = models.BooleanField(default=False)
+    message_id = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    subjects = models.ManyToManyField(CustomUser, blank=True, related_name="ski_photo_subjects")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["campaign", "user", "kind", "resort_day"],
+                condition=models.Q(kind__in=["hut", "split"]),
+                name="one_ski_photo_per_user_day",
+            ),
+            models.UniqueConstraint(
+                fields=["campaign", "kind", "resort_day"],
+                condition=models.Q(kind="coronation"),
+                name="one_coronation_per_resort_day",
+            ),
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.kind} {self.campaign_id} {self.resort_day}"

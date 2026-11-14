@@ -35,6 +35,8 @@ from competition.duel_api import (
 )
 from competition.expedition_api import ExpeditionShortcutVoteView, ExpeditionView
 from competition.skiweek_api import (
+    SkiWeekCardImageView,
+    SkiWeekCardView,
     SkiWeekResortListView,
     SkiWeekSipPhotoView,
     SkiWeekSipView,
@@ -128,6 +130,8 @@ urlpatterns = [
         path('competition/<int:competition_id>/skiweek/', SkiWeekView.as_view(), name='competition-skiweek'),
         path('competition/<int:competition_id>/skiweek/weather/', SkiWeekWeatherView.as_view(), name='competition-skiweek-weather'),
         path('competition/<int:competition_id>/skiweek/sips/', SkiWeekSipView.as_view(), name='competition-skiweek-sips'),
+        path('competition/<int:competition_id>/skiweek/cards/', SkiWeekCardView.as_view(), name='competition-skiweek-cards'),
+        path('competition/<int:competition_id>/skiweek/cards/<int:card_id>/image/', SkiWeekCardImageView.as_view(), name='competition-skiweek-card-image'),
         path('competition/<int:competition_id>/skiweek/sips/<int:entry_id>/photo/', SkiWeekSipPhotoView.as_view(), name='competition-skiweek-sip-photo'),
         path('competition/<int:competition_id>/expedition/shortcut-vote/', ExpeditionShortcutVoteView.as_view(), name='competition-expedition-shortcut-vote'),
         path('drill-instructor/comeback/', ComebackBenchView.as_view(), name='comeback-bench'),

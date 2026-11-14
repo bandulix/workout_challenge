@@ -1267,3 +1267,14 @@ body.wc-hide-dock .wc-rail { display: none; }
 .ski-stepper, .ski-quick { justify-content: center; margin-top: 0.6rem; }
 .ski-logs { margin-top: 0.8rem; }
 .ski-logs li { display: flex; justify-content: space-between; min-height: 36px; font-variant-numeric: tabular-nums; }
+.ski-frame {
+  margin-top: 0.8rem;
+  border: 1px solid var(--ski-gold);
+  border-radius: 18px;
+  overflow: hidden;
+  background: #0a1220;
+}
+.ski-frame img { display: block; width: 100%; max-height: 22rem; object-fit: cover; }
+.ski-frame figcaption { padding: 0.7rem 0.9rem 0.9rem; color: #f4f1ea; font-size: 0.95rem; }
+.ski-upload { display: flex; flex-direction: column; gap: 0.45rem; margin-top: 0.8rem; }
+.ski-upload input { color: var(--ski-ice); }

@@ -177,6 +177,11 @@ class Command(BaseCommand):
         from competition.models import SambucaCrown, SambucaSettlement
         SambucaCrown.objects.filter(settlement__campaign=campaign).delete()
         SambucaSettlement.objects.filter(campaign=campaign).delete()
+        from competition.models import SkiPhotoCard
+        from drill_instructor.models import DrillInstructorMessage
+        posted = list(SkiPhotoCard.objects.filter(campaign=campaign).exclude(message_id=None).values_list("message_id", flat=True))
+        DrillInstructorMessage.objects.filter(pk__in=posted).delete()
+        SkiPhotoCard.objects.filter(campaign=campaign).delete()
         start = campaign.competition.start_date
         plan = (
             (lena, "AlpineSki", 0, 11, 1860, "28.4"),
@@ -217,3 +222,64 @@ class Command(BaseCommand):
             log_sip(campaign, lena, amount=2, when=today_evening)
             log_sip(campaign, mats, amount=1, when=today_evening)
         settle_due_crowns(now=timezone.now())
+        self._demo_cards(campaign, users)
+
+    def _demo_cards(self, campaign, users):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image, ImageDraw
+
+        from competition.ski_photos import create_card
+
+        lena, mats = users[0], users[1]
+
+        def paint(kind, paths, prompt):
+            img = Image.new("RGB", (720, 900), (10, 18, 32))
+            draw = ImageDraw.Draw(img)
+            draw.rectangle([18, 18, 702, 882], outline=(232, 184, 74), width=4)
+            draw.rectangle([36, 520, 684, 860], fill=(28, 22, 16))
+            if kind == "split":
+                draw.line([(360, 36), (360, 860)], fill=(155, 231, 255), width=3)
+            try:
+                with Image.open(paths[0]) as src:
+                    src = src.convert("RGB").resize((280, 280))
+                    img.paste(src, (80, 140))
+                if len(paths) > 1:
+                    with Image.open(paths[1]) as src:
+                        src = src.convert("RGB").resize((280, 280))
+                        img.paste(src, (380, 140))
+            except Exception:
+                pass
+            draw.text((48, 48), kind, fill=(155, 231, 255))
+            buf = BytesIO()
+            img.save(buf, format="PNG")
+            return buf.getvalue()
+
+        def shot(user, name):
+            try:
+                user.profile_picture.open("rb")
+                data = user.profile_picture.read()
+                user.profile_picture.close()
+            except Exception:
+                color = next(item[2] for item in CREW if item[1] == user.first_name)
+                data = _portrait(user.first_name[:1], color).read()
+            return SimpleUploadedFile(name, data, content_type="image/png")
+
+        yesterday = timezone.localdate() - datetime.timedelta(days=1)
+        create_card(
+            campaign, "coronation", [lena, mats], [shot(lena, "lena.png"), shot(mats, "mats.png")],
+            day=yesterday, editor=paint, writer=lambda *args: None, post=False,
+        )
+        today = timezone.localdate()
+        create_card(
+            campaign, "hut", [lena], [shot(lena, "hut.png")],
+            day=today, editor=paint,
+            writer=lambda *args: "The fire is going at Zermatt. Snow on the glass.",
+        )
+        create_card(
+            campaign, "split", [lena], [shot(lena, "slope.png"), shot(mats, "evening.png")],
+            day=today, editor=paint,
+            writer=lambda *args: "Slope, then evening. Zermatt in two moods.",
+            post=False,
+        )
