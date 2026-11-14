@@ -572,7 +572,11 @@ def _shape_weather(valley, summit, *, tz_name="Europe/Zurich", now=None):
 
 def fetch_weather(lat, lon, tz_name, summit_m, valley_m, *, getter=None, now=None):
     """Current conditions, a short forecast, and Berg/Tal snow. Cached 45 minutes."""
-    if lat is None or lon is None:
+    try:
+        lat_f, lon_f = float(lat), float(lon)
+    except (TypeError, ValueError):
+        lat_f = lon_f = None
+    if lat_f is None or not (-90 <= lat_f <= 90 and -180 <= lon_f <= 180):
         return {"available": False, "attribution": WEATHER_ATTRIBUTION, "source": "Open-Meteo"}
     key = f"skiweek-wx2:{round(float(lat), 3)}:{round(float(lon), 3)}:{valley_m or 0}:{summit_m or 0}"
     cached = cache.get(key)
