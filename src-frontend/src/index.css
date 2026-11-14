@@ -1228,3 +1228,42 @@ code {
 @media (prefers-reduced-motion: reduce) {
   .ski-flakes span, .ski-kickoff { animation: none; }
 }
+.ski-plus { margin-top: 0.8rem; }
+.ski-scope, .ski-pills, .ski-quick, .ski-stepper { display: flex; gap: 0.4rem; position: relative; z-index: 1; }
+.ski-scope button, .ski-pills button, .ski-quick button {
+  min-height: 44px;
+  padding: 0 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(155, 231, 255, 0.35);
+  color: var(--ski-ice);
+  font-weight: 800;
+}
+.ski-pills { margin: 0.7rem 0; }
+.ski-pills button[aria-selected="true"], .ski-scope button[aria-pressed="true"] {
+  color: #0b0b0c;
+  background: var(--ski-gold);
+  border-color: var(--ski-gold);
+}
+.ski-board { list-style: none; margin: 0; padding: 0; position: relative; z-index: 1; }
+.ski-board li { display: flex; gap: 0.7rem; align-items: center; min-height: 44px; }
+.ski-board strong { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ski-ice); }
+.ski-sheet-back {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(8, 12, 20, 0.72);
+  display: flex; align-items: flex-end; justify-content: center;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.ski-sheet, .ski-champ {
+  width: min(100%, 28rem);
+  max-height: calc(100dvh - 1rem);
+  overflow: auto;
+  border-radius: 28px 28px 0 0;
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+}
+body.wc-hide-dock .wc-dock,
+body.wc-hide-dock .wc-rail { display: none; }
+.skiweek-live { padding-bottom: 4.75rem; }
+.ski-sheet-num { font-size: 5rem; text-align: center; color: var(--ski-gold); }
+.ski-stepper, .ski-quick { justify-content: center; margin-top: 0.6rem; }
+.ski-logs { margin-top: 0.8rem; }
+.ski-logs li { display: flex; justify-content: space-between; min-height: 36px; font-variant-numeric: tabular-nums; }
