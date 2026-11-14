@@ -594,6 +594,16 @@ def fetch_weather(lat, lon, tz_name, summit_m, valley_m, *, getter=None, now=Non
 
 
 def weather_for_campaign(campaign, *, getter=None):
+    locked = campaign.weather_snapshot or {}
+    if locked.get("lock") and (locked.get("current") or locked.get("daily")):
+        payload = dict(locked)
+        payload["available"] = True
+        payload["attribution"] = WEATHER_ATTRIBUTION
+        payload["source"] = locked.get("source") or "Open-Meteo"
+        payload["snapshot"] = True
+        payload.setdefault("mood", "clear")
+        payload.setdefault("is_snowing", False)
+        return _attach_opening(payload, campaign)
     live = fetch_weather(
         campaign.latitude, campaign.longitude, campaign.timezone,
         campaign.summit_elevation_m, campaign.valley_elevation_m, getter=getter,
@@ -940,59 +950,81 @@ def _fmt_cm(value):
     return f"{number:.1f}"
 
 
-def snow_sentence(weather):
-    """One sober sentence of the snow report. Never mentions drinks."""
+def snow_hook(weather):
+    """At most two snow facts, as a short clause. Never a full report."""
     if not weather or not weather.get("available"):
-        return "The snow report is still settling."
+        return ""
     current = weather.get("current") or {}
-    parts = []
     fresh = weather.get("fresh_snow_cm")
-    if weather.get("snowfall_24h_cm") is not None:
-        parts.append(f"{_fmt_cm(weather.get('snowfall_24h_cm'))} cm of snow in the last 24 hours")
-    if weather.get("snowfall_72h_cm") is not None:
-        parts.append(f"{_fmt_cm(weather.get('snowfall_72h_cm'))} cm over the last 72 hours")
-    valley = current.get("snow_valley_cm")
+    if fresh is None:
+        fresh = weather.get("snowfall_24h_cm")
+    facts = []
+    if fresh is not None and float(fresh) >= 1:
+        facts.append(f"{_fmt_cm(fresh)} cm of fresh snow")
     summit = current.get("snow_summit_cm")
-    if valley is not None or summit is not None:
-        parts.append(f"snow depth valley {valley if valley is not None else '–'} cm, summit {summit if summit is not None else '–'} cm")
-    freezing = current.get("freezing_level_m")
-    if freezing is not None:
-        parts.append(f"freezing level {int(freezing)} m")
-    opening = weather.get("opening_days") or []
-    if opening:
-        first = opening[0]
-        label = first.get("label") or "mixed"
-        snow = first.get("snowfall_cm")
-        extra = f", { _fmt_cm(snow) } cm forecast" if snow else ""
-        parts.append(f"opening day looks {label.lower()}{extra}")
-    if fresh is not None and fresh >= 1 and not any("last 24" in part for part in parts):
-        parts.insert(0, f"{_fmt_cm(fresh)} cm of fresh snow")
-    if not parts:
+    valley = current.get("snow_valley_cm")
+    if summit is not None:
+        facts.append(f"{_fmt_cm(summit)} cm on the summit")
+    elif valley is not None:
+        facts.append(f"{_fmt_cm(valley)} cm in the valley")
+    return " and ".join(facts[:2])
+
+
+def snow_sentence(weather):
+    """Short snow clause. Callers that want a sentence get at most two facts."""
+    hook = snow_hook(weather)
+    if not hook:
         return "The snow report is still settling."
-    sentence = ". ".join(parts)
-    if sentence[-1] != ".":
-        sentence += "."
-    return sentence[0].upper() + sentence[1:]
+    sentence = hook[0].upper() + hook[1:]
+    return sentence if sentence.endswith(".") else sentence + "."
 
 
-def fallback_teaser(milestone, resort, weather):
+def _days_until(campaign, now):
+    now_local = as_aware(now).astimezone(zone(campaign.timezone))
+    start, _end = challenge_bounds(campaign)
+    return max(0, (start.date() - now_local.date()).days)
+
+
+def fallback_teaser(milestone, resort, weather, *, days=None, language="en"):
     resort_name = resort or "the resort"
-    snow = snow_sentence(weather)
-    if milestone == "d14":
-        lead = f"Fourteen days until {resort_name}."
-    elif milestone == "d7":
-        lead = f"One week until {resort_name}."
-    elif milestone == "d3":
-        lead = f"Three days to {resort_name}."
-    elif milestone == "d1":
-        lead = f"Tomorrow we are in {resort_name}."
-    elif milestone == "final":
-        lead = f"Final hours before {resort_name}."
-    elif milestone == "kickoff":
-        lead = f"{resort_name} is open."
+    hook = snow_hook(weather)
+    lang = "de" if str(language or "en").lower().startswith("de") else "en"
+    day_count = 1 if days is None else int(days)
+    if lang == "de":
+        leads = {
+            "d14": f"Noch vierzehn Tage bis {resort_name}.",
+            "d7": f"Noch eine Woche bis {resort_name}.",
+            "d3": f"Noch drei Tage bis {resort_name}.",
+            "d1": f"Noch ein Tag bis {resort_name}.",
+            "final": f"Die letzten Stunden vor {resort_name}.",
+            "kickoff": f"{resort_name} ist offen.",
+            "preview": (
+                f"Noch ein Tag bis {resort_name}." if day_count == 1
+                else f"Noch {day_count} Tage bis {resort_name}."
+            ),
+        }
+        if hook:
+            hook = (
+                hook.replace(" cm of fresh snow", " cm Neuschnee")
+                .replace(" cm on the summit", " cm am Gipfel")
+                .replace(" cm in the valley", " cm im Tal")
+                .replace(" and ", " und ")
+            )
     else:
-        lead = f"{resort_name} is on the clock."
-    return f"{lead} {snow}"
+        leads = {
+            "d14": f"Fourteen days until {resort_name}.",
+            "d7": f"One week until {resort_name}.",
+            "d3": f"Three days to {resort_name}.",
+            "d1": f"One day to {resort_name}.",
+            "final": f"Final hours before {resort_name}.",
+            "kickoff": f"{resort_name} is open.",
+            "preview": (
+                f"One day to {resort_name}." if day_count == 1
+                else f"{day_count} days to {resort_name}."
+            ),
+        }
+    tail = f" {hook}." if hook else ""
+    return (leads.get(milestone) or leads["preview"]) + tail
 
 
 def _line_is_safe(text):
@@ -1009,6 +1041,7 @@ def _persona_public(config):
         "tagline": persona.tagline or "",
         "avatar": persona.avatar or "",
         "theme_color": persona.theme_color or "",
+        "language": persona.language or "en",
     }
 
 
@@ -1024,7 +1057,10 @@ def _active_coach(campaign):
 def compose_teaser(campaign, milestone, weather, *, generator=None):
     """Persona line for one milestone. Falls back when the model is down or unsafe."""
     resort = campaign.resort_name or "the resort"
-    fallback = fallback_teaser(milestone, resort, weather)
+    language = "en"
+    if _active_coach(campaign) and _active_coach(campaign).persona_id:
+        language = _active_coach(campaign).persona.language or "en"
+    fallback = fallback_teaser(milestone, resort, weather, language=language)
     config = _active_coach(campaign)
     if config is None or not (config.persona and config.persona.system_prompt):
         return fallback, "fallback", config
@@ -1034,9 +1070,10 @@ def compose_teaser(campaign, milestone, weather, *, generator=None):
     prompt = (
         f"Write one countdown line for the ski week at {resort}.\n"
         f"Moment: {_MILESTONE_LABEL.get(milestone, milestone)}.\n"
-        f"Snow report: {snow_sentence(weather)}\n"
+        f"Snow to mention, at most these two facts: {snow_hook(weather) or 'none yet'}.\n"
         "Stay in your persona's voice. One or two short sentences. Name the resort. "
-        "Use the snow numbers when they are present. "
+        "Use at most two snow facts. Do not list every number. "
+        "The time left in the moment line is exact. Do not invent a different number of days. "
         "Do not tell anyone to drink, and do not mention alcohol."
     )
     try:
@@ -1050,41 +1087,58 @@ def compose_teaser(campaign, milestone, weather, *, generator=None):
     except Exception:
         logger.info("Ski week teaser model failed", exc_info=True)
         text = None
-    if not _line_is_safe(text):
+    if not _line_is_safe(text) or str(text).lower().count(" cm") > 2:
         return fallback, "fallback", config
     return " ".join(str(text).split())[:400], "llm", config
 
 
+def _line_matches_clock(body, milestone):
+    """A stored line that names the wrong day count is worse than silence."""
+    if not body or (body.lower().count(" cm") > 2):
+        return False
+    lowered = body.lower()
+    if milestone == "d1" and ("three day" in lowered or "3 day" in lowered or "drei tag" in lowered):
+        return False
+    if milestone == "d3" and ("one day" in lowered or "1 day" in lowered or "ein tag" in lowered):
+        return False
+    if milestone == "preview" and ("three day" in lowered or "fourteen" in lowered):
+        return False
+    return True
+
+
 def coach_teaser_payload(campaign, *, now=None, weather=None):
-    """Latest posted line, or a preview so the countdown is never blank."""
+    """A line for the time that is left now, not a stale milestone."""
     from .models import SkiWeekTeaser
     config = _active_coach(campaign)
-    latest = (
-        SkiWeekTeaser.objects.filter(campaign=campaign)
-        .order_by("-posted_at", "-id")
-        .first()
-    )
-    if latest is not None:
-        return {
-            "milestone": latest.milestone,
-            "body": latest.body,
-            "source": latest.source,
-            "posted": True,
-            "persona": _persona_public(config),
-        }
+    persona = _persona_public(config)
+    language = (persona or {}).get("language") or "en"
     phase = phase_of(campaign, now)
     if phase == "ended":
         return None
-    milestone = "kickoff" if phase == "live" else "preview"
-    resort = campaign.resort_name or "the resort"
     if weather is None:
         weather = weather_for_campaign(campaign)
+    current = milestone_for(campaign, now)
+    if current is None:
+        current = "kickoff" if phase == "live" else "preview"
+    days = _days_until(campaign, now)
+    latest = (
+        SkiWeekTeaser.objects.filter(campaign=campaign, milestone=current)
+        .order_by("-posted_at", "-id")
+        .first()
+    )
+    if latest is not None and _line_matches_clock(latest.body, current):
+        body, source, posted = latest.body, latest.source, True
+    else:
+        body = fallback_teaser(current, campaign.resort_name, weather, days=days, language=language)
+        source, posted = "fallback", False
     return {
-        "milestone": milestone,
-        "body": fallback_teaser(milestone, resort, weather),
-        "source": "fallback",
-        "posted": False,
-        "persona": _persona_public(config),
+        "milestone": current,
+        "days_left": days,
+        "body": body,
+        "source": source,
+        "posted": posted,
+        "persona": persona,
+        "language": language,
     }
 
 

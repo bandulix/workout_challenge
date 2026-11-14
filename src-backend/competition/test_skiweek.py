@@ -517,6 +517,29 @@ class SkiWeekCountdownTests(TestCase):
         self.assertNotIn("sambuca", body.lower())
         self.assertIn("Zermatt", body)
         self.assertIn("12 cm", body)
+        self.assertLess(body.lower().count(" cm"), 3)
+        self.assertNotIn("freezing", body.lower())
+        self.assertNotIn("72", body)
+
+    def test_displayed_line_matches_the_days_actually_left(self):
+        from competition.skiweek import coach_teaser_payload
+        from competition.models import SkiWeekTeaser
+        SkiWeekTeaser.objects.create(
+            campaign=self.campaign, milestone="d3", source="fallback",
+            body="Three days to Zermatt. 14 cm of fresh snow and 160 cm on the summit.",
+        )
+        weather = {
+            "available": True,
+            "fresh_snow_cm": 14,
+            "snowfall_72h_cm": 31,
+            "current": {"snow_summit_cm": 168, "freezing_level_m": 1480},
+        }
+        # 8 Feb start, 6 Feb noon is two calendar days, not three.
+        payload = coach_teaser_payload(self.campaign, now=_at(datetime.date(2026, 2, 6), 12), weather=weather)
+        self.assertEqual(payload["days_left"], 2)
+        self.assertNotIn("Three", payload["body"])
+        self.assertIn("2 days", payload["body"])
+        self.assertLess(payload["body"].lower().count(" cm"), 3)
 
     def test_recent_snowfall_and_opening_days_come_from_the_hourly_feed(self):
         cache.clear()
