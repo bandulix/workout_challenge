@@ -402,7 +402,8 @@ def workout_to_props(user, ow_workout: dict) -> dict | None:
         kcal = round(k)
     avg_hr = _ow_pick(ow_workout, "avg_heart_rate_bpm", "avg_hr", "average_heart_rate")
 
-    return {
+    from workouts.metrics import optional_activity_metrics
+    props = {
         "user": user,
         "health_id": str(health_id),
         "sport_type": map_health_sport_type(ow_workout.get("type")),
@@ -412,6 +413,8 @@ def workout_to_props(user, ow_workout: dict) -> dict | None:
         "kcal": kcal,
         "intensity_category": _estimate_intensity(avg_hr, kcal, int(duration_s)),
     }
+    props.update(optional_activity_metrics(ow_workout))
+    return props
 
 
 # ---------------------------------------------------------------------------

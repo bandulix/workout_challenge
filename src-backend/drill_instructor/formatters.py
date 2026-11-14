@@ -17,4 +17,10 @@ def format_workout_summary(workout):
         parts.append(f"{float(workout.distance):.2f} km")
     if workout.kcal is not None:
         parts.append(f"{round(float(workout.kcal))} kcal")
+    elevation = getattr(workout, "elevation_m", None)
+    if elevation is not None:
+        parts.append(f"{round(float(elevation))} hm")
+    runs = getattr(workout, "runs", None)
+    if runs is not None:
+        parts.append(f"{int(runs)} runs")
     return " · ".join(parts), duration_min

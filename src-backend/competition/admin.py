@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Competition, ActivityGoal, Team, Award, ExpeditionCampaign, Duel, DuelBlock
+from .models import Competition, ActivityGoal, Team, Award, ExpeditionCampaign, Duel, DuelBlock, SkiWeekCampaign, SambucaEntry
 from .expedition import synchronize_expedition
 
 # Register your models here.
@@ -92,4 +92,16 @@ class DuelAdmin(admin.ModelAdmin):
 @admin.register(DuelBlock)
 class DuelBlockAdmin(admin.ModelAdmin):
     list_display = ("blocker", "blocked", "created_at")
+
+
+@admin.register(SkiWeekCampaign)
+class SkiWeekCampaignAdmin(admin.ModelAdmin):
+    list_display = ("competition", "enabled", "resort_name", "timezone", "day_cutoff_hour", "points_per_sambuca")
+    list_filter = ("enabled", "water_enabled")
+
+
+@admin.register(SambucaEntry)
+class SambucaEntryAdmin(admin.ModelAdmin):
+    list_display = ("campaign", "user", "kind", "amount", "resort_day", "logged_at")
+    list_filter = ("kind",)
 

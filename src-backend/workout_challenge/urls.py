@@ -34,6 +34,13 @@ from competition.duel_api import (
     DuelRespondView,
 )
 from competition.expedition_api import ExpeditionShortcutVoteView, ExpeditionView
+from competition.skiweek_api import (
+    SkiWeekResortListView,
+    SkiWeekSipPhotoView,
+    SkiWeekSipView,
+    SkiWeekView,
+    SkiWeekWeatherView,
+)
 from workouts.views import WorkoutViewSet
 from custom_user.views import CustomUserViewSet, LinkStravaView, UnlinkStravaView, ResetStravaView, SyncStravaView, StravaStateView, PasswordResetView, PasswordResetConfirmView, EmailVerifyConfirmView, EmailVerifyResendView, LinkGarminView, LinkGarminMfaView, UnlinkGarminView, SyncGarminView, LinkHealthView, UnlinkHealthView, SyncHealthView
 from custom_user.link_https import reject_insecure_link
@@ -117,6 +124,11 @@ urlpatterns = [
         path('duels/<int:duel_id>/forfeit/', DuelForfeitView.as_view(), name='duels-forfeit'),
         path('duels/<int:duel_id>/rematch/', DuelRematchView.as_view(), name='duels-rematch'),
         path('competition/<int:competition_id>/expedition/', ExpeditionView.as_view(), name='competition-expedition'),
+        path('skiweek/resorts/', SkiWeekResortListView.as_view(), name='skiweek-resorts'),
+        path('competition/<int:competition_id>/skiweek/', SkiWeekView.as_view(), name='competition-skiweek'),
+        path('competition/<int:competition_id>/skiweek/weather/', SkiWeekWeatherView.as_view(), name='competition-skiweek-weather'),
+        path('competition/<int:competition_id>/skiweek/sips/', SkiWeekSipView.as_view(), name='competition-skiweek-sips'),
+        path('competition/<int:competition_id>/skiweek/sips/<int:entry_id>/photo/', SkiWeekSipPhotoView.as_view(), name='competition-skiweek-sip-photo'),
         path('competition/<int:competition_id>/expedition/shortcut-vote/', ExpeditionShortcutVoteView.as_view(), name='competition-expedition-shortcut-vote'),
         path('drill-instructor/comeback/', ComebackBenchView.as_view(), name='comeback-bench'),
         path('drill-instructor/comeback/offers/', ComebackSupportOfferCreateView.as_view(), name='comeback-support-offers'),

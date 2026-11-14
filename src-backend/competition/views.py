@@ -35,7 +35,7 @@ class CompetitionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # return all competitions the user is owner of or a participant of
         #time.sleep(3)  # throttle for testing
-        return Competition.objects.filter(Q(owner=self.request.user) | Q(user=self.request.user)).distinct().select_related('expedition').prefetch_related('user', 'activitygoal_set').order_by('-end_date', '-start_date', '-id')
+        return Competition.objects.filter(Q(owner=self.request.user) | Q(user=self.request.user)).distinct().select_related('expedition', 'skiweek').prefetch_related('user', 'activitygoal_set').order_by('-end_date', '-start_date', '-id')
 
     def perform_create(self, serializer):
         # when creating a new competition, set the owner to the request user

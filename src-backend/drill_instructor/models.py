@@ -221,6 +221,7 @@ class DrillInstructorMessage(models.Model):
     KIND_BRIEFING = "briefing"
     KIND_GAP = "gap"
     KIND_DUEL = "duel"
+    KIND_SKIWEEK = "skiweek"
     KIND_CHOICES = [
         (KIND_ACTIVITY, "Workout comment"),
         (KIND_TEST, "Test message"),
@@ -239,6 +240,7 @@ class DrillInstructorMessage(models.Model):
         (KIND_BRIEFING, "Daily owner briefing"),
         (KIND_GAP, "Material standings gap change"),
         (KIND_DUEL, "Duel result, only when both athletes opted in"),
+        (KIND_SKIWEEK, "Ski week countdown"),
     ]
 
     config = models.ForeignKey(

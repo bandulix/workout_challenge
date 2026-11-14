@@ -615,3 +615,137 @@ class DuelPing(models.Model):
 
     def __str__(self):
         return f"Ping {self.pk} for {self.user_id}"
+
+
+class SkiWeekCampaign(models.Model):
+    """Opt-in ski week on a challenge. One row, like Expedition.
+
+    Resort-day boundaries use ``timezone`` and ``day_cutoff_hour`` so a
+    2am après still belongs to the evening that just ended. Sambuca
+    points are ``amount * points_per_sambuca`` and stay out of the
+    workout Points rows so the breakdown can name them.
+    """
+
+    competition = models.OneToOneField(
+        Competition,
+        on_delete=models.CASCADE,
+        related_name="skiweek",
+    )
+    enabled = models.BooleanField(default=False)
+    resort_slug = models.CharField(max_length=40, blank=True, default="")
+    resort_name = models.CharField(max_length=80, blank=True, default="")
+    latitude = models.DecimalField(max_digits=8, decimal_places=5, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=8, decimal_places=5, null=True, blank=True)
+    summit_elevation_m = models.PositiveIntegerField(null=True, blank=True)
+    valley_elevation_m = models.PositiveIntegerField(null=True, blank=True)
+    timezone = models.CharField(max_length=64, default="Europe/Zurich")
+    day_cutoff_hour = models.PositiveSmallIntegerField(default=5)
+    water_enabled = models.BooleanField(default=False)
+    # 5 points is one twentieth of a 100-point goal. A few Sambucas
+    # register on the board; they do not replace a ski day.
+    points_per_sambuca = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal("5.00"),
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    # Last good snow report. Served only when the live fetch fails.
+    weather_snapshot = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(day_cutoff_hour__gte=0, day_cutoff_hour__lte=23),
+                name="skiweek_cutoff_hour_in_day",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(points_per_sambuca__gte=0),
+                name="skiweek_sambuca_points_nonnegative",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Skiwoche {self.resort_name or self.competition}"
+
+
+class SambucaEntry(models.Model):
+    """One Sambuca or water log. The drink name is fixed as Sambuca."""
+
+    KIND_SAMBUCA = "sambuca"
+    KIND_WATER = "water"
+    KIND_CHOICES = (
+        (KIND_SAMBUCA, "Sambuca"),
+        (KIND_WATER, "Water"),
+    )
+
+    campaign = models.ForeignKey(SkiWeekCampaign, on_delete=models.CASCADE, related_name="sips")
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="sambuca_sips")
+    kind = models.CharField(max_length=12, choices=KIND_CHOICES, default=KIND_SAMBUCA)
+    amount = models.PositiveSmallIntegerField(default=1)
+    logged_at = models.DateTimeField(default=timezone.now)
+    resort_day = models.DateField()
+    photo = models.ImageField(upload_to="skiweek/sambuca/", blank=True)
+
+    class Meta:
+        ordering = ["-logged_at", "-id"]
+        indexes = [
+            models.Index(fields=["campaign", "resort_day", "kind"], name="skiweek_sip_day"),
+            models.Index(fields=["campaign", "user", "logged_at"], name="skiweek_sip_user"),
+        ]
+
+    def __str__(self):
+        return f"{self.kind} x{self.amount} {self.user_id} {self.resort_day}"
+
+
+class SambucaSettlement(models.Model):
+    """A resort day whose crown is frozen. winning_count 0 means nobody logged."""
+
+    campaign = models.ForeignKey(SkiWeekCampaign, on_delete=models.CASCADE, related_name="settlements")
+    resort_day = models.DateField()
+    winning_count = models.PositiveIntegerField(default=0)
+    settled_at = models.DateTimeField(auto_now_add=True)
+    announced_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["campaign", "resort_day"], name="one_skiweek_settlement_per_day"),
+        ]
+        ordering = ["-resort_day"]
+
+    def __str__(self):
+        return f"Crown {self.campaign_id} {self.resort_day} ({self.winning_count})"
+
+
+class SambucaCrown(models.Model):
+    """One wearer of a settled crown. Ties create one row per tied user."""
+
+    settlement = models.ForeignKey(SambucaSettlement, on_delete=models.CASCADE, related_name="crowns")
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="sambuca_crowns")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["settlement", "user"], name="one_crown_per_user_per_day"),
+        ]
+
+    def __str__(self):
+        return f"Crown {self.settlement_id} user {self.user_id}"
+
+
+class SkiWeekTeaser(models.Model):
+    """One coach countdown line per milestone. The unique key is the dedupe."""
+
+    campaign = models.ForeignKey(SkiWeekCampaign, on_delete=models.CASCADE, related_name="teasers")
+    milestone = models.CharField(max_length=12)
+    body = models.TextField()
+    source = models.CharField(max_length=12, default="fallback")
+    message_id = models.PositiveIntegerField(null=True, blank=True)
+    posted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["campaign", "milestone"], name="one_skiweek_teaser_per_milestone"),
+        ]
+        ordering = ["posted_at"]
+
+    def __str__(self):
+        return f"{self.milestone} for {self.campaign_id}"

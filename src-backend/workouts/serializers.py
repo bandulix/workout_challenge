@@ -38,6 +38,12 @@ class WorkoutSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"steps": "Steps value is unrealistically high."})
         if steps is not None and int(steps) < 0:
             raise serializers.ValidationError({"steps": "Steps must be positive."})
+        elevation = data.get("elevation_m")
+        if elevation is not None and (float(elevation) < 0 or float(elevation) > 15000):
+            raise serializers.ValidationError({"elevation_m": "Elevation must be between 0 and 15000 metres."})
+        runs = data.get("runs")
+        if runs is not None and (int(runs) < 0 or int(runs) > 400):
+            raise serializers.ValidationError({"runs": "Runs must be between 0 and 400."})
         return data
 
     def create(self, validated_data):
@@ -55,5 +61,5 @@ class WorkoutSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Workout
-        fields = ['id', 'sport_type', 'start_datetime', 'duration', 'duration_seconds', 'intensity_category', 'kcal', 'distance', 'steps', 'strava_id']
+        fields = ['id', 'sport_type', 'start_datetime', 'duration', 'duration_seconds', 'intensity_category', 'kcal', 'distance', 'steps', 'elevation_m', 'runs', 'strava_id']
         read_only_fields = ['id', 'duration_seconds', 'strava_id'] #'duration_seconds',
