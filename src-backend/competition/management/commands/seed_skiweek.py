@@ -1,90 +1,137 @@
-"""A future Zermatt ski week for countdown screenshots. DEBUG only."""
+"""Two Zermatt ski weeks for screenshots: one counting down, one already skiing.
+
+DEBUG only. Weather is locked to the same snow report on both, so the
+coach line and the card cannot drift apart.
+"""
 
 import datetime
 from decimal import Decimal
+from io import BytesIO
 
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+from PIL import Image, ImageDraw
 
-from competition.models import Competition, SkiWeekCampaign, SkiWeekTeaser
-from competition.skiweek import fallback_teaser
+from competition.models import Competition, SambucaEntry, SkiWeekCampaign, SkiWeekTeaser
+from competition.skiweek import fallback_teaser, log_sip, settle_due_crowns
 from custom_user.models import CustomUser
-from drill_instructor.models import DrillInstructorConfig, DrillInstructorMessage, DrillInstructorPersona
-
+from drill_instructor.models import DrillInstructorConfig, DrillInstructorPersona
+from workouts.models import Workout
 
 CREW = (
-    ("lena@skiweek.demo", "Lena"),
-    ("mats@skiweek.demo", "Mats"),
-    ("noor@skiweek.demo", "Noor"),
-    ("jules@skiweek.demo", "Jules"),
+    ("lena@skiweek.demo", "Lena", (232, 184, 74)),
+    ("mats@skiweek.demo", "Mats", (155, 231, 255)),
+    ("noor@skiweek.demo", "Noor", (180, 140, 255)),
+    ("jules@skiweek.demo", "Jules", (255, 160, 120)),
 )
+
+SNOW = {
+    "lock": True,
+    "available": True,
+    "mood": "snowing",
+    "is_snowing": True,
+    "fresh_snow_cm": 14,
+    "snowfall_24h_cm": 14,
+    "snowfall_72h_cm": 31,
+    "attribution": "Weather and snow: Open-Meteo.com",
+    "source": "Open-Meteo",
+    "current": {
+        "temperature_c": -6.4,
+        "summit_temperature_c": -14.2,
+        "weather_code": 71,
+        "snowfall_cm": 0.4,
+        "freezing_level_m": 1480,
+        "snow_valley_cm": 86,
+        "snow_summit_cm": 168,
+    },
+}
+
+
+def _portrait(initial, color):
+    image = Image.new("RGB", (128, 128), color)
+    draw = ImageDraw.Draw(image)
+    draw.ellipse((8, 8, 120, 120), fill=(11, 11, 12))
+    draw.text((48, 46), initial, fill=color)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return ContentFile(buffer.getvalue())
+
+
+def _snow_for(start):
+    payload = {
+        **SNOW,
+        "current": dict(SNOW["current"]),
+        "daily": [
+            {"date": (start + datetime.timedelta(days=offset)).isoformat(), "weather_code": code, "temp_max_c": high, "temp_min_c": low, "snowfall_cm": snow}
+            for offset, code, high, low, snow in (
+                (0, 71, -2, -9, 8),
+                (1, 73, -3, -11, 11),
+                (2, 3, -1, -7, 1),
+            )
+        ],
+    }
+    return payload
 
 
 class Command(BaseCommand):
-    help = "Seed a pre-start Zermatt ski week with snow, a coach line, and four athletes."
+    help = "Seed a countdown ski week and a live one with the same snow report."
 
     def handle(self, *args, **options):
         if not settings.DEBUG:
             raise CommandError("seed_skiweek refuses to run with DEBUG=false.")
         users = []
-        for email, first in CREW:
-            user, created = CustomUser.objects.get_or_create(
-                email=email,
-                defaults={"first_name": first, "last_name": ""},
-            )
-            if created:
+        for email, first, color in CREW:
+            user, created = CustomUser.objects.get_or_create(email=email, defaults={"first_name": first})
+            if created or not user.has_usable_password():
                 user.set_password("skiweek-demo")
             user.first_name = first
             user.is_verified = True
             user.save()
+            if not user.profile_picture:
+                user.profile_picture.save(f"{first.lower()}.png", _portrait(first[0], color), save=True)
             users.append(user)
 
-        start = timezone.localdate() + datetime.timedelta(days=2)
-        end = start + datetime.timedelta(days=6)
+        persona, _created = DrillInstructorPersona.objects.get_or_create(
+            name="Alpine Coach",
+            defaults={
+                "system_prompt": "Dry, short, fond of ridges. One image, not a list. Never mention alcohol.",
+                "tagline": "The mountain first.",
+                "avatar": "zen",
+                "language": "en",
+            },
+        )
+        persona.language = "en"
+        persona.save(update_fields=["language"])
+
+        today = timezone.localdate()
+        countdown_id = self._week(
+            users, persona, "Skiwoche Zermatt", today + datetime.timedelta(days=2), today + datetime.timedelta(days=8),
+            live=False,
+        )
+        live_id = self._week(
+            users, persona, "Skiwoche Live", today - datetime.timedelta(days=3), today + datetime.timedelta(days=3),
+            live=True,
+        )
+        self.stdout.write(f"countdown={countdown_id}")
+        self.stdout.write(f"live={live_id}")
+        self.stdout.write("login lena@skiweek.demo / skiweek-demo")
+
+    def _week(self, users, persona, name, start, end, *, live):
         owner = users[0]
-        competition = Competition.objects.filter(owner=owner, name="Skiwoche Zermatt").first()
+        competition = Competition.objects.filter(owner=owner, name=name).first()
         if competition is None:
             competition = Competition.objects.create(
-                owner=owner, name="Skiwoche Zermatt", start_date=start, end_date=end, has_teams=True,
+                owner=owner, name=name, start_date=start, end_date=end, has_teams=True,
             )
         else:
             competition.start_date = start
             competition.end_date = end
-            competition.has_teams = True
             competition.save()
         for user in users:
             user.my_competitions.add(competition)
-
-        snapshot = {
-            "available": True,
-            "mood": "snowing",
-            "is_snowing": True,
-            "fresh_snow_cm": 14,
-            "snowfall_24h_cm": 14,
-            "snowfall_72h_cm": 31,
-            "attribution": "Weather and snow: Open-Meteo.com",
-            "source": "Open-Meteo",
-            "current": {
-                "temperature_c": -6.4,
-                "summit_temperature_c": -14.2,
-                "weather_code": 71,
-                "label": "Snow",
-                "snowfall_cm": 0.4,
-                "freezing_level_m": 1480,
-                "snow_valley_cm": 86,
-                "snow_summit_cm": 168,
-            },
-            "daily": [
-                {"date": start.isoformat(), "label": "Snow", "weather_code": 71, "temp_max_c": -2, "temp_min_c": -9, "snowfall_cm": 8},
-                {"date": (start + datetime.timedelta(days=1)).isoformat(), "label": "Snow", "weather_code": 73, "temp_max_c": -3, "temp_min_c": -11, "snowfall_cm": 11},
-                {"date": (start + datetime.timedelta(days=2)).isoformat(), "label": "Clouds", "weather_code": 3, "temp_max_c": -1, "temp_min_c": -7, "snowfall_cm": 1},
-            ],
-        }
-        campaign, _created = SkiWeekCampaign.objects.get_or_create(
-            competition=competition,
-            defaults={"enabled": True},
-        )
+        campaign, _created = SkiWeekCampaign.objects.get_or_create(competition=competition, defaults={"enabled": True})
         campaign.enabled = True
         campaign.resort_slug = "zermatt"
         campaign.resort_name = "Zermatt"
@@ -96,18 +143,8 @@ class Command(BaseCommand):
         campaign.day_cutoff_hour = 5
         campaign.water_enabled = True
         campaign.points_per_sambuca = Decimal("5.00")
-        campaign.weather_snapshot = snapshot
+        campaign.weather_snapshot = _snow_for(start)
         campaign.save()
-
-        persona, _created = DrillInstructorPersona.objects.get_or_create(
-            name="Alpine Coach",
-            defaults={
-                "system_prompt": "Dry, short, in love with weather and ridges. Never mention alcohol.",
-                "tagline": "The mountain first.",
-                "avatar": "zen",
-                "language": "en",
-            },
-        )
         config, _created = DrillInstructorConfig.objects.get_or_create(
             competition=competition,
             defaults={"persona": persona, "enabled": True, "send_push_on_activity": False},
@@ -115,20 +152,48 @@ class Command(BaseCommand):
         config.persona = persona
         config.enabled = True
         config.save()
+        if live:
+            self._live_activity(campaign, users)
+        else:
+            SkiWeekTeaser.objects.filter(campaign=campaign).delete()
+            days = (start - timezone.localdate()).days
+            body = fallback_teaser("preview", "Zermatt", {**campaign.weather_snapshot, "opening_days": campaign.weather_snapshot["daily"]}, days=days, language="en")
+            SkiWeekTeaser.objects.create(campaign=campaign, milestone="preview", body=body, source="fallback")
+        return competition.pk
 
-        weather = {**snapshot, "opening_days": snapshot["daily"]}
-        body = fallback_teaser("d3", "Zermatt", weather)
-        teaser, _created = SkiWeekTeaser.objects.get_or_create(
-            campaign=campaign,
-            milestone="d3",
-            defaults={"body": body, "source": "fallback"},
+    def _live_activity(self, campaign, users):
+        lena, mats, noor, jules = users
+        Workout.objects.filter(user__in=users, sport_type__in=("AlpineSki", "Snowboard")).delete()
+        SambucaEntry.objects.filter(campaign=campaign).delete()
+        from competition.models import SambucaCrown, SambucaSettlement
+        SambucaCrown.objects.filter(settlement__campaign=campaign).delete()
+        SambucaSettlement.objects.filter(campaign=campaign).delete()
+        start = campaign.competition.start_date
+        plan = (
+            (lena, "AlpineSki", 0, 11, 1860, "28.4"),
+            (mats, "Snowboard", 0, 9, 1420, "22.1"),
+            (noor, "AlpineSki", 1, 14, 2100, "31.0"),
+            (jules, "BackcountrySki", 1, 6, 980, "12.4"),
+            (lena, "AlpineSki", 2, 8, 1240, "18.6"),
+            (mats, "AlpineSki", 2, 12, 1760, "26.2"),
         )
-        teaser.body = body
-        teaser.save()
-        if not DrillInstructorMessage.objects.filter(config=config, kind=DrillInstructorMessage.KIND_SKIWEEK).exists():
-            DrillInstructorMessage.objects.create(
-                config=config, kind=DrillInstructorMessage.KIND_SKIWEEK, body=body, posted_at=timezone.now(),
+        for user, sport, offset, runs, elevation, distance in plan:
+            when = datetime.datetime.combine(start + datetime.timedelta(days=offset), datetime.time(10, 0), tzinfo=datetime.timezone.utc)
+            Workout.objects.create(
+                user=user, sport_type=sport, start_datetime=when,
+                duration=datetime.timedelta(hours=4), intensity_category=3,
+                distance=Decimal(distance), elevation_m=Decimal(elevation), runs=runs,
             )
-
-        self.stdout.write(f"competition={competition.pk}")
-        self.stdout.write("login lena@skiweek.demo / skiweek-demo")
+        # Resort day of the first ski day: a shared crown.
+        tie_evening = datetime.datetime.combine(start, datetime.time(20, 0), tzinfo=datetime.timezone.utc)
+        log_sip(campaign, lena, amount=3, when=tie_evening)
+        log_sip(campaign, mats, amount=3, when=tie_evening)
+        log_sip(campaign, noor, amount=1, when=tie_evening)
+        later = datetime.datetime.combine(start + datetime.timedelta(days=1), datetime.time(21, 0), tzinfo=datetime.timezone.utc)
+        log_sip(campaign, jules, amount=2, when=later)
+        log_sip(campaign, noor, amount=2, when=later)
+        today_evening = timezone.now().replace(hour=18, minute=0, second=0, microsecond=0)
+        if today_evening.date() <= campaign.competition.end_date:
+            log_sip(campaign, lena, amount=2, when=today_evening)
+            log_sip(campaign, mats, amount=1, when=today_evening)
+        settle_due_crowns(now=timezone.now())

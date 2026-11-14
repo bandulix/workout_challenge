@@ -1102,6 +1102,13 @@ code {
 }
 .skiweek-hero { min-height: 28rem; }
 .skiweek-teaser { margin-bottom: 0.75rem; padding: 0.9rem 1rem; }
+.ski-ridge, .ski-flakes {
+  z-index: 0;
+}
+.skiweek > :not(.ski-ridge):not(.ski-flakes) {
+  position: relative;
+  z-index: 1;
+}
 .ski-ridge {
   position: absolute;
   left: 0; right: 0; bottom: 0;

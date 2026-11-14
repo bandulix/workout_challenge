@@ -27,14 +27,14 @@ function skiweek() {
             snowfall_72h_cm: 28,
             attribution: "Weather and snow: Open-Meteo.com",
             current: {
-                label: "Snow",
+                weather_code: 71,
                 temperature_c: -4,
                 snow_valley_cm: 80,
                 snow_summit_cm: 160,
                 freezing_level_m: 1480,
             },
             opening_days: [
-                {date: "2026-02-08", label: "Snow", snowfall_cm: 6},
+                {date: "2026-02-08", weather_code: 71, snowfall_cm: 6},
             ],
             opening_forecast_ready: true,
         },
@@ -57,13 +57,14 @@ describe("SkiWeekHome countdown", () => {
         );
         expect(screen.getByRole("timer").textContent).toContain("1");
         expect(screen.getByText("Zermatt")).toBeTruthy();
-        expect(screen.getByText("12 cm Neuschnee")).toBeTruthy();
+        expect(screen.getByText("12 cm fresh snow")).toBeTruthy();
+        expect(screen.getByText("Day")).toBeTruthy();
         expect(screen.getByText("80")).toBeTruthy();
         expect(screen.getByText("160")).toBeTruthy();
         expect(screen.getByText(/freezing level 1480 m/)).toBeTruthy();
         expect(screen.getByText("Alpine Coach")).toBeTruthy();
         expect(screen.getByTestId("coach-avatar")).toBeTruthy();
-        expect(screen.getByText(/fresh snow/)).toBeTruthy();
+        expect(screen.getAllByText(/fresh snow/).length).toBeGreaterThan(0);
         expect(screen.getByText("Lena")).toBeTruthy();
         expect(screen.getByRole("button", {name: /Share/})).toBeTruthy();
         expect(screen.getByText("Weather and snow: Open-Meteo.com")).toBeTruthy();
@@ -73,7 +74,7 @@ describe("SkiWeekHome countdown", () => {
         const {rerender} = render(<SkiWeekHome skiweek={skiweek()} now={BEFORE}/>);
         expect(screen.getByRole("timer")).toBeTruthy();
         rerender(<SkiWeekHome skiweek={skiweek()} now={AT}/>);
-        expect(screen.getByText("Piste offen")).toBeTruthy();
+        expect(screen.getByText("Piste open")).toBeTruthy();
         expect(screen.queryByRole("timer")).toBeNull();
     });
 
