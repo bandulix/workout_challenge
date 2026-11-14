@@ -179,6 +179,10 @@ class Workout(models.Model):
     kcal = models.DecimalField(null=True, max_digits=7, decimal_places=2)
     distance = models.DecimalField(null=True, max_digits=7, decimal_places=2)
     steps = models.IntegerField(null=True)
+    # Optional piste stats. Imports fill them when Strava or Garmin send
+    # elevation or a run count; manual logs may leave them empty.
+    elevation_m = models.DecimalField(null=True, blank=True, max_digits=7, decimal_places=1)
+    runs = models.PositiveSmallIntegerField(null=True, blank=True)
 
     strava_id = models.BigIntegerField(unique=True, null=True)
     strava_intensity_avg_watts = models.DecimalField(null=True, max_digits=7, decimal_places=2)

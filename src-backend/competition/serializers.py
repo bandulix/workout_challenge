@@ -1,3 +1,6 @@
+from decimal import Decimal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from rest_framework import serializers
 from custom_user.models import CustomUser
 from .models import Competition, ActivityGoal, Team, Points
@@ -22,14 +25,32 @@ class CompetitionSerializer(serializers.ModelSerializer):
     expedition_objective = serializers.ChoiceField(choices=EXPEDITION_OBJECTIVE_CHOICES, required=False)
     expedition_theme = serializers.ChoiceField(choices=EXPEDITION_THEME_CHOICES, required=False, allow_blank=True)
     expedition_locked = serializers.SerializerMethodField()
+    # Ski week, owner-editable from the challenge form. Stored on the
+    # related SkiWeekCampaign the same way Expedition is attached.
+    skiweek_enabled = serializers.BooleanField(required=False)
+    skiweek_resort_slug = serializers.CharField(required=False, allow_blank=True)
+    skiweek_resort_query = serializers.CharField(required=False, allow_blank=True)
+    skiweek_timezone = serializers.CharField(required=False, allow_blank=True)
+    skiweek_cutoff_hour = serializers.IntegerField(required=False, min_value=0, max_value=23)
+    skiweek_water_enabled = serializers.BooleanField(required=False)
+    skiweek_points_per_sambuca = serializers.DecimalField(
+        required=False, max_digits=6, decimal_places=2,
+        min_value=Decimal("0"), max_value=Decimal("100"),
+    )
 
     class Meta:
         model = Competition
         fields = ['id', 'owner', 'user', 'user_info', 'name', 'start_date', 'start_date_fmt', 'start_date_epoch', 'end_date', 'end_date_fmt', 'end_date_epoch', 'has_teams', 'organizer_assigns_teams', 'join_code', 'goals', 'my_rank_summary',
-                  'expedition_enabled', 'expedition_objective', 'expedition_theme', 'expedition_locked']
+                  'expedition_enabled', 'expedition_objective', 'expedition_theme', 'expedition_locked',
+                  'skiweek_enabled', 'skiweek_resort_slug', 'skiweek_resort_query', 'skiweek_timezone',
+                  'skiweek_cutoff_hour', 'skiweek_water_enabled', 'skiweek_points_per_sambuca']
         read_only_fields = ['join_code', 'user', 'user_info', 'goals', 'my_rank_summary', 'expedition_locked']
 
     EXPEDITION_FIELDS = ("expedition_enabled", "expedition_objective", "expedition_theme")
+    SKIWEEK_FIELDS = (
+        "skiweek_enabled", "skiweek_resort_slug", "skiweek_resort_query", "skiweek_timezone",
+        "skiweek_cutoff_hour", "skiweek_water_enabled", "skiweek_points_per_sambuca",
+    )
 
     def get_expedition_locked(self, obj):
         campaign = getattr(obj, "expedition", None)
@@ -41,6 +62,15 @@ class CompetitionSerializer(serializers.ModelSerializer):
         data["expedition_enabled"] = bool(campaign and campaign.enabled)
         data["expedition_objective"] = campaign.objective if campaign else "expedition"
         data["expedition_theme"] = campaign.route_theme if campaign else ""
+        ski = getattr(instance, "skiweek", None)
+        data["skiweek_enabled"] = bool(ski and ski.enabled)
+        data["skiweek_resort_slug"] = ski.resort_slug if ski else ""
+        data["skiweek_resort_query"] = ""
+        data["skiweek_resort_name"] = ski.resort_name if ski else ""
+        data["skiweek_timezone"] = ski.timezone if ski else "Europe/Zurich"
+        data["skiweek_cutoff_hour"] = ski.day_cutoff_hour if ski else 5
+        data["skiweek_water_enabled"] = bool(ski and ski.water_enabled)
+        data["skiweek_points_per_sambuca"] = float(ski.points_per_sambuca) if ski else 5.0
         request = self.context.get("request")
         user = getattr(request, "user", None)
         if not user or not user.is_authenticated:
@@ -80,20 +110,97 @@ class CompetitionSerializer(serializers.ModelSerializer):
         if campaign.enabled:
             synchronize_expedition(campaign)
 
+    def _pop_skiweek(self, validated_data):
+        return {key: validated_data.pop(key) for key in self.SKIWEEK_FIELDS if key in validated_data}
+
+    def _existing_skiweek(self):
+        if self.instance is None:
+            return None
+        from .models import SkiWeekCampaign
+        return SkiWeekCampaign.objects.filter(competition=self.instance).first()
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        touched = any(key in attrs for key in self.SKIWEEK_FIELDS)
+        self._ski_resort = None
+        if not touched:
+            return attrs
+        existing = self._existing_skiweek()
+        enabled = attrs["skiweek_enabled"] if "skiweek_enabled" in attrs else bool(existing and existing.enabled)
+        slug = attrs["skiweek_resort_slug"] if "skiweek_resort_slug" in attrs else (existing.resort_slug if existing else "")
+        query = attrs.get("skiweek_resort_query") or ""
+        timezone_name = attrs.get("skiweek_timezone") or ""
+        if timezone_name:
+            try:
+                ZoneInfo(timezone_name)
+            except ZoneInfoNotFoundError:
+                raise serializers.ValidationError({"skiweek_timezone": "Unknown timezone."})
+        needs_resort = enabled and not (existing and existing.latitude is not None and not slug and not query)
+        if slug or query:
+            from .resorts import ResortError, resolve_resort
+            try:
+                self._ski_resort = resolve_resort(slug=slug, query=query)
+            except ResortError as exc:
+                raise serializers.ValidationError({"skiweek_resort_slug": str(exc)})
+        elif needs_resort and not (existing and existing.latitude is not None):
+            raise serializers.ValidationError({"skiweek_resort_slug": "Pick an Alpine resort."})
+        return attrs
+
+    def _apply_skiweek(self, competition, settings):
+        if not settings:
+            return
+        from .models import SkiWeekCampaign
+        from custom_user.point_recalc import bump_stats_generation
+        campaign = SkiWeekCampaign.objects.filter(competition=competition).first()
+        wants = settings.get("skiweek_enabled")
+        if campaign is None:
+            if not wants:
+                return
+            campaign = SkiWeekCampaign(competition=competition)
+        if wants is not None:
+            campaign.enabled = wants
+        resort = getattr(self, "_ski_resort", None)
+        if resort:
+            campaign.resort_slug = resort.get("slug") or ""
+            campaign.resort_name = resort["name"]
+            campaign.latitude = resort["latitude"]
+            campaign.longitude = resort["longitude"]
+            campaign.summit_elevation_m = resort.get("summit_elevation_m")
+            campaign.valley_elevation_m = resort.get("valley_elevation_m")
+            if not settings.get("skiweek_timezone") and resort.get("timezone"):
+                campaign.timezone = resort["timezone"]
+        if settings.get("skiweek_timezone"):
+            campaign.timezone = settings["skiweek_timezone"]
+        if "skiweek_cutoff_hour" in settings:
+            campaign.day_cutoff_hour = settings["skiweek_cutoff_hour"]
+        if "skiweek_water_enabled" in settings:
+            campaign.water_enabled = settings["skiweek_water_enabled"]
+        if "skiweek_points_per_sambuca" in settings:
+            campaign.points_per_sambuca = settings["skiweek_points_per_sambuca"]
+        if campaign.enabled and campaign.latitude is None:
+            raise serializers.ValidationError({"skiweek_resort_slug": "Pick an Alpine resort."})
+        campaign.save()
+        bump_stats_generation([competition.pk])
+
     def create(self, validated_data):
         settings = self._pop_expedition(validated_data)
+        ski = self._pop_skiweek(validated_data)
         competition = super().create(validated_data)
         self._apply_expedition(competition, settings)
+        self._apply_skiweek(competition, ski)
         return competition
 
     def update(self, instance, validated_data):
         settings = self._pop_expedition(validated_data)
+        ski = self._pop_skiweek(validated_data)
         competition = super().update(instance, validated_data)
         self._apply_expedition(competition, settings)
+        self._apply_skiweek(competition, ski)
         # The reverse one-to-one may be cached from before the write (a
         # ReverseOneToOneDescriptor has no __delete__, so `del` cannot evict
         # it) - drop it from the fields cache so the response re-reads it.
         competition._state.fields_cache.pop("expedition", None)
+        competition._state.fields_cache.pop("skiweek", None)
         return competition
 
     def validate_owner(self, owner):

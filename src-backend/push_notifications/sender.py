@@ -28,6 +28,7 @@ def send_push_to_user(
     icon: Optional[str] = None,
     badge: Optional[str] = None,
     tag: Optional[str] = None,
+    category: Optional[str] = None,
     # One hour: a dozing Android device must still get the ping when it
     # wakes. The previous 60s TTL meant FCM dropped most notifications
     # before delivery on battery-saving phones.
@@ -53,7 +54,10 @@ def send_push_to_user(
                 return 0
         except Exception:  # noqa: BLE001 - never drop a ping because Redis hiccuped
             logger.info("Push cooldown cache unavailable; sending anyway")
-    payload = json.dumps({"title": title, "body": body, "url": url, "icon": icon, "badge": badge, "tag": tag})
+    payload = json.dumps({
+        "title": title, "body": body, "url": url, "icon": icon, "badge": badge, "tag": tag,
+        "category": category,
+    })
     subscriptions = list(user.push_subscriptions.all())
     if not subscriptions:
         return 0

@@ -338,7 +338,8 @@ def activity_to_workout_props(user, activity: dict) -> dict | None:
     avg_hr = activity.get("averageHR") or activity.get("averageHeartRateInBeatsPerMinute")
     duration_int = int(duration_s)
 
-    return {
+    from workouts.metrics import optional_activity_metrics
+    props = {
         "user": user,
         "garmin_id": str(activity_id),
         "sport_type": map_sport_type(activity),
@@ -348,6 +349,10 @@ def activity_to_workout_props(user, activity: dict) -> dict | None:
         "kcal": None if kcal is None else round(float(kcal)),
         "intensity_category": _estimate_intensity(avg_hr, kcal, duration_int),
     }
+    props.update(optional_activity_metrics(activity))
+    summary = activity.get("summaryDTO") or activity.get("activitySummary") or {}
+    props.update(optional_activity_metrics(summary))
+    return props
 
 
 # ---------------------------------------------------------------------------

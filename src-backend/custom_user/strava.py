@@ -225,6 +225,8 @@ def sync_strava(self, user__id, start_datetime=None):
                     'duration': duration,
                     'distance': None if not distance else distance / 1_000,
                 }
+                from workouts.metrics import optional_activity_metrics
+                props.update(optional_activity_metrics(activity))
 
                 # if existing workout - update activity details
                 # (existing_map is deliberately NOT scoped to the syncing
@@ -278,6 +280,8 @@ def sync_strava(self, user__id, start_datetime=None):
                 avg_heart_rate = activity_details.get('average_heartrate', 0)
                 props['kcal'] = kcal = activity_details.get('calories', activity_details.get('kilojoules', 0) / 4.18)
                 props['strava_intensity_avg_watts'] = avg_watt = activity_details.get('average_watts', 0)
+                from workouts.metrics import optional_activity_metrics
+                props.update(optional_activity_metrics(activity_details))
 
                 # estimate intensity
                 max_heart_rate = 180

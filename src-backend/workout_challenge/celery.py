@@ -106,6 +106,14 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="*/15"),
         "args": (),
     },
+    # Freeze yesterday's Sambuca crown after the resort-day cutoff.
+    # DatabaseScheduler reads the PeriodicTask row seeded by competition
+    # migration 0012; this entry is documentation.
+    "skiweek_settle": {
+        "task": "competition.tasks.settle_skiweek_crowns",
+        "schedule": crontab(minute="7,22,37,52"),
+        "args": (),
+    },
 }
 
 

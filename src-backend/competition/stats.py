@@ -117,10 +117,12 @@ def get_competition_stats(competition, last_seven_days=False):
         return Response({"detail": "Competition not found."}, status=status.HTTP_404_NOT_FOUND)
     all_points = Points.objects.filter(Q(award__competition__id=competition) | Q(goal__competition_id=competition))
 
+    day_from = day_to = None
     if last_seven_days:
         today = timezone.localdate()
         last_sunday = today - datetime.timedelta(days=today.weekday() + 1) if today.weekday() != 6 else today
         monday_before = last_sunday - datetime.timedelta(days=6)
+        day_from, day_to = monday_before, last_sunday
         all_points = all_points.filter(workout__start_datetime__gte=monday_before, workout__start_datetime__lt=last_sunday + datetime.timedelta(days=1))
 
     # For SQLite
@@ -290,13 +292,23 @@ def get_competition_stats(competition, last_seven_days=False):
         counts = sport_n.get(uid, {})
         value["sports"] = dict(sorted(counts.items(), key=lambda kv: -kv[1])[:4])
 
+    from .skiweek import (
+        apply_sambuca_leaderboard,
+        apply_sambuca_team_rows,
+        apply_sambuca_timeseries,
+        sambuca_points_by_user,
+    )
+    ski_board = sambuca_points_by_user(competition, day_from=day_from, day_to=day_to)
+    apply_sambuca_timeseries(ski_board, timeseries_user, timeseries_all, timeseries_team)
+
     # Get user rankings
-    leaderboard_user = (
+    leaderboard_user = list(
         all_points
         .values('workout__user__id')
         .annotate(total_capped=Sum('points_capped'))
         .order_by('-total_capped')
     )
+    leaderboard_user = apply_sambuca_leaderboard(ski_board, leaderboard_user, user_dict)
     leaderboard_user = _add_rank(leaderboard_user, key="total_capped", enhance_dict=user_dict, id_field='workout__user__id')
 
     # "On rank N for X days" streak for every ranked participant.
@@ -319,7 +331,11 @@ def get_competition_stats(competition, last_seven_days=False):
         .annotate(total_capped=Sum('points_capped'))
         .order_by('-total_capped')
     )
-    leaderboard_team = [{**i, 'total_capped': i['total_capped'] / max(1, team_dict[i['workout__user__my_teams__id']]['active_member_count'])} for i in leaderboard_team if i['workout__user__my_teams__id'] in team_dict]
+    folded_teams = apply_sambuca_team_rows(ski_board, leaderboard_team, team_dict)
+    if folded_teams is None:
+        leaderboard_team = [{**i, 'total_capped': i['total_capped'] / max(1, team_dict[i['workout__user__my_teams__id']]['active_member_count'])} for i in leaderboard_team if i['workout__user__my_teams__id'] in team_dict]
+    else:
+        leaderboard_team = folded_teams
     leaderboard_team = _add_rank(leaderboard_team, key="total_capped", enhance_dict=team_dict, id_field='workout__user__my_teams__id')
     team_dict = {i['id']: i for i in leaderboard_team}
 
@@ -422,8 +438,12 @@ def get_competition_rank_summary(
         .annotate(total=Sum("points_capped"))
         .order_by("-total")
     )
+    from .skiweek import apply_sambuca_rank_rows
+    ski_board = apply_sambuca_rank_rows(competition_id, totals)
     my_rank = None
     my_points = 0.0
+    my_piste = None
+    my_sambuca = None
     my_index = None
     rank = 0
     last = None
@@ -434,6 +454,8 @@ def get_competition_rank_summary(
         if row["workout__user"] == user_id:
             my_rank = rank
             my_points = float(row["total"] or 0)
+            my_piste = row.get("piste")
+            my_sambuca = row.get("sambuca")
             my_index = idx - 1
             break
     rival = None
@@ -505,6 +527,13 @@ def get_competition_rank_summary(
         "start_date_count": start_count,
         "has_teams": comp.has_teams,
     }
+    if ski_board is not None:
+        summary["my_piste_points"] = round(float(my_piste or 0), 2)
+        summary["my_sambuca_points"] = round(float(my_sambuca or 0), 2)
+        summary["points_breakdown"] = [
+            {"label": "Piste", "kind": "piste", "points": summary["my_piste_points"]},
+            {"label": "Sambuca", "kind": "sambuca", "points": summary["my_sambuca_points"]},
+        ]
     summary["gap_changed"] = (
         _record_rank_gap_change(competition_id, user_id, summary)
         if track_gap_change else False
