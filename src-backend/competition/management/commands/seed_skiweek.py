@@ -103,6 +103,10 @@ class Command(BaseCommand):
             elif not user.profile_picture:
                 user.profile_picture.save(f"{first.lower()}.png", _portrait(first[0], color), save=True)
             users.append(user)
+            if first == "Lena":
+                from drill_instructor.models import DogTag
+                for slug in ("first_blood", "photogenic", "never_missed_monday"):
+                    DogTag.objects.get_or_create(user=user, slug=slug)
 
         persona, _created = DrillInstructorPersona.objects.get_or_create(
             name="Alpine Coach",

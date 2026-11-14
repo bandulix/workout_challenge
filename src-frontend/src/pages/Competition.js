@@ -610,10 +610,16 @@ export default function Competition() {
         document.body.classList.toggle("wc-hide-dock", sambucaOpen || crownOpen);
         return () => document.body.classList.remove("wc-hide-dock");
     }, [sambucaOpen, crownOpen]);
+    useEffect(() => {
+        document.body.classList.toggle("wc-ski", Boolean(skiweek?.enabled));
+        return () => document.body.classList.remove("wc-ski");
+    }, [skiweek?.enabled]);
     const [logSip] = useLogSkiSipMutation();
     const [undoSip] = useUndoSkiSipMutation();
     const [postCard] = usePostSkiCardMutation();
-    const skiLang = skiweek?.language || skiweek?.coach_teaser?.language || "en";
+    // Ski-week labels follow the app UI, which is English. The coach's
+    // generated line is the only string that uses the persona language.
+    const skiLang = "en";
     async function uploadCard(kind, files) {
         const body = new FormData();
         body.append("kind", kind);
@@ -823,9 +829,9 @@ export default function Competition() {
                     // lg+: feed and leaderboard side by side, no swipe
                     // carousel and no tab bar (everything is visible).
                     if (wide) {
-                        return (
-                            <div className="grid grid-cols-2 gap-4 items-start stagger-in">
-                                <div>
+                        const boardFirst = tab === "board";
+                        const skiColumn = (
+                            <div className="min-w-0 max-w-[540px]">
                                     {skiweek?.enabled && (
                                         <div className="mb-4">
                                             {skiweek.phase === "ended" ? (
@@ -846,9 +852,16 @@ export default function Competition() {
                                         </div>
                                     )}
                                     {feedPane}
-                                    {hasSki && <div className="mt-4">{apresPane}</div>}
+                                    {hasSki && boardFirst ? null : hasSki && <div className="mt-4">{apresPane}</div>}
                                 </div>
-                                {boardPane}
+                        );
+                        const boardColumn = <div className="min-w-0">{boardPane}</div>;
+                        return (
+                            <div className={"grid items-start gap-4 stagger-in " + (boardFirst
+                                ? "grid-cols-[minmax(0,1fr)_minmax(280px,540px)]"
+                                : "grid-cols-[minmax(280px,540px)_minmax(0,1fr)]")}>
+                                {boardFirst ? boardColumn : skiColumn}
+                                {boardFirst ? skiColumn : boardColumn}
                             </div>
                         );
                     }

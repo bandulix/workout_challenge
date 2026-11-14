@@ -933,7 +933,7 @@ export default function MySpace() {
                 />
             )}
 
-            <div className={"container mx-auto p-4" + (seasonChallenge ? " relative z-10" : "")}>
+            <div className={"wc-dash container mx-auto p-4" + (seasonChallenge ? " relative z-10" : "")}>
                 <div className="w-full">
                     {
                         (userLoading || workoutsIsLoading || (competitionLoading && !competitions)) ? (
@@ -957,16 +957,16 @@ export default function MySpace() {
                                 ? accentHex(orderSource.persona_detail.theme_color)
                                 : undefined}
                         />
-                        {showStamps && (
-                            <section className="mb-4">
-                                <PaneHead title="Stamps" hint="Earned tags glow. Locked ones stay outlines. Rings show progress."/>
-                                <div className="mb-3 px-1">
-                                    <RecordPills record={user.duel_record}/>
-                                </div>
-                                <StampWall earned={user.dog_tags}/>
-                            </section>
-                        )}
                     </div>
+                )}
+                {showStamps && user && (
+                    <section className="wc-dash-stamps mb-4">
+                        <PaneHead title="Stamps" hint="Earned tags glow. Locked ones stay outlines. Rings show progress."/>
+                        <div className="mb-3 px-1">
+                            <RecordPills record={user.duel_record}/>
+                        </div>
+                        <StampWall earned={user.dog_tags}/>
+                    </section>
                 )}
                 <div className={seasonChallenge ? "relative z-10 mb-6" : ""}>
                 {user && <DuelInbox/>}

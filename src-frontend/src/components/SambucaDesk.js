@@ -31,7 +31,9 @@ export function ApresBoard({skiweek, lang = "en", onUpload}) {
             </div>
             <div className="ski-pills" role="tablist">
                 {PILLS.map((item) => (
-                    <button key={item.id} type="button" role="tab" aria-selected={pill === item.id} onClick={() => setPill(item.id)}>
+                    <button key={item.id} type="button" role="tab" aria-selected={pill === item.id}
+                            data-tone={item.id === "sambuca" ? "gold" : undefined}
+                            onClick={() => setPill(item.id)}>
                         {skiT(lang, item.key)}
                     </button>
                 ))}
@@ -190,7 +192,7 @@ export function ChampReveal({skiweek, onClose, onSelfie, lang = "en"}) {
         <div className="ski-sheet-back" role="presentation">
             <section className="skiweek ski-champ" role="dialog" aria-label={title}>
                 <p className="ski-kicker">{skiweek?.resort?.name}</p>
-                <h2 className="ski-open">{title}</h2>
+                <h2 className="ski-open ski-crown-title">{title}</h2>
                 <p>{line}</p>
                 <SkiFrame card={skiweek?.cards?.coronation} lang={lang} label={skiT(lang, "coronation")}/>
                 {onSelfie && (

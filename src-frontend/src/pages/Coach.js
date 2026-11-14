@@ -280,16 +280,24 @@ function CoachPage() {
                 </div>
             ) : (
                 <>
+                    {!wide && (
                     <CoachHero persona={heroPersona} config={heroConfig} message={latestMessage}
                                briefing={todayBriefing}
                                ownedCompetitions={ownedCompetitions}
                                mood={heroConfig?.mood}
                                lastOwnActivityId={lastOwnActivityId}
                                meId={user?.id}/>
-                    <div className="container mx-auto max-w-3xl p-4 md:max-w-6xl">
+                    )}
+                    <div className={"container mx-auto p-4 " + (wide ? "max-w-5xl" : "max-w-3xl")}>
                         {wide ? (
                             <div className="grid grid-cols-2 items-start gap-4 stagger-in">
                                 <div className="flex flex-col gap-4 stagger-in">
+                                    <CoachHero persona={heroPersona} config={heroConfig} message={latestMessage}
+                                               briefing={todayBriefing}
+                                               ownedCompetitions={ownedCompetitions}
+                                               mood={heroConfig?.mood}
+                                               lastOwnActivityId={lastOwnActivityId}
+                                               meId={user?.id}/>
                                     {heroConfig && <CoachHandover configId={heroConfig.id} enabled={heroConfig.enabled}/>}
                                     {shownOrder && <OrderCard order={shownOrder}/>}
                                 </div>

@@ -888,6 +888,18 @@ body, #root {
   .wc-page-wrap .container {
     max-width: 1080px;
   }
+  .wc-dash {
+    display: grid;
+    grid-template-columns: minmax(0, 40rem) 18rem;
+    column-gap: 1.5rem;
+    align-items: start;
+    justify-content: center;
+  }
+  .wc-dash > :not(.wc-dash-stamps) { grid-column: 1; }
+  .wc-dash-stamps {
+    grid-column: 2;
+    grid-row: 1 / span 6;
+  }
 }
 @media (min-width: 600px) {
   .ski-sheet-back {
@@ -929,6 +941,22 @@ body, #root {
   max-width: none;
   object-fit: cover;
   object-position: center;
+}
+@media (min-width: 880px) {
+  .app-backdrop-img {
+    filter: blur(18px) saturate(0.55);
+    opacity: 0.4;
+  }
+  .app-backdrop-veil {
+    background: linear-gradient(180deg, rgba(11, 11, 12, 0.78), rgba(11, 11, 12, 0.9));
+  }
+}
+body.wc-ski .app-backdrop-img { opacity: 0; filter: none; }
+body.wc-ski .app-backdrop > .pointer-events-none { display: none; }
+body.wc-ski .app-backdrop-veil {
+  background:
+    radial-gradient(70% 42% at 50% 108%, #1c4664 0%, transparent 62%),
+    linear-gradient(180deg, #071018 0%, #0c1c2c 48%, #05080d 100%);
 }
 body {
   margin: 0;
@@ -1167,7 +1195,8 @@ code {
   line-height: 1.05;
 }
 .ski-resort { font-size: 2rem; margin-top: 0.15rem; }
-.ski-open { font-size: 2.4rem; color: var(--ski-gold); }
+.ski-open { font-size: 2.4rem; color: #f4f4f5; }
+.ski-crown-title { color: var(--ski-gold); }
 .ski-hero-top, .ski-clock, .ski-snow-grid, .ski-live-stats {
   position: relative;
   z-index: 1;
@@ -1184,7 +1213,8 @@ code {
   line-height: 1;
   color: #f4f4f5;
 }
-.ski-num-sm { font-size: 1.6rem; color: var(--ski-ice); }
+.ski-num-sm { font-size: 1.6rem; color: #f4f4f5; }
+.ski-cell-label { color: var(--ski-ice); }
 .ski-cell-label, .ski-snow-grid span, .ski-live-stats span, .ski-meta, .ski-source, .ski-coach-name {
   font-size: 0.75rem;
   font-weight: 700;
@@ -1199,8 +1229,8 @@ code {
   min-height: 44px;
   padding: 0 0.9rem;
   border-radius: 999px;
-  border: 1px solid rgba(232, 184, 74, 0.7);
-  color: var(--ski-gold);
+  border: 1px solid rgba(155, 231, 255, 0.55);
+  color: var(--ski-ice);
   font-weight: 800;
   font-size: 0.8rem;
   letter-spacing: 0.08em;
@@ -1209,7 +1239,7 @@ code {
 .ski-snow, .ski-coach, .ski-crew, .ski-lead { position: relative; z-index: 1; }
 .ski-fresh {
   margin: 0.7rem 0 0.35rem;
-  color: var(--ski-gold);
+  color: #f4f4f5;
   font-family: "Archivo Black", Inter, system-ui, sans-serif;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1220,6 +1250,9 @@ code {
   display: block;
   font-variant-numeric: tabular-nums;
   font-size: 1.35rem;
+  color: #f4f4f5;
+}
+.ski-live-stats span, .ski-snow-grid span, .ski-snow-grid small {
   color: var(--ski-ice);
 }
 .ski-snow-grid small { font-size: 0.7rem; margin-left: 0.15rem; }
@@ -1278,12 +1311,18 @@ code {
 .ski-pills { margin: 0.7rem 0; }
 .ski-pills button[aria-selected="true"], .ski-scope button[aria-pressed="true"] {
   color: #0b0b0c;
+  background: #f4f4f5;
+  border-color: #f4f4f5;
+}
+.ski-pills button[data-tone="gold"][aria-selected="true"],
+.ski-share.ski-plus {
+  color: #1a1204;
   background: var(--ski-gold);
   border-color: var(--ski-gold);
 }
 .ski-board { list-style: none; margin: 0; padding: 0; position: relative; z-index: 1; }
 .ski-board li { display: flex; gap: 0.7rem; align-items: center; min-height: 44px; }
-.ski-board strong { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ski-ice); }
+.ski-board strong { margin-left: auto; font-variant-numeric: tabular-nums; color: #f4f4f5; }
 .ski-sheet-back {
   position: fixed; inset: 0; z-index: 80;
   background: rgba(8, 12, 20, 0.72);

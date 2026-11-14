@@ -156,7 +156,9 @@ export default function SkiWeekHome({skiweek, participants, variant = "hero", no
     const resort = skiweek.resort?.name || "The Alps";
     const snowing = snowingNow(skiweek.weather);
     const kicked = phase === "live";
-    const lang = skiweek.language || skiweek.coach_teaser?.language || "en";
+    // The app chrome is English. The coach's spoken line stays in the
+    // persona language; the labels around it do not.
+    const lang = "en";
     const fresh = freshSnowCm(skiweek.weather);
 
     if (variant === "teaser") {
