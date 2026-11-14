@@ -1,7 +1,8 @@
 import {useNavigationType, useParams, useSearchParams} from 'react-router-dom';
 import React, {useEffect, useMemo, useRef, useState} from "react";
-import {useGetCompetitionByIdQuery, useGetExpeditionByCompetitionQuery, useGetSkiWeekByCompetitionQuery} from "../utils/reducers/competitionsSlice";
+import {useGetCompetitionByIdQuery, useGetExpeditionByCompetitionQuery, useGetSkiWeekByCompetitionQuery, useLogSkiSipMutation, useUndoSkiSipMutation} from "../utils/reducers/competitionsSlice";
 import SkiWeekHome from "../components/SkiWeekHome";
+import {ApresBoard, ChampReveal, SambucaSheet} from "../components/SambucaDesk";
 import {
     Trophy,
     UsersRound,
@@ -24,6 +25,7 @@ import {useDispatch} from "react-redux";
 import {teamsApi} from "../utils/reducers/teamsSlice";
 import {drillInstructorApi, messageResults, useGetDrillMessagesQuery} from "../utils/reducers/drillInstructorSlice";
 import {clearBodyScrollLock} from "../utils/overlay";
+import {confirmAction} from "../utils/dialogs";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ExpeditionPanel, {ExpeditionTeaser} from "../components/ExpeditionPanel";
 import AthleteCard from "../components/AthleteCard";
@@ -598,10 +600,23 @@ export default function Competition() {
     const {data: expedition} = useGetExpeditionByCompetitionQuery(id, {skip: !id});
     const {data: skiweek} = useGetSkiWeekByCompetitionQuery(id, {skip: !id, pollingInterval: pollSlow});
     const hasTrail = !!expedition?.enabled;
-    const tabs = useMemo(() => challengeTabs(hasTrail), [hasTrail]);
-    const tab = (tabParam === "feed" || tabParam === "board" || (tabParam === "trail" && hasTrail))
-        ? tabParam
-        : "feed";
+    const hasSki = Boolean(skiweek?.enabled && skiweek.phase !== "prestart");
+    const tabs = useMemo(() => challengeTabs(hasTrail, hasSki), [hasTrail, hasSki]);
+    const tab = tabs.some((item) => item.id === tabParam) ? tabParam : "feed";
+    const [sambucaOpen, setSambucaOpen] = useState(false);
+    const [crownOpen, setCrownOpen] = useState(false);
+    const [logSip] = useLogSkiSipMutation();
+    const [undoSip] = useUndoSkiSipMutation();
+    async function addSambuca(amount, confirm = false) {
+        try {
+            await logSip({id, amount, kind: "sambuca", confirm}).unwrap();
+        } catch (err) {
+            if (err?.status === 409 && err?.data?.code === "confirm_sambuca" && !confirm) {
+                const ok = await confirmAction("That's a high count for one resort day. Save it only if it's right.");
+                if (ok) await addSambuca(amount, true);
+            }
+        }
+    }
     // Stats stay skipped on Feed for first paint. A swipe mounts Board
     // before ?tab= changes, so peek starts the query during the gesture.
     const [statsPeeked, setStatsPeeked] = useState(false);
@@ -714,7 +729,16 @@ export default function Competition() {
                         skiweek={skiweek}
                         participants={competition?.user_info}
                         variant={skiweek.phase === "live" ? "live" : "hero"}
+                        onAddOne={skiweek.phase === "live" ? () => addSambuca(1) : undefined}
                     />
+                    {skiweek.phase === "live" && (
+                        <button type="button" className="ski-share" onClick={() => setSambucaOpen(true)}>Sambuca</button>
+                    )}
+                    {skiweek.yesterday && (
+                        <button type="button" className="ski-share" onClick={() => setCrownOpen(true)}>
+                            Yesterday's crown
+                        </button>
+                    )}
                 </div>
             )}
             <div className="container mx-auto p-4">
@@ -740,6 +764,7 @@ export default function Competition() {
                         </div>
                     );
                     const trailPane = <div>{trailPanel}</div>;
+                    const apresPane = <ApresBoard skiweek={skiweek}/>;
                     const boardPane = (
                         <div>
                         {wide && trailPanel}
@@ -789,11 +814,23 @@ export default function Competition() {
                         <SwipePages tab={tab} onChange={setTab} onPeek={peekTab} tabs={tabs}>
                             {feedPane}
                             {hasTrail && trailPane}
+                            {hasSki && apresPane}
                             {boardPane}
                         </SwipePages>
                     );
                 })()}
             </div>
+            {sambucaOpen && skiweek?.enabled && (
+                <SambucaSheet
+                    skiweek={skiweek}
+                    onClose={() => setSambucaOpen(false)}
+                    onAdd={(amount) => addSambuca(amount)}
+                    onUndo={() => undoSip({id, kind: "sambuca"})}
+                />
+            )}
+            {crownOpen && skiweek?.enabled && (
+                <ChampReveal skiweek={skiweek} onClose={() => setCrownOpen(false)}/>
+            )}
             {showRematchForm && competition && isOwner && (
                 <CompetitionForm
                     initialValues={rematchSeed}

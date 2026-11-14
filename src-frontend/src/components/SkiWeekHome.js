@@ -145,7 +145,7 @@ async function shareCountdown(skiweek, now) {
     }
 }
 
-export default function SkiWeekHome({skiweek, participants, variant = "hero", now: pinnedNow}) {
+export default function SkiWeekHome({skiweek, participants, variant = "hero", now: pinnedNow, onAddOne}) {
     const now = useNow(pinnedNow);
     if (!skiweek?.enabled) return null;
     const phase = visiblePhase(skiweek, now);
@@ -202,6 +202,9 @@ export default function SkiWeekHome({skiweek, participants, variant = "hero", no
                 <SnowReport weather={skiweek.weather} lang={lang}/>
                 {lead && (
                     <p className="ski-lead">{skiT(lang, "sambucaLead")} · {lead.username} · {lead.count}{skiweek.live?.tied ? ` · ${skiT(lang, "shared")}` : ""}</p>
+                )}
+                {onAddOne && (
+                    <button type="button" className="ski-share ski-plus" onClick={onAddOne}>+1</button>
                 )}
             </section>
         );

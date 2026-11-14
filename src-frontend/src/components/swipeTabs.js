@@ -9,9 +9,14 @@ export const CHALLENGE_TABS = [
 
 // With an Expedition the challenge gets a third page: the shared trail.
 export const TRAIL_TAB = {id: "trail", label: "Trail"};
+export const APRES_TAB = {id: "apres", label: "Après"};
 
-export function challengeTabs(hasTrail) {
-    return hasTrail ? [CHALLENGE_TABS[0], TRAIL_TAB, CHALLENGE_TABS[1]] : CHALLENGE_TABS;
+export function challengeTabs(hasTrail, hasSki = false) {
+    const tabs = [CHALLENGE_TABS[0]];
+    if (hasTrail) tabs.push(TRAIL_TAB);
+    if (hasSki) tabs.push(APRES_TAB);
+    tabs.push(CHALLENGE_TABS[1]);
+    return tabs;
 }
 
 export function peekableTabIds(idx, dragging, seen, tabs = CHALLENGE_TABS) {

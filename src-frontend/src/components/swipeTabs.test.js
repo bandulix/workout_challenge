@@ -5,6 +5,8 @@ describe("challengeTabs", () => {
     it("adds the Trail page between Feed and Leaderboard only when the challenge runs an Expedition", () => {
         expect(challengeTabs(false).map((t) => t.id)).toEqual(["feed", "board"]);
         expect(challengeTabs(true).map((t) => t.id)).toEqual(["feed", "trail", "board"]);
+        expect(challengeTabs(false, true).map((t) => t.id)).toEqual(["feed", "apres", "board"]);
+        expect(challengeTabs(true, true).map((t) => t.id)).toEqual(["feed", "trail", "apres", "board"]);
     });
 
     it("peeks the neighbouring page from the custom tab set while dragging", () => {
