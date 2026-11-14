@@ -60,4 +60,15 @@ describe("Sambuca desk", () => {
         expect(screen.getByText(/Lena and Mats share the crown/)).toBeTruthy();
         expect(screen.queryByText(/drink/i)).toBeNull();
     });
+
+    it("puts the day in the headline and keeps the count beside the names", () => {
+        render(<ChampReveal lang="de" onClose={vi.fn()} skiweek={{
+            ...skiweek,
+            language: "de",
+            starts_at: "2026-02-07T00:00:00+01:00",
+        }}/>);
+        expect(screen.getByRole("heading", {name: "Sambuca-Champ · Tag 2"})).toBeTruthy();
+        expect(screen.getByText(/teilen sich die Krone · 4/)).toBeTruthy();
+        expect(screen.queryByRole("button", {name: /Choose File/i})).toBeNull();
+    });
 });

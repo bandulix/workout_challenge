@@ -870,9 +870,12 @@ def build_payload(campaign, user, *, now=None, getter=None):
     ).aggregate(total=Sum("points_capped"))["total"]
     piste_pts = float(piste_pts or 0)
     weather = weather_for_campaign(campaign, getter=getter)
+    coach = _active_coach(campaign)
+    language = (coach.persona.language if coach is not None and coach.persona_id else None) or "en"
     return {
         "enabled": True,
         "phase": phase_of(campaign, now),
+        "language": language,
         "starts_at": challenge_bounds(campaign)[0].isoformat(),
         "coach_teaser": coach_teaser_payload(campaign, now=now, weather=weather),
         "resort": {
@@ -924,6 +927,7 @@ def build_payload(campaign, user, *, now=None, getter=None):
         },
         "weather": weather,
         "awards": award_payload(campaign, now=now),
+        "cards": _cards(campaign, user),
     }
 
 
@@ -981,10 +985,11 @@ def compute_week_awards(campaign):
     ))
     if workouts:
         earliest_start = min(workout.start_datetime for workout in workouts)
+        first_lift = as_aware(earliest_start).astimezone(zone(campaign.timezone)).strftime("%d.%m. %H:%M")
         grant(
             "erste_liftfahrt",
             {workout.user_id: 1 for workout in workouts if workout.start_datetime == earliest_start},
-            lambda _uid, _value: earliest_start.isoformat()[:16],
+            lambda _uid, _value: first_lift,
         )
         elevation = {}
         for workout in workouts:
@@ -1029,6 +1034,11 @@ def compute_week_awards(campaign):
             streaks[uid] = best
         grant("water_streak", streaks, lambda _uid, value: f"{int(value)} days")
     return created
+
+
+def _cards(campaign, user):
+    from .ski_photos import cards_payload
+    return cards_payload(campaign, user)
 
 
 def award_payload(campaign, now=None):

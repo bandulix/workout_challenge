@@ -139,9 +139,11 @@ async function shareCountdown(skiweek, now) {
     }
     try {
         await navigator.clipboard.writeText(text);
-        toast.success("Countdown copied.");
+        const lang = skiweek?.language || skiweek?.coach_teaser?.language || "en";
+        toast.success(skiT(lang, "copied"));
     } catch {
-        toast.error("Could not share the countdown.");
+        const lang = skiweek?.language || skiweek?.coach_teaser?.language || "en";
+        toast.error(skiT(lang, "shareFailed"));
     }
 }
 

@@ -1,7 +1,8 @@
 import {useNavigationType, useParams, useSearchParams} from 'react-router-dom';
 import React, {useEffect, useMemo, useRef, useState} from "react";
-import {useGetCompetitionByIdQuery, useGetExpeditionByCompetitionQuery, useGetSkiWeekByCompetitionQuery, useLogSkiSipMutation, useUndoSkiSipMutation} from "../utils/reducers/competitionsSlice";
+import {useGetCompetitionByIdQuery, useGetExpeditionByCompetitionQuery, useGetSkiWeekByCompetitionQuery, useLogSkiSipMutation, usePostSkiCardMutation, useUndoSkiSipMutation} from "../utils/reducers/competitionsSlice";
 import SkiWeekHome from "../components/SkiWeekHome";
+import {skiT} from "../utils/skiI18n";
 import {ApresBoard, ChampReveal, SambucaSheet, SkiFinale} from "../components/SambucaDesk";
 import {
     Trophy,
@@ -611,6 +612,19 @@ export default function Competition() {
     }, [sambucaOpen, crownOpen]);
     const [logSip] = useLogSkiSipMutation();
     const [undoSip] = useUndoSkiSipMutation();
+    const [postCard] = usePostSkiCardMutation();
+    const skiLang = skiweek?.language || skiweek?.coach_teaser?.language || "en";
+    async function uploadCard(kind, files) {
+        const body = new FormData();
+        body.append("kind", kind);
+        body.append("image", files[0]);
+        if (files[1]) body.append("image_b", files[1]);
+        try {
+            await postCard({id, body}).unwrap();
+        } catch {
+            /* the card stays as it was; the coach line explains a miss */
+        }
+    }
     async function addSambuca(amount, confirm = false) {
         try {
             await logSip({id, amount, kind: "sambuca", confirm}).unwrap();
@@ -730,7 +744,7 @@ export default function Competition() {
             {skiweek?.enabled && (
                 <div className="container mx-auto px-4">
                     {skiweek.phase === "ended" ? (
-                        <SkiFinale skiweek={skiweek} lang={skiweek.language || skiweek.coach_teaser?.language || "en"}/>
+                        <SkiFinale skiweek={skiweek} lang={skiLang}/>
                     ) : (
                     <SkiWeekHome
                         skiweek={skiweek}
@@ -741,7 +755,7 @@ export default function Competition() {
                     )}
                     {skiweek.yesterday && (
                         <button type="button" className="ski-share" onClick={() => setCrownOpen(true)}>
-                            Yesterday's crown
+                            {skiT(skiLang, "yesterdayCrown")}
                         </button>
                     )}
                 </div>
@@ -769,7 +783,7 @@ export default function Competition() {
                         </div>
                     );
                     const trailPane = <div>{trailPanel}</div>;
-                    const apresPane = <ApresBoard skiweek={skiweek}/>;
+                    const apresPane = <ApresBoard skiweek={skiweek} lang={skiLang} onUpload={uploadCard}/>;
                     const boardPane = (
                         <div>
                         {wide && trailPanel}
@@ -828,13 +842,14 @@ export default function Competition() {
             {sambucaOpen && skiweek?.enabled && (
                 <SambucaSheet
                     skiweek={skiweek}
+                    lang={skiLang}
                     onClose={() => setSambucaOpen(false)}
                     onAdd={(amount) => addSambuca(amount)}
                     onUndo={() => undoSip({id, kind: "sambuca"})}
                 />
             )}
             {crownOpen && skiweek?.enabled && (
-                <ChampReveal skiweek={skiweek} onClose={() => setCrownOpen(false)}/>
+                <ChampReveal skiweek={skiweek} lang={skiLang} onClose={() => setCrownOpen(false)} onSelfie={(file) => uploadCard("coronation", [file])}/>
             )}
             {showRematchForm && competition && isOwner && (
                 <CompetitionForm

@@ -5,6 +5,7 @@ Redis (the compose stack always has it). Tests must not need a running
 Redis or SMTP server, and they must not write uploaded files into the
 runtime data volume.
 """
+import os
 import tempfile
 
 from .settings import *  # noqa: F403
@@ -29,4 +30,4 @@ CELERY_RESULT_BACKEND = "cache+memory://"
 
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 
-MEDIA_ROOT = tempfile.mkdtemp(prefix="wc-test-media-")
+MEDIA_ROOT = os.environ.get("WC_MEDIA_ROOT") or tempfile.mkdtemp(prefix="wc-test-media-")

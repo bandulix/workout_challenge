@@ -40,13 +40,18 @@ export function snowingNow(weather) {
 }
 
 export function shareText(skiweek, now = new Date()) {
-    const resort = skiweek?.resort?.name || "the Alps";
+    const lang = skiweek?.language || skiweek?.coach_teaser?.language || "en";
+    const german = String(lang).toLowerCase().startsWith("de");
+    const resort = skiweek?.resort?.name || (german ? "die Alpen" : "the Alps");
     const phase = visiblePhase(skiweek, now);
     const parts = countdownParts(skiweek?.starts_at, now);
     const fresh = freshSnowCm(skiweek?.weather);
-    const snowLine = fresh ? ` ${fresh} cm fresh snow.` : "";
-    if (phase === "live") return `${resort} is open.${snowLine}`;
-    if (!parts) return `${resort} ski week.${snowLine}`;
-    const dayWord = parts.days === 1 ? "day" : "days";
-    return `${resort} ski week starts in ${parts.days} ${dayWord} ${pad2(parts.hours)}h ${pad2(parts.minutes)}m.${snowLine}`;
+    const snowLine = fresh ? ` ${fresh} cm ${german ? "Neuschnee" : "fresh snow"}.` : "";
+    if (phase === "live") return `${resort} ${german ? "ist offen" : "is open"}.${snowLine}`;
+    if (!parts) return `${resort}${german ? "" : " ski week"}.${snowLine}`;
+    const dayWord = parts.days === 1 ? (german ? "Tag" : "day") : (german ? "Tage" : "days");
+    const lead = german
+        ? `${resort}: noch ${parts.days} ${dayWord}`
+        : `${resort} ski week starts in ${parts.days} ${dayWord}`;
+    return `${lead} ${pad2(parts.hours)}h ${pad2(parts.minutes)}m.${snowLine}`;
 }

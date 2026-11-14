@@ -45,6 +45,14 @@ export const competitionsApi = createApi({
             }),
             invalidatesTags: (result, error, {id}) => [{type: 'Competition', id}, 'Competition'],
         }),
+        postSkiCard: builder.mutation({
+            query: ({id, body}) => ({
+                url: `competition/${id}/skiweek/cards/`,
+                method: 'POST',
+                body,
+            }),
+            invalidatesTags: (result, error, {id}) => [{type: 'Competition', id}, 'Competition'],
+        }),
         undoSkiSip: builder.mutation({
             query: ({id, kind}) => ({
                 url: `competition/${id}/skiweek/sips/`,
@@ -93,6 +101,7 @@ export const {
     useGetExpeditionByCompetitionQuery,
     useGetSkiWeekByCompetitionQuery,
     useLogSkiSipMutation,
+    usePostSkiCardMutation,
     useUndoSkiSipMutation,
     useVoteExpeditionShortcutMutation,
     useAddCompetitionMutation,
